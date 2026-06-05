@@ -205,46 +205,125 @@ or the symbol `error' when the gh process fails."
                 (message "Octocat sentinel error: %s" (error-message-string err))
                 (funcall callback 'error))))))))))
 
+(defun octocat--list-issues (repo callback)
+  "Fetch issues for REPO asynchronously and call CALLBACK with results.
+CALLBACK is called with a single argument: a list of issue hash-tables,
+or the symbol `error' when the gh process fails."
+  (let* ((gh-executable (executable-find "gh"))
+         (buf     (generate-new-buffer " *octocat-gh-issues*"))
+         (err-buf (generate-new-buffer " *octocat-gh-issues-stderr*"))
+         (cmd (when gh-executable
+                (list gh-executable "issue" "list"
+                      "--repo" repo
+                      "--state" "all"
+                      "--json" "number,title,author,state"))))
+    (if (not gh-executable)
+        (progn
+          (kill-buffer buf)
+          (kill-buffer err-buf)
+          (funcall callback 'error))
+      (let ((process-environment
+             (cons "NO_COLOR=1" process-environment)))
+        (make-process
+         :name "octocat-gh-issues"
+         :buffer buf
+         :stderr err-buf
+         :command cmd
+         :sentinel
+         (lambda (proc event)
+           (when (string-match-p "\\(finished\\|exited\\)" event)
+             (condition-case err
+                 (let* ((exit-code (process-exit-status proc))
+                        (output (with-current-buffer (process-buffer proc)
+                                  (buffer-string)))
+                        (stderr (with-current-buffer err-buf
+                                  (buffer-string))))
+                   (kill-buffer (process-buffer proc))
+                   (when (buffer-live-p err-buf) (kill-buffer err-buf))
+                   (octocat--debug-log (format "gh issues exit-code: %d" exit-code) output)
+                   (octocat--debug-log "gh issues stderr" stderr)
+                   (if (= exit-code 0)
+                       (funcall callback (octocat--parse-prs output))
+                     (funcall callback 'error)))
+               (error
+                (when (buffer-live-p err-buf) (kill-buffer err-buf))
+                (message "Octocat sentinel error: %s" (error-message-string err))
+                (funcall callback 'error))))))))))
+
 ;;;; Buffer rendering
 
-(defun octocat--render (prs repo)
-  "Erase the current buffer and render PR list PRS for REPO.
-Uses `magit-section' for collapsible entries."
+(defun octocat--render-prs (prs)
+  "Insert the collapsible Pull Requests section for PRS."
+  (magit-insert-section (pull-requests)
+    (magit-insert-heading
+      (propertize "Pull Requests" 'face 'magit-section-heading))
+    (if (null prs)
+        (insert "  (no pull requests)\n")
+      (dolist (pr prs)
+        (let* ((number (format "#%-4d" (gethash "number" pr)))
+               (title  (or (gethash "title"  pr) ""))
+               (author (or (gethash "login"
+                                    (gethash "author" pr)) ""))
+               (state  (downcase (or (gethash "state" pr) "open")))
+               (state-face (cond ((equal state "merged") 'octocat-pr-state-merged)
+                                 ((equal state "closed") 'octocat-pr-state-closed)
+                                 (t                      'octocat-pr-state-open)))
+               (ci     (octocat--ci-status pr)))
+          (magit-insert-section (pr pr)
+            (magit-insert-heading
+              (concat
+               "  "
+               (propertize number 'face 'octocat-pr-number)
+               "  "
+               (truncate-string-to-width (format "%-40s" title) 40 nil ?\s "…")
+               "  "
+               (propertize (format "@%-15s" author) 'face 'octocat-pr-author)
+               "  "
+               (propertize (format "%-6s" state) 'face state-face)
+               "  "
+               ci
+               "\n"))))))))
+
+(defun octocat--render-issues (issues)
+  "Insert the collapsible Issues section for ISSUES."
+  (magit-insert-section (issues)
+    (magit-insert-heading
+      (propertize "Issues" 'face 'magit-section-heading))
+    (if (null issues)
+        (insert "  (no issues)\n")
+      (dolist (issue issues)
+        (let* ((number (format "#%-4d" (gethash "number" issue)))
+               (title  (or (gethash "title"  issue) ""))
+               (author (or (gethash "login"
+                                    (gethash "author" issue)) ""))
+               (state  (downcase (or (gethash "state" issue) "open")))
+               (state-face (if (equal state "open")
+                               'octocat-pr-state-open
+                             'octocat-pr-state-closed)))
+          (magit-insert-section (issue issue)
+            (magit-insert-heading
+              (concat
+               "  "
+               (propertize number 'face 'octocat-pr-number)
+               "  "
+               (truncate-string-to-width (format "%-40s" title) 40 nil ?\s "…")
+               "  "
+               (propertize (format "@%-15s" author) 'face 'octocat-pr-author)
+               "  "
+               (propertize (format "%-6s" state) 'face state-face)
+               "\n"))))))))
+
+(defun octocat--render (prs issues repo)
+  "Erase the current buffer and render PRS and ISSUES for REPO.
+Uses `magit-section' for collapsible sections."
   (let ((inhibit-read-only t))
     (erase-buffer)
     (magit-insert-section (octocat-root)
-      (magit-insert-section (pull-requests)
-        (magit-insert-heading
-          (concat (propertize "Pull Requests" 'face 'magit-section-heading)
-                  " ("
-                  (propertize repo 'face 'magit-branch-remote)
-                  ")"))
-        (if (null prs)
-            (insert "  (no open pull requests)\n")
-          (dolist (pr prs)
-            (let* ((number (format "#%-4d" (gethash "number" pr)))
-                   (title  (or (gethash "title"  pr) ""))
-                   (author (or (gethash "login"
-                                        (gethash "author" pr)) ""))
-                   (state  (downcase (or (gethash "state" pr) "open")))
-                   (state-face (cond ((equal state "merged") 'octocat-pr-state-merged)
-                                     ((equal state "closed") 'octocat-pr-state-closed)
-                                     (t                      'octocat-pr-state-open)))
-                   (ci     (octocat--ci-status pr)))
-              (magit-insert-section (pr pr)
-                (magit-insert-heading
-                  (concat
-                   "  "
-                   (propertize number 'face 'octocat-pr-number)
-                   "  "
-                   (truncate-string-to-width (format "%-40s" title) 40 nil ?\s "…")
-                   "  "
-                   (propertize (format "@%-15s" author) 'face 'octocat-pr-author)
-                   "  "
-                   (propertize (format "%-6s" state) 'face state-face)
-                   "  "
-                   ci
-                   "\n"))))))))))
+      (magit-insert-heading
+        (concat (propertize repo 'face 'magit-branch-remote)))
+      (octocat--render-prs prs)
+      (insert "\n")
+      (octocat--render-issues issues))))
 
 
 ;;;; Major mode
@@ -273,33 +352,44 @@ Uses `magit-section' for collapsible entries."
   "The \"owner/repo\" string this buffer is tracking.")
 
 (defun octocat-refresh (&optional _ignore-auto _noconfirm)
-  "Refresh the current octocat buffer asynchronously."
+  "Refresh the current octocat buffer asynchronously.
+Fetches pull requests and issues in parallel; renders once both arrive."
   (interactive)
   (unless octocat--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
   (let ((buf (current-buffer))
-        (repo octocat--repo))
+        (repo octocat--repo)
+        (pr-result 'pending)
+        (issue-result 'pending))
     ;; Show loading placeholder immediately.
     (let ((inhibit-read-only t))
       (erase-buffer)
       (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
-    ;; Kick off async fetch.
-    (octocat--list-prs
-     repo
-     (lambda (result)
-       (when (buffer-live-p buf)
-         (with-current-buffer buf
-           (if (eq result 'error)
-               (progn
-                 (let ((inhibit-read-only t))
-                   (erase-buffer)
-                   (insert (propertize
-                            "  Error: could not fetch PRs.\n\
+    ;; Render once both fetches have completed.
+    (cl-flet ((maybe-render ()
+                (unless (or (eq pr-result 'pending) (eq issue-result 'pending))
+                  (when (buffer-live-p buf)
+                    (with-current-buffer buf
+                      (if (or (eq pr-result 'error) (eq issue-result 'error))
+                          (progn
+                            (let ((inhibit-read-only t))
+                              (erase-buffer)
+                              (insert (propertize
+                                       "  Error: could not fetch data.\n\
   Make sure `gh' is installed and you are authenticated (`gh auth login').\n"
-                            'face 'error)))
-                 (message "Octocat: Failed to fetch pull requests"))
-             (octocat--render result repo)
-             (message "Octocat: Loaded %d pull request(s)" (length result)))))))))
+                                       'face 'error)))
+                            (message "Octocat: Failed to fetch data"))
+                        (octocat--render pr-result issue-result repo)
+                        (message "Octocat: Loaded %d PR(s), %d issue(s)"
+                                 (length pr-result) (length issue-result))))))))
+      (octocat--list-prs repo
+                         (lambda (result)
+                           (setq pr-result result)
+                           (maybe-render)))
+      (octocat--list-issues repo
+                            (lambda (result)
+                              (setq issue-result result)
+                              (maybe-render))))))
 
 
 ;;;; PR visitor (stub)
