@@ -315,7 +315,7 @@ or the symbol `error' when the gh process fails."
 
 (defun octocat--render (prs issues repo)
   "Erase the current buffer and render PRS and ISSUES for REPO.
-Uses `magit-section' for collapsible sections."
+Uses the `magit-section' package for collapsible sections."
   (let ((inhibit-read-only t))
     (erase-buffer)
     (magit-insert-section (octocat-root)
