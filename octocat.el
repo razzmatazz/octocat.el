@@ -213,37 +213,38 @@ Uses `magit-section' for collapsible entries."
   (let ((inhibit-read-only t))
     (erase-buffer)
     (magit-insert-section (octocat-root)
-      (magit-insert-heading
-        (concat (propertize "Pull Requests" 'face 'magit-section-heading)
-                " ("
-                (propertize repo 'face 'magit-branch-remote)
-                ")"))
-      (if (null prs)
-          (insert "  (no open pull requests)\n")
-        (dolist (pr prs)
-          (let* ((number (format "#%-4d" (gethash "number" pr)))
-                 (title  (or (gethash "title"  pr) ""))
-                 (author (or (gethash "login"
-                                      (gethash "author" pr)) ""))
-                 (state  (downcase (or (gethash "state" pr) "open")))
-                 (state-face (cond ((equal state "merged") 'octocat-pr-state-merged)
-                                   ((equal state "closed") 'octocat-pr-state-closed)
-                                   (t                      'octocat-pr-state-open)))
-                 (ci     (octocat--ci-status pr)))
-            (magit-insert-section (pr pr)
-              (magit-insert-heading
-                (concat
-                 "  "
-                 (propertize number 'face 'octocat-pr-number)
-                 "  "
-                 (truncate-string-to-width (format "%-40s" title) 40 nil ?\s "…")
-                 "  "
-                 (propertize (format "@%-15s" author) 'face 'octocat-pr-author)
-                 "  "
-                 (propertize (format "%-6s" state) 'face state-face)
-                 "  "
-                 ci
-                 "\n")))))))))
+      (magit-insert-section (pull-requests)
+        (magit-insert-heading
+          (concat (propertize "Pull Requests" 'face 'magit-section-heading)
+                  " ("
+                  (propertize repo 'face 'magit-branch-remote)
+                  ")"))
+        (if (null prs)
+            (insert "  (no open pull requests)\n")
+          (dolist (pr prs)
+            (let* ((number (format "#%-4d" (gethash "number" pr)))
+                   (title  (or (gethash "title"  pr) ""))
+                   (author (or (gethash "login"
+                                        (gethash "author" pr)) ""))
+                   (state  (downcase (or (gethash "state" pr) "open")))
+                   (state-face (cond ((equal state "merged") 'octocat-pr-state-merged)
+                                     ((equal state "closed") 'octocat-pr-state-closed)
+                                     (t                      'octocat-pr-state-open)))
+                   (ci     (octocat--ci-status pr)))
+              (magit-insert-section (pr pr)
+                (magit-insert-heading
+                  (concat
+                   "  "
+                   (propertize number 'face 'octocat-pr-number)
+                   "  "
+                   (truncate-string-to-width (format "%-40s" title) 40 nil ?\s "…")
+                   "  "
+                   (propertize (format "@%-15s" author) 'face 'octocat-pr-author)
+                   "  "
+                   (propertize (format "%-6s" state) 'face state-face)
+                   "  "
+                   ci
+                   "\n"))))))))))
 
 
 ;;;; Major mode
@@ -251,7 +252,6 @@ Uses `magit-section' for collapsible entries."
 (defvar octocat-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map magit-section-mode-map)
-    (define-key map (kbd "g")   #'octocat-refresh)
     (define-key map (kbd "q")   #'quit-window)
     (define-key map (kbd "RET") #'octocat-visit-pr)
     map)
