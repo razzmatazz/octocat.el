@@ -250,6 +250,49 @@ or the symbol `error' when the gh process fails."
                 (message "Octocat sentinel error: %s" (error-message-string err))
                 (funcall callback 'error))))))))))
 
+(defun octocat--list-workflows (repo callback)
+  "Fetch workflows for REPO asynchronously and call CALLBACK with results.
+CALLBACK is called with a list of workflow hash-tables, or `error'."
+  (let* ((gh-executable (executable-find "gh"))
+         (buf     (generate-new-buffer " *octocat-gh-workflows*"))
+         (err-buf (generate-new-buffer " *octocat-gh-workflows-stderr*"))
+         (cmd (when gh-executable
+                (list gh-executable "workflow" "list"
+                      "--repo" repo
+                      "--json" "id,name,state"))))
+    (if (not gh-executable)
+        (progn
+          (kill-buffer buf)
+          (kill-buffer err-buf)
+          (funcall callback 'error))
+      (let ((process-environment
+             (cons "NO_COLOR=1" process-environment)))
+        (make-process
+         :name "octocat-gh-workflows"
+         :buffer buf
+         :stderr err-buf
+         :command cmd
+         :sentinel
+         (lambda (proc event)
+           (when (string-match-p "\\(finished\\|exited\\)" event)
+             (condition-case err
+                 (let* ((exit-code (process-exit-status proc))
+                        (output (with-current-buffer (process-buffer proc)
+                                  (buffer-string)))
+                        (stderr (with-current-buffer err-buf
+                                  (buffer-string))))
+                   (kill-buffer (process-buffer proc))
+                   (when (buffer-live-p err-buf) (kill-buffer err-buf))
+                   (octocat--debug-log (format "gh workflows exit-code: %d" exit-code) output)
+                   (octocat--debug-log "gh workflows stderr" stderr)
+                   (if (= exit-code 0)
+                       (funcall callback (octocat--parse-prs output))
+                     (funcall callback 'error)))
+               (error
+                (when (buffer-live-p err-buf) (kill-buffer err-buf))
+                (message "Octocat sentinel error: %s" (error-message-string err))
+                (funcall callback 'error))))))))))
+
 ;;;; Buffer rendering
 
 (defun octocat--render-prs (prs)
@@ -313,19 +356,42 @@ or the symbol `error' when the gh process fails."
                (propertize (format "%-6s" state) 'face state-face)
                "\n"))))))))
 
-(defun octocat--render (prs issues repo)
-  "Erase the current buffer and render PRS and ISSUES for REPO.
+(defun octocat--render-workflows (workflows)
+  "Insert the collapsible Workflows section for WORKFLOWS."
+  (magit-insert-section (workflows)
+    (magit-insert-heading
+      (propertize "Workflows" 'face 'magit-section-heading))
+    (if (null workflows)
+        (insert "  (no workflows)\n")
+      (dolist (workflow workflows)
+        (let* ((name  (or (gethash "name"  workflow) ""))
+               (state (downcase (or (gethash "state" workflow) "")))
+               (state-face (if (equal state "active")
+                               'success
+                             'magit-dimmed)))
+          (magit-insert-section (workflow workflow)
+            (magit-insert-heading
+              (concat
+               "  "
+               (truncate-string-to-width (format "%-40s" name) 40 nil ?\s "…")
+               "  "
+               (propertize state 'face state-face)
+               "\n"))))))))
+
+(defun octocat--render (prs issues workflows repo)
+  "Erase the current buffer and render PRS, ISSUES, and WORKFLOWS for REPO.
 Uses the `magit-section' package for collapsible sections."
   (let ((inhibit-read-only t))
     (erase-buffer)
     (magit-insert-section (octocat-root)
       (magit-insert-heading
         (concat (propertize repo 'face 'magit-branch-remote)
-                (propertize (format "  %d PR(s)  %d issue(s)"
-                                    (length prs) (length issues))
+                (propertize (format "  %d PR(s)  %d issue(s)  %d workflow(s)"
+                                    (length prs) (length issues) (length workflows))
                             'face 'magit-dimmed)))
       (octocat--render-prs prs)
-      (octocat--render-issues issues))))
+      (octocat--render-issues issues)
+      (octocat--render-workflows workflows))))
 
 
 ;;;; Major mode
@@ -363,17 +429,22 @@ Fetches pull requests and issues in parallel; renders once both arrive."
   (let ((buf (current-buffer))
         (repo octocat--repo)
         (pr-result 'pending)
-        (issue-result 'pending))
+        (issue-result 'pending)
+        (workflow-result 'pending))
     ;; Show loading placeholder immediately.
     (let ((inhibit-read-only t))
       (erase-buffer)
       (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
-    ;; Render once both fetches have completed.
+    ;; Render once all three fetches have completed.
     (cl-flet ((maybe-render ()
-                (unless (or (eq pr-result 'pending) (eq issue-result 'pending))
+                (unless (or (eq pr-result 'pending)
+                            (eq issue-result 'pending)
+                            (eq workflow-result 'pending))
                   (when (buffer-live-p buf)
                     (with-current-buffer buf
-                      (if (or (eq pr-result 'error) (eq issue-result 'error))
+                      (if (or (eq pr-result 'error)
+                              (eq issue-result 'error)
+                              (eq workflow-result 'error))
                           (progn
                             (let ((inhibit-read-only t))
                               (erase-buffer)
@@ -382,9 +453,10 @@ Fetches pull requests and issues in parallel; renders once both arrive."
   Make sure `gh' is installed and you are authenticated (`gh auth login').\n"
                                        'face 'error)))
                             (message "Octocat: Failed to fetch data"))
-                        (octocat--render pr-result issue-result repo)
-                        (message "Octocat: Loaded %d PR(s), %d issue(s)"
-                                 (length pr-result) (length issue-result))))))))
+                        (octocat--render pr-result issue-result workflow-result repo)
+                        (message "Octocat: Loaded %d PR(s), %d issue(s), %d workflow(s)"
+                                 (length pr-result) (length issue-result)
+                                 (length workflow-result))))))))
       (octocat--list-prs repo
                          (lambda (result)
                            (setq pr-result result)
@@ -392,7 +464,11 @@ Fetches pull requests and issues in parallel; renders once both arrive."
       (octocat--list-issues repo
                             (lambda (result)
                               (setq issue-result result)
-                              (maybe-render))))))
+                              (maybe-render)))
+      (octocat--list-workflows repo
+                               (lambda (result)
+                                 (setq workflow-result result)
+                                 (maybe-render))))))
 
 
 ;;;; PR visitor (stub)
