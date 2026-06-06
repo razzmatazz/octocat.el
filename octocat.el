@@ -136,6 +136,47 @@ Returns \"✓\" (success), \"✗\" (failure), or \"●\" (pending/unknown)."
       (insert label "\n")
       (insert data "\n\n"))))
 
+(defun octocat--run-gh (name args parse-fn callback)
+  "Run `gh' asynchronously with ARGS and call CALLBACK with the result.
+NAME is a short identifier used for the process and temp-buffer names.
+ARGS is a list of string arguments passed directly to the `gh' executable.
+PARSE-FN is called with the raw output string on success; its return value
+is forwarded to CALLBACK.  On failure CALLBACK receives the symbol `error'."
+  (let* ((gh-executable (executable-find "gh")))
+    (if (not gh-executable)
+        (funcall callback 'error)
+      (let* ((buf     (generate-new-buffer (format " *octocat-gh-%s*" name)))
+             (err-buf (generate-new-buffer (format " *octocat-gh-%s-stderr*" name)))
+             (cmd     (cons gh-executable args))
+             (process-environment (cons "NO_COLOR=1" process-environment)))
+        (make-process
+         :name (format "octocat-gh-%s" name)
+         :buffer buf
+         :stderr err-buf
+         :command cmd
+         :sentinel
+         (lambda (proc event)
+           (when (string-match-p "\\(finished\\|exited\\)" event)
+             (condition-case err
+                 (let* ((exit-code (process-exit-status proc))
+                        (output    (with-current-buffer (process-buffer proc)
+                                     (buffer-string)))
+                        (stderr    (with-current-buffer err-buf
+                                     (buffer-string))))
+                   (kill-buffer (process-buffer proc))
+                   (when (buffer-live-p err-buf) (kill-buffer err-buf))
+                   (octocat--debug-log
+                    (format "gh %s exit-code: %d" name exit-code) output)
+                   (octocat--debug-log
+                    (format "gh %s stderr" name) stderr)
+                   (if (= exit-code 0)
+                       (funcall callback (funcall parse-fn output))
+                     (funcall callback 'error)))
+               (error
+                (when (buffer-live-p err-buf) (kill-buffer err-buf))
+                (message "Octocat sentinel error: %s" (error-message-string err))
+                (funcall callback 'error))))))))))
+
 (defun octocat--parse-prs (json-string)
   "Parse JSON-STRING returned by `gh pr list' into a list of hash-tables.
 Returns a list of hash-tables, or signals `error' on failure.
@@ -162,188 +203,51 @@ An empty or null response (zero open PRs) is treated as an empty list."
 
 (defun octocat--list-prs (repo callback)
   "Fetch open PRs for REPO asynchronously and call CALLBACK with results.
-CALLBACK is called with a single argument: a list of PR hash-tables,
-or the symbol `error' when the gh process fails."
-  (let* ((gh-executable (executable-find "gh"))
-         (buf     (generate-new-buffer " *octocat-gh*"))
-         (err-buf (generate-new-buffer " *octocat-gh-stderr*"))
-         (cmd (when gh-executable
-                (list gh-executable "pr" "list"
-                      "--repo" repo
-                      "--state" "all"
-                      "--json" "number,title,author,state,statusCheckRollup"))))
-    (if (not gh-executable)
-        (progn
-          (kill-buffer buf)
-          (kill-buffer err-buf)
-          (funcall callback 'error))
-      (let ((process-environment
-             (cons "NO_COLOR=1" process-environment)))
-        (make-process
-         :name "octocat-gh"
-         :buffer buf
-         :stderr err-buf
-         :command cmd
-         :sentinel
-         (lambda (proc event)
-           (when (string-match-p "\\(finished\\|exited\\)" event)
-             (condition-case err
-                 (let* ((exit-code (process-exit-status proc))
-                        (output (with-current-buffer (process-buffer proc)
-                                  (buffer-string)))
-                        (stderr (with-current-buffer err-buf
-                                  (buffer-string))))
-                   (kill-buffer (process-buffer proc))
-                   (when (buffer-live-p err-buf) (kill-buffer err-buf))
-                   (octocat--debug-log (format "gh exit-code: %d" exit-code) output)
-                   (octocat--debug-log "gh stderr" stderr)
-                   (if (= exit-code 0)
-                       (funcall callback (octocat--parse-prs output))
-                     (funcall callback 'error)))
-               (error
-                (when (buffer-live-p err-buf) (kill-buffer err-buf))
-                (message "Octocat sentinel error: %s" (error-message-string err))
-                (funcall callback 'error))))))))))
+CALLBACK is called with a list of PR hash-tables, or the symbol `error'."
+  (octocat--run-gh "prs"
+                   (list "pr" "list"
+                         "--repo" repo
+                         "--state" "all"
+                         "--json" "number,title,author,state,statusCheckRollup")
+                   #'octocat--parse-prs
+                   callback))
 
 (defun octocat--list-issues (repo callback)
   "Fetch issues for REPO asynchronously and call CALLBACK with results.
-CALLBACK is called with a single argument: a list of issue hash-tables,
-or the symbol `error' when the gh process fails."
-  (let* ((gh-executable (executable-find "gh"))
-         (buf     (generate-new-buffer " *octocat-gh-issues*"))
-         (err-buf (generate-new-buffer " *octocat-gh-issues-stderr*"))
-         (cmd (when gh-executable
-                (list gh-executable "issue" "list"
-                      "--repo" repo
-                      "--state" "all"
-                      "--json" "number,title,author,state"))))
-    (if (not gh-executable)
-        (progn
-          (kill-buffer buf)
-          (kill-buffer err-buf)
-          (funcall callback 'error))
-      (let ((process-environment
-             (cons "NO_COLOR=1" process-environment)))
-        (make-process
-         :name "octocat-gh-issues"
-         :buffer buf
-         :stderr err-buf
-         :command cmd
-         :sentinel
-         (lambda (proc event)
-           (when (string-match-p "\\(finished\\|exited\\)" event)
-             (condition-case err
-                 (let* ((exit-code (process-exit-status proc))
-                        (output (with-current-buffer (process-buffer proc)
-                                  (buffer-string)))
-                        (stderr (with-current-buffer err-buf
-                                  (buffer-string))))
-                   (kill-buffer (process-buffer proc))
-                   (when (buffer-live-p err-buf) (kill-buffer err-buf))
-                   (octocat--debug-log (format "gh issues exit-code: %d" exit-code) output)
-                   (octocat--debug-log "gh issues stderr" stderr)
-                   (if (= exit-code 0)
-                       (funcall callback (octocat--parse-prs output))
-                     (funcall callback 'error)))
-               (error
-                (when (buffer-live-p err-buf) (kill-buffer err-buf))
-                (message "Octocat sentinel error: %s" (error-message-string err))
-                (funcall callback 'error))))))))))
+CALLBACK is called with a list of issue hash-tables, or the symbol `error'."
+  (octocat--run-gh "issues"
+                   (list "issue" "list"
+                         "--repo" repo
+                         "--state" "all"
+                         "--json" "number,title,author,state")
+                   #'octocat--parse-prs
+                   callback))
 
 (defun octocat--list-workflows (repo callback)
   "Fetch workflows for REPO asynchronously and call CALLBACK with results.
 CALLBACK is called with a list of workflow hash-tables, or `error'."
-  (let* ((gh-executable (executable-find "gh"))
-         (buf     (generate-new-buffer " *octocat-gh-workflows*"))
-         (err-buf (generate-new-buffer " *octocat-gh-workflows-stderr*"))
-         (cmd (when gh-executable
-                (list gh-executable "workflow" "list"
-                      "--repo" repo
-                      "--json" "id,name,state"))))
-    (if (not gh-executable)
-        (progn
-          (kill-buffer buf)
-          (kill-buffer err-buf)
-          (funcall callback 'error))
-      (let ((process-environment
-             (cons "NO_COLOR=1" process-environment)))
-        (make-process
-         :name "octocat-gh-workflows"
-         :buffer buf
-         :stderr err-buf
-         :command cmd
-         :sentinel
-         (lambda (proc event)
-           (when (string-match-p "\\(finished\\|exited\\)" event)
-             (condition-case err
-                 (let* ((exit-code (process-exit-status proc))
-                        (output (with-current-buffer (process-buffer proc)
-                                  (buffer-string)))
-                        (stderr (with-current-buffer err-buf
-                                  (buffer-string))))
-                   (kill-buffer (process-buffer proc))
-                   (when (buffer-live-p err-buf) (kill-buffer err-buf))
-                   (octocat--debug-log (format "gh workflows exit-code: %d" exit-code) output)
-                   (octocat--debug-log "gh workflows stderr" stderr)
-                   (if (= exit-code 0)
-                       (funcall callback (octocat--parse-prs output))
-                     (funcall callback 'error)))
-               (error
-                (when (buffer-live-p err-buf) (kill-buffer err-buf))
-                (message "Octocat sentinel error: %s" (error-message-string err))
-                (funcall callback 'error))))))))))
+  (octocat--run-gh "workflows"
+                   (list "workflow" "list"
+                         "--repo" repo
+                         "--json" "id,name,state")
+                   #'octocat--parse-prs
+                   callback))
 
 (defun octocat--fetch-pr (repo number callback)
   "Fetch detail for pull request NUMBER in REPO asynchronously.
 Calls CALLBACK with a single hash-table of PR data, or the symbol `error'."
-  (let* ((gh-executable (executable-find "gh"))
-         (buf     (generate-new-buffer " *octocat-gh-pr*"))
-         (err-buf (generate-new-buffer " *octocat-gh-pr-stderr*"))
-         (cmd (when gh-executable
-                (list gh-executable "pr" "view"
-                      (number-to-string number)
-                      "--repo" repo
-                      "--json" (concat "number,title,author,state,body,"
-                                       "createdAt,mergedAt,closedAt,"
-                                       "baseRefName,headRefName,"
-                                       "additions,deletions,changedFiles,"
-                                       "labels,reviewDecision,latestReviews,"
-                                       "comments,statusCheckRollup,url")))))
-    (if (not gh-executable)
-        (progn
-          (kill-buffer buf)
-          (kill-buffer err-buf)
-          (funcall callback 'error))
-      (let ((process-environment
-             (cons "NO_COLOR=1" process-environment)))
-        (make-process
-         :name "octocat-gh-pr"
-         :buffer buf
-         :stderr err-buf
-         :command cmd
-         :sentinel
-         (lambda (proc event)
-           (when (string-match-p "\\(finished\\|exited\\)" event)
-             (condition-case err
-                 (let* ((exit-code (process-exit-status proc))
-                        (output (with-current-buffer (process-buffer proc)
-                                  (buffer-string)))
-                        (stderr (with-current-buffer err-buf
-                                  (buffer-string))))
-                   (kill-buffer (process-buffer proc))
-                   (when (buffer-live-p err-buf) (kill-buffer err-buf))
-                   (octocat--debug-log
-                    (format "gh pr view exit-code: %d" exit-code) output)
-                   (octocat--debug-log "gh pr view stderr" stderr)
-                   (if (= exit-code 0)
-                       (funcall callback
-                                (json-parse-string (string-trim output)))
-                     (funcall callback 'error)))
-               (error
-                (when (buffer-live-p err-buf) (kill-buffer err-buf))
-                (message "Octocat sentinel error: %s"
-                         (error-message-string err))
-                (funcall callback 'error))))))))))
+  (octocat--run-gh "pr"
+                   (list "pr" "view"
+                         (number-to-string number)
+                         "--repo" repo
+                         "--json" (concat "number,title,author,state,body,"
+                                          "createdAt,mergedAt,closedAt,"
+                                          "baseRefName,headRefName,"
+                                          "additions,deletions,changedFiles,"
+                                          "labels,reviewDecision,latestReviews,"
+                                          "comments,statusCheckRollup,url"))
+                   (lambda (output) (json-parse-string (string-trim output)))
+                   callback))
 
 ;;;; Buffer rendering
 
