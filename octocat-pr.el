@@ -1,0 +1,265 @@
+;;; octocat-pr.el --- Pull Request detail view for octocat  -*- lexical-binding: t; package-lint-main-file: "octocat.el"; -*-
+
+;; Copyright (C) 2026 Saulius Menkevicius
+
+;; This file is NOT part of GNU Emacs.
+
+;;; Commentary:
+
+;; PR data fetching, detail rendering, and the octocat-pr-mode major mode.
+;; Depends on octocat-core.el for shared infrastructure; must not depend on
+;; octocat.el to avoid a circular require.
+
+;;; Code:
+
+(require 'octocat-core)
+
+;; Forward declarations for buffer-locals defined later in this file.
+;; Needed so the byte-compiler doesn't warn about free variables in
+;; rendering functions that run in `octocat-pr-mode' buffers.
+(defvar octocat--pr-repo)
+(defvar octocat--pr-number)
+
+
+;;;; Data fetching
+
+(defun octocat--list-prs (repo callback)
+  "Fetch open PRs for REPO asynchronously and call CALLBACK with results.
+CALLBACK is called with a list of PR hash-tables, or the symbol `error'."
+  (octocat--run-gh "prs"
+                   (list "pr" "list"
+                         "--repo" repo
+                         "--state" "all"
+                         "--json" "number,title,author,state,statusCheckRollup")
+                   #'octocat--parse-json-list
+                   callback))
+
+(defun octocat--fetch-pr (repo number callback)
+  "Fetch detail for pull request NUMBER in REPO asynchronously.
+Calls CALLBACK with a single hash-table of PR data, or the symbol `error'."
+  (octocat--run-gh "pr"
+                   (list "pr" "view"
+                         (number-to-string number)
+                         "--repo" repo
+                         "--json" (concat "number,title,author,state,body,"
+                                          "createdAt,mergedAt,closedAt,"
+                                          "baseRefName,headRefName,"
+                                          "additions,deletions,changedFiles,"
+                                          "labels,reviewDecision,latestReviews,"
+                                          "comments,statusCheckRollup,url"))
+                   (lambda (output) (json-parse-string (string-trim output)))
+                   callback))
+
+
+;;;; Rendering
+
+(defun octocat--pr-state-face (state)
+  "Return the face for PR STATE string."
+  (cond ((equal state "MERGED") 'octocat-pr-state-merged)
+        ((equal state "CLOSED") 'octocat-pr-state-closed)
+        (t                      'octocat-pr-state-open)))
+
+(defun octocat--render-pr-loading (number title state)
+  "Render a loading skeleton for PR NUMBER with TITLE and STATE."
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (magit-insert-section (octocat-pr-root)
+      (magit-insert-heading
+        (concat (propertize (or octocat--pr-repo "") 'face 'magit-branch-remote)
+                "  "
+                (propertize "PR" 'face 'magit-dimmed)
+                " "
+                (propertize (format "#%d" number) 'face 'octocat-pr-number)
+                "  "
+                title
+                "  "
+                (propertize (downcase state) 'face (octocat--pr-state-face state))))
+      (magit-insert-section (pr-body)
+        (magit-insert-heading (propertize "Body" 'face 'magit-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+      (magit-insert-section (pr-checks)
+        (magit-insert-heading (propertize "Checks" 'face 'magit-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+      (magit-insert-section (pr-reviews)
+        (magit-insert-heading (propertize "Reviews" 'face 'magit-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+      (magit-insert-section (pr-comments)
+        (magit-insert-heading (propertize "Comments" 'face 'magit-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'magit-dimmed))))))
+
+(defun octocat--render-pr (pr)
+  "Erase the current buffer and render PR detail from hash-table PR."
+  (let* ((number      (gethash "number"       pr))
+         (title       (or (gethash "title"    pr) ""))
+         (state       (or (gethash "state"    pr) "OPEN"))
+         (author      (or (gethash "login" (gethash "author" pr)) ""))
+         (body        (or (gethash "body"     pr) ""))
+         (base        (or (gethash "baseRefName" pr) ""))
+         (head        (or (gethash "headRefName" pr) ""))
+         (created     (or (gethash "createdAt"   pr) ""))
+         (merged      (gethash "mergedAt"  pr))
+         (closed      (gethash "closedAt"  pr))
+         (additions   (or (gethash "additions"   pr) 0))
+         (deletions   (or (gethash "deletions"   pr) 0))
+         (files       (or (gethash "changedFiles" pr) 0))
+         (checks      (let ((v (gethash "statusCheckRollup" pr)))
+                        (if (or (null v) (eq v :null)) [] v)))
+         (reviews     (let ((v (gethash "latestReviews" pr)))
+                        (if (or (null v) (eq v :null)) [] v)))
+         (comments    (let ((v (gethash "comments" pr)))
+                        (if (or (null v) (eq v :null)) [] v)))
+         (inhibit-read-only t))
+    (erase-buffer)
+    (magit-insert-section (octocat-pr-root)
+      ;; ── Header ──────────────────────────────────────────────────────────
+      (magit-insert-heading
+        (concat (propertize (or octocat--pr-repo "") 'face 'magit-branch-remote)
+                "  "
+                (propertize "PR" 'face 'magit-dimmed)
+                " "
+                (propertize (format "#%d" number) 'face 'octocat-pr-number)
+                "  "
+                title
+                "  "
+                (propertize (downcase state)
+                            'face (octocat--pr-state-face state))))
+      ;; ── Meta ────────────────────────────────────────────────────────────
+      (magit-insert-section (pr-meta)
+        (magit-insert-heading (propertize "Info" 'face 'magit-section-heading))
+        (insert (format "  Author   %s\n"
+                        (propertize (concat "@" author) 'face 'octocat-pr-author)))
+        (insert (format "  Branch   %s → %s\n"
+                        (propertize head 'face 'magit-branch-local)
+                        (propertize base 'face 'magit-branch-local)))
+        (insert (format "  Created  %s\n" (substring created 0 (min 10 (length created)))))
+        (when (and merged (not (eq merged :null)) (not (string-empty-p merged)))
+          (insert (format "  Merged   %s\n" (substring merged 0 (min 10 (length merged))))))
+        (when (and closed (not (eq closed :null)) (not (string-empty-p closed))
+                   (not (equal state "MERGED")))
+          (insert (format "  Closed   %s\n" (substring closed 0 (min 10 (length closed))))))
+        (insert (format "  Changes  %s %s across %d file(s)\n"
+                        (propertize (format "+%d" additions) 'face 'diff-added)
+                        (propertize (format "-%d" deletions) 'face 'diff-removed)
+                        files)))
+      ;; ── Body ────────────────────────────────────────────────────────────
+      (magit-insert-section (pr-body)
+        (magit-insert-heading (propertize "Body" 'face 'magit-section-heading))
+        (if (string-empty-p (string-trim body))
+            (insert (propertize "  (no description)\n" 'face 'magit-dimmed))
+          (dolist (line (split-string body "\n"))
+            (insert "  " line "\n"))))
+      ;; ── Checks ──────────────────────────────────────────────────────────
+      (magit-insert-section (pr-checks)
+        (magit-insert-heading
+          (propertize (format "Checks (%d)" (length checks))
+                      'face 'magit-section-heading))
+        (if (zerop (length checks))
+            (insert (propertize "  (no checks)\n" 'face 'magit-dimmed))
+          (cl-loop for check across checks do
+                   (let* ((name       (or (gethash "name"         check) ""))
+                          (workflow   (or (gethash "workflowName" check) ""))
+                          (conclusion (or (gethash "conclusion"   check) ""))
+                          (icon (cond
+                                 ((member conclusion '("SUCCESS"))
+                                  (propertize "✓" 'face 'octocat-ci-success))
+                                 ((member conclusion '("FAILURE" "ERROR" "TIMED_OUT"))
+                                  (propertize "✗" 'face 'octocat-ci-failure))
+                                 (t
+                                  (propertize "●" 'face 'octocat-ci-pending)))))
+                     (insert (format "  %s  %-30s  %s\n"
+                                     icon
+                                     (truncate-string-to-width name 30 nil ?\s "…")
+                                     (propertize workflow 'face 'magit-dimmed)))))))
+      ;; ── Reviews ─────────────────────────────────────────────────────────
+      (magit-insert-section (pr-reviews)
+        (magit-insert-heading
+          (propertize (format "Reviews (%d)" (length reviews))
+                      'face 'magit-section-heading))
+        (if (zerop (length reviews))
+            (insert (propertize "  (no reviews)\n" 'face 'magit-dimmed))
+          (cl-loop for review across reviews do
+                   (let* ((login (or (gethash "login" (gethash "author" review)) ""))
+                          (rstate (downcase (or (gethash "state" review) ""))))
+                     (insert (format "  %-20s  %s\n"
+                                     (propertize (concat "@" login) 'face 'octocat-pr-author)
+                                     rstate))))))
+      ;; ── Comments ────────────────────────────────────────────────────────
+      (magit-insert-section (pr-comments)
+        (magit-insert-heading
+          (propertize (format "Comments (%d)" (length comments))
+                      'face 'magit-section-heading))
+        (if (zerop (length comments))
+            (insert (propertize "  (no comments)\n" 'face 'magit-dimmed))
+          (cl-loop for comment across comments do
+                   (let* ((login (or (gethash "login" (gethash "author" comment)) ""))
+                          (cbody (or (gethash "body" comment) ""))
+                          (snippet (truncate-string-to-width
+                                    (replace-regexp-in-string "\n" " " cbody)
+                                    72 nil ?\s "…")))
+                     (insert (format "  %-20s  %s\n"
+                                     (propertize (concat "@" login) 'face 'octocat-pr-author)
+                                     snippet)))))))))
+
+
+;;;; Major mode
+
+(defvar octocat-pr-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map magit-section-mode-map)
+    map)
+  "Keymap for `octocat-pr-mode'.")
+(define-key octocat-pr-mode-map (kbd "q")       #'quit-window)
+(define-key octocat-pr-mode-map (kbd "g")       #'octocat-pr-refresh)
+(define-key octocat-pr-mode-map (kbd "o")       #'octocat-browse)
+(define-key octocat-pr-mode-map (kbd "C-c C-o") #'octocat-browse)
+(when (fboundp 'evil-define-key*)
+  (evil-define-key* 'normal octocat-pr-mode-map
+    (kbd "RET")     #'octocat-visit
+    (kbd "o")       #'octocat-browse
+    (kbd "C-c C-o") #'octocat-browse
+    (kbd "q")       #'quit-window
+    (kbd "g")       #'octocat-pr-refresh))
+
+(define-derived-mode octocat-pr-mode magit-section-mode "Octocat-PR"
+  "Major mode for viewing a GitHub Pull Request.
+
+\\{octocat-pr-mode-map}"
+  :group 'octocat
+  (setq-local buffer-read-only t)
+  (setq-local truncate-lines t)
+  (setq-local revert-buffer-function #'octocat-pr-refresh)
+  (font-lock-mode -1)
+  (when (fboundp 'evil-normalize-keymaps)
+    (evil-normalize-keymaps)))
+
+(defvar-local octocat--pr-number nil
+  "The PR number this buffer is displaying.")
+
+(defvar-local octocat--pr-repo nil
+  "The \"owner/repo\" this PR buffer belongs to.")
+
+
+;;;; Refresh
+
+(defun octocat-pr-refresh (&optional _ignore-auto _noconfirm)
+  "Refresh the current PR detail buffer asynchronously."
+  (interactive)
+  (unless (and octocat--pr-repo octocat--pr-number)
+    (user-error "Octocat: Buffer is not associated with a pull request"))
+  (let ((buf  (current-buffer))
+        (repo octocat--pr-repo)
+        (num  octocat--pr-number))
+    (octocat--fetch-pr repo num
+                       (lambda (result)
+                         (when (buffer-live-p buf)
+                           (with-current-buffer buf
+                             (if (eq result 'error)
+                                 (let ((inhibit-read-only t))
+                                   (erase-buffer)
+                                   (insert (propertize
+                                            "  Error: could not fetch PR data.\n"
+                                            'face 'error)))
+                               (octocat--render-pr result))))))))
+
+(provide 'octocat-pr)
+;;; octocat-pr.el ends here

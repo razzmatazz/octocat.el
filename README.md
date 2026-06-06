@@ -8,7 +8,7 @@ A GitHub client for Emacs, powered by the [`gh`](https://cli.github.com/) comman
 
 ## Requirements
 
-- [Emacs](https://www.gnu.org/software/emacs/) 27.1 or later
+- [Emacs](https://www.gnu.org/software/emacs/) 29.1 or later
 - [GitHub CLI (`gh`)](https://cli.github.com/) — must be installed and authenticated
 
 ### Installing `gh`
