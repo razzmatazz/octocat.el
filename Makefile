@@ -1,7 +1,7 @@
 EMACS_BASE_IMAGE ?= silex/emacs:29.4
 TEST_IMAGE       := octocat-test
 PROJECT_DIR      := $(shell pwd)
-EL_FILES         := octocat-core.el octocat-pr.el octocat.el
+EL_FILES         := octocat-core.el octocat-commit.el octocat-pr.el octocat.el
 PLATFORM         ?= linux/arm64
 
 DOCKER := $(shell command -v docker 2>/dev/null || command -v podman 2>/dev/null)
@@ -15,6 +15,7 @@ image:
 	$(DOCKER) build --platform $(PLATFORM) --build-arg BASE=$(EMACS_BASE_IMAGE) -t $(TEST_IMAGE) .
 
 test: image
+	rm -f *.elc
 	$(DOCKER) run --rm \
 	  --platform $(PLATFORM) \
 	  -v "$(PROJECT_DIR):/src" \
