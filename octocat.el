@@ -23,6 +23,10 @@
 (defvar octocat--pr-repo)   ; defined as buffer-local in octocat-pr.el
 (defvar octocat--pr-number) ; defined as buffer-local in octocat-pr.el
 
+;; Evil integration is optional; declare its entry point to silence the
+;; byte-compiler when `octocat-evil' has not been loaded yet.
+(declare-function octocat-evil-setup "octocat-evil" ())
+
 
 ;;;; Repo detection
 
@@ -206,13 +210,6 @@ Renders collapsible sections; delegates to the individual render helpers."
 (define-key octocat-mode-map (kbd "RET")     #'octocat-visit)
 (define-key octocat-mode-map (kbd "o")       #'octocat-browse)
 (define-key octocat-mode-map (kbd "C-c C-o") #'octocat-browse)
-(when (fboundp 'evil-define-key*)
-  (evil-define-key* 'normal octocat-mode-map
-    (kbd "RET")     #'octocat-visit
-    (kbd "o")       #'octocat-browse
-    (kbd "C-c C-o") #'octocat-browse
-    (kbd "q")       #'quit-window))
-
 (define-derived-mode octocat-mode magit-section-mode "Octocat"
   "Major mode for browsing GitHub Pull Requests.
 
@@ -221,9 +218,7 @@ Renders collapsible sections; delegates to the individual render helpers."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-refresh)
-  (font-lock-mode -1)
-  (when (fboundp 'evil-normalize-keymaps)
-    (evil-normalize-keymaps)))
+  (font-lock-mode -1))
 
 
 ;;;; Async refresh
@@ -366,6 +361,18 @@ arrive."
       (octocat-mode))
     (setq octocat--repo repo)
     (octocat-refresh)))
+
+;;;; Evil integration
+
+(defun octocat--evil-init ()
+  "Load and activate `octocat-evil' when Evil mode is enabled."
+  (require 'octocat-evil)
+  (octocat-evil-setup))
+
+;; Run immediately if Evil is already active, otherwise hook into evil-mode.
+(if (bound-and-true-p evil-mode)
+    (octocat--evil-init)
+  (add-hook 'evil-mode-hook #'octocat--evil-init))
 
 (provide 'octocat)
 ;;; octocat.el ends here

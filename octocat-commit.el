@@ -15,12 +15,6 @@
 
 (require 'octocat-core)
 
-;; Evil is an optional dependency; declare its functions so the byte-compiler
-;; does not warn when they are called inside `(when (fboundp ...))' guards.
-(declare-function evil-get-auxiliary-keymap "evil-core" (keymap state &optional create))
-(declare-function evil-define-key* "evil-core" (state keymap &rest bindings))
-(declare-function evil-normalize-keymaps "evil-core" (&optional hook))
-
 ;; These commands are defined in octocat.el which loads this file, so we
 ;; cannot require it here.  Declare them to silence the byte-compiler.
 (declare-function octocat-browse "octocat" ())
@@ -230,17 +224,6 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
     (define-key map (kbd "gr") #'octocat-commit-refresh)
     map)
   "Keymap for `octocat-commit-mode'.")
-(when (fboundp 'evil-define-key*)
-  ;; Clear any stale "g" binding from evil's auxiliary keymap so "gr" can
-  ;; be registered as a two-key sequence without conflict.
-  (let ((aux (evil-get-auxiliary-keymap octocat-commit-mode-map 'normal t)))
-    (define-key aux (kbd "g") nil))
-  (evil-define-key* 'normal octocat-commit-mode-map
-    (kbd "o")       #'octocat-browse
-    (kbd "C-c C-o") #'octocat-browse
-    (kbd "q")       #'quit-window
-    (kbd "gr")      #'octocat-commit-refresh))
-
 (define-derived-mode octocat-commit-mode magit-section-mode "Octocat-Commit"
   "Major mode for viewing a GitHub commit in Magit style.
 
@@ -249,9 +232,7 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-commit-refresh)
-  (font-lock-mode -1)
-  (when (fboundp 'evil-normalize-keymaps)
-    (evil-normalize-keymaps)))
+  (font-lock-mode -1))
 
 
 ;;;; Refresh

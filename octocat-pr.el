@@ -21,12 +21,6 @@
 (defvar octocat--pr-repo)
 (defvar octocat--pr-number)
 
-;; Evil is an optional dependency; declare its functions so the byte-compiler
-;; does not warn when they are called inside `(when (fboundp ...))' guards.
-(declare-function evil-get-auxiliary-keymap "evil-core" (keymap state &optional create))
-(declare-function evil-define-key* "evil-core" (state keymap &rest bindings))
-(declare-function evil-normalize-keymaps "evil-core" (&optional hook))
-
 ;; These commands are defined in octocat.el which loads this file, so we
 ;; cannot require it here.  Declare them to silence the byte-compiler.
 (declare-function octocat-browse "octocat" ())
@@ -260,18 +254,6 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
     (define-key map (kbd "gr") #'octocat-pr-refresh)
     map)
   "Keymap for `octocat-pr-mode'.")
-(when (fboundp 'evil-define-key*)
-  ;; Clear any stale "g" binding from evil's auxiliary keymap so "gr" can
-  ;; be registered as a two-key sequence without conflict.
-  (let ((aux (evil-get-auxiliary-keymap octocat-pr-mode-map 'normal t)))
-    (define-key aux (kbd "g") nil))
-  (evil-define-key* 'normal octocat-pr-mode-map
-    (kbd "RET")     #'octocat-visit
-    (kbd "o")       #'octocat-browse
-    (kbd "C-c C-o") #'octocat-browse
-    (kbd "q")       #'quit-window
-    (kbd "gr")      #'octocat-pr-refresh))
-
 (define-derived-mode octocat-pr-mode magit-section-mode "Octocat-PR"
   "Major mode for viewing a GitHub Pull Request.
 
@@ -280,9 +262,7 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-pr-refresh)
-  (font-lock-mode -1)
-  (when (fboundp 'evil-normalize-keymaps)
-    (evil-normalize-keymaps)))
+  (font-lock-mode -1))
 
 (defvar-local octocat--pr-number nil
   "The PR number this buffer is displaying.")
