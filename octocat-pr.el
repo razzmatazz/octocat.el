@@ -71,9 +71,9 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
     (erase-buffer)
     (magit-insert-section (octocat-pr-root)
       (magit-insert-heading
-        (concat (propertize (or octocat--pr-repo "") 'face 'magit-branch-remote)
+        (concat (propertize (or octocat--pr-repo "") 'face 'octocat-repo)
                 "  "
-                (propertize "PR" 'face 'magit-dimmed)
+                (propertize "PR" 'face 'octocat-dimmed)
                 " "
                 (propertize (format "#%d" number) 'face 'octocat-pr-number)
                 "  "
@@ -81,20 +81,20 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                 "  "
                 (propertize (downcase state) 'face (octocat--pr-state-face state))))
       (magit-insert-section (pr-body)
-        (magit-insert-heading (propertize "Body" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+        (magit-insert-heading (propertize "Body" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
       (magit-insert-section (pr-commits)
-        (magit-insert-heading (propertize "Commits" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+        (magit-insert-heading (propertize "Commits" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
       (magit-insert-section (pr-checks)
-        (magit-insert-heading (propertize "Checks" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+        (magit-insert-heading (propertize "Checks" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
       (magit-insert-section (pr-reviews)
-        (magit-insert-heading (propertize "Reviews" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+        (magit-insert-heading (propertize "Reviews" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
       (magit-insert-section (pr-comments)
-        (magit-insert-heading (propertize "Comments" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed))))))
+        (magit-insert-heading (propertize "Comments" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
 
 (defun octocat--render-pr (pr)
   "Erase the current buffer and render PR detail from hash-table PR."
@@ -124,9 +124,9 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
     (magit-insert-section (octocat-pr-root)
       ;; ── Header ──────────────────────────────────────────────────────────
       (magit-insert-heading
-        (concat (propertize (or octocat--pr-repo "") 'face 'magit-branch-remote)
+        (concat (propertize (or octocat--pr-repo "") 'face 'octocat-repo)
                 "  "
-                (propertize "PR" 'face 'magit-dimmed)
+                (propertize "PR" 'face 'octocat-dimmed)
                 " "
                 (propertize (format "#%d" number) 'face 'octocat-pr-number)
                 "  "
@@ -136,12 +136,12 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                             'face (octocat--pr-state-face state))))
       ;; ── Meta ────────────────────────────────────────────────────────────
       (magit-insert-section (pr-meta)
-        (magit-insert-heading (propertize "Info" 'face 'magit-section-heading))
+        (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
         (insert (format "  Author   %s\n"
                         (propertize (concat "@" author) 'face 'octocat-pr-author)))
         (insert (format "  Branch   %s → %s\n"
-                        (propertize head 'face 'magit-branch-local)
-                        (propertize base 'face 'magit-branch-local)))
+                        (propertize head 'face 'octocat-branch)
+                        (propertize base 'face 'octocat-branch)))
         (insert (format "  Created  %s\n" (substring created 0 (min 10 (length created)))))
         (when (and merged (not (eq merged :null)) (not (string-empty-p merged)))
           (insert (format "  Merged   %s\n" (substring merged 0 (min 10 (length merged))))))
@@ -154,18 +154,18 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                         files)))
       ;; ── Body ────────────────────────────────────────────────────────────
       (magit-insert-section (pr-body)
-        (magit-insert-heading (propertize "Body" 'face 'magit-section-heading))
+        (magit-insert-heading (propertize "Body" 'face 'octocat-section-heading))
         (if (string-empty-p (string-trim body))
-            (insert (propertize "  (no description)\n" 'face 'magit-dimmed))
+            (insert (propertize "  (no description)\n" 'face 'octocat-dimmed))
           (dolist (line (split-string body "\n"))
             (insert "  " line "\n"))))
       ;; ── Commits ─────────────────────────────────────────────────────────
       (magit-insert-section (pr-commits)
         (magit-insert-heading
           (propertize (format "Commits (%d)" (length commits))
-                      'face 'magit-section-heading))
+                      'face 'octocat-section-heading))
         (if (zerop (length commits))
-            (insert (propertize "  (no commits)\n" 'face 'magit-dimmed))
+            (insert (propertize "  (no commits)\n" 'face 'octocat-dimmed))
           (cl-loop for commit across commits do
                    (let* ((oid     (or (gethash "oid"             commit) ""))
                           (subject (or (gethash "messageHeadline" commit) ""))
@@ -179,7 +179,7 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                        (magit-insert-heading
                          (concat
                           "  "
-                          (propertize short 'face 'magit-hash)
+                          (propertize short 'face 'octocat-commit-sha)
                           "  "
                           (truncate-string-to-width
                            (format "%-60s" subject) 60 nil ?\s "…")
@@ -190,9 +190,9 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
       (magit-insert-section (pr-checks)
         (magit-insert-heading
           (propertize (format "Checks (%d)" (length checks))
-                      'face 'magit-section-heading))
+                      'face 'octocat-section-heading))
         (if (zerop (length checks))
-            (insert (propertize "  (no checks)\n" 'face 'magit-dimmed))
+            (insert (propertize "  (no checks)\n" 'face 'octocat-dimmed))
           (cl-loop for check across checks do
                    (let* ((name       (or (gethash "name"         check) ""))
                           (workflow   (or (gethash "workflowName" check) ""))
@@ -207,14 +207,14 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                      (insert (format "  %s  %-30s  %s\n"
                                      icon
                                      (truncate-string-to-width name 30 nil ?\s "…")
-                                     (propertize workflow 'face 'magit-dimmed)))))))
+                                     (propertize workflow 'face 'octocat-dimmed)))))))
       ;; ── Reviews ─────────────────────────────────────────────────────────
       (magit-insert-section (pr-reviews)
         (magit-insert-heading
           (propertize (format "Reviews (%d)" (length reviews))
-                      'face 'magit-section-heading))
+                      'face 'octocat-section-heading))
         (if (zerop (length reviews))
-            (insert (propertize "  (no reviews)\n" 'face 'magit-dimmed))
+            (insert (propertize "  (no reviews)\n" 'face 'octocat-dimmed))
           (cl-loop for review across reviews do
                    (let* ((login (or (gethash "login" (gethash "author" review)) ""))
                           (rstate (downcase (or (gethash "state" review) ""))))
@@ -225,9 +225,9 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
       (magit-insert-section (pr-comments)
         (magit-insert-heading
           (propertize (format "Comments (%d)" (length comments))
-                      'face 'magit-section-heading))
+                      'face 'octocat-section-heading))
         (if (zerop (length comments))
-            (insert (propertize "  (no comments)\n" 'face 'magit-dimmed))
+            (insert (propertize "  (no comments)\n" 'face 'octocat-dimmed))
           (cl-loop for comment across comments do
                    (let* ((login (or (gethash "login" (gethash "author" comment)) ""))
                           (cbody (or (gethash "body" comment) ""))

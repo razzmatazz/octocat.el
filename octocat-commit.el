@@ -23,12 +23,12 @@
 ;;;; Custom faces
 
 (defface octocat-commit-sha
-  '((t :inherit magit-hash))
+  '((t :inherit font-lock-constant-face))
   "Face for a commit SHA in the commit view."
   :group 'octocat)
 
 (defface octocat-commit-file-modified
-  '((t :inherit magit-filename))
+  '((t :inherit default))
   "Face for a modified file in the commit view."
   :group 'octocat)
 
@@ -43,12 +43,12 @@
   :group 'octocat)
 
 (defface octocat-commit-file-renamed
-  '((t :inherit magit-branch-local))
+  '((t :inherit octocat-branch))
   "Face for a renamed file in the commit view."
   :group 'octocat)
 
 (defface octocat-diff-hunk-heading
-  '((t :inherit magit-diff-hunk-heading))
+  '((t :inherit diff-header))
   "Face for a diff hunk header line."
   :group 'octocat)
 
@@ -119,17 +119,17 @@ symbol `error'.  Uses the GitHub REST API via `gh api'."
     (erase-buffer)
     (magit-insert-section (octocat-commit-root)
       (magit-insert-heading
-        (concat (propertize (or octocat--commit-repo "") 'face 'magit-branch-remote)
+        (concat (propertize (or octocat--commit-repo "") 'face 'octocat-repo)
                 "  "
-                (propertize "commit" 'face 'magit-dimmed)
+                (propertize "commit" 'face 'octocat-dimmed)
                 " "
                 (propertize short 'face 'octocat-commit-sha)))
       (magit-insert-section (commit-meta)
-        (magit-insert-heading (propertize "Info" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+        (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
       (magit-insert-section (commit-files)
-        (magit-insert-heading (propertize "Files" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed))))
+        (magit-insert-heading (propertize "Files" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))
     (goto-char (point-min))))
 
 (defun octocat--render-commit (commit)
@@ -155,16 +155,16 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
     (magit-insert-section (octocat-commit-root)
       ;; ── Header ────────────────────────────────────────────────────────
       (magit-insert-heading
-        (concat (propertize (or octocat--commit-repo "") 'face 'magit-branch-remote)
+        (concat (propertize (or octocat--commit-repo "") 'face 'octocat-repo)
                 "  "
-                (propertize "commit" 'face 'magit-dimmed)
+                (propertize "commit" 'face 'octocat-dimmed)
                 " "
                 (propertize short 'face 'octocat-commit-sha)
                 "  "
                 subject))
       ;; ── Meta ──────────────────────────────────────────────────────────
       (magit-insert-section (commit-meta)
-        (magit-insert-heading (propertize "Info" 'face 'magit-section-heading))
+        (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
         (insert (format "  Author  %s\n"
                         (propertize author 'face 'octocat-pr-author)))
         (insert (format "  Date    %s\n" date))
@@ -178,9 +178,9 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
       (magit-insert-section (commit-files)
         (magit-insert-heading
           (propertize (format "Files (%d)" (length files))
-                      'face 'magit-section-heading))
+                      'face 'octocat-section-heading))
         (if (zerop (length files))
-            (insert (propertize "  (no files)\n" 'face 'magit-dimmed))
+            (insert (propertize "  (no files)\n" 'face 'octocat-dimmed))
           (cl-loop for file across files do
                    (let* ((filename  (or (gethash "filename"  file) ""))
                           (status    (or (gethash "status"    file) "modified"))
@@ -201,7 +201,7 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
                                  (propertize filename 'face fface)
                                  (propertize
                                   (format "  +%d -%d" additions deletions)
-                                  'face 'magit-dimmed)
+                                  'face 'octocat-dimmed)
                                  "\n"))
                        (when (> patch-lines 0)
                          (octocat--insert-patch patch)))

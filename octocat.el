@@ -82,7 +82,7 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
   "Insert the collapsible Pull Requests section for PRS."
   (magit-insert-section (pull-requests)
     (magit-insert-heading
-      (propertize "Pull Requests" 'face 'magit-section-heading))
+      (propertize "Pull Requests" 'face 'octocat-section-heading))
     (if (null prs)
         (insert "  (no pull requests)\n")
       (dolist (pr prs)
@@ -114,7 +114,7 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
   "Insert the collapsible Issues section for ISSUES."
   (magit-insert-section (issues)
     (magit-insert-heading
-      (propertize "Issues" 'face 'magit-section-heading))
+      (propertize "Issues" 'face 'octocat-section-heading))
     (if (null issues)
         (insert "  (no issues)\n")
       (dolist (issue issues)
@@ -143,7 +143,7 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
   "Insert the collapsible Workflows section for WORKFLOWS."
   (magit-insert-section (workflows)
     (magit-insert-heading
-      (propertize "Workflows" 'face 'magit-section-heading))
+      (propertize "Workflows" 'face 'octocat-section-heading))
     (if (null workflows)
         (insert "  (no workflows)\n")
       (dolist (workflow workflows)
@@ -151,7 +151,7 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
                (state (downcase (or (gethash "state" workflow) "")))
                (state-face (if (equal state "active")
                                'success
-                             'magit-dimmed)))
+                             'octocat-dimmed)))
           (magit-insert-section (workflow workflow)
             (magit-insert-heading
               (concat
@@ -169,19 +169,19 @@ Issues, and Workflows, each with a dimmed \\='Loading…\\=' placeholder."
     (erase-buffer)
     (magit-insert-section (octocat-root)
       (magit-insert-heading
-        (propertize repo 'face 'magit-branch-remote))
+        (propertize repo 'face 'octocat-repo))
       (magit-insert-section (pull-requests)
         (magit-insert-heading
-          (propertize "Pull Requests" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+          (propertize "Pull Requests" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
       (magit-insert-section (issues)
         (magit-insert-heading
-          (propertize "Issues" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed)))
+          (propertize "Issues" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
       (magit-insert-section (workflows)
         (magit-insert-heading
-          (propertize "Workflows" 'face 'magit-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'magit-dimmed))))))
+          (propertize "Workflows" 'face 'octocat-section-heading))
+        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
 
 (defun octocat--render (prs issues workflows repo)
   "Erase the current buffer and render PRS, ISSUES, and WORKFLOWS for REPO.
@@ -190,10 +190,10 @@ Renders collapsible sections; delegates to the individual render helpers."
     (erase-buffer)
     (magit-insert-section (octocat-root)
       (magit-insert-heading
-        (concat (propertize repo 'face 'magit-branch-remote)
+        (concat (propertize repo 'face 'octocat-repo)
                 (propertize (format "  %d PR(s)  %d issue(s)  %d workflow(s)"
                                     (length prs) (length issues) (length workflows))
-                            'face 'magit-dimmed)))
+                            'face 'octocat-dimmed)))
       (octocat--render-prs prs)
       (octocat--render-issues issues)
       (octocat--render-workflows workflows))))

@@ -43,13 +43,33 @@
   :group 'octocat)
 
 (defface octocat-pr-number
-  '((t :inherit magit-hash))
+  '((t :inherit font-lock-constant-face))
   "Face for a PR number."
   :group 'octocat)
 
 (defface octocat-pr-author
-  '((t :inherit magit-log-author))
+  '((t :inherit font-lock-string-face))
   "Face for a PR author."
+  :group 'octocat)
+
+(defface octocat-repo
+  '((t :inherit font-lock-keyword-face :weight bold))
+  "Face for a repository or remote-branch name."
+  :group 'octocat)
+
+(defface octocat-branch
+  '((t :inherit font-lock-function-name-face))
+  "Face for a local or remote branch name."
+  :group 'octocat)
+
+(defface octocat-section-heading
+  '((t :weight bold :extend t))
+  "Face for section headings in octocat buffers."
+  :group 'octocat)
+
+(defface octocat-dimmed
+  '((t :inherit shadow))
+  "Face for secondary / de-emphasised text in octocat buffers."
   :group 'octocat)
 
 (defface octocat-pr-state-open
