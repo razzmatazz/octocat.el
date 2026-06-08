@@ -13,6 +13,7 @@
 ;;; Code:
 
 (require 'octocat-core)
+(require 'octocat-job)
 
 ;; These commands are defined in octocat.el which loads this file, so we
 ;; cannot require it here.  Declare them to silence the byte-compiler.
@@ -48,42 +49,24 @@ whose value is a vector of job hash-tables), or a cons \\=(error . MSG)."
 
 ;;;; Rendering helpers
 
-(defun octocat--run-icon (status conclusion)
-  "Return a propertized status icon for STATUS and CONCLUSION strings."
+(defun octocat--run-step-icon (status conclusion)
+  "Return a propertized step-level checkbox icon for STATUS and CONCLUSION strings.
+Steps use a bracketed checkbox style to visually distinguish them from jobs,
+which use the plain filled-glyph icons from `octocat--run-icon'."
   (let ((s (or (and conclusion (not (eq conclusion :null)) conclusion)
                status
                "")))
     (cond
      ((equal s "success")
-      (propertize "✓" 'face 'octocat-ci-success))
+      (propertize "[✓]" 'face 'octocat-ci-success))
      ((member s '("failure" "timed_out" "startup_failure" "cancelled"))
-      (propertize "✗" 'face 'octocat-ci-failure))
+      (propertize "[✗]" 'face 'octocat-ci-failure))
+     ((equal s "in_progress")
+      (propertize "[●]" 'face 'octocat-ci-pending))
+     ((equal s "skipped")
+      (propertize "[-]" 'face 'octocat-dimmed))
      (t
-      (propertize "●" 'face 'octocat-ci-pending)))))
-
-(defun octocat--run-step-icon (status conclusion)
-  "Return a propertized step-level icon for STATUS and CONCLUSION strings."
-  (octocat--run-icon status conclusion))
-
-(defun octocat--run-duration (started completed)
-  "Return a human-readable duration string between STARTED and COMPLETED.
-Both are ISO-8601 timestamp strings, or nil/:null.  Returns nil when
-either timestamp is unavailable."
-  (when (and started
-             (not (eq started :null))
-             completed
-             (not (eq completed :null))
-             (not (string-empty-p started))
-             (not (string-empty-p completed)))
-    (condition-case nil
-        (let* ((t1 (float-time (date-to-time started)))
-               (t2 (float-time (date-to-time completed)))
-               (secs (max 0 (round (- t2 t1)))))
-          (cond
-           ((< secs 60)   (format "%ds" secs))
-           ((< secs 3600) (format "%dm%02ds" (/ secs 60) (% secs 60)))
-           (t             (format "%dh%02dm" (/ secs 3600) (/ (% secs 3600) 60)))))
-      (error nil))))
+      (propertize "[ ]" 'face 'octocat-dimmed)))))
 
 
 ;;;; Rendering
@@ -199,7 +182,9 @@ either timestamp is unavailable."
                           "  "
                           jicon
                           "  "
-                          (truncate-string-to-width (format "%-45s" job-name) 45 nil ?\s "…")
+                          (propertize
+                           (truncate-string-to-width (format "%-45s" job-name) 45 nil ?\s "…")
+                           'face 'octocat-run-job-name)
                           (if duration
                               (propertize (format "  %s" duration) 'face 'octocat-dimmed)
                             "")
@@ -223,14 +208,42 @@ either timestamp is unavailable."
                                      (concat
                                       "      "
                                       sicon
-                                      "  "
-                                      (truncate-string-to-width
-                                       (format "%-43s" sname) 43 nil ?\s "…")
+                                      " "
+                                      (propertize
+                                       (truncate-string-to-width
+                                        (format "%-43s" sname) 43 nil ?\s "…")
+                                       'face 'octocat-run-step-name)
                                       (if sdur
                                           (propertize (format "  %s" sdur) 'face 'octocat-dimmed)
                                         "")
                                       "\n")))))))))))
     (goto-char (point-min))))
+
+
+;;;; Visitor
+
+(defun octocat-run-visit ()
+  "Open the detail view for the job at point.
+Handles \\='run-job\\=' sections, opening an `octocat-job-mode' buffer
+for the selected job."
+  (interactive)
+  (let ((section (magit-current-section)))
+    (when (and section (eq (oref section type) 'run-job))
+      (let* ((job      (oref section value))
+             (job-id   (gethash "databaseId" job))
+             (job-name (or (gethash "name" job) ""))
+             (repo     octocat--run-repo)
+             (run-id   octocat--run-id)
+             (buf-name (format "*octocat-job: %s#%d*" repo job-id))
+             (buf      (get-buffer-create buf-name)))
+        (pop-to-buffer buf)
+        (unless (derived-mode-p 'octocat-job-mode)
+          (octocat-job-mode))
+        (setq octocat--job-repo   repo
+              octocat--job-run-id run-id
+              octocat--job-id     job-id
+              octocat--job-name   job-name)
+        (octocat-job-refresh)))))
 
 
 ;;;; Major mode
@@ -240,6 +253,7 @@ either timestamp is unavailable."
         (g   (make-sparse-keymap)))   ; "g" prefix — lets evil's "gg" through
     (set-keymap-parent map magit-section-mode-map)
     (define-key map (kbd "q")       #'quit-window)
+    (define-key map (kbd "RET")     #'octocat-run-visit)
     (define-key map (kbd "o")       #'octocat-browse)
     (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "g")  g)

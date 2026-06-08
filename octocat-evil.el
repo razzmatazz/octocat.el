@@ -26,6 +26,7 @@
 (defvar octocat-issue-mode-map)
 (defvar octocat-workflow-mode-map)
 (defvar octocat-run-mode-map)
+(defvar octocat-job-mode-map)
 
 (declare-function octocat-visit              "octocat"           ())
 (declare-function octocat-browse             "octocat"           ())
@@ -35,6 +36,8 @@
 (declare-function octocat-workflow-refresh   "octocat-workflow"  (&optional _ignore-auto _noconfirm))
 (declare-function octocat-workflow-visit     "octocat-workflow"  ())
 (declare-function octocat-run-refresh        "octocat-run"       (&optional _ignore-auto _noconfirm))
+(declare-function octocat-run-visit          "octocat-run"       ())
+(declare-function octocat-job-refresh        "octocat-job"       (&optional _ignore-auto _noconfirm))
 
 
 ;;;###autoload
@@ -106,10 +109,22 @@
   (let ((aux (evil-get-auxiliary-keymap octocat-run-mode-map 'normal t)))
     (define-key aux (kbd "g") nil))
   (evil-define-key* 'normal octocat-run-mode-map
+    (kbd "RET")     #'octocat-run-visit
     (kbd "o")       #'octocat-browse
     (kbd "C-c C-o") #'octocat-browse
     (kbd "q")       #'quit-window
     (kbd "gr")      #'octocat-run-refresh)
+  (evil-define-key* 'motion octocat-run-mode-map
+    (kbd "RET")     #'octocat-run-visit)
+
+  ;; ── octocat-job-mode ──────────────────────────────────────────────────
+  (let ((aux (evil-get-auxiliary-keymap octocat-job-mode-map 'normal t)))
+    (define-key aux (kbd "g") nil))
+  (evil-define-key* 'normal octocat-job-mode-map
+    (kbd "o")       #'octocat-browse
+    (kbd "C-c C-o") #'octocat-browse
+    (kbd "q")       #'quit-window
+    (kbd "gr")      #'octocat-job-refresh)
 
   ;; Refresh all octocat keymaps so the new bindings take effect in any
   ;; already-open buffers.

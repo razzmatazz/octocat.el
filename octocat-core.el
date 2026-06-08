@@ -87,6 +87,16 @@
   "Face for a merged PR state badge."
   :group 'octocat)
 
+(defface octocat-run-job-name
+  '((t :weight bold))
+  "Face for a job name in a workflow-run view."
+  :group 'octocat)
+
+(defface octocat-run-step-name
+  '((t :inherit shadow))
+  "Face for a step name in a workflow-run view."
+  :group 'octocat)
+
 
 ;;;; exec-path augmentation
 
@@ -182,6 +192,39 @@ An empty or null response is treated as an empty list."
              (t (error "Unexpected JSON shape from gh"))))
         (json-parse-error
          (error "Failed to parse gh output: %s" (error-message-string err))))))))
+
+(defun octocat--run-icon (status conclusion)
+  "Return a propertized status icon for STATUS and CONCLUSION strings."
+  (let ((s (or (and conclusion (not (eq conclusion :null)) conclusion)
+               status
+               "")))
+    (cond
+     ((equal s "success")
+      (propertize "✓" 'face 'octocat-ci-success))
+     ((member s '("failure" "timed_out" "startup_failure" "cancelled"))
+      (propertize "✗" 'face 'octocat-ci-failure))
+     (t
+      (propertize "●" 'face 'octocat-ci-pending)))))
+
+(defun octocat--run-duration (started completed)
+  "Return a human-readable duration string between STARTED and COMPLETED.
+Both are ISO-8601 timestamp strings, or nil/:null.  Returns nil when
+either timestamp is unavailable."
+  (when (and started
+             (not (eq started :null))
+             completed
+             (not (eq completed :null))
+             (not (string-empty-p started))
+             (not (string-empty-p completed)))
+    (condition-case nil
+        (let* ((t1 (float-time (date-to-time started)))
+               (t2 (float-time (date-to-time completed)))
+               (secs (max 0 (round (- t2 t1)))))
+          (cond
+           ((< secs 60)   (format "%ds" secs))
+           ((< secs 3600) (format "%dm%02ds" (/ secs 60) (% secs 60)))
+           (t             (format "%dh%02dm" (/ secs 3600) (/ (% secs 3600) 60)))))
+      (error nil))))
 
 (defun octocat--ci-status (pr)
   "Return a one-character CI-status indicator for PR hash-table PR.

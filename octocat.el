@@ -22,6 +22,7 @@
 (require 'octocat-issue)
 (require 'octocat-workflow)
 (require 'octocat-run)
+(require 'octocat-job)
 
 (defvar octocat--pr-repo)        ; defined as buffer-local in octocat-pr.el
 (defvar octocat--pr-number)      ; defined as buffer-local in octocat-pr.el
@@ -30,8 +31,12 @@
 (defvar octocat--workflow-repo)  ; defined as buffer-local in octocat-workflow.el
 (defvar octocat--workflow-id)    ; defined as buffer-local in octocat-workflow.el
 (defvar octocat--workflow-name)  ; defined as buffer-local in octocat-workflow.el
-(defvar octocat--run-repo)       ; defined as buffer-local in octocat-run.el
-(defvar octocat--run-id)         ; defined as buffer-local in octocat-run.el
+(defvar octocat--run-repo)           ; defined as buffer-local in octocat-run.el
+(defvar octocat--run-id)             ; defined as buffer-local in octocat-run.el
+(defvar octocat--job-repo)       ; defined as buffer-local in octocat-job.el
+(defvar octocat--job-run-id)     ; defined as buffer-local in octocat-job.el
+(defvar octocat--job-id)         ; defined as buffer-local in octocat-job.el
+(defvar octocat--job-name)       ; defined as buffer-local in octocat-job.el
 
 ;; Evil integration is optional; declare its entry point to silence the
 ;; byte-compiler when `octocat-evil' has not been loaded yet.
