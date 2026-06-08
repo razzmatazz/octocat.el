@@ -94,12 +94,17 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
 ;;;; Buffer rendering
 
 (defun octocat--render-prs (prs)
-  "Insert the collapsible Pull Requests section for PRS."
+  "Insert the collapsible Pull Requests section for PRS.
+PRS may be a list of pull-request hash-tables or a cons (error . MSG)."
   (magit-insert-section (pull-requests)
     (magit-insert-heading
       (propertize "Pull Requests" 'face 'octocat-section-heading))
-    (if (null prs)
-        (insert "  (no pull requests)\n")
+    (cond
+     ((eq (car-safe prs) 'error)
+      (insert (propertize (format "  %s\n" (cdr prs)) 'face 'octocat-dimmed)))
+     ((null prs)
+      (insert "  (no pull requests)\n"))
+     (t
       (dolist (pr prs)
         (let* ((number (format "#%-4d" (gethash "number" pr)))
                (title  (or (gethash "title"  pr) ""))
@@ -123,15 +128,20 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
                (propertize (format "%-6s" state) 'face state-face)
                "  "
                ci
-               "\n"))))))))
+               "\n")))))))))
 
 (defun octocat--render-issues (issues)
-  "Insert the collapsible Issues section for ISSUES."
+  "Insert the collapsible Issues section for ISSUES.
+ISSUES may be a list of issue hash-tables or a cons (error . MSG)."
   (magit-insert-section (issues)
     (magit-insert-heading
       (propertize "Issues" 'face 'octocat-section-heading))
-    (if (null issues)
-        (insert "  (no issues)\n")
+    (cond
+     ((eq (car-safe issues) 'error)
+      (insert (propertize (format "  %s\n" (cdr issues)) 'face 'octocat-dimmed)))
+     ((null issues)
+      (insert "  (no issues)\n"))
+     (t
       (dolist (issue issues)
         (let* ((number (format "#%-4d" (gethash "number" issue)))
                (title  (or (gethash "title"  issue) ""))
@@ -152,15 +162,20 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
                (propertize (format "@%-15s" author) 'face 'octocat-pr-author)
                "  "
                (propertize (format "%-6s" state) 'face state-face)
-               "\n"))))))))
+               "\n")))))))))
 
 (defun octocat--render-workflows (workflows)
-  "Insert the collapsible Workflows section for WORKFLOWS."
+  "Insert the collapsible Workflows section for WORKFLOWS.
+WORKFLOWS may be a list of workflow hash-tables or a cons (error . MSG)."
   (magit-insert-section (workflows)
     (magit-insert-heading
       (propertize "Workflows" 'face 'octocat-section-heading))
-    (if (null workflows)
-        (insert "  (no workflows)\n")
+    (cond
+     ((eq (car-safe workflows) 'error)
+      (insert (propertize (format "  %s\n" (cdr workflows)) 'face 'octocat-dimmed)))
+     ((null workflows)
+      (insert "  (no workflows)\n"))
+     (t
       (dolist (workflow workflows)
         (let* ((name  (or (gethash "name"  workflow) ""))
                (state (downcase (or (gethash "state" workflow) "")))
@@ -174,7 +189,7 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
                (truncate-string-to-width (format "%-40s" name) 40 nil ?\s "…")
                "  "
                (propertize state 'face state-face)
-               "\n"))))))))
+               "\n")))))))))
 
 (defun octocat--render-loading (repo)
   "Render a skeleton front view for REPO while data is still loading.
@@ -200,15 +215,23 @@ Issues, and Workflows, each with a dimmed \\='Loading…\\=' placeholder."
 
 (defun octocat--render (prs issues workflows repo)
   "Erase the current buffer and render PRS, ISSUES, and WORKFLOWS for REPO.
+Each argument may be a list of hash-tables or a cons (error . MSG) when the
+corresponding feature is disabled or unavailable for the repo.
 Renders collapsible sections; delegates to the individual render helpers."
   (let ((inhibit-read-only t))
     (erase-buffer)
     (magit-insert-section (octocat-root)
       (magit-insert-heading
         (concat (propertize repo 'face 'octocat-repo)
-                (propertize (format "  %d PR(s)  %d issue(s)  %d workflow(s)"
-                                    (length prs) (length issues) (length workflows))
-                            'face 'octocat-dimmed)))
+                (propertize
+                 (format "  %s  %s  %s"
+                         (if (eq (car-safe prs) 'error)     "PRs: n/a"
+                           (format "%d PR(s)" (length prs)))
+                         (if (eq (car-safe issues) 'error)  "issues: n/a"
+                           (format "%d issue(s)" (length issues)))
+                         (if (eq (car-safe workflows) 'error) "workflows: n/a"
+                           (format "%d workflow(s)" (length workflows))))
+                 'face 'octocat-dimmed)))
       (octocat--render-prs prs)
       (octocat--render-issues issues)
       (octocat--render-workflows workflows))))
@@ -260,17 +283,7 @@ arrive."
                             (eq workflow-result 'pending))
                   (when (buffer-live-p buf)
                     (with-current-buffer buf
-                      (let ((failed (seq-find (lambda (r) (eq (car-safe r) 'error))
-                                              (list pr-result issue-result workflow-result))))
-                        (if failed
-                          (let ((inhibit-read-only t))
-                            (erase-buffer)
-                            (insert (propertize
-                                     (format "  Error: %s\n\
-  Make sure `gh' is installed and you are authenticated (`gh auth login').\n"
-                                             (cdr failed))
-                                     'face 'error)))
-                        (octocat--render pr-result issue-result workflow-result repo))))))))
+                      (octocat--render pr-result issue-result workflow-result repo))))))
       (octocat--list-prs repo
                          (lambda (result)
                            (setq pr-result result)

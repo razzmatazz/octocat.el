@@ -4,7 +4,10 @@
 
 Hide it or show text
 
-## Cannot open dashboard when repo has PRs or issues or actiosn disabled
+## ~~Cannot open dashboard when repo has PRs or issues or actions disabled~~
+
+Each section now handles errors independently — a disabled feature shows a
+dimmed inline note and the rest of the dashboard renders normally.
 
 ## Better defaults for the dashboard
 
