@@ -11,12 +11,15 @@ DOCKER_RUN = $(DOCKER) run --rm \
                -w $(SRC) \
                $(LOCAL_IMAGE)
 
-.PHONY: image compile lint test ci
+.PHONY: image compile lint test ci clean
 
 image:
 	$(DOCKER) build -t $(LOCAL_IMAGE) .
 
-compile: image
+clean:
+	find . -maxdepth 1 -name '*.elc' -delete
+
+compile: image clean
 	$(DOCKER_RUN) sh -c "eask install-deps --dev && eask compile"
 
 lint: image

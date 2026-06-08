@@ -20,11 +20,15 @@
 (require 'octocat-pr)
 (require 'octocat-commit)
 (require 'octocat-issue)
+(require 'octocat-workflow)
 
-(defvar octocat--pr-repo)     ; defined as buffer-local in octocat-pr.el
-(defvar octocat--pr-number)   ; defined as buffer-local in octocat-pr.el
-(defvar octocat--issue-repo)  ; defined as buffer-local in octocat-issue.el
-(defvar octocat--issue-number); defined as buffer-local in octocat-issue.el
+(defvar octocat--pr-repo)        ; defined as buffer-local in octocat-pr.el
+(defvar octocat--pr-number)      ; defined as buffer-local in octocat-pr.el
+(defvar octocat--issue-repo)     ; defined as buffer-local in octocat-issue.el
+(defvar octocat--issue-number)   ; defined as buffer-local in octocat-issue.el
+(defvar octocat--workflow-repo)  ; defined as buffer-local in octocat-workflow.el
+(defvar octocat--workflow-id)    ; defined as buffer-local in octocat-workflow.el
+(defvar octocat--workflow-name)  ; defined as buffer-local in octocat-workflow.el
 
 ;; Evil integration is optional; declare its entry point to silence the
 ;; byte-compiler when `octocat-evil' has not been loaded yet.
@@ -74,7 +78,7 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
   (octocat--run-gh "workflows"
                    (list "workflow" "list"
                          "--repo" repo
-                         "--json" "id,name,state")
+                         "--json" "id,name,state,path")
                    #'octocat--parse-json-list
                    callback))
 
@@ -327,6 +331,21 @@ arrive."
                octocat--issue-number number)
          (octocat--render-issue-loading number title state)
          (octocat-issue-refresh)))
+      ('workflow
+       (let* ((wf   (oref section value))
+              (id   (gethash "id"   wf))
+              (name (or (gethash "name" wf) ""))
+              (repo octocat--repo)
+              (buf-name (format "*octocat-workflow: %s/%s*" repo name))
+              (buf (get-buffer-create buf-name)))
+         (pop-to-buffer buf)
+         (unless (derived-mode-p 'octocat-workflow-mode)
+           (octocat-workflow-mode))
+         (setq octocat--workflow-repo repo
+               octocat--workflow-id   id
+               octocat--workflow-name name)
+         (octocat--render-workflow-loading name)
+         (octocat-workflow-refresh)))
       (_ nil))))
 
 (defun octocat-browse ()
@@ -360,6 +379,13 @@ arrive."
                         "issue" "view" "--web"
                         (number-to-string number)
                         "--repo" repo)))
+      ('workflow
+       (let* ((path     (or (gethash "path" value) ""))
+              (filename (file-name-nondirectory path))
+              (url      (format "https://github.com/%s/actions/workflows/%s"
+                                repo filename)))
+         (message "Octocat: Opening workflow in browser…")
+         (browse-url url)))
       (_ nil))))
 
 
