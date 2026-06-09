@@ -165,26 +165,35 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                       'face 'octocat-section-heading))
         (if (zerop (length commits))
             (insert (propertize "  (no commits)\n" 'face 'octocat-dimmed))
-          (cl-loop for commit across commits do
-                   (let* ((oid     (or (gethash "oid"             commit) ""))
-                          (subject (or (gethash "messageHeadline" commit) ""))
-                          (commit-authors (gethash "authors" commit))
-                          (author  (or (and commit-authors
-                                           (> (length commit-authors) 0)
-                                           (gethash "name" (aref commit-authors 0)))
-                                       ""))
-                          (short   (substring oid 0 (min 7 (length oid)))))
-                     (magit-insert-section (commit commit)
-                       (magit-insert-heading
-                         (concat
-                          "  "
-                          (propertize short 'face 'octocat-commit-sha)
-                          "  "
-                          (truncate-string-to-width
-                           (format "%-60s" subject) 60 nil ?\s "…")
-                          "  "
-                          (propertize author 'face 'octocat-pr-author)
-                          "\n")))))))
+          (let ((head-oid (or (gethash "oid" (aref commits (1- (length commits)))) "")))
+            (cl-loop for commit across commits do
+                     (let* ((oid     (or (gethash "oid"             commit) ""))
+                            (subject (or (gethash "messageHeadline" commit) ""))
+                            (commit-authors (gethash "authors" commit))
+                            (author  (or (and commit-authors
+                                             (> (length commit-authors) 0)
+                                             (gethash "name" (aref commit-authors 0)))
+                                         ""))
+                            (date    (octocat--format-ts
+                                      (or (gethash "committedDate" commit) "")))
+                            (short   (substring oid 0 (min 7 (length oid))))
+                            (headp   (string= oid head-oid)))
+                       (magit-insert-section (commit commit)
+                         (magit-insert-heading
+                           (concat
+                            "  "
+                            (propertize short 'face 'octocat-commit-sha)
+                            "  "
+                            (truncate-string-to-width
+                             (format "%-50s" subject) 50 nil ?\s "…")
+                            "  "
+                            (propertize (format "%-16s" author)
+                                        'face 'octocat-pr-author)
+                            "  "
+                            (propertize date 'face 'octocat-dimmed)
+                            (when headp
+                              (concat "  " (octocat--ci-label pr)))
+                            "\n"))))))))
       ;; ── Checks ──────────────────────────────────────────────────────────
       (magit-insert-section (pr-checks)
         (magit-insert-heading
@@ -200,11 +209,19 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                           (status     (or (gethash "status"       check) ""))
                           (conclusion (let ((c (gethash "conclusion" check)))
                                         (when (and c (not (eq c :null))) c)))
+                          (started    (let ((s (gethash "startedAt" check)))
+                                        (when (and s (not (eq s :null))) s)))
+                          (completed  (let ((c (gethash "completedAt" check)))
+                                        (when (and c (not (eq c :null))) c)))
+                          (duration   (octocat--run-duration started completed))
                           (icon       (octocat--run-icon status conclusion)))
-                     (insert (format "  %s  %-30s  %s\n"
+                     (insert (format "  %s  %-30s  %-16s  %s  %s\n"
                                      icon
                                      (truncate-string-to-width name 30 nil ?\s "…")
-                                     (propertize workflow 'face 'octocat-dimmed)))))))
+                                     (propertize workflow 'face 'octocat-dimmed)
+                                     (propertize (or duration "") 'face 'octocat-dimmed)
+                                     (propertize (octocat--format-ts (or started ""))
+                                                 'face 'octocat-dimmed)))))))
       ;; ── Reviews ─────────────────────────────────────────────────────────
       (magit-insert-section (pr-reviews)
         (magit-insert-heading
