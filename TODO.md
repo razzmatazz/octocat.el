@@ -1,5 +1,9 @@
 # TODO items
 
+## Some form of caching is needed to long load of dashboard for large repos
+
+I.e. perform refresh in background and/or on request.
+
 ## It is not clear that last item shows on PR list indicates c/i status
 
 Hide it or show text
