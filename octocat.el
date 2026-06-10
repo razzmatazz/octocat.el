@@ -87,6 +87,20 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
                    #'octocat--parse-json-list
                    callback))
 
+(defun octocat--list-workflow-runs (repo workflow-id callback)
+  "Fetch recent run history for WORKFLOW-ID in REPO asynchronously.
+Retrieves the 3 most recent entries and calls CALLBACK with a list of
+run hash-tables, or a cons \\=(error . MSG) on failure."
+  (octocat--run-gh
+   (format "workflow-runs-%d" workflow-id)
+   (list "run" "list"
+         "--repo"     repo
+         "--workflow" (number-to-string workflow-id)
+         "--limit"    "3"
+         "--json"     "databaseId,displayTitle,status,conclusion,createdAt,headBranch")
+   #'octocat--parse-json-list
+   callback))
+
 
 
 ;;;; Buffer rendering
@@ -166,9 +180,11 @@ ISSUES may be a list of issue hash-tables or a cons (error . MSG)."
                (propertize (format "%-6s" state) 'face state-face)
                "\n")))))))))
 
-(defun octocat--render-workflows (workflows)
+(defun octocat--render-workflows (workflows &optional runs-by-id)
   "Insert the collapsible Workflows section for WORKFLOWS.
-WORKFLOWS may be a list of workflow hash-tables or a cons (error . MSG)."
+WORKFLOWS may be a list of workflow hash-tables or a cons (error . MSG).
+RUNS-BY-ID is an optional alist of (workflow-id . runs-list) used to
+render recent run rows beneath each workflow heading."
   (magit-insert-section (workflows)
     (magit-insert-heading
       (propertize "Workflows" 'face 'octocat-section-heading))
@@ -181,17 +197,50 @@ WORKFLOWS may be a list of workflow hash-tables or a cons (error . MSG)."
       (insert "  (no workflows)\n"))
      (t
       (dolist (workflow workflows)
-        (let* ((name  (or (gethash "name"  workflow) ""))
-               (state (downcase (or (gethash "state" workflow) "")))
-               (state-face (if (equal state "active") 'success 'octocat-dimmed)))
+        (let* ((name       (or (gethash "name"  workflow) ""))
+               (wf-id      (gethash "id" workflow))
+               (state      (downcase (or (gethash "state" workflow) "")))
+               (state-face (if (equal state "active") 'success 'octocat-dimmed))
+               (runs       (cdr (assoc wf-id runs-by-id))))
           (magit-insert-section (workflow workflow)
             (magit-insert-heading
               (concat
                "  "
-               (truncate-string-to-width (format "%-40s" name) 40 nil ?\s "…")
+               (truncate-string-to-width name 40 nil nil "…")
                "  "
                (propertize state 'face state-face)
-               "\n")))))))))
+               "\n"))
+            (let ((branch-w (min 25 (apply #'max 1
+                                           (mapcar (lambda (r)
+                                                     (length (or (gethash "headBranch" r) "")))
+                                                   runs)))))
+              (dolist (run runs)
+                (let* ((run-id     (or (gethash "databaseId"   run) 0))
+                       (title      (or (gethash "displayTitle" run) ""))
+                       (status     (downcase (or (gethash "status" run) "")))
+                       (conclusion (let ((c (gethash "conclusion" run)))
+                                     (when (and c (not (eq c :null)))
+                                       (downcase c))))
+                       (branch     (or (gethash "headBranch" run) ""))
+                       (created    (or (gethash "createdAt"  run) ""))
+                       (date       (octocat--format-ts created))
+                       (icon       (octocat--workflow-run-icon status conclusion)))
+                  (magit-insert-section (workflow-run run)
+                    (magit-insert-heading
+                      (concat
+                       "    "
+                       icon
+                       "  "
+                       (propertize (format "%-10s" (number-to-string run-id))
+                                   'face 'octocat-pr-number)
+                       "  "
+                       (propertize (truncate-string-to-width branch branch-w nil ?\s "…")
+                                   'face 'octocat-branch)
+                       "  "
+                       (truncate-string-to-width title 45 nil ?\s "…")
+                       "  "
+                       (propertize date 'face 'octocat-dimmed)
+                       "\n")))))))))))))
 
 (defun octocat--render-loading (repo)
   "Render a skeleton front view for REPO while data is still loading.
@@ -215,10 +264,11 @@ Issues, and Workflows, each with a dimmed \\='Loading…\\=' placeholder."
           (propertize "Workflows" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
 
-(defun octocat--render (prs issues workflows repo)
+(defun octocat--render (prs issues workflows repo &optional runs-by-id)
   "Erase the current buffer and render PRS, ISSUES, and WORKFLOWS for REPO.
 Each argument may be a list of hash-tables or a cons (error . MSG) when the
 corresponding feature is disabled or unavailable for the repo.
+RUNS-BY-ID is an optional alist of (workflow-id . runs-list).
 Renders collapsible sections; delegates to the individual render helpers."
   (let ((inhibit-read-only t))
     (erase-buffer)
@@ -239,7 +289,7 @@ Renders collapsible sections; delegates to the individual render helpers."
                  'face 'octocat-dimmed)))
       (octocat--render-prs prs)
       (octocat--render-issues issues)
-      (octocat--render-workflows workflows))))
+      (octocat--render-workflows workflows runs-by-id))))
 
 
 ;;;; Major mode
@@ -284,34 +334,67 @@ fetches fresh data in the background and re-renders when it arrives."
         (octocat--render (plist-get cache :prs)
                          (plist-get cache :issues)
                          (plist-get cache :workflows)
-                         repo)
+                         repo
+                         (plist-get cache :workflow-runs))
       (octocat--render-loading repo))
     ;; Always fetch fresh data in the background.
+    ;; Phase 1: fetch PRs, issues, workflows in parallel.
+    ;; Phase 2: once workflows arrive, fetch runs for each workflow, then render.
     (setq mode-line-process " [refreshing…]")
     (let ((pr-result       'pending)
           (issue-result    'pending)
-          (workflow-result 'pending))
-      (cl-labels ((maybe-render ()
-                   (unless (or (eq pr-result       'pending)
-                               (eq issue-result    'pending)
-                               (eq workflow-result 'pending))
-                     (when (buffer-live-p buf)
-                       (with-current-buffer buf
-                         (setq mode-line-process nil)
-                         (octocat--cache-save repo pr-result issue-result workflow-result)
-                         (octocat--render pr-result issue-result workflow-result repo))))))
+          (workflow-result 'pending)
+          (runs-by-id      nil)
+          (runs-pending    0)
+          (phase2-started  nil))
+      (cl-labels
+          ((maybe-render ()
+             ;; Fire only when PRs, issues, workflows, and all run fetches are done.
+             (unless (or (eq pr-result       'pending)
+                         (eq issue-result    'pending)
+                         (eq workflow-result 'pending)
+                         (> runs-pending 0))
+               (when (buffer-live-p buf)
+                 (with-current-buffer buf
+                   (setq mode-line-process nil)
+                   (octocat--cache-save repo pr-result issue-result
+                                        workflow-result runs-by-id)
+                   (octocat--render pr-result issue-result workflow-result
+                                    repo runs-by-id)))))
+           (start-phase2 ()
+             ;; Called once workflow-result is known.  Fire one run-list fetch
+             ;; per workflow; if there are no workflows, go straight to render.
+             (setq phase2-started t)
+             (let ((wfs (if (or (eq (car-safe workflow-result) 'error)
+                                (null workflow-result))
+                            '()
+                          workflow-result)))
+               (if (null wfs)
+                   (maybe-render)
+                 (setq runs-pending (length wfs))
+                 (dolist (wf wfs)
+                   (let ((wf-id (gethash "id" wf)))
+                     (octocat--list-workflow-runs
+                      repo wf-id
+                      (lambda (result)
+                        (when (buffer-live-p buf)
+                          (with-current-buffer buf
+                            (unless (eq (car-safe result) 'error)
+                              (push (cons wf-id result) runs-by-id))
+                            (cl-decf runs-pending)
+                            (maybe-render)))))))))))
         (octocat--list-prs repo
                            (lambda (result)
                              (setq pr-result result)
-                             (maybe-render)))
+                             (when phase2-started (maybe-render))))
         (octocat--list-issues repo
                               (lambda (result)
                                 (setq issue-result result)
-                                (maybe-render)))
+                                (when phase2-started (maybe-render))))
         (octocat--list-workflows repo
                                  (lambda (result)
                                    (setq workflow-result result)
-                                   (maybe-render)))))))
+                                   (start-phase2)))))))
 
 
 ;;;; Visitor and browser
@@ -383,6 +466,19 @@ fetches fresh data in the background and re-renders when it arrives."
                octocat--workflow-name name)
          (octocat--render-workflow-loading name)
          (octocat-workflow-refresh)))
+      ('workflow-run
+       (let* ((run    (oref section value))
+              (run-id (gethash "databaseId" run))
+              (repo   octocat--repo)
+              (buf-name (format "*octocat-run: %s#%d*" repo run-id))
+              (buf    (get-buffer-create buf-name)))
+         (pop-to-buffer buf)
+         (unless (derived-mode-p 'octocat-run-mode)
+           (octocat-run-mode))
+         (setq octocat--run-repo repo
+               octocat--run-id   run-id)
+         (octocat--render-run-loading run-id)
+         (octocat-run-refresh)))
       (_ nil))))
 
 (defun octocat-browse ()
