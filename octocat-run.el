@@ -150,12 +150,13 @@ STATUS takes priority over CONCLUSION for in-progress detection."
                             (propertize display-status 'face status-face)))))
         (unless (string-empty-p created)
           (insert (format "  Created    %s\n" (octocat--format-ts created))))
-        (let ((duration (octocat--run-duration
-                         (and (not (string-empty-p created)) created)
-                         (and (not (string-empty-p updated)) updated))))
-          (when duration
-            (insert (format "  Duration   %s\n"
-                            (propertize duration 'face 'octocat-dimmed))))))
+        (when conclusion
+          (let ((duration (octocat--run-duration
+                           (and (not (string-empty-p created)) created)
+                           (and (not (string-empty-p updated)) updated))))
+            (when duration
+              (insert (format "  Duration   %s\n"
+                              (propertize duration 'face 'octocat-dimmed)))))))
       ;; ── Jobs ────────────────────────────────────────────────────────────
       (magit-insert-section (run-jobs)
         (magit-insert-heading
@@ -170,11 +171,10 @@ STATUS takes priority over CONCLUSION for in-progress detection."
                           (jconc      (and (octocat--nonempty jconc-raw) (downcase jconc-raw)))
                           (jstarted   (gethash "startedAt"   job))
                           (jcompleted (gethash "completedAt" job))
-                          (duration   (octocat--run-duration
-                                       (when (and jstarted   (not (eq jstarted :null)))
-                                         jstarted)
-                                       (when (and jcompleted (not (eq jcompleted :null)))
-                                         jcompleted)))
+                          (duration   (and jconc
+                                          (octocat--run-duration
+                                           (octocat--nonempty jstarted)
+                                           (octocat--nonempty jcompleted))))
                           (jicon      (octocat--run-icon jstatus jconc))
                           (steps      (let ((v (gethash "steps" job)))
                                         (if (or (null v) (eq v :null)) [] v))))
@@ -199,11 +199,10 @@ STATUS takes priority over CONCLUSION for in-progress detection."
                                          (sconc   (and (octocat--nonempty sconc-r) (downcase sconc-r)))
                                          (sstart  (gethash "startedAt"   step))
                                          (scomp   (gethash "completedAt" step))
-                                         (sdur    (octocat--run-duration
-                                                   (when (and sstart (not (eq sstart :null)))
-                                                     sstart)
-                                                   (when (and scomp  (not (eq scomp  :null)))
-                                                     scomp)))
+                                         (sdur    (and sconc
+                                                      (octocat--run-duration
+                                                       (octocat--nonempty sstart)
+                                                       (octocat--nonempty scomp))))
                                          (sicon   (octocat--run-step-icon sstatus sconc)))
                                     (insert
                                      (concat
