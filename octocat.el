@@ -100,15 +100,28 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
 
 (defun octocat--list-workflow-runs (repo workflow-id callback)
   "Fetch recent run history for WORKFLOW-ID in REPO asynchronously.
-Retrieves the 3 most recent entries and calls CALLBACK with a list of
+Retrieves the 20 most recent entries and calls CALLBACK with a list of
 run hash-tables, or a cons \\=(error . MSG) on failure."
   (octocat--run-gh
    (format "workflow-runs-%d" workflow-id)
    (list "run" "list"
          "--repo"     repo
          "--workflow" (number-to-string workflow-id)
-         "--limit"    "3"
+         "--limit"    "20"
          "--json"     "databaseId,displayTitle,status,conclusion,createdAt,headBranch")
+   #'octocat--parse-json-list
+   callback))
+
+(defun octocat--list-recent-runs (repo callback)
+  "Fetch the last 20 workflow run entries across all workflows in REPO.
+Call CALLBACK with a list of run hash-tables (each including a
+\\='workflowName\\=' key), or a cons \\=(error . MSG) on failure."
+  (octocat--run-gh
+   "recent-runs"
+   (list "run" "list"
+         "--repo"  repo
+         "--limit" "20"
+         "--json"  "databaseId,displayTitle,status,conclusion,createdAt,headBranch,workflowName")
    #'octocat--parse-json-list
    callback))
 
@@ -203,11 +216,11 @@ ISSUES may be a list of issue hash-tables or a cons (error . MSG)."
                (propertize (format "%-6s" state) 'face state-face)
                "\n")))))))))
 
-(defun octocat--render-workflows (workflows &optional runs-by-id)
+(defun octocat--render-workflows (workflows)
   "Insert the collapsible Workflows section for WORKFLOWS.
 WORKFLOWS may be a list of workflow hash-tables or a cons (error . MSG).
-RUNS-BY-ID is an optional alist of (workflow-id . runs-list) used to
-render recent run rows beneath each workflow heading."
+Each workflow is shown as a single flat row (name + state); run history
+is displayed in the separate Workflow Runs section."
   (magit-insert-section (workflows)
     (magit-insert-heading
       (propertize "Workflows" 'face 'octocat-section-heading))
@@ -219,54 +232,74 @@ render recent run rows beneath each workflow heading."
      ((null workflows)
       (insert "  (no workflows)\n"))
      (t
+      (dolist (workflow workflows)
+        (let* ((name       (or (gethash "name"  workflow) ""))
+               (state      (downcase (or (gethash "state" workflow) "")))
+               (state-face (if (equal state "active") 'success 'octocat-dimmed)))
+          (magit-insert-section (workflow workflow)
+            (magit-insert-heading
+              (concat
+               "  "
+               (truncate-string-to-width name 40 nil nil "…")
+               "  "
+               (propertize state 'face state-face)
+               "\n")))))))))
+
+(defun octocat--render-workflow-runs (recent-runs)
+  "Insert the collapsible Workflow Run history section for RECENT-RUNS.
+RECENT-RUNS is a flat list of run hash-tables (each with a
+\\='workflowName\\=' key) or a cons (error . MSG).
+Show up to 20 most recent workflow entries across all workflows."
+  (magit-insert-section (workflow-runs)
+    (magit-insert-heading
+      (propertize "Workflow Runs" 'face 'octocat-section-heading))
+    (cond
+     ((eq (car-safe recent-runs) 'error)
+      (if (octocat--disabled-feature-p recent-runs)
+          (insert "  (no workflow runs)\n")
+        (insert (propertize (format "  %s\n" (cdr recent-runs)) 'face 'octocat-dimmed))))
+     ((null recent-runs)
+      (insert "  (no workflow runs)\n"))
+     (t
       (let ((branch-w (min 25 (apply #'max 1
                                      (mapcar (lambda (r)
                                                (length (or (gethash "headBranch" r) "")))
-                                             (apply #'append
-                                                    (mapcar (lambda (wf)
-                                                              (cdr (assoc (gethash "id" wf)
-                                                                          runs-by-id)))
-                                                            workflows)))))))
-        (dolist (workflow workflows)
-          (let* ((name       (or (gethash "name"  workflow) ""))
-                 (wf-id      (gethash "id" workflow))
-                 (state      (downcase (or (gethash "state" workflow) "")))
-                 (state-face (if (equal state "active") 'success 'octocat-dimmed))
-                 (runs       (cdr (assoc wf-id runs-by-id))))
-            (magit-insert-section (workflow workflow)
+                                             recent-runs))))
+            (wf-w (min 25 (apply #'max 1
+                                 (mapcar (lambda (r)
+                                           (length (or (gethash "workflowName" r) "")))
+                                         recent-runs)))))
+        (dolist (run recent-runs)
+          (let* ((run-id     (or (gethash "databaseId"   run) 0))
+                 (title      (or (gethash "displayTitle" run) ""))
+                 (status     (downcase (or (gethash "status" run) "")))
+                 (conclusion (let ((c (gethash "conclusion" run)))
+                               (and (octocat--nonempty c) (downcase c))))
+                 (branch     (or (gethash "headBranch"   run) ""))
+                 (wf-name    (or (gethash "workflowName" run) ""))
+                 (created    (or (gethash "createdAt"    run) ""))
+                 (date       (octocat--format-ts created))
+                 (icon       (octocat--workflow-run-icon status conclusion)))
+            (magit-insert-section (workflow-run run)
               (magit-insert-heading
                 (concat
                  "  "
-                 (truncate-string-to-width name 40 nil nil "…")
+                 icon
                  "  "
-                 (propertize state 'face state-face)
-                 "\n"))
-              (dolist (run runs)
-                (let* ((run-id     (or (gethash "databaseId"   run) 0))
-                       (title      (or (gethash "displayTitle" run) ""))
-                       (status     (downcase (or (gethash "status" run) "")))
-                       (conclusion (let ((c (gethash "conclusion" run)))
-                                     (and (octocat--nonempty c) (downcase c))))
-                       (branch     (or (gethash "headBranch" run) ""))
-                       (created    (or (gethash "createdAt"  run) ""))
-                       (date       (octocat--format-ts created))
-                       (icon       (octocat--workflow-run-icon status conclusion)))
-                  (magit-insert-section (workflow-run run)
-                    (magit-insert-heading
-                      (concat
-                       "    "
-                       icon
-                       "  "
-                       (propertize (format "%-10s" (number-to-string run-id))
-                                   'face 'octocat-pr-number)
-                       "  "
-                       (propertize (truncate-string-to-width branch branch-w nil ?\s "…")
-                                   'face 'octocat-branch)
-                       "  "
-                       (truncate-string-to-width title 30 nil ?\s "…")
-                       "  "
-                       (propertize date 'face 'octocat-dimmed)
-                       "\n")))))))))))))
+                 (propertize (format "%-10s" (number-to-string run-id))
+                             'face 'octocat-pr-number)
+                 "  "
+                 (propertize (truncate-string-to-width wf-name wf-w nil ?\s "…")
+                             'face 'octocat-dimmed)
+                 "  "
+                 (propertize (truncate-string-to-width branch branch-w nil ?\s "…")
+                             'face 'octocat-branch)
+                 "  "
+                 (truncate-string-to-width title 30 nil ?\s "…")
+                 "  "
+                 (propertize date 'face 'octocat-dimmed)
+                 "\n"))))))))))
+
 
 (defun octocat--render-loading (repo)
   "Render a skeleton front view for REPO while data is still loading.
@@ -292,14 +325,20 @@ Issues, and Workflows, each with a dimmed \\='Loading…\\=' placeholder."
         (magit-insert-section (workflows)
           (magit-insert-heading
             (propertize "Workflows" 'face 'octocat-section-heading))
+          (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))
+      (octocat--hide-if-saved 'workflow-runs
+        (magit-insert-section (workflow-runs)
+          (magit-insert-heading
+            (propertize "Workflow Runs" 'face 'octocat-section-heading))
           (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))))))
 
-(defun octocat--render (prs issues workflows repo &optional runs-by-id)
-  "Erase the current buffer and render PRS, ISSUES, and WORKFLOWS for REPO.
+(defun octocat--render (prs issues workflows repo &optional recent-runs)
+  "Erase the buffer and render PRS, ISSUES, WORKFLOWS and RECENT-RUNS for REPO.
 Each argument may be a list of hash-tables or a cons (error . MSG) when the
 corresponding feature is disabled or unavailable for the repo.
-RUNS-BY-ID is an optional alist of (workflow-id . runs-list).
-Renders collapsible sections; delegates to the individual render helpers."
+RECENT-RUNS is an optional flat list of run hash-tables (with workflowName)
+representing the last 20 workflow entries across all workflows.
+Render collapsible sections; delegate to the individual render helpers."
   (octocat--save-section-state)
   (let ((inhibit-read-only t))
     (erase-buffer)
@@ -320,7 +359,8 @@ Renders collapsible sections; delegates to the individual render helpers."
                  'face 'octocat-dimmed)))
       (octocat--hide-if-saved 'pull-requests (octocat--render-prs prs))
       (octocat--hide-if-saved 'issues        (octocat--render-issues issues))
-      (octocat--hide-if-saved 'workflows     (octocat--render-workflows workflows runs-by-id)))))
+      (octocat--hide-if-saved 'workflows     (octocat--render-workflows workflows))
+      (octocat--hide-if-saved 'workflow-runs (octocat--render-workflow-runs recent-runs)))))
 
 
 ;;;; Major mode
@@ -372,7 +412,9 @@ children are the `pull-requests', `issues', and `workflows' sections."
 (defun octocat-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current octocat buffer asynchronously.
 Loads a disk cache (if present) and renders it immediately, then always
-fetches fresh data in the background and re-renders when it arrives."
+fetches fresh data in the background and re-renders when it arrives.
+Issues exactly 4 parallel API requests: PRs, issues, workflow list, and
+the 20 most recent runs across all workflows."
   (interactive)
   (unless octocat--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
@@ -389,68 +431,46 @@ fetches fresh data in the background and re-renders when it arrives."
                            (plist-get cache :issues)
                            (plist-get cache :workflows)
                            repo
-                           (plist-get cache :workflow-runs))
+                           (plist-get cache :recent-runs))
           (octocat--restore-point saved-point))
       (octocat--render-loading repo))
     ;; Always fetch fresh data in the background.
-    ;; Phase 1: fetch PRs, issues, workflows in parallel.
-    ;; Phase 2: once workflows arrive, fetch runs for each workflow, then render.
+    ;; All 4 requests fire in parallel; render once all have returned.
     (setq mode-line-process " [refreshing…]")
     (let ((pr-result       'pending)
           (issue-result    'pending)
           (workflow-result 'pending)
-          (runs-by-id      nil)
-          (runs-pending    0)
-          (phase2-started  nil))
+          (runs-result     'pending))
       (cl-labels
           ((maybe-render ()
-             ;; Fire only when PRs, issues, workflows, and all run fetches are done.
              (unless (or (eq pr-result       'pending)
                          (eq issue-result    'pending)
                          (eq workflow-result 'pending)
-                         (> runs-pending 0))
+                         (eq runs-result     'pending))
                (when (buffer-live-p buf)
                  (with-current-buffer buf
                    (setq mode-line-process nil)
                    (octocat--cache-save repo pr-result issue-result
-                                        workflow-result runs-by-id)
+                                        workflow-result runs-result)
                    (octocat--render pr-result issue-result workflow-result
-                                    repo runs-by-id)
-                   (octocat--restore-point saved-point)))))
-           (start-phase2 ()
-             ;; Called once workflow-result is known.  Fire one run-list fetch
-             ;; per workflow; if there are no workflows, go straight to render.
-             (setq phase2-started t)
-             (let ((wfs (if (or (eq (car-safe workflow-result) 'error)
-                                (null workflow-result))
-                            '()
-                          workflow-result)))
-               (if (null wfs)
-                   (maybe-render)
-                 (setq runs-pending (length wfs))
-                 (dolist (wf wfs)
-                   (let ((wf-id (gethash "id" wf)))
-                     (octocat--list-workflow-runs
-                      repo wf-id
-                      (lambda (result)
-                        (when (buffer-live-p buf)
-                          (with-current-buffer buf
-                            (unless (eq (car-safe result) 'error)
-                              (push (cons wf-id result) runs-by-id))
-                            (cl-decf runs-pending)
-                            (maybe-render)))))))))))
+                                    repo runs-result)
+                   (octocat--restore-point saved-point))))))
         (octocat--list-prs repo
                            (lambda (result)
                              (setq pr-result result)
-                             (when phase2-started (maybe-render))))
+                             (maybe-render)))
         (octocat--list-issues repo
                               (lambda (result)
                                 (setq issue-result result)
-                                (when phase2-started (maybe-render))))
+                                (maybe-render)))
         (octocat--list-workflows repo
                                  (lambda (result)
                                    (setq workflow-result result)
-                                   (start-phase2)))))))
+                                   (maybe-render)))
+        (octocat--list-recent-runs repo
+                                   (lambda (result)
+                                     (setq runs-result result)
+                                     (maybe-render)))))))
 
 
 ;;;; Visitor and browser
