@@ -193,8 +193,7 @@ PRS may be a list of pull-request hash-tables or a cons (error . MSG)."
       (dolist (pr prs)
         (let* ((number (format "#%-4d" (gethash "number" pr)))
                (title  (or (gethash "title"  pr) ""))
-               (author (or (gethash "login"
-                                    (gethash "author" pr)) ""))
+               (author (octocat--author-login pr))
                (state  (downcase (or (gethash "state" pr) "open")))
                (state-face (cond ((equal state "merged") 'octocat-pr-state-merged)
                                  ((equal state "closed") 'octocat-pr-state-closed)
@@ -208,7 +207,7 @@ PRS may be a list of pull-request hash-tables or a cons (error . MSG)."
                "  "
                (truncate-string-to-width (format "%-40s" title) 40 nil ?\s "…")
                "  "
-               (propertize (format "@%-15s" author) 'face 'octocat-pr-author)
+               (propertize (format "%-16s" author) 'face 'octocat-pr-author)
                "  "
                (propertize (format "%-6s" state) 'face state-face)
                "  "
@@ -232,8 +231,7 @@ ISSUES may be a list of issue hash-tables or a cons (error . MSG)."
       (dolist (issue issues)
         (let* ((number (format "#%-4d" (gethash "number" issue)))
                (title  (or (gethash "title"  issue) ""))
-               (author (or (gethash "login"
-                                    (gethash "author" issue)) ""))
+               (author (octocat--author-login issue))
                (state  (downcase (or (gethash "state" issue) "open")))
                (state-face (if (equal state "open")
                                'octocat-pr-state-open
@@ -246,7 +244,7 @@ ISSUES may be a list of issue hash-tables or a cons (error . MSG)."
                "  "
                (truncate-string-to-width (format "%-40s" title) 40 nil ?\s "…")
                "  "
-               (propertize (format "@%-15s" author) 'face 'octocat-pr-author)
+               (propertize (format "%-16s" author) 'face 'octocat-pr-author)
                "  "
                (propertize (format "%-6s" state) 'face state-face)
                "\n")))))))))
@@ -364,8 +362,8 @@ navigates to the commit detail view via `octocat-visit'."
                (c       (gethash "commit" commit))
                (message (or (and c (gethash "message" c)) ""))
                (subject (car (split-string message "\n")))
-               (ca      (and c (gethash "author" c)))
-               (author  (or (and ca (gethash "name" ca)) ""))
+               (ca      (and c (gethash "author" c))) ; git author (date)
+               (author  (octocat--commit-author commit))
                (date    (octocat--format-ts
                          (or (and ca (gethash "date" ca)) ""))))
           (magit-insert-section (commit commit)

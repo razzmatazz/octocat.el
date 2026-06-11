@@ -149,7 +149,7 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
   (let* ((number      (gethash "number"       pr))
          (title       (or (gethash "title"    pr) ""))
          (state       (or (gethash "state"    pr) "OPEN"))
-         (author      (or (gethash "login" (gethash "author" pr)) ""))
+         (author      (octocat--author-login pr))
          (body        (or (gethash "body" pr) ""))
          (base        (or (gethash "baseRefName" pr) ""))
          (head        (or (gethash "headRefName" pr) ""))
@@ -186,7 +186,7 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
       (magit-insert-section (pr-meta)
         (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
         (insert (format "  Author   %s\n"
-                        (propertize (concat "@" author) 'face 'octocat-pr-author)))
+                        (propertize author 'face 'octocat-pr-author)))
         (insert (format "  Branch   %s → %s\n"
                         (propertize head 'face 'octocat-branch)
                         (propertize base 'face 'octocat-branch)))
@@ -288,10 +288,10 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
         (if (zerop (length reviews))
             (insert (propertize "  (no reviews)\n" 'face 'octocat-dimmed))
           (cl-loop for review across reviews do
-                   (let* ((login (or (gethash "login" (gethash "author" review)) ""))
+                   (let* ((login  (octocat--author-login review))
                           (rstate (downcase (or (gethash "state" review) ""))))
                      (insert (format "  %-20s  %s\n"
-                                     (propertize (concat "@" login) 'face 'octocat-pr-author)
+                                     (propertize login 'face 'octocat-pr-author)
                                      rstate))))))
       ;; ── Comments ────────────────────────────────────────────────────────
       (magit-insert-section (pr-comments)

@@ -122,6 +122,41 @@
 
 ;;;; Internal helpers
 
+(defun octocat--author-login (obj)
+  "Return \"@LOGIN\" for the GitHub author of OBJ, or \"\" when unavailable.
+OBJ is any hash-table that has an \\\"author\\\" key whose value is a GitHub
+user object with a \\\"login\\\" field — e.g. a PR, issue, review, or comment
+hash-table as returned by the gh CLI.  Returns an empty string when the
+author field is absent, null, or carries no login."
+  (let* ((author (gethash "author" obj))
+         (login  (and author
+                      (not (eq author :null))
+                      (gethash "login" author))))
+    (if (and login (not (string-empty-p login)))
+        (concat "@" login)
+      "")))
+
+(defun octocat--commit-author (commit)
+  "Return a display string for the author of COMMIT.
+COMMIT is a hash-table from the GitHub REST commits endpoint.
+Prefers the GitHub handle: if the top-level \\\"author\\\" user object has a
+\\\"login\\\" field the result is \\\"@LOGIN\\\".  Falls back to the git author
+name from the nested \\\"commit\\\" → \\\"author\\\" → \\\"name\\\" field when the
+commit is not associated with a GitHub account.  Returns \"\" when neither
+is available."
+  (let* ((gh-user (gethash "author" commit))
+         (login   (and gh-user
+                       (not (eq gh-user :null))
+                       (gethash "login" gh-user)))
+         (c       (gethash "commit" commit))
+         (ca      (and c (gethash "author" c))))
+    (cond
+     ((and login (not (string-empty-p login)))
+      (concat "@" login))
+     ((and ca (octocat--nonempty (gethash "name" ca)))
+      (gethash "name" ca))
+     (t ""))))
+
 (defun octocat--debug-log (label data)
   "When `octocat-debug' is non-nil, append LABEL and DATA to *octocat-debug*."
   (when octocat-debug
@@ -476,14 +511,14 @@ below it.  An empty vector renders a dimmed \"(no comments)\" placeholder."
   (if (zerop (length comments))
       (insert (propertize "  (no comments)\n" 'face 'octocat-dimmed))
     (cl-loop for comment across comments do
-             (let* ((login   (or (gethash "login" (gethash "author" comment)) ""))
+             (let* ((author  (octocat--author-login comment))
                     (body    (or (gethash "body" comment) ""))
                     (created (or (gethash "createdAt" comment) ""))
                     (date    (octocat--format-ts created)))
                (magit-insert-section (comment comment)
                  (magit-insert-heading
                    (concat "  "
-                           (propertize (concat "@" login) 'face 'octocat-pr-author)
+                           (propertize author 'face 'octocat-pr-author)
                            "  "
                            (propertize date 'face 'octocat-dimmed)
                            "\n"))

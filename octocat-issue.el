@@ -145,7 +145,7 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
   (let* ((number   (gethash "number"    issue))
          (title    (or (gethash "title"  issue) ""))
          (state    (or (gethash "state"  issue) "OPEN"))
-         (author   (or (gethash "login" (gethash "author" issue)) ""))
+         (author   (octocat--author-login issue))
          (body     (or (gethash "body" issue) ""))
          (created  (or (gethash "createdAt" issue) ""))
          (closed   (gethash "closedAt" issue))
@@ -172,7 +172,7 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
       (magit-insert-section (issue-meta)
         (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
         (insert (format "  Author   %s\n"
-                        (propertize (concat "@" author) 'face 'octocat-pr-author)))
+                        (propertize author 'face 'octocat-pr-author)))
         (insert (format "  Created  %s\n" (octocat--format-ts created)))
         (when (and closed (not (eq closed :null)) (not (string-empty-p closed)))
           (insert (format "  Closed   %s\n" (octocat--format-ts closed)))))
