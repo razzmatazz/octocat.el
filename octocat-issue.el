@@ -204,9 +204,9 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
                       (apply #'propertize "\n" hint)))))
         (insert (format "  Author   %s\n"
                         (propertize author 'face 'octocat-pr-author)))
-        (insert (format "  Created  %s\n" (octocat--format-ts created)))
+        (insert (format "  Created  %s\n" (octocat--format-ts-full created)))
         (when (and closed (not (eq closed :null)) (not (string-empty-p closed)))
-          (insert (format "  Closed   %s\n" (octocat--format-ts closed)))))
+          (insert (format "  Closed   %s\n" (octocat--format-ts-full closed)))))
       ;; ── Body ──────────────────────────────────────────────────────────
       (magit-insert-section (issue-body)
         (magit-insert-heading (propertize "Body" 'face 'octocat-section-heading))

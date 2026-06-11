@@ -149,7 +149,7 @@ STATUS takes priority over CONCLUSION for in-progress detection."
             (insert (format "  Status     %s\n"
                             (propertize display-status 'face status-face)))))
         (unless (string-empty-p created)
-          (insert (format "  Created    %s\n" (octocat--format-ts created))))
+          (insert (format "  Created    %s\n" (octocat--format-ts-full created))))
         (when conclusion
           (let ((duration (octocat--run-duration
                            (and (not (string-empty-p created)) created)

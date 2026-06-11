@@ -147,7 +147,7 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
          (author        (octocat--commit-author-full commit))
          (github-handle (octocat--commit-author-login commit))
          (date-raw      (or (and author-obj (gethash "date" author-obj)) ""))
-         (date      (octocat--format-ts date-raw))
+         (date      (octocat--format-ts-full date-raw))
          (files     (let ((v (gethash "files" commit)))
                       (if (or (null v) (eq v :null)) [] v)))
          (inhibit-read-only t))

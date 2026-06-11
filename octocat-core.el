@@ -521,6 +521,57 @@ Falls back to the raw date prefix if the string cannot be parsed."
         (format-time-string "%Y-%m-%d %H:%M" (date-to-time ts))
       (error (substring ts 0 (min 10 (length ts)))))))
 
+(defun octocat--relative-ts (ts)
+  "Return a human-readable relative string for ISO-8601 UTC timestamp TS.
+Examples: \"just now\", \"5 minutes ago\", \"3 days ago\", \"2 years ago\".
+Returns an empty string for nil, :null, or an empty string.
+
+Implemented in plain Emacs Lisp using `float-time' and `current-time'.
+Does not call into any external package."
+  (if (or (null ts) (eq ts :null) (string-empty-p ts))
+      ""
+    (condition-case nil
+        (let* ((then  (float-time (date-to-time ts)))
+               (now   (float-time (current-time)))
+               (secs  (max 0 (round (- now then)))))
+          (cond
+           ((< secs 60)
+            "just now")
+           ((< secs 3600)
+            (let ((m (round (/ secs 60))))
+              (format "%d %s ago" m (if (= m 1) "minute" "minutes"))))
+           ((< secs 86400)
+            (let ((h (round (/ secs 3600))))
+              (format "%d %s ago" h (if (= h 1) "hour" "hours"))))
+           ((< secs 604800)
+            (let ((d (round (/ secs 86400))))
+              (format "%d %s ago" d (if (= d 1) "day" "days"))))
+           ((< secs 2592000)
+            (let ((w (round (/ secs 604800))))
+              (format "%d %s ago" w (if (= w 1) "week" "weeks"))))
+           ((< secs 31536000)
+            (let ((mo (round (/ secs 2592000))))
+              (format "%d %s ago" mo (if (= mo 1) "month" "months"))))
+           (t
+            (let ((y (round (/ secs 31536000))))
+              (format "%d %s ago" y (if (= y 1) "year" "years"))))))
+      (error ""))))
+
+(defun octocat--format-ts-full (ts)
+  "Format TS as \"YYYY-MM-DD HH:MM (relative)\" for detail-view info sections.
+Returns an empty string for nil, :null, or an empty string.
+Example output: \"2026-06-08 14:23 (3 days ago)\".
+
+Use this in info sections where horizontal space is ample.
+Use `octocat--format-ts' for compact list rows."
+  (let ((abs (octocat--format-ts ts))
+        (rel (octocat--relative-ts ts)))
+    (if (string-empty-p abs)
+        ""
+      (if (string-empty-p rel)
+          abs
+        (format "%s (%s)" abs rel)))))
+
 ;;;; Section identity
 
 ;; magit-section uses `magit-section-ident-value' to derive a stable identity

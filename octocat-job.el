@@ -335,9 +335,9 @@ LOG-SECTIONS is either an alist of (STEP-NAME . LINES) or a cons
         (when duration
           (insert (format "  Duration   %s\n" duration)))
         (when started
-          (insert (format "  Started    %s\n" (octocat--format-ts started))))
+          (insert (format "  Started    %s\n" (octocat--format-ts-full started))))
         (when completed
-          (insert (format "  Completed  %s\n" (octocat--format-ts completed))))
+          (insert (format "  Completed  %s\n" (octocat--format-ts-full completed))))
         (when runner
           (insert (format "  Runner     %s\n"
                           (propertize runner 'face 'octocat-dimmed))))

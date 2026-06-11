@@ -254,3 +254,53 @@ inline `propertize` + `truncate-string-to-width` at every call site.
       (octocat--format-branch branch branch-w)
       ...)))
 ```
+
+---
+
+## Formatting timestamps
+
+Three helpers in `octocat-core.el` cover every timestamp display context.
+All accept an ISO-8601 UTC string (e.g. `"2026-06-08T05:47:21Z"`) and
+return an empty string for `nil`, `:null`, or `""`.
+
+### `octocat--format-ts (ts)`
+
+Returns `"YYYY-MM-DD HH:MM"` in local time.  Use this in **compact list
+rows** where horizontal space is limited and the relative age is visible at
+a glance from the date alone.
+
+```
+2026-06-08 14:23
+```
+
+### `octocat--format-ts-full (ts)`
+
+Returns `"YYYY-MM-DD HH:MM (relative)"` — the absolute timestamp followed
+by a human-readable relative age in parentheses.  Use this in **detail-view
+info sections** (PR, issue, commit, workflow, run, job) where there is ample
+horizontal space and the relative age adds meaningful context.
+
+```
+2026-06-08 14:23 (3 days ago)
+```
+
+### `octocat--relative-ts (ts)`
+
+Returns only the relative string (`"just now"`, `"5 minutes ago"`,
+`"3 days ago"`, `"2 years ago"`, etc.).  This is the building block used
+internally by `octocat--format-ts-full`.  Call it directly only when you
+need the relative portion in isolation.
+
+### Decision table
+
+| Context | Helper | Example output |
+|---|---|---|
+| Compact list row (dashboard, inline sub-lists) | `octocat--relative-ts` | `3 days ago` |
+| Detail-view info section (PR, issue, commit, workflow, run, job) | `octocat--format-ts-full` | `2026-06-08 14:23 (3 days ago)` |
+| Absolute timestamp only (not currently used) | `octocat--format-ts` | `2026-06-08 14:23` |
+
+### Implementation note
+
+`octocat--relative-ts` is implemented entirely in Emacs Lisp using
+`float-time` and `current-time`.  It does not call into magit, `ts.el`,
+or any other external package — see the dependency rule in `AGENTS.md`.

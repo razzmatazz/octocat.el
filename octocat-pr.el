@@ -221,12 +221,12 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
         (insert (format "  Branch   %s → %s\n"
                         (propertize head 'face 'octocat-branch)
                         (propertize base 'face 'octocat-branch)))
-        (insert (format "  Created  %s\n" (octocat--format-ts created)))
+        (insert (format "  Created  %s\n" (octocat--format-ts-full created)))
         (when (and merged (not (eq merged :null)) (not (string-empty-p merged)))
-          (insert (format "  Merged   %s\n" (octocat--format-ts merged))))
+          (insert (format "  Merged   %s\n" (octocat--format-ts-full merged))))
         (when (and closed (not (eq closed :null)) (not (string-empty-p closed))
                    (not (equal state "MERGED")))
-          (insert (format "  Closed   %s\n" (octocat--format-ts closed))))
+          (insert (format "  Closed   %s\n" (octocat--format-ts-full closed))))
         (magit-insert-section (pr-changes)
           (magit-insert-heading
             (let ((hint '(mouse-face magit-section-highlight

@@ -314,7 +314,7 @@ Show up to 20 most recent workflow entries across all workflows."
                  (branch     (or (gethash "headBranch"   run) ""))
                  (wf-name    (or (gethash "workflowName" run) ""))
                  (created    (or (gethash "createdAt"    run) ""))
-                 (date       (octocat--format-ts created))
+                 (date       (octocat--relative-ts created))
                  (icon       (octocat--workflow-run-icon status conclusion)))
             (magit-insert-section (workflow-run run)
               (magit-insert-heading
@@ -357,13 +357,13 @@ navigates to the commit detail view via `octocat-visit'."
        (t
         (dolist (commit commits)
           (let* ((sha     (or (gethash "sha" commit) ""))
-                 (short   (substring sha 0 (min 7 (length sha))))
+                 (short   (substring sha 0 (min 11 (length sha))))
                  (c       (gethash "commit" commit))
                  (message (or (and c (gethash "message" c)) ""))
                  (subject (car (split-string message "\n")))
                  (ca      (and c (gethash "author" c))) ; git author (date)
                  (author  (octocat--commit-author commit))
-                 (date    (octocat--format-ts
+                 (date    (octocat--relative-ts
                            (or (and ca (gethash "date" ca)) ""))))
             (magit-insert-section (commit commit)
               (magit-insert-heading

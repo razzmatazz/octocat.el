@@ -145,9 +145,9 @@ hash-tables."
         (insert (format "  Path     %s\n"
                         (propertize path 'face 'octocat-branch)))
         (unless (string-empty-p created)
-          (insert (format "  Created  %s\n" (octocat--format-ts created))))
+          (insert (format "  Created  %s\n" (octocat--format-ts-full created))))
         (unless (string-empty-p updated)
-          (insert (format "  Updated  %s\n" (octocat--format-ts updated)))))
+          (insert (format "  Updated  %s\n" (octocat--format-ts-full updated)))))
       ;; ── Runs ────────────────────────────────────────────────────────────
       (magit-insert-section (workflow-runs)
         (magit-insert-heading
@@ -164,7 +164,7 @@ hash-tables."
                                    (and (octocat--nonempty c) (downcase c))))
                      (branch     (or (gethash "headBranch" run) ""))
                      (created    (or (gethash "createdAt"  run) ""))
-                     (date       (octocat--format-ts created))
+                     (date       (octocat--relative-ts created))
                      (icon       (octocat--workflow-run-icon status conclusion)))
                 (magit-insert-section (workflow-run run)
                   (magit-insert-heading
