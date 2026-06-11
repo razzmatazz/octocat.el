@@ -10,8 +10,8 @@
 ;; to write multi-line markdown text:
 ;;
 ;;   - Adding a comment to a PR or issue (`c' key in the detail views)
-;;   - Editing the body of a PR or issue (`e' on the body section)
-;;   - Editing an existing comment you authored (`e' on a comment section)
+;;   - Editing the body of a PR or issue (RET on the body section)
+;;   - Editing an existing comment you authored (RET on a comment section)
 ;;
 ;; The workflow mirrors Magit's commit-message buffer:
 ;;   C-c C-c  — submit (validate, call gh, kill buffer, refresh source)

@@ -47,6 +47,30 @@
          (body  (and cache (octocat--nonempty (gethash "body" cache)))))
     (octocat--open-edit-buffer octocat--pr-repo 'pr octocat--pr-number 'edit-body body)))
 
+(defun octocat-pr-edit-title ()
+  "Prompt in the minibuffer to rename the title of the current PR."
+  (interactive)
+  (unless (and octocat--pr-repo octocat--pr-number)
+    (user-error "Octocat: Buffer is not associated with a pull request"))
+  (let* ((cache   (octocat--detail-cache-load octocat--pr-repo "pr" octocat--pr-number))
+         (current (or (and cache (octocat--nonempty (gethash "title" cache))) ""))
+         (new     (string-trim (read-string "PR title: " current))))
+    (when (string-empty-p new)
+      (user-error "Octocat: Title must not be empty"))
+    (unless (string-equal new current)
+      (let ((repo octocat--pr-repo)
+            (num  octocat--pr-number)
+            (buf  (current-buffer)))
+        (octocat--run-gh
+         "edit-title"
+         (list "pr" "edit" (number-to-string num) "--repo" repo "--title" new)
+         #'identity
+         (lambda (result)
+           (if (eq (car-safe result) 'error)
+               (message "Octocat: failed to update title: %s" (cdr result))
+             (when (buffer-live-p buf)
+               (with-current-buffer buf (octocat-pr-refresh))))))))))
+
 (defun octocat-pr-edit ()
   "Edit the thing at point in the current PR buffer.
 On the body section: replace the PR body.
@@ -185,6 +209,13 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
       ;; ── Meta ────────────────────────────────────────────────────────────
       (magit-insert-section (pr-meta)
         (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
+        (magit-insert-section (pr-title)
+          (magit-insert-heading
+            (let ((hint '(mouse-face magit-section-highlight
+                          help-echo  "RET: edit title")))
+              (concat (apply #'propertize "  Title    " hint)
+                      (apply #'propertize title hint)
+                      (apply #'propertize "\n" hint)))))
         (insert (format "  Author   %s\n"
                         (propertize author 'face 'octocat-pr-author)))
         (insert (format "  Branch   %s → %s\n"

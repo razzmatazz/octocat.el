@@ -79,6 +79,49 @@ clickable (not the whole section), `buttonize` is the right tool:
 
 ---
 
+## Editing fields: edit buffer vs. minibuffer
+
+Two distinct mechanisms are used depending on whether the field is
+single-line or multi-line:
+
+### Multi-line fields → `octocat--open-edit-buffer`
+
+Used for PR/issue **bodies** and **comments** — content where the user
+may need multiple lines, markdown preview, and the ability to abandon
+their work mid-edit.  The edit buffer derives from `gfm-mode` and
+presents a familiar Magit-style commit-message workflow:
+
+```
+C-c C-c   submit (calls gh, refreshes source buffer, kills edit buffer)
+C-c C-k   discard (confirms if modified, kills edit buffer)
+```
+
+The header line shows the action and a keyboard hint.  The source buffer
+is refreshed automatically on success.
+
+### Single-line fields → `read-string` in the minibuffer
+
+Used for **titles** — content that is always a single line and where
+opening a split window would be disproportionate.  The current value is
+pre-filled as the initial input so the user can edit in place:
+
+```elisp
+(read-string "PR title: " current-title)
+```
+
+Validation (non-empty) and the `gh` call happen immediately after the
+user confirms with `RET`.  The buffer refreshes asynchronously on
+success; on failure a message is shown in the echo area.
+
+### Decision table
+
+| Field type | Mechanism | Rationale |
+|---|---|---|
+| Multi-line markdown (body, comment) | `octocat--open-edit-buffer` | Needs line editing, markdown mode, and an explicit discard path |
+| Single-line string (title) | `read-string` minibuffer | Single line; a split window would be disproportionate |
+
+---
+
 ## Displaying commit authors
 
 GitHub's REST commits endpoint exposes two distinct author objects for each

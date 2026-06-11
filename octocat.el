@@ -49,7 +49,9 @@
 ;; loaded via `require' above, but declare here so octocat-visit can call
 ;; them without the byte-compiler warning about forward references).
 (declare-function octocat-pr-edit-body         "octocat-pr"      ())
+(declare-function octocat-pr-edit-title        "octocat-pr"      ())
 (declare-function octocat-issue-edit-body      "octocat-issue"   ())
+(declare-function octocat-issue-edit-title     "octocat-issue"   ())
 (declare-function octocat--render-pr-diff-loading "octocat-pr-diff" (number))
 (declare-function octocat-pr-diff-refresh      "octocat-pr-diff" (&optional _ignore-auto _noconfirm))
 
@@ -663,6 +665,9 @@ commits on the default branch, and the default branch name itself."
                octocat--run-id   run-id)
          (octocat--render-run-loading run-id)
          (octocat-run-refresh)))
+      ;; RET on the Title row inside the Info section edits the title.
+      ('pr-title    (octocat-pr-edit-title))
+      ('issue-title (octocat-issue-edit-title))
       ;; RET on a PR or issue body section opens the inline editor.
       ('pr-body    (octocat-pr-edit-body))
       ('issue-body (octocat-issue-edit-body))

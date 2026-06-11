@@ -53,12 +53,24 @@ following collapsible sections (toggle with `TAB`):
 
 | Section | Contents |
 |---------|----------|
-| **Info** | Author, head→base branch, creation / merge / close date, diff stats |
-| **Body** | The PR description |
+| **Info** | Title (editable), author, head→base branch, creation / merge / close date, diff stats |
+| **Body** | The PR description (editable) |
 | **Commits (N)** | One line per commit: short SHA · subject · author |
 | **Checks (N)** | CI check name, workflow, and pass/fail/pending icon |
 | **Reviews (N)** | Reviewer login and review state |
-| **Comments (N)** | Commenter login and a truncated snippet |
+| **Comments (N)** | Commenter login and a truncated snippet (your own comments are editable) |
+
+#### Inline editing
+
+`RET` is context-sensitive in the PR detail buffer:
+
+| Point position | Action |
+|----------------|--------|
+| **Title** row in Info | Prompts in the minibuffer to rename the PR title |
+| **Body** section | Opens a markdown edit buffer (`C-c C-c` submit, `C-c C-k` discard) |
+| **Comment** you authored | Opens a markdown edit buffer to edit the comment |
+| **Changes** row in Info | Opens the full diff view |
+| Commit row | Opens the commit detail view |
 
 #### Commit navigation
 
