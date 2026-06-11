@@ -336,9 +336,10 @@ Skips silently when DATA is an error cons."
 (defun octocat--cache-load (repo)
   "Load cached dashboard data for REPO from disk.
 Returns a plist with keys :timestamp :prs :issues :workflows
-:workflow-runs, or nil if the cache file is absent or cannot be
-parsed.  :workflow-runs is an alist of (id . runs-list) where id
-is a number and runs-list is a list of run hash-tables."
+:recent-runs, or nil if the cache file is absent or cannot be
+parsed.  :recent-runs is a flat list of run hash-tables (each
+containing a workflowName key) representing the last 20 runs
+across all workflows."
   (let ((file (octocat--cache-file repo)))
     (when (file-readable-p file)
       (condition-case nil
@@ -347,26 +348,17 @@ is a number and runs-list is a list of run hash-tables."
                            (buffer-string)))
                  (data   (json-parse-string json))
                  (ts     (gethash "timestamp" data))
-                 (prs    (cl-coerce (gethash "prs"       data) 'list))
-                 (issues (cl-coerce (gethash "issues"    data) 'list))
-                 (wflows (cl-coerce (gethash "workflows" data) 'list))
-                 (wr-raw (gethash "workflow-runs" data))
-                 (wr     (when (hash-table-p wr-raw)
-                           (let (result)
-                             (maphash
-                              (lambda (k v)
-                                (push (cons (string-to-number k)
-                                            (cl-coerce v 'list))
-                                      result))
-                              wr-raw)
-                             result))))
+                 (prs    (cl-coerce (gethash "prs"          data) 'list))
+                 (issues (cl-coerce (gethash "issues"       data) 'list))
+                 (wflows (cl-coerce (gethash "workflows"    data) 'list))
+                 (runs   (cl-coerce (gethash "recent-runs"  data) 'list)))
             (list :timestamp ts :prs prs :issues issues
-                  :workflows wflows :workflow-runs wr))
+                  :workflows wflows :recent-runs runs))
         (error nil)))))
 
-(defun octocat--cache-save (repo prs issues workflows workflow-runs)
-  "Write PRS, ISSUES, WORKFLOWS and WORKFLOW-RUNS for REPO to the disk cache.
-WORKFLOW-RUNS is an alist of (id . runs-list).  Does nothing if any of
+(defun octocat--cache-save (repo prs issues workflows recent-runs)
+  "Write PRS, ISSUES, WORKFLOWS and RECENT-RUNS for REPO to the disk cache.
+RECENT-RUNS is a flat list of run hash-tables.  Does nothing if any of
 the first three arguments is an error cons — only successful results are
 persisted."
   (when (and (not (eq (car-safe prs)       'error))
@@ -374,19 +366,16 @@ persisted."
              (not (eq (car-safe workflows) 'error)))
     (let* ((file (octocat--cache-file repo))
            (dir  (file-name-directory file))
-           (wr-obj (let ((h (make-hash-table :test #'equal)))
-                     (dolist (cell workflow-runs)
-                       (puthash (number-to-string (car cell))
-                                (vconcat (cdr cell))
-                                h))
-                     h))
            (obj  (let ((h (make-hash-table :test #'equal)))
-                   (puthash "timestamp"     (float-time)      h)
-                   (puthash "repo"          repo              h)
-                   (puthash "prs"           (vconcat prs)     h)
-                   (puthash "issues"        (vconcat issues)  h)
-                   (puthash "workflows"     (vconcat workflows) h)
-                   (puthash "workflow-runs" wr-obj             h)
+                   (puthash "timestamp"    (float-time)               h)
+                   (puthash "repo"         repo                        h)
+                   (puthash "prs"          (vconcat prs)               h)
+                   (puthash "issues"       (vconcat issues)             h)
+                   (puthash "workflows"    (vconcat workflows)          h)
+                   (puthash "recent-runs"  (if (listp recent-runs)
+                                               (vconcat recent-runs)
+                                             (vector))
+                            h)
                    h)))
       (make-directory dir t)
       (with-temp-file file
