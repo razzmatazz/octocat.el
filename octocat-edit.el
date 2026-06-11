@@ -46,6 +46,10 @@
   "The PR/issue buffer that opened this edit buffer.
 Used to refresh the source after a successful submit.")
 
+(defvar-local octocat-edit--window-configuration nil
+  "Window configuration saved just before the edit buffer window was opened.
+Restored on submit or abort so no extra split is left behind.")
+
 
 ;;;; Keymap
 
@@ -128,6 +132,18 @@ BODY is the text to submit.  Returns a list of strings."
        ((derived-mode-p 'octocat-pr-mode)    (octocat-pr-refresh))
        ((derived-mode-p 'octocat-issue-mode) (octocat-issue-refresh))))))
 
+(defun octocat-edit--restore-windows (wconf source)
+  "Restore window configuration WCONF and switch to SOURCE buffer.
+If WCONF is non-nil it is restored (undoing the edit-buffer split).
+Otherwise fall back to `pop-to-buffer' SOURCE."
+  (if wconf
+      (progn
+        (set-window-configuration wconf)
+        (when (buffer-live-p source)
+          (switch-to-buffer source)))
+    (when (buffer-live-p source)
+      (pop-to-buffer source))))
+
 
 ;;;; Commands
 
@@ -142,6 +158,7 @@ BODY is the text to submit.  Returns a list of strings."
            (number octocat-edit--number)
            (action octocat-edit--action)
            (source octocat-edit--source-buffer)
+           (wconf  octocat-edit--window-configuration)
            (args   (octocat-edit--gh-args repo kind number action body))
            (edit-buf (current-buffer)))
       (setq mode-line-process " [submitting…]")
@@ -163,20 +180,19 @@ BODY is the text to submit.  Returns a list of strings."
              (with-current-buffer edit-buf
                (set-buffer-modified-p nil)
                (kill-buffer edit-buf)))
-           (octocat-edit--refresh-source source)
-           (when (buffer-live-p source)
-             (pop-to-buffer source))))))))
+           (octocat-edit--restore-windows wconf source)
+           (octocat-edit--refresh-source source)))))))
 
 (defun octocat-edit-abort ()
   "Discard the edit buffer and return to the source buffer."
   (interactive)
   (when (or (not (buffer-modified-p))
             (yes-or-no-p "Discard edit? "))
-    (let ((source octocat-edit--source-buffer))
+    (let ((source octocat-edit--source-buffer)
+          (wconf  octocat-edit--window-configuration))
       (set-buffer-modified-p nil)
       (kill-buffer (current-buffer))
-      (when (buffer-live-p source)
-        (pop-to-buffer source)))))
+      (octocat-edit--restore-windows wconf source))))
 
 
 ;;;; Public entry point
@@ -193,19 +209,21 @@ INITIAL-CONTENT — string pre-populated into the buffer; nil for blank.
 The buffer is shown via `pop-to-buffer' in a bottom window.  When the
 user finishes with \\[octocat-edit-submit], the source buffer is
 automatically refreshed.  Use \\[octocat-edit-abort] to discard."
-  (let* ((name (octocat-edit--buffer-name repo kind number action))
+  (let* ((name  (octocat-edit--buffer-name repo kind number action))
          (source (current-buffer))
-         (buf (get-buffer-create name)))
+         (wconf  (current-window-configuration))
+         (buf   (get-buffer-create name)))
     (with-current-buffer buf
       (unless (derived-mode-p 'octocat-edit-mode)
         (octocat-edit-mode))
       ;; Restore state even if buffer already existed (e.g. re-opened after
       ;; a failed submit).
-      (setq octocat-edit--repo          repo
-            octocat-edit--kind          kind
-            octocat-edit--number        number
-            octocat-edit--action        action
-            octocat-edit--source-buffer source)
+      (setq octocat-edit--repo                 repo
+            octocat-edit--kind                 kind
+            octocat-edit--number               number
+            octocat-edit--action               action
+            octocat-edit--source-buffer        source
+            octocat-edit--window-configuration wconf)
       (setq-local header-line-format
                   (octocat-edit--header-line kind number action))
       ;; Only pre-populate when the buffer is fresh (not dirty from a
