@@ -77,6 +77,77 @@ clickable (not the whole section), `buttonize` is the right tool:
 | Inline value on a plain `insert` line is independently clickable | `buttonize` with `help-echo` |
 | All headings in a view are navigable (standard magit) | No extra markers — bold face is sufficient |
 
+---
+
+## Displaying commit authors
+
+GitHub's REST commits endpoint exposes two distinct author objects for each
+commit:
+
+| Field path | Type | Contains |
+|---|---|---|
+| `commit["author"]` (top-level) | GitHub user object | `"login"` — the GitHub handle |
+| `commit["commit"]["author"]` (nested) | Git identity object | `"name"`, `"email"`, `"date"` |
+
+The top-level object is `null` when the git commit email is not linked to
+any GitHub account (e.g. bots, external contributors, unverified emails).
+
+Three helpers in `octocat-core.el` cover the different display contexts:
+
+### `octocat--author-login (obj)`
+
+For **any** GitHub entity whose `"author"` key is a user node — PRs,
+issues, reviews, comments.  Returns `"@login"` or `""`.  Do **not** use
+this for commit hash-tables from the REST endpoint; use one of the two
+commit-specific helpers below instead.
+
+### `octocat--commit-author (commit)`
+
+For **compact list rows** (e.g. the dashboard Commits section) where
+horizontal space is at a premium.  Returns `"@login"` when the commit is
+linked to a GitHub account, otherwise falls back to the bare git author
+`name`.  Always a single short token.
+
+### `octocat--commit-author-full (commit)`
+
+For the **Author line** in detail views.  Returns a git-log-style
+`Name  <email>` string built from the nested git identity fields:
+
+```
+Linus Torvalds  <torvalds@linux-foundation.org>
+```
+
+The GitHub handle is intentionally excluded from this string.  Callers
+that want the handle should call `octocat--commit-author-login` and render
+it on a **separate GitHub line** immediately below the Author line:
+
+```
+  Author  Linus Torvalds  <torvalds@linux-foundation.org>
+  GitHub  @torvalds
+  Date    2026-06-11 14:23
+```
+
+The GitHub line should be omitted entirely when
+`octocat--commit-author-login` returns nil (commit not linked to an
+account).
+
+### `octocat--commit-author-login (commit)`
+
+Returns `"@login"` when the commit's git email is linked to a GitHub
+account, or `nil` otherwise.  Used exclusively to populate the optional
+GitHub info line in detail views — do not use for compact list rows
+(`octocat--commit-author` already handles the handle-or-name fallback
+there).
+
+### Decision table
+
+| Context | Helper(s) | Example output |
+|---|---|---|
+| PR/issue/review/comment author | `octocat--author-login` | `@torvalds` |
+| Commit list row (dashboard) | `octocat--commit-author` | `@torvalds` or `Linus Torvalds` |
+| Commit detail Author line | `octocat--commit-author-full` | `Linus Torvalds  <torvalds@linux-foundation.org>` |
+| Commit detail GitHub line | `octocat--commit-author-login` | `@torvalds` (omit line if nil) |
+
 ### `help-echo` wording
 
 Follow magit's own wording style: `"mouse-2, RET: <imperative phrase>"`.

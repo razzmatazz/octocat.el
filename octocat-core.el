@@ -137,13 +137,14 @@ author field is absent, null, or carries no login."
       "")))
 
 (defun octocat--commit-author (commit)
-  "Return a display string for the author of COMMIT.
+  "Return a compact author string for COMMIT, for use in list rows.
 COMMIT is a hash-table from the GitHub REST commits endpoint.
 Prefers the GitHub handle: if the top-level \\\"author\\\" user object has a
 \\\"login\\\" field the result is \\\"@LOGIN\\\".  Falls back to the git author
 name from the nested \\\"commit\\\" → \\\"author\\\" → \\\"name\\\" field when the
 commit is not associated with a GitHub account.  Returns \"\" when neither
-is available."
+is available.  For detail views where space allows, use
+`octocat--commit-author-full' instead."
   (let* ((gh-user (gethash "author" commit))
          (login   (and gh-user
                        (not (eq gh-user :null))
@@ -156,6 +157,39 @@ is available."
      ((and ca (octocat--nonempty (gethash "name" ca)))
       (gethash "name" ca))
      (t ""))))
+
+(defun octocat--commit-author-full (commit)
+  "Return a git-log-style author string for COMMIT, for use in detail views.
+COMMIT is a hash-table from the GitHub REST commits endpoint.
+Returns \\\"Name  <email>\\\" from the nested git identity fields, including
+only the parts that are present and non-empty:
+
+  Saulius Menkevičius  <sauliusmenkevicius@fastmail.com>
+
+The GitHub handle is intentionally excluded; callers that want it should
+call `octocat--commit-author-login' separately and render it on its own
+line.  For compact list rows where horizontal space is constrained, use
+`octocat--commit-author' instead."
+  (let* ((c     (gethash "commit" commit))
+         (ca    (and c (gethash "author" c)))
+         (name  (and ca (octocat--nonempty (gethash "name"  ca))))
+         (email (and ca (octocat--nonempty (gethash "email" ca)))))
+    (cond
+     ((and name email) (format "%s  <%s>" name email))
+     (name             name)
+     (email            (format "<%s>" email))
+     (t                ""))))
+
+(defun octocat--commit-author-login (commit)
+  "Return \\\"@login\\\" for the GitHub account linked to COMMIT, or nil.
+COMMIT is a hash-table from the GitHub REST commits endpoint.
+Returns nil when the commit email is not associated with any GitHub account,
+so callers can omit the GitHub line entirely in that case."
+  (let* ((gh-user (gethash "author" commit))
+         (login   (and gh-user
+                       (not (eq gh-user :null))
+                       (octocat--nonempty (gethash "login" gh-user)))))
+    (and login (concat "@" login))))
 
 (defun octocat--debug-log (label data)
   "When `octocat-debug' is non-nil, append LABEL and DATA to *octocat-debug*."
@@ -344,14 +378,16 @@ distinct; any remaining non-alphanumeric characters become \"-\"."
 
 (defun octocat--detail-cache-file (repo type number)
   "Return the cache file path for a detail view.
-REPO is \"owner/repo\", TYPE is a string such as \"pr\" or \"issue\",
-and NUMBER is the integer item number."
-  (expand-file-name (format "%s-%s-%d.json"
+REPO is \"owner/repo\", TYPE is a string such as \"pr\", \"issue\", or
+\"commit\", and NUMBER is the item identifier — an integer for PRs and
+issues, or a SHA string for commits."
+  (expand-file-name (format "%s-%s-%s.json"
                             (octocat--cache-safe-repo repo) type number)
                     octocat-cache-directory))
 
 (defun octocat--detail-cache-load (repo type number)
   "Load cached detail data for TYPE item NUMBER in REPO.
+NUMBER is an integer for PRs/issues or a SHA string for commits.
 Returns the parsed hash-table, or nil when absent or unparseable."
   (let ((file (octocat--detail-cache-file repo type number)))
     (when (file-readable-p file)
@@ -364,6 +400,7 @@ Returns the parsed hash-table, or nil when absent or unparseable."
 
 (defun octocat--detail-cache-save (repo type number data)
   "Persist DATA (a hash-table) for TYPE item NUMBER in REPO to disk.
+NUMBER is an integer for PRs/issues or a SHA string for commits.
 Skips silently when DATA is an error cons."
   (unless (eq (car-safe data) 'error)
     (let* ((file (octocat--detail-cache-file repo type number))

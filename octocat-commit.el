@@ -143,9 +143,10 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
          (body-lines (cdr lines))
          ;; Strip leading blank lines from body
          (body-lines (seq-drop-while #'string-empty-p body-lines))
-         (author-obj (and c (gethash "author" c)))
-         (author    (or (and author-obj (gethash "name" author-obj)) ""))
-         (date-raw  (or (and author-obj (gethash "date" author-obj)) ""))
+         (author-obj    (and c (gethash "author" c)))
+         (author        (octocat--commit-author-full commit))
+         (github-handle (octocat--commit-author-login commit))
+         (date-raw      (or (and author-obj (gethash "date" author-obj)) ""))
          (date      (octocat--format-ts date-raw))
          (files     (let ((v (gethash "files" commit)))
                       (if (or (null v) (eq v :null)) [] v)))
@@ -166,6 +167,9 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
         (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
         (insert (format "  Author  %s\n"
                         (propertize author 'face 'octocat-pr-author)))
+        (when github-handle
+          (insert (format "  GitHub  %s\n"
+                          (propertize github-handle 'face 'octocat-pr-author))))
         (insert (format "  Date    %s\n" date))
         (insert (format "  SHA     %s\n"
                         (propertize sha 'face 'octocat-commit-sha)))
@@ -233,14 +237,20 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
 ;;;; Refresh
 
 (defun octocat-commit-refresh (&optional _ignore-auto _noconfirm)
-  "Refresh the current commit detail buffer asynchronously."
+  "Refresh the current commit detail buffer asynchronously.
+Renders a cached copy immediately when one is available, then always
+fetches fresh data in the background and re-renders on arrival."
   (interactive)
   (unless (and octocat--commit-repo octocat--commit-sha)
     (user-error "Octocat: Buffer is not associated with a commit"))
   (let* ((buf         (current-buffer))
          (repo        octocat--commit-repo)
          (sha         octocat--commit-sha)
-         (saved-point (octocat--save-point)))
+         (saved-point (octocat--save-point))
+         (cache       (octocat--detail-cache-load repo "commit" sha)))
+    (when cache
+      (octocat--render-commit cache)
+      (octocat--restore-point saved-point))
     (setq mode-line-process " [refreshing…]")
     (octocat--fetch-commit repo sha
                            (lambda (result)
@@ -253,6 +263,7 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
                                        (insert (propertize
                                                 (format "  Error: %s\n" (cdr result))
                                                 'face 'error)))
+                                   (octocat--detail-cache-save repo "commit" sha result)
                                    (octocat--render-commit result)
                                    (octocat--restore-point saved-point))))))))
 
