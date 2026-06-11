@@ -88,6 +88,7 @@ STATUS takes priority over CONCLUSION for in-progress detection."
       (magit-insert-section (run-info)
         (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
+      (insert "\n")
       (magit-insert-section (run-jobs)
         (magit-insert-heading (propertize "Jobs" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
@@ -158,6 +159,7 @@ STATUS takes priority over CONCLUSION for in-progress detection."
               (insert (format "  Duration   %s\n"
                               (propertize duration 'face 'octocat-dimmed)))))))
       ;; ── Jobs ────────────────────────────────────────────────────────────
+      (insert "\n")
       (magit-insert-section (run-jobs)
         (magit-insert-heading
           (propertize (format "Jobs (%d)" (length jobs))

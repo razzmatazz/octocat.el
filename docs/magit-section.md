@@ -246,6 +246,68 @@ pattern to a view.
 
 ---
 
+## Inter-section spacing
+
+Magit separates top-level sections with a blank line, giving each section
+visual breathing room and making the buffer easier to scan.  Octocat follows
+the same convention: every pair of sibling sections inside a view should be
+separated by a single blank line.
+
+### The pattern
+
+Insert `(insert "\n")` **between** sibling `magit-insert-section` calls —
+i.e. after the closing paren of one section and before the opening of the
+next.  Do **not** insert a blank before the first section or after the last
+one; the buffer header (`magit-insert-heading`) already provides visual
+separation from the first section, and a trailing blank would add an
+unnecessary empty line at the bottom.
+
+```elisp
+;; CORRECT — blank between siblings, none before the first or after the last
+(magit-insert-section (octocat-root)
+  (magit-insert-heading ...)
+  (magit-insert-section (section-a)
+    (magit-insert-heading ...)
+    (insert ...))
+  (insert "\n")                        ; ← blank between sections
+  (magit-insert-section (section-b)
+    (magit-insert-heading ...)
+    (insert ...))
+  (insert "\n")
+  (magit-insert-section (section-c)
+    (magit-insert-heading ...)
+    (insert ...)))
+```
+
+### Scope
+
+Apply the blank-line pattern everywhere sibling sections appear:
+
+- The top-level dashboard sections (Issues, Pull Requests, Commits, Workflow
+  Runs, Workflows).
+- All sections in every detail view: PR, issue, commit, workflow, run, and
+  job.
+- Both the **live render** function (`octocat--render-foo`) and the
+  corresponding **loading-skeleton** function
+  (`octocat--render-foo-loading`), so the spacing is consistent regardless
+  of which render the user sees first.
+
+### What counts as a sibling
+
+The blank goes between sections that share the same parent.  It does **not**
+go between an item section and the surrounding container section's heading,
+and it does **not** go inside a section's body content (e.g. between
+individual `insert` calls within a section).
+
+### Interaction with `(insert "\n")` inside section bodies
+
+Some sections end their body with a trailing `(insert "\n")` for reasons
+unrelated to inter-section spacing (e.g. `octocat--render-comments` adds a
+blank after each individual comment).  Those are distinct; the inter-section
+blank described here lives *outside* and *between* sections, not inside them.
+
+---
+
 ## Summary of rules
 
 | Situation | Do | Don't |

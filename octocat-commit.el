@@ -127,9 +127,11 @@ symbol `error'.  Uses the GitHub REST API via `gh api'."
       (magit-insert-section (commit-meta)
         (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
+      (insert "\n")
       (magit-insert-section (commit-message)
         (magit-insert-heading (propertize "Message" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
+      (insert "\n")
       (magit-insert-section (commit-files)
         (magit-insert-heading (propertize "Files" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))))
@@ -174,12 +176,14 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
         (insert (format "  SHA     %s\n"
                         (propertize sha 'face 'octocat-commit-sha))))
       ;; ── Message ───────────────────────────────────────────────────────
+      (insert "\n")
       (magit-insert-section (commit-message)
         (magit-insert-heading (propertize "Message" 'face 'octocat-section-heading))
         (if (string-empty-p (string-trim message))
             (insert (propertize "  (no message)\n" 'face 'octocat-dimmed))
           (octocat--insert-markdown message)))
       ;; ── Files ─────────────────────────────────────────────────────────
+      (insert "\n")
       (magit-insert-section (commit-files)
         (magit-insert-heading
           (propertize (format "Files (%d)" (length files))

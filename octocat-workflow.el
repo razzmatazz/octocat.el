@@ -105,6 +105,7 @@ cons \\=(error . MSG) on failure."
       (magit-insert-section (workflow-info)
         (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
+      (insert "\n")
       (magit-insert-section (workflow-runs)
         (magit-insert-heading (propertize "Runs" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
@@ -149,6 +150,7 @@ hash-tables."
         (unless (string-empty-p updated)
           (insert (format "  Updated  %s\n" (octocat--format-ts-full updated)))))
       ;; ── Runs ────────────────────────────────────────────────────────────
+      (insert "\n")
       (magit-insert-section (workflow-runs)
         (magit-insert-heading
           (propertize (format "Runs (%d)" (length runs))

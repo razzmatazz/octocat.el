@@ -154,12 +154,15 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
       (magit-insert-section (issue-meta)
         (magit-insert-heading (propertize "Info" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
+      (insert "\n")
       (magit-insert-section (issue-body)
         (magit-insert-heading (propertize "Body" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
+      (insert "\n")
       (magit-insert-section (issue-labels)
         (magit-insert-heading (propertize "Labels" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
+      (insert "\n")
       (magit-insert-section (issue-comments)
         (magit-insert-heading (propertize "Comments" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
@@ -208,12 +211,14 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
         (when (and closed (not (eq closed :null)) (not (string-empty-p closed)))
           (insert (format "  Closed   %s\n" (octocat--format-ts-full closed)))))
       ;; ── Body ──────────────────────────────────────────────────────────
+      (insert "\n")
       (magit-insert-section (issue-body)
         (magit-insert-heading (propertize "Body" 'face 'octocat-section-heading))
         (if (string-empty-p (string-trim body))
             (insert (propertize "  (no description)\n" 'face 'octocat-dimmed))
           (octocat--insert-markdown body)))
       ;; ── Labels ────────────────────────────────────────────────────────
+      (insert "\n")
       (magit-insert-section (issue-labels)
         (magit-insert-heading
           (propertize (format "Labels (%d)" (length labels))
@@ -225,6 +230,7 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
                      (insert (format "  %s\n"
                                      (propertize name 'face 'octocat-branch)))))))
       ;; ── Comments ──────────────────────────────────────────────────────
+      (insert "\n")
       (magit-insert-section (issue-comments)
         (magit-insert-heading
           (propertize (format "Comments (%d)" (length comments))

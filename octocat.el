@@ -397,21 +397,25 @@ Issues, and Workflows, each with a dimmed \\='Loading…\\=' placeholder."
           (magit-insert-heading
             (propertize "Issues" 'face 'octocat-section-heading))
           (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))
+      (insert "\n")
       (octocat--hide-if-saved 'pull-requests
         (magit-insert-section (pull-requests)
           (magit-insert-heading
             (propertize "Pull Requests" 'face 'octocat-section-heading))
           (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))
+      (insert "\n")
       (octocat--hide-if-saved 'commits
         (magit-insert-section (commits)
           (magit-insert-heading
             (propertize "Commits" 'face 'octocat-section-heading))
           (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))
+      (insert "\n")
       (octocat--hide-if-saved 'workflow-runs
         (magit-insert-section (workflow-runs)
           (magit-insert-heading
             (propertize "Workflow Runs" 'face 'octocat-section-heading))
           (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))
+      (insert "\n")
       (octocat--hide-if-saved 'workflows
         (magit-insert-section (workflows)
           (magit-insert-heading
@@ -449,9 +453,13 @@ Render collapsible sections; delegate to the individual render helpers."
                                (t (format "%d workflow(s)" (length workflows)))))
                  'face 'octocat-dimmed)))
       (octocat--hide-if-saved 'issues        (octocat--render-issues issues))
+      (insert "\n")
       (octocat--hide-if-saved 'pull-requests (octocat--render-prs prs))
+      (insert "\n")
       (octocat--hide-if-saved 'commits       (octocat--render-commits commits default-branch))
+      (insert "\n")
       (octocat--hide-if-saved 'workflow-runs (octocat--render-workflow-runs recent-runs))
+      (insert "\n")
       (octocat--hide-if-saved 'workflows     (octocat--render-workflows workflows)))))
 
 
