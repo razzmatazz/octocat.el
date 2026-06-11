@@ -143,9 +143,6 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
          (message   (or (and c (gethash "message" c)) ""))
          (lines     (split-string message "\n"))
          (subject   (car lines))
-         (body-lines (cdr lines))
-         ;; Strip leading blank lines from body
-         (body-lines (seq-drop-while #'string-empty-p body-lines))
          (author-obj    (and c (gethash "author" c)))
          (author        (octocat--commit-author-full commit))
          (github-handle (octocat--commit-author-login commit))
@@ -179,9 +176,9 @@ COMMIT is the JSON object returned by the GitHub commits API endpoint."
       ;; ── Message ───────────────────────────────────────────────────────
       (magit-insert-section (commit-message)
         (magit-insert-heading (propertize "Message" 'face 'octocat-section-heading))
-        (if (null body-lines)
-            (insert (propertize "  (no body)\n" 'face 'octocat-dimmed))
-          (octocat--insert-markdown (string-join body-lines "\n"))))
+        (if (string-empty-p (string-trim message))
+            (insert (propertize "  (no message)\n" 'face 'octocat-dimmed))
+          (octocat--insert-markdown message)))
       ;; ── Files ─────────────────────────────────────────────────────────
       (magit-insert-section (commit-files)
         (magit-insert-heading
