@@ -67,28 +67,35 @@
 
 ;;;; Data fetching
 
-(defun octocat--fetch-job (repo job-id callback)
-  "Fetch job detail, log, and annotations for JOB-ID in REPO asynchronously.
-CALLBACK receives a list (JOB LOG-SECTIONS ANNOTATIONS) where:
+(defun octocat--fetch-job (repo run-id job-id callback)
+  "Fetch job detail, log, annotations, and artifacts for JOB-ID in REPO.
+RUN-ID is the numeric workflow run ID (used for the artifacts request).
+Calls CALLBACK asynchronously with a list (JOB LOG-SECTIONS ANNOTATIONS
+ARTIFACTS) where:
 - JOB is a hash-table from the GitHub REST API.
 - LOG-SECTIONS is either an alist of (STEP-NAME . LINES) pairs in source
   order, or a cons \\=(error . MSG) when log output is unavailable.
 - ANNOTATIONS is a vector of annotation hash-tables from the Checks API
   (GET /check-runs/JOB-ID/annotations), or \\=[] when unavailable.
+- ARTIFACTS is a vector of artifact hash-tables from the Actions API
+  (GET /actions/runs/RUN-ID/artifacts), or \\=[] when unavailable.
 A job-metadata failure is fatal and CALLBACK receives \\=(error . MSG)."
   (let ((job-result 'pending)
         (log-result 'pending)
-        (ann-result 'pending))
+        (ann-result 'pending)
+        (art-result 'pending))
     (cl-labels
         ((maybe-done ()
            (unless (or (eq job-result 'pending)
                        (eq log-result 'pending)
-                       (eq ann-result 'pending))
-             ;; Metadata failure aborts the whole view; log/annotation
-             ;; failures are passed through and rendered gracefully.
+                       (eq ann-result 'pending)
+                       (eq art-result 'pending))
+             ;; Metadata failure aborts the whole view; log/annotation/
+             ;; artifact failures are passed through and rendered gracefully.
              (if (eq (car-safe job-result) 'error)
                  (funcall callback job-result)
-               (funcall callback (list job-result log-result ann-result))))))
+               (funcall callback
+                        (list job-result log-result ann-result art-result))))))
       (octocat--run-gh
        "job-detail"
        (list "api" (format "repos/%s/actions/jobs/%s" repo
@@ -115,6 +122,21 @@ A job-metadata failure is fatal and CALLBACK receives \\=(error . MSG)."
            (error [])))
        (lambda (result)
          (setq ann-result (if (eq (car-safe result) 'error) [] result))
+         (maybe-done)))
+      (octocat--run-gh
+       "job-artifacts"
+       (list "api"
+             (format "repos/%s/actions/runs/%s/artifacts?per_page=100"
+                     repo (number-to-string run-id)))
+       (lambda (output)
+         (condition-case nil
+             (let ((parsed (json-parse-string (string-trim output))))
+               (or (and (hash-table-p parsed)
+                        (gethash "artifacts" parsed))
+                   []))
+           (error [])))
+       (lambda (result)
+         (setq art-result (if (eq (car-safe result) 'error) [] result))
          (maybe-done))))))
 
 
@@ -291,6 +313,39 @@ Uses bracket-checkbox glyphs to distinguish steps from job-level icons."
    ((equal level "warning") (propertize "⚠" 'face 'octocat-annotation-warning))
    (t                       (propertize "ℹ" 'face 'octocat-annotation-notice))))
 
+(defun octocat--format-artifact-size (bytes)
+  "Format BYTES as a human-readable size string."
+  (cond
+   ((null bytes)         "")
+   ((< bytes 1024)       (format "%d B" bytes))
+   ((< bytes 1048576)    (format "%.1f KB" (/ (float bytes) 1024)))
+   (t                    (format "%.1f MB" (/ (float bytes) 1048576)))))
+
+(defun octocat--render-artifacts (artifacts)
+  "Insert an Artifacts section for the ARTIFACTS vector into the current buffer.
+Each entry is a hash-table from the Actions API
+\(GET /actions/runs/RUN/artifacts).  Does nothing when ARTIFACTS is nil or empty."
+  (let ((arts (or artifacts [])))
+    (unless (zerop (length arts))
+      (magit-insert-section (job-artifacts)
+        (magit-insert-heading
+          (propertize (format "Artifacts (%d)" (length arts))
+                      'face 'octocat-section-heading))
+        (cl-loop for art across arts do
+                 (let* ((name  (or (gethash "name" art) ""))
+                        (size  (gethash "size_in_bytes" art))
+                        (label (concat "  \U0001f4e6 "
+                                       (propertize name 'face 'octocat-run-job-name)
+                                       "  "
+                                       (propertize
+                                        (octocat--format-artifact-size size)
+                                        'face 'octocat-dimmed))))
+                   (insert (propertize (concat label "\n")
+                                       'octocat-artifact art
+                                       'mouse-face 'magit-section-highlight
+                                       'help-echo "RET: download artifact")))))
+      (insert "\n"))))
+
 (defun octocat--render-annotations (annotations &optional job-name)
   "Insert an Annotations section for ANNOTATIONS vector into the current buffer.
 Each entry is a hash-table from the Checks API.  When JOB-NAME is non-nil
@@ -341,18 +396,16 @@ Does nothing when ANNOTATIONS is empty or nil."
       (insert "\n")
       (magit-insert-section (job-steps)
         (magit-insert-heading (propertize "Steps" 'face 'octocat-section-heading))
-        (insert (propertize "  Loading…\n" 'face 'octocat-dimmed)))
-      (insert "\n")
-      (magit-insert-section (job-log)
-        (magit-insert-heading (propertize "Log" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
 
-(defun octocat--render-job (job log-sections &optional annotations)
+(defun octocat--render-job (job log-sections &optional annotations artifacts)
   "Erase the current buffer and render job detail.
 JOB is a hash-table from the GitHub REST API (snake_case keys).
 LOG-SECTIONS is either an alist of (STEP-NAME . LINES) or a cons
 \\=(error . MSG) when log fetching failed.
 ANNOTATIONS is a vector of annotation hash-tables from the Checks API,
+or nil/[] when unavailable.
+ARTIFACTS is a vector of artifact hash-tables from the Actions API,
 or nil/[] when unavailable."
   (let* ((job-name   (or (gethash "name" job) ""))
          (status     (downcase (or (gethash "status" job) "")))
@@ -410,44 +463,82 @@ or nil/[] when unavailable."
           (insert (format "  Labels     %s\n"
                           (propertize labels 'face 'octocat-branch)))))
       (insert "\n")
-      ;; ── Per-step sections (icon + name + status + duration + log lines) ──
-      (if (zerop (length steps))
-          (insert (propertize "  (no steps)\n" 'face 'octocat-dimmed))
-        (cl-loop for step across steps do
-                 (let* ((sname    (or (gethash "name" step) ""))
-                        (sstat    (downcase (or (gethash "status" step) "")))
-                        (sconc-r  (gethash "conclusion" step))
-                        (sconc    (and (octocat--nonempty sconc-r) (downcase sconc-r)))
-                        (sstart   (octocat--nonempty (gethash "started_at" step)))
-                        (scomp    (octocat--nonempty (gethash "completed_at" step)))
-                        (sdur     (and sconc (octocat--run-duration sstart scomp)))
-                        (sicon    (octocat--job-step-icon sstat sconc))
-                        (sstatus  (or sconc sstat))
-                        (lines    (unless (eq (car-safe log-sections) 'error)
-                                    (cdr (assoc sname log-sections)))))
-                   (magit-section-hide
-                    (magit-insert-section (job-step sname)
-                      (magit-insert-heading
-                        (concat sicon
-                                " "
-                                (propertize
-                                 (truncate-string-to-width
-                                  (format "%-40s" sname) 40 nil ?\s "…")
-                                 'face 'octocat-run-step-name)
-                                (unless (string-empty-p sstatus)
-                                  (concat "  "
-                                          (propertize sstatus
-                                                      'face (octocat--job-status-face
-                                                             sstatus))))
-                                (when sdur
-                                  (propertize (format "  %s" sdur)
-                                              'face 'octocat-dimmed))))
-                      (octocat--render-log-lines lines "  "))))))
-      (when (eq (car-safe log-sections) 'error)
-        (insert (propertize (format "  (log unavailable: %s)\n" (cdr log-sections))
-                            'face 'octocat-dimmed)))
+      ;; ── Steps ────────────────────────────────────────────────────────────
+      (magit-insert-section (job-steps)
+        (magit-insert-heading (propertize "Steps" 'face 'octocat-section-heading))
+        (if (zerop (length steps))
+            (insert (propertize "  (no steps)\n" 'face 'octocat-dimmed))
+          (cl-loop for step across steps do
+                   (let* ((sname    (or (gethash "name" step) ""))
+                          (sstat    (downcase (or (gethash "status" step) "")))
+                          (sconc-r  (gethash "conclusion" step))
+                          (sconc    (and (octocat--nonempty sconc-r) (downcase sconc-r)))
+                          (sstart   (octocat--nonempty (gethash "started_at" step)))
+                          (scomp    (octocat--nonempty (gethash "completed_at" step)))
+                          (sdur     (and sconc (octocat--run-duration sstart scomp)))
+                          (sicon    (octocat--job-step-icon sstat sconc))
+                          (sstatus  (or sconc sstat))
+                          (lines    (unless (eq (car-safe log-sections) 'error)
+                                      (cdr (assoc sname log-sections)))))
+                     (magit-section-hide
+                      (magit-insert-section (job-step sname)
+                        (magit-insert-heading
+                          (concat "  "
+                                  sicon
+                                  " "
+                                  (propertize
+                                   (truncate-string-to-width
+                                    (format "%-40s" sname) 40 nil ?\s "…")
+                                   'face 'octocat-run-step-name)
+                                  (unless (string-empty-p sstatus)
+                                    (concat "  "
+                                            (propertize sstatus
+                                                        'face (octocat--job-status-face
+                                                               sstatus))))
+                                  (when sdur
+                                    (propertize (format "  %s" sdur)
+                                                'face 'octocat-dimmed))))
+                        (octocat--render-log-lines lines "    ")))))
+          (when (eq (car-safe log-sections) 'error)
+            (insert (propertize (format "  (log unavailable: %s)\n"
+                                        (cdr log-sections))
+                                'face 'octocat-dimmed)))))
+      (insert "\n")
+      ;; ── Artifacts (from Actions API) ────────────────────────────────────
+      (octocat--render-artifacts artifacts)
       ;; ── Annotations (from Checks API) — placed last, can be lengthy ─────
       (octocat--render-annotations annotations))))
+
+
+;;;; Download
+
+(defun octocat-job-download-artifact ()
+  "Download the artifact at point to a directory chosen by the user."
+  (interactive)
+  (let ((art (get-text-property (point) 'octocat-artifact)))
+    (unless art
+      (user-error "Octocat: No artifact at point"))
+    (unless (and octocat--job-repo octocat--job-run-id)
+      (user-error "Octocat: Buffer is not associated with a run"))
+    (let* ((name (or (gethash "name" art) ""))
+           (dir  (read-directory-name
+                  (format "Download \"%s\" to: " name)
+                  default-directory))
+           (repo    octocat--job-repo)
+           (run-id  octocat--job-run-id))
+      (message "Octocat: Downloading \"%s\"…" name)
+      (octocat--run-gh
+       "artifact-download"
+       (list "run" "download"
+             (number-to-string run-id)
+             "--repo" repo
+             "--name" name
+             "--dir"  (expand-file-name dir))
+       #'identity
+       (lambda (result)
+         (if (eq (car-safe result) 'error)
+             (message "Octocat: Download failed: %s" (cdr result))
+           (message "Octocat: Downloaded \"%s\" to %s" name dir)))))))
 
 
 ;;;; Major mode
@@ -459,6 +550,7 @@ or nil/[] when unavailable."
     (define-key map (kbd "q")       #'quit-window)
     (define-key map (kbd "o")       #'octocat-browse)
     (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (define-key map (kbd "RET")     #'octocat-job-download-artifact)
     (define-key map (kbd "g")  g)
     (define-key map (kbd "gr") #'octocat-job-refresh)
     map)
@@ -484,6 +576,7 @@ or nil/[] when unavailable."
     (user-error "Octocat: Buffer is not associated with a job"))
   (let* ((buf         (current-buffer))
          (repo        octocat--job-repo)
+         (run-id      octocat--job-run-id)
          (job-id      octocat--job-id)
          (job-name    octocat--job-name)
          (saved-point (octocat--save-point)))
@@ -491,7 +584,7 @@ or nil/[] when unavailable."
       (octocat--render-job-loading job-name))
     (setq mode-line-process " [refreshing…]")
     (octocat--fetch-job
-     repo job-id
+     repo run-id job-id
      (lambda (result)
        (when (buffer-live-p buf)
          (with-current-buffer buf
@@ -501,7 +594,8 @@ or nil/[] when unavailable."
                  (erase-buffer)
                  (insert (propertize (format "  Error: %s\n" (cdr result))
                                      'face 'error)))
-             (octocat--render-job (car result) (cadr result) (caddr result))
+             (octocat--render-job (car result) (cadr result)
+                                  (caddr result) (cadddr result))
              (octocat--restore-point saved-point))))))))
 
 (provide 'octocat-job)
