@@ -123,21 +123,23 @@ A job-metadata failure is fatal and CALLBACK receives \\=(error . MSG)."
        (lambda (result)
          (setq ann-result (if (eq (car-safe result) 'error) [] result))
          (maybe-done)))
-      (octocat--run-gh
-       "job-artifacts"
-       (list "api"
-             (format "repos/%s/actions/runs/%s/artifacts?per_page=100"
-                     repo (number-to-string run-id)))
-       (lambda (output)
-         (condition-case nil
-             (let ((parsed (json-parse-string (string-trim output))))
-               (or (and (hash-table-p parsed)
-                        (gethash "artifacts" parsed))
-                   []))
-           (error [])))
-       (lambda (result)
-         (setq art-result (if (eq (car-safe result) 'error) [] result))
-         (maybe-done))))))
+      (if (not run-id)
+          (progn (setq art-result []) (maybe-done))
+        (octocat--run-gh
+         "job-artifacts"
+         (list "api"
+               (format "repos/%s/actions/runs/%s/artifacts?per_page=100"
+                       repo (number-to-string run-id)))
+         (lambda (output)
+           (condition-case nil
+               (let ((parsed (json-parse-string (string-trim output))))
+                 (or (and (hash-table-p parsed)
+                          (gethash "artifacts" parsed))
+                     []))
+             (error [])))
+         (lambda (result)
+           (setq art-result (if (eq (car-safe result) 'error) [] result))
+           (maybe-done)))))))
 
 
 ;;;; Log parsing
@@ -343,8 +345,9 @@ Each entry is a hash-table from the Actions API
                    (insert (propertize (concat label "\n")
                                        'octocat-artifact art
                                        'mouse-face 'magit-section-highlight
-                                       'help-echo "RET: download artifact")))))
-      (insert "\n"))))
+                                       'help-echo "RET: download artifact"))))))))
+
+
 
 (defun octocat--render-annotations (annotations &optional job-name)
   "Insert an Annotations section for ANNOTATIONS vector into the current buffer.
@@ -506,39 +509,50 @@ or nil/[] when unavailable."
       (insert "\n")
       ;; ── Artifacts (from Actions API) ────────────────────────────────────
       (octocat--render-artifacts artifacts)
+      (when (and artifacts (not (zerop (length artifacts))))
+        (insert "\n"))
       ;; ── Annotations (from Checks API) — placed last, can be lengthy ─────
       (octocat--render-annotations annotations))))
 
 
 ;;;; Download
 
+(defun octocat--do-download-artifact (repo run-id art)
+  "Download artifact ART (a hash-table) from RUN-ID in REPO.
+Prompts for a destination directory and runs `gh run download' asynchronously."
+  (let* ((name (or (gethash "name" art) ""))
+         (dir  (read-directory-name
+                (format "Download \"%s\" to: " name)
+                default-directory)))
+    (message "Octocat: Downloading \"%s\"…" name)
+    (octocat--run-gh
+     "artifact-download"
+     (list "run" "download"
+           (number-to-string run-id)
+           "--repo" repo
+           "--name" name
+           "--dir"  (expand-file-name dir))
+     #'identity
+     (lambda (result)
+       (if (eq (car-safe result) 'error)
+           (message "Octocat: Download failed: %s" (cdr result))
+         (message "Octocat: Downloaded \"%s\" to %s" name dir))))))
+
 (defun octocat-job-download-artifact ()
   "Download the artifact at point to a directory chosen by the user."
   (interactive)
-  (let ((art (get-text-property (point) 'octocat-artifact)))
+  (let ((art  (get-text-property (point) 'octocat-artifact))
+        ;; Work in both job buffers (octocat--job-*) and run buffers
+        ;; (octocat--run-*) — whichever locals are bound wins.
+        (repo   (or (and (boundp 'octocat--job-repo)    octocat--job-repo)
+                    (and (boundp 'octocat--run-repo)    octocat--run-repo)))
+        (run-id (or (and (boundp 'octocat--job-run-id)  octocat--job-run-id)
+                    (and (boundp 'octocat--run-id)       octocat--run-id))))
     (unless art
       (user-error "Octocat: No artifact at point"))
-    (unless (and octocat--job-repo octocat--job-run-id)
+    (unless (and repo run-id)
       (user-error "Octocat: Buffer is not associated with a run"))
-    (let* ((name (or (gethash "name" art) ""))
-           (dir  (read-directory-name
-                  (format "Download \"%s\" to: " name)
-                  default-directory))
-           (repo    octocat--job-repo)
-           (run-id  octocat--job-run-id))
-      (message "Octocat: Downloading \"%s\"…" name)
-      (octocat--run-gh
-       "artifact-download"
-       (list "run" "download"
-             (number-to-string run-id)
-             "--repo" repo
-             "--name" name
-             "--dir"  (expand-file-name dir))
-       #'identity
-       (lambda (result)
-         (if (eq (car-safe result) 'error)
-             (message "Octocat: Download failed: %s" (cdr result))
-           (message "Octocat: Downloaded \"%s\" to %s" name dir)))))))
+    (octocat--do-download-artifact repo run-id art)))
 
 
 ;;;; Major mode

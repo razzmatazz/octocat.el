@@ -17,7 +17,8 @@
 
 ;; These commands are defined in octocat.el which loads this file, so we
 ;; cannot require it here.  Declare them to silence the byte-compiler.
-(declare-function octocat-browse "octocat" ())
+(declare-function octocat-browse                 "octocat"     ())
+(declare-function octocat-job-download-artifact  "octocat-job" ())
 
 
 ;;;; Buffer-local declarations
@@ -80,6 +81,27 @@ Individual job annotation failures are silently treated as empty vectors."
                (funcall callback (nreverse results))))))))))
 
 
+;;;; Artifacts fetching
+
+(defun octocat--fetch-run-artifacts (repo run-id callback)
+  "Fetch artifacts for run RUN-ID in REPO asynchronously.
+Calls CALLBACK with a vector of artifact hash-tables, or \\=[] on failure."
+  (octocat--run-gh
+   "run-artifacts"
+   (list "api"
+         (format "repos/%s/actions/runs/%s/artifacts?per_page=100"
+                 repo (number-to-string run-id)))
+   (lambda (output)
+     (condition-case nil
+         (let ((parsed (json-parse-string (string-trim output))))
+           (or (and (hash-table-p parsed)
+                    (gethash "artifacts" parsed))
+               []))
+       (error [])))
+   (lambda (result)
+     (funcall callback (if (eq (car-safe result) 'error) [] result)))))
+
+
 ;;;; Rendering helpers
 
 (defun octocat--run-step-icon (status conclusion)
@@ -126,11 +148,11 @@ STATUS takes priority over CONCLUSION for in-progress detection."
         (magit-insert-heading (propertize "Jobs" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
 
-(defun octocat--render-run (run &optional annotations-entries)
+(defun octocat--render-run (run &optional annotations-entries artifacts)
   "Erase the current buffer and render workflow-run detail from hash-table RUN.
 ANNOTATIONS-ENTRIES is an optional alist of (JOB-ID JOB-NAME ANNOTATIONS-VECTOR)
-triples returned by `octocat--fetch-run-annotations'.  When non-nil an
-Annotations section is rendered between Info and Jobs."
+triples returned by `octocat--fetch-run-annotations'.
+ARTIFACTS is an optional vector of artifact hash-tables from the Actions API."
   (let* ((run-id     (or (gethash "databaseId"   run) 0))
          (title      (or (gethash "displayTitle"  run) ""))
          (status     (downcase (or (gethash "status"       run) "")))
@@ -213,9 +235,7 @@ Annotations section is rendered between Info and Jobs."
                                           (octocat--run-duration
                                            (octocat--nonempty jstarted)
                                            (octocat--nonempty jcompleted))))
-                          (jicon      (octocat--run-icon jstatus jconc))
-                          (steps      (let ((v (gethash "steps" job)))
-                                        (if (or (null v) (eq v :null)) [] v))))
+                          (jicon      (octocat--run-icon jstatus jconc)))
                      (magit-insert-section (run-job job)
                        (magit-insert-heading
                          (concat
@@ -228,33 +248,10 @@ Annotations section is rendered between Info and Jobs."
                           (if duration
                               (propertize (format "  %s" duration) 'face 'octocat-dimmed)
                             "")
-                          "\n"))
-                       (when (> (length steps) 0)
-                         (cl-loop for step across steps do
-                                  (let* ((sname   (or (gethash "name"       step) ""))
-                                         (sstatus (downcase (or (gethash "status"     step) "")))
-                                         (sconc-r (gethash "conclusion" step))
-                                         (sconc   (and (octocat--nonempty sconc-r) (downcase sconc-r)))
-                                         (sstart  (gethash "startedAt"   step))
-                                         (scomp   (gethash "completedAt" step))
-                                         (sdur    (and sconc
-                                                      (octocat--run-duration
-                                                       (octocat--nonempty sstart)
-                                                       (octocat--nonempty scomp))))
-                                         (sicon   (octocat--run-step-icon sstatus sconc)))
-                                    (insert
-                                     (concat
-                                      "      "
-                                      sicon
-                                      " "
-                                      (propertize
-                                       (truncate-string-to-width
-                                        (format "%-43s" sname) 43 nil ?\s "…")
-                                       'face 'octocat-run-step-name)
-                                      (if sdur
-                                          (propertize (format "  %s" sdur) 'face 'octocat-dimmed)
-                                        "")
-                                      "\n"))))))))
+                          "\n"))))))
+      (insert "\n")
+      ;; ── Artifacts ───────────────────────────────────────────────────────
+      (octocat--render-artifacts artifacts)
       ;; ── Annotations (aggregated across all jobs) — placed last ──────────
       (let ((all-anns
              (when annotations-entries
@@ -281,7 +278,7 @@ Annotations section is rendered between Info and Jobs."
                         "  "
                         (propertize text
                                     'face (octocat--annotation-face level))
-                        "\n")))))))))))
+                          "\n"))))))))))
 
 
 ;;;; Visitor
@@ -312,12 +309,25 @@ for the selected job."
 
 ;;;; Major mode
 
+(defun octocat-run-visit-or-download ()
+  "Visit the job at point, or download the artifact at point.
+On a `run-job' section heading calls `octocat-run-visit'.
+On an artifact row (carrying the `octocat-artifact' text property)
+calls `octocat-job-download-artifact'."
+  (interactive)
+  (let ((section (magit-current-section)))
+    (cond
+     ((and section (eq (oref section type) 'run-job))
+      (octocat-run-visit))
+     ((get-text-property (point) 'octocat-artifact)
+      (octocat-job-download-artifact)))))
+
 (defvar octocat-run-mode-map
   (let ((map (make-sparse-keymap))
         (g   (make-sparse-keymap)))   ; "g" prefix — lets evil's "gg" through
     (set-keymap-parent map magit-section-mode-map)
     (define-key map (kbd "q")       #'quit-window)
-    (define-key map (kbd "RET")     #'octocat-run-visit)
+    (define-key map (kbd "RET")     #'octocat-run-visit-or-download)
     (define-key map (kbd "o")       #'octocat-browse)
     (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "g")  g)
@@ -370,16 +380,30 @@ then always fetches fresh data in the background."
              ;; Render immediately without annotations (fast path).
              (octocat--render-run result nil)
              (octocat--restore-point saved-point)
-             ;; Then fetch annotations for all jobs in parallel and re-render.
-             (let ((jobs (let ((v (gethash "jobs" result)))
-                           (if (or (null v) (eq v :null)) [] v))))
-               (octocat--fetch-run-annotations
-                repo jobs
-                (lambda (ann-entries)
-                  (when (buffer-live-p buf)
-                    (with-current-buffer buf
-                      (octocat--render-run result ann-entries)
-                      (octocat--restore-point saved-point)))))))))))))
+             ;; Fetch annotations and artifacts in parallel, re-render once
+             ;; both are ready.
+             (let* ((jobs (let ((v (gethash "jobs" result)))
+                            (if (or (null v) (eq v :null)) [] v)))
+                    (ann-result 'pending)
+                    (art-result 'pending))
+               (cl-labels
+                   ((maybe-done ()
+                      (unless (or (eq ann-result 'pending)
+                                  (eq art-result 'pending))
+                        (when (buffer-live-p buf)
+                          (with-current-buffer buf
+                            (octocat--render-run result ann-result art-result)
+                            (octocat--restore-point saved-point))))))
+                 (octocat--fetch-run-annotations
+                  repo jobs
+                  (lambda (entries)
+                    (setq ann-result entries)
+                    (maybe-done)))
+                 (octocat--fetch-run-artifacts
+                  repo id
+                  (lambda (arts)
+                    (setq art-result arts)
+                    (maybe-done))))))))))))
 
 (provide 'octocat-run)
 ;;; octocat-run.el ends here
