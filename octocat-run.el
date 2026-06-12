@@ -47,6 +47,39 @@ whose value is a vector of job hash-tables), or a cons \\=(error . MSG)."
    callback))
 
 
+;;;; Annotations fetching
+
+(defun octocat--fetch-run-annotations (repo jobs callback)
+  "Fetch check-run annotations for every job in the JOBS vector from REPO.
+Fires one async request per job in parallel.  Calls CALLBACK with an alist
+of (JOB-ID . ANNOTATIONS-VECTOR) entries, or nil when JOBS is empty.
+Individual job annotation failures are silently treated as empty vectors."
+  (let* ((job-list (cl-coerce jobs 'list))
+         (pending  (length job-list))
+         (results  nil))
+    (if (zerop pending)
+        (funcall callback nil)
+      (dolist (job job-list)
+        (let* ((job-id   (gethash "databaseId" job))
+               (job-name (or (gethash "name" job) "")))
+          (octocat--run-gh
+           "run-annotations"
+           (list "api"
+                 (format "repos/%s/check-runs/%s/annotations?per_page=100"
+                         repo (number-to-string job-id)))
+           (lambda (output)
+             (condition-case nil
+                 (let ((parsed (json-parse-string (string-trim output))))
+                   (if (vectorp parsed) parsed []))
+               (error [])))
+           (lambda (ann-result)
+             (let ((anns (if (eq (car-safe ann-result) 'error) [] ann-result)))
+               (push (list job-id job-name anns) results))
+             (cl-decf pending)
+             (when (zerop pending)
+               (funcall callback (nreverse results))))))))))
+
+
 ;;;; Rendering helpers
 
 (defun octocat--run-step-icon (status conclusion)
@@ -93,8 +126,11 @@ STATUS takes priority over CONCLUSION for in-progress detection."
         (magit-insert-heading (propertize "Jobs" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
 
-(defun octocat--render-run (run)
-  "Erase the current buffer and render workflow-run detail from hash-table RUN."
+(defun octocat--render-run (run &optional annotations-entries)
+  "Erase the current buffer and render workflow-run detail from hash-table RUN.
+ANNOTATIONS-ENTRIES is an optional alist of (JOB-ID JOB-NAME ANNOTATIONS-VECTOR)
+triples returned by `octocat--fetch-run-annotations'.  When non-nil an
+Annotations section is rendered between Info and Jobs."
   (let* ((run-id     (or (gethash "databaseId"   run) 0))
          (title      (or (gethash "displayTitle"  run) ""))
          (status     (downcase (or (gethash "status"       run) "")))
@@ -218,8 +254,34 @@ STATUS takes priority over CONCLUSION for in-progress detection."
                                       (if sdur
                                           (propertize (format "  %s" sdur) 'face 'octocat-dimmed)
                                         "")
-                                      "\n")))))))))))))
-
+                                      "\n"))))))))
+      ;; ── Annotations (aggregated across all jobs) — placed last ──────────
+      (let ((all-anns
+             (when annotations-entries
+               (cl-loop for (_jid jname anns) in annotations-entries
+                        append (cl-loop for ann across anns
+                                        collect (cons jname ann))))))
+        (when all-anns
+          (insert "\n")
+          (magit-insert-section (run-annotations)
+            (magit-insert-heading
+              (propertize (format "Annotations (%d)" (length all-anns))
+                          'face 'octocat-section-heading))
+            (dolist (entry all-anns)
+              (let* ((jname (car entry))
+                     (ann   (cdr entry))
+                     (level (downcase
+                             (or (gethash "annotation_level" ann) "notice")))
+                     (msg   (or (gethash "message" ann) ""))
+                     (text  (replace-regexp-in-string "\n" " " msg)))
+                (insert "  "
+                        (octocat--annotation-icon level)
+                        "  "
+                        (propertize jname 'face 'octocat-run-job-name)
+                        "  "
+                        (propertize text
+                                    'face (octocat--annotation-face level))
+                        "\n")))))))))))
 
 
 ;;;; Visitor
@@ -305,8 +367,19 @@ then always fetches fresh data in the background."
                           (format "  Error: %s\n" (cdr result))
                           'face 'error)))
              (octocat--detail-cache-save repo "run" id result)
-             (octocat--render-run result)
-             (octocat--restore-point saved-point))))))))
+             ;; Render immediately without annotations (fast path).
+             (octocat--render-run result nil)
+             (octocat--restore-point saved-point)
+             ;; Then fetch annotations for all jobs in parallel and re-render.
+             (let ((jobs (let ((v (gethash "jobs" result)))
+                           (if (or (null v) (eq v :null)) [] v))))
+               (octocat--fetch-run-annotations
+                repo jobs
+                (lambda (ann-entries)
+                  (when (buffer-live-p buf)
+                    (with-current-buffer buf
+                      (octocat--render-run result ann-entries)
+                      (octocat--restore-point saved-point)))))))))))))
 
 (provide 'octocat-run)
 ;;; octocat-run.el ends here

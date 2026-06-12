@@ -142,6 +142,21 @@ with a floor of 1."
   "Face for a step name in a workflow-run view."
   :group 'octocat)
 
+(defface octocat-annotation-warning
+  '((t :inherit warning))
+  "Face for a GitHub Actions warning annotation."
+  :group 'octocat)
+
+(defface octocat-annotation-error
+  '((t :inherit error))
+  "Face for a GitHub Actions error annotation."
+  :group 'octocat)
+
+(defface octocat-annotation-notice
+  '((t :inherit font-lock-comment-face))
+  "Face for a GitHub Actions notice annotation."
+  :group 'octocat)
+
 
 ;;;; exec-path augmentation
 

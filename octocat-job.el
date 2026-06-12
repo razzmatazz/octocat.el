@@ -68,23 +68,27 @@
 ;;;; Data fetching
 
 (defun octocat--fetch-job (repo job-id callback)
-  "Fetch job detail and log for JOB-ID in REPO asynchronously.
-CALLBACK receives a cons (JOB . LOG-SECTIONS) where JOB is a hash-table
-from the GitHub REST API and LOG-SECTIONS is either an alist of
-\(STEP-NAME . LINES) pairs in source order, or a cons \\=(error . MSG)
-when log output is unavailable (e.g. the job is still running).
+  "Fetch job detail, log, and annotations for JOB-ID in REPO asynchronously.
+CALLBACK receives a list (JOB LOG-SECTIONS ANNOTATIONS) where:
+- JOB is a hash-table from the GitHub REST API.
+- LOG-SECTIONS is either an alist of (STEP-NAME . LINES) pairs in source
+  order, or a cons \\=(error . MSG) when log output is unavailable.
+- ANNOTATIONS is a vector of annotation hash-tables from the Checks API
+  (GET /check-runs/JOB-ID/annotations), or \\=[] when unavailable.
 A job-metadata failure is fatal and CALLBACK receives \\=(error . MSG)."
   (let ((job-result 'pending)
-        (log-result 'pending))
+        (log-result 'pending)
+        (ann-result 'pending))
     (cl-labels
         ((maybe-done ()
            (unless (or (eq job-result 'pending)
-                       (eq log-result 'pending))
-             ;; Metadata failure aborts the whole view; log failure is
-             ;; passed through as-is and rendered gracefully.
+                       (eq log-result 'pending)
+                       (eq ann-result 'pending))
+             ;; Metadata failure aborts the whole view; log/annotation
+             ;; failures are passed through and rendered gracefully.
              (if (eq (car-safe job-result) 'error)
                  (funcall callback job-result)
-               (funcall callback (cons job-result log-result))))))
+               (funcall callback (list job-result log-result ann-result))))))
       (octocat--run-gh
        "job-detail"
        (list "api" (format "repos/%s/actions/jobs/%s" repo
@@ -98,7 +102,20 @@ A job-metadata failure is fatal and CALLBACK receives \\=(error . MSG)."
              "--job" (number-to-string job-id)
              "--repo" repo)
        #'octocat--job-parse-log
-       (lambda (result) (setq log-result result) (maybe-done))))))
+       (lambda (result) (setq log-result result) (maybe-done)))
+      (octocat--run-gh
+       "job-annotations"
+       (list "api"
+             (format "repos/%s/check-runs/%s/annotations?per_page=100"
+                     repo (number-to-string job-id)))
+       (lambda (output)
+         (condition-case nil
+             (let ((parsed (json-parse-string (string-trim output))))
+               (if (vectorp parsed) parsed []))
+           (error [])))
+       (lambda (result)
+         (setq ann-result (if (eq (car-safe result) 'error) [] result))
+         (maybe-done))))))
 
 
 ;;;; Log parsing
@@ -260,6 +277,50 @@ Uses bracket-checkbox glyphs to distinguish steps from job-level icons."
     'octocat-ci-failure)
    (t 'octocat-ci-pending)))
 
+(defun octocat--annotation-face (level)
+  "Return the face for an annotation LEVEL string."
+  (cond
+   ((equal level "failure") 'octocat-annotation-error)
+   ((equal level "warning") 'octocat-annotation-warning)
+   (t                       'octocat-annotation-notice)))
+
+(defun octocat--annotation-icon (level)
+  "Return a propertized icon for an annotation LEVEL string."
+  (cond
+   ((equal level "failure") (propertize "✗" 'face 'octocat-annotation-error))
+   ((equal level "warning") (propertize "⚠" 'face 'octocat-annotation-warning))
+   (t                       (propertize "ℹ" 'face 'octocat-annotation-notice))))
+
+(defun octocat--render-annotations (annotations &optional job-name)
+  "Insert an Annotations section for ANNOTATIONS vector into the current buffer.
+Each entry is a hash-table from the Checks API.  When JOB-NAME is non-nil
+it is shown as a prefix on each line (used in the run buffer view).
+Does nothing when ANNOTATIONS is empty or nil."
+  (let ((anns (or annotations [])))
+    (unless (zerop (length anns))
+      (magit-insert-section (job-annotations)
+        (magit-insert-heading
+          (propertize (format "Annotations (%d)" (length anns))
+                      'face 'octocat-section-heading))
+        (cl-loop for ann across anns do
+                 (let* ((level (downcase
+                                (or (gethash "annotation_level" ann) "notice")))
+                        (msg   (or (gethash "message" ann) ""))
+                        (icon  (octocat--annotation-icon level))
+                        (face  (octocat--annotation-face level))
+                        ;; Collapse multi-line messages to a single line.
+                        (text  (replace-regexp-in-string "\n" " " msg)))
+                                    (insert (concat "  "
+                                                   icon
+                                                   " "
+                                                   (when job-name
+                                                     (concat (propertize job-name
+                                                                         'face 'octocat-run-job-name)
+                                                             "  "))
+                                                   (propertize text 'face face)
+                                                   "\n")))))
+      (insert "\n"))))
+
 
 ;;;; Rendering
 
@@ -286,11 +347,13 @@ Uses bracket-checkbox glyphs to distinguish steps from job-level icons."
         (magit-insert-heading (propertize "Log" 'face 'octocat-section-heading))
         (insert (propertize "  Loading…\n" 'face 'octocat-dimmed))))))
 
-(defun octocat--render-job (job log-sections)
+(defun octocat--render-job (job log-sections &optional annotations)
   "Erase the current buffer and render job detail.
 JOB is a hash-table from the GitHub REST API (snake_case keys).
 LOG-SECTIONS is either an alist of (STEP-NAME . LINES) or a cons
-\\=(error . MSG) when log fetching failed."
+\\=(error . MSG) when log fetching failed.
+ANNOTATIONS is a vector of annotation hash-tables from the Checks API,
+or nil/[] when unavailable."
   (let* ((job-name   (or (gethash "name" job) ""))
          (status     (downcase (or (gethash "status" job) "")))
          (conc-raw   (gethash "conclusion" job))
@@ -382,7 +445,9 @@ LOG-SECTIONS is either an alist of (STEP-NAME . LINES) or a cons
                       (octocat--render-log-lines lines "  "))))))
       (when (eq (car-safe log-sections) 'error)
         (insert (propertize (format "  (log unavailable: %s)\n" (cdr log-sections))
-                            'face 'octocat-dimmed))))))
+                            'face 'octocat-dimmed)))
+      ;; ── Annotations (from Checks API) — placed last, can be lengthy ─────
+      (octocat--render-annotations annotations))))
 
 
 ;;;; Major mode
@@ -436,7 +501,7 @@ LOG-SECTIONS is either an alist of (STEP-NAME . LINES) or a cons
                  (erase-buffer)
                  (insert (propertize (format "  Error: %s\n" (cdr result))
                                      'face 'error)))
-             (octocat--render-job (car result) (cdr result))
+             (octocat--render-job (car result) (cadr result) (caddr result))
              (octocat--restore-point saved-point))))))))
 
 (provide 'octocat-job)
