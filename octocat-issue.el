@@ -102,13 +102,14 @@ On someone else\\='s comment: signal an error."
 
 ;;;; Data fetching
 
-(defun octocat--list-issues (repo callback)
-  "Fetch open issues for REPO asynchronously and call CALLBACK with results.
+(defun octocat--list-issues (repo limit callback)
+  "Fetch up to LIMIT open issues for REPO asynchronously and call CALLBACK.
 CALLBACK is called with a list of issue hash-tables, or a cons \\=(error . MSG)."
   (octocat--run-gh "issues"
                    (list "issue" "list"
                          "--repo" repo
                          "--state" "open"
+                         "--limit" (number-to-string limit)
                          "--json" "number,title,author,state")
                    #'octocat--parse-json-list
                    callback))

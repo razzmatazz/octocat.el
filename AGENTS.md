@@ -65,7 +65,31 @@ where the missing or extra `)` lives.
 
 ## Reloading into Emacs
 
-After editing, use the `emacs__eval-elisp` MCP tool to reload **all** `octocat*.el` files — not just the ones changed. Use `load-file` (not `require`, so files are re-evaluated even if already loaded). Load order matters: `octocat-core.el` must be loaded before the rest.
+After editing, use the `emacs__eval-elisp` MCP tool to reload **all** `octocat*.el` files — not just the ones changed. Use `load-file` (not `require`, so files are re-evaluated even if already loaded). Load order matters:
+
+- `octocat-core.el` must be first (everything depends on it).
+- `octocat-evil.el` must come **before** `octocat.el`. The last lines of `octocat.el` call `octocat-evil-setup`; if `octocat-evil.el` has not been `load-file`d yet the old definition runs silently. `require` inside `octocat--evil-init` is a no-op when the feature is already provided, so failing to explicitly `load-file` `octocat-evil.el` means evil keybinding changes are never applied — buffers look correct but keys do nothing.
+
+The canonical reload sequence is:
+
+```elisp
+(dolist (buf (buffer-list))
+  (when (string-match-p "\\*octocat" (buffer-name buf))
+    (kill-buffer buf)))
+(dolist (f (directory-files "/path/to/octocat" t "\\.elc$"))
+  (delete-file f))
+(load-file "octocat-core.el")
+(load-file "octocat-edit.el")
+(load-file "octocat-commit.el")
+(load-file "octocat-job.el")
+(load-file "octocat-run.el")
+(load-file "octocat-workflow.el")
+(load-file "octocat-pr-diff.el")
+(load-file "octocat-pr.el")
+(load-file "octocat-issue.el")
+(load-file "octocat-evil.el")   ; ← before octocat.el
+(load-file "octocat.el")
+```
 
 **Always delete `.elc` files before reloading.** Emacs prefers compiled files over source, so stale `.elc` files will silently shadow your edits. Use `make clean` to remove them.
 

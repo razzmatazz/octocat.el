@@ -20,6 +20,14 @@
 (declare-function octocat-browse "octocat" ())
 
 
+;;;; Customisation
+
+(defcustom octocat-workflow-runs-limit 20
+  "Default number of runs to display in the workflow detail view."
+  :type 'integer
+  :group 'octocat)
+
+
 ;;;; Buffer-local declarations
 
 (defvar-local octocat--workflow-repo nil
@@ -31,11 +39,16 @@
 (defvar-local octocat--workflow-name nil
   "The display name of the workflow this buffer is displaying.")
 
+(defvar-local octocat--workflow-runs-count nil
+  "Current per-session run fetch limit for this workflow detail buffer.
+Nil until first refresh, then initialised from `octocat-workflow-runs-limit'.")
+
 
 ;;;; Data fetching
 
-(defun octocat--fetch-workflow (repo id callback)
+(defun octocat--fetch-workflow (repo id limit callback)
   "Fetch detail for workflow ID in REPO asynchronously.
+LIMIT controls how many run entries are requested.
 Calls CALLBACK with a cons (WORKFLOW . RUNS) where WORKFLOW is a
 hash-table of metadata and RUNS is a list of run hash-tables, or a
 cons \\=(error . MSG) on failure."
@@ -62,7 +75,7 @@ cons \\=(error . MSG) on failure."
        (list "run" "list"
              "--repo"     repo
              "--workflow" (number-to-string id)
-             "--limit"    "20"
+             "--limit"    (number-to-string limit)
              "--json"     "databaseId,displayTitle,status,conclusion,createdAt,headBranch")
        #'octocat--parse-json-list
        (lambda (result) (setq runs-result result) (maybe-done))))))
@@ -182,31 +195,59 @@ hash-tables."
                      (octocat--format-title title)
                      "  "
                      (propertize date 'face 'octocat-dimmed)
-                     "\n")))))))))))
+                     "\n")))))
+            (when (>= (length runs) octocat--workflow-runs-count)
+              (let ((hint '(mouse-face magit-section-highlight
+                            help-echo  "RET / +: load more runs")))
+                (magit-insert-section (load-more 'workflow-runs)
+                  (magit-insert-heading
+                    (concat (apply #'propertize
+                                   (format "  [+] Load %d more…"
+                                           octocat-workflow-runs-limit)
+                                   'face 'octocat-dimmed hint)
+                            "\n")))))))))))
 
 ;;;; Visitor
 
 (defun octocat-workflow-visit ()
   "Open the detail view for the item at point.
-Currently handles \\='workflow-run\\=' sections, opening an
-`octocat-run-mode' buffer for the selected run."
+Handles \\='workflow-run\\=' sections (opens the run detail buffer) and
+\\='load-more\\=' sections (fetches the next page of runs)."
   (interactive)
   (let ((section (magit-current-section)))
-    (when (and section (eq (oref section type) 'workflow-run))
-      (let* ((run      (oref section value))
-             (run-id   (gethash "databaseId" run))
-             (title    (or (gethash "displayTitle" run) ""))
-             (repo     octocat--workflow-repo)
-             (buf-name (format "*octocat-run: %s#%d*" repo run-id))
-             (buf      (get-buffer-create buf-name)))
-        (pop-to-buffer buf)
-        (unless (derived-mode-p 'octocat-run-mode)
-          (octocat-run-mode))
-        (setq octocat--run-repo repo
-              octocat--run-id   run-id)
-        (octocat--render-run-loading run-id)
-        (octocat-run-refresh)
-        (ignore title)))))
+    (when section
+      (pcase (oref section type)
+        ('workflow-run
+         (let* ((run      (oref section value))
+                (run-id   (gethash "databaseId" run))
+                (title    (or (gethash "displayTitle" run) ""))
+                (repo     octocat--workflow-repo)
+                (buf-name (format "*octocat-run: %s#%d*" repo run-id))
+                (buf      (get-buffer-create buf-name)))
+           (pop-to-buffer buf)
+           (unless (derived-mode-p 'octocat-run-mode)
+             (octocat-run-mode))
+           (setq octocat--run-repo repo
+                 octocat--run-id   run-id)
+           (octocat--render-run-loading run-id)
+           (octocat-run-refresh)
+           (ignore title)))
+        ('load-more
+         (cl-incf octocat--workflow-runs-count octocat-workflow-runs-limit)
+         (octocat-workflow-refresh))))))
+
+
+;;;; Load-more command
+
+(defun octocat-workflow-load-more ()
+  "Load more runs in the workflow detail buffer.
+Increments the per-session fetch limit and re-runs
+`octocat-workflow-refresh'."
+  (interactive)
+  (unless octocat--workflow-runs-count
+    (setq octocat--workflow-runs-count octocat-workflow-runs-limit))
+  (cl-incf octocat--workflow-runs-count octocat-workflow-runs-limit)
+  (octocat-workflow-refresh))
 
 
 ;;;; Major mode
@@ -217,6 +258,7 @@ Currently handles \\='workflow-run\\=' sections, opening an
     (set-keymap-parent map magit-section-mode-map)
     (define-key map (kbd "q")       #'quit-window)
     (define-key map (kbd "RET")     #'octocat-workflow-visit)
+    (define-key map (kbd "+")       #'octocat-workflow-load-more)
     (define-key map (kbd "o")       #'octocat-browse)
     (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "g")  g)
@@ -251,17 +293,24 @@ then always fetches fresh data in the background."
   (interactive)
   (unless (and octocat--workflow-repo octocat--workflow-id)
     (user-error "Octocat: Buffer is not associated with a workflow"))
+  (unless octocat--workflow-runs-count
+    (setq octocat--workflow-runs-count octocat-workflow-runs-limit))
   (let* ((buf         (current-buffer))
          (repo        octocat--workflow-repo)
          (id          octocat--workflow-id)
+         (runs-count  octocat--workflow-runs-count)
          (saved-point (octocat--save-point)))
-    (let ((cache (octocat--detail-cache-load repo "workflow" id)))
+    ;; Only render the cache when the run limit is at its default.  If the
+    ;; user has loaded more runs, the cached list is shorter than what is
+    ;; currently shown; rendering it would cause jitter.
+    (let ((cache (and (= runs-count octocat-workflow-runs-limit)
+                      (octocat--detail-cache-load repo "workflow" id))))
       (when cache
         (octocat--workflow-cache-render cache)
         (octocat--restore-point saved-point)))
     (setq mode-line-process " [refreshing…]")
     (octocat--fetch-workflow
-     repo id
+     repo id runs-count
      (lambda (result)
        (when (buffer-live-p buf)
          (with-current-buffer buf
@@ -274,10 +323,14 @@ then always fetches fresh data in the background."
              (let* ((wf   (car result))
                     (runs (cdr result))
                     (obj  (let ((h (make-hash-table :test #'equal)))
-                            (puthash "workflow" wf               h)
-                            (puthash "runs"     (vconcat runs)   h)
+                            (puthash "workflow" wf             h)
+                            (puthash "runs"     (vconcat runs) h)
                             h)))
-               (octocat--detail-cache-save repo "workflow" id obj)
+               ;; Only cache when the limit is at its default so "load
+               ;; more" results don't corrupt the stale-while-revalidate
+               ;; snapshot.
+               (when (= runs-count octocat-workflow-runs-limit)
+                 (octocat--detail-cache-save repo "workflow" id obj))
                (octocat--render-workflow wf runs)
                (octocat--restore-point saved-point)))))))))
 

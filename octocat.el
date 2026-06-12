@@ -114,26 +114,62 @@ run hash-tables, or a cons \\=(error . MSG) on failure."
    #'octocat--parse-json-list
    callback))
 
-(defun octocat--list-recent-runs (repo callback)
-  "Fetch the last 20 workflow run entries across all workflows in REPO.
+(defun octocat--list-recent-runs (repo limit callback)
+  "Fetch the LIMIT most recent workflow run entries across all workflows in REPO.
 Call CALLBACK with a list of run hash-tables (each including a
 \\='workflowName\\=' key), or a cons \\=(error . MSG) on failure."
   (octocat--run-gh
    "recent-runs"
    (list "run" "list"
          "--repo"  repo
-         "--limit" "20"
+         "--limit" (number-to-string limit)
          "--json"  "databaseId,displayTitle,status,conclusion,createdAt,headBranch,workflowName")
    #'octocat--parse-json-list
    callback))
 
-(defcustom octocat-commits-limit 20
-  "Number of recent commits to display on the dashboard."
+(defcustom octocat-prs-limit 30
+  "Default number of open pull requests to display on the dashboard."
   :type 'integer
   :group 'octocat)
 
-(defun octocat--list-commits (repo callback)
-  "Fetch the last `octocat-commits-limit' commits on the default branch of REPO.
+(defcustom octocat-issues-limit 30
+  "Default number of open issues to display on the dashboard."
+  :type 'integer
+  :group 'octocat)
+
+(defcustom octocat-runs-limit 20
+  "Default number of recent workflow runs to display on the dashboard."
+  :type 'integer
+  :group 'octocat)
+
+(defcustom octocat-commits-limit 20
+  "Default number of recent commits to display on the dashboard."
+  :type 'integer
+  :group 'octocat)
+
+;; Per-session fetch limits — buffer-local counterparts to the defcustoms
+;; above.  Nil until the first refresh; the render functions read these to
+;; decide whether to show a "load more" row.  Declared here (before the
+;; render functions) so the byte-compiler knows they are intentional
+;; buffer-locals and not free variables.
+(defvar-local octocat--prs-count nil
+  "Current per-session PR fetch limit for this dashboard buffer.
+Nil until first refresh, then initialised from `octocat-prs-limit'.")
+
+(defvar-local octocat--issues-count nil
+  "Current per-session issue fetch limit for this dashboard buffer.
+Nil until first refresh, then initialised from `octocat-issues-limit'.")
+
+(defvar-local octocat--commits-count nil
+  "Current per-session commit fetch limit for this dashboard buffer.
+Nil until first refresh, then initialised from `octocat-commits-limit'.")
+
+(defvar-local octocat--runs-count nil
+  "Current per-session recent-run fetch limit for this dashboard buffer.
+Nil until first refresh, then initialised from `octocat-runs-limit'.")
+
+(defun octocat--list-commits (repo limit callback)
+  "Fetch the LIMIT most recent commits on the default branch of REPO.
 Calls CALLBACK with a list of commit hash-tables, or a cons \\=(error . MSG).
 Uses the GitHub REST API via `gh api'.  The default branch is determined
 automatically by the API when no SHA is specified.
@@ -142,7 +178,7 @@ always issues a GET request."
   (octocat--run-gh
    "commits"
    (list "api"
-         (format "repos/%s/commits?per_page=%d" repo octocat-commits-limit))
+         (format "repos/%s/commits?per_page=%d" repo limit))
    #'octocat--parse-json-list
    callback))
 
@@ -218,7 +254,16 @@ PRS may be a list of pull-request hash-tables or a cons (error . MSG)."
                  (propertize (format "%-6s" state) 'face state-face)
                  "  "
                  ci
-                 "\n"))))))))))
+                 "\n")))))
+        (when (>= (length prs) octocat--prs-count)
+          (let ((hint '(mouse-face magit-section-highlight
+                        help-echo  "RET / +: load more pull requests")))
+            (magit-insert-section (load-more 'prs)
+              (magit-insert-heading
+                (concat (apply #'propertize
+                               (format "  [+] Load %d more…" octocat-prs-limit)
+                               'face 'octocat-dimmed hint)
+                        "\n"))))))))))
 
 (defun octocat--render-issues (issues)
   "Insert the collapsible Issues section for ISSUES.
@@ -253,7 +298,16 @@ ISSUES may be a list of issue hash-tables or a cons (error . MSG)."
                (propertize (format "%-16s" author) 'face 'octocat-pr-author)
                "  "
                (propertize (format "%-6s" state) 'face state-face)
-               "\n")))))))))
+               "\n")))))
+      (when (>= (length issues) octocat--issues-count)
+        (let ((hint '(mouse-face magit-section-highlight
+                      help-echo  "RET / +: load more issues")))
+          (magit-insert-section (load-more 'issues)
+            (magit-insert-heading
+              (concat (apply #'propertize
+                             (format "  [+] Load %d more…" octocat-issues-limit)
+                             'face 'octocat-dimmed hint)
+                      "\n")))))))))
 
 (defun octocat--render-workflows (workflows)
   "Insert the collapsible Workflows section for WORKFLOWS.
@@ -333,7 +387,16 @@ Show up to 20 most recent workflow entries across all workflows."
                  (octocat--format-title title)
                  "  "
                  (propertize date 'face 'octocat-dimmed)
-                 "\n"))))))))))
+                 "\n")))))
+        (when (>= (length recent-runs) octocat--runs-count)
+          (let ((hint '(mouse-face magit-section-highlight
+                        help-echo  "RET / +: load more runs")))
+            (magit-insert-section (load-more 'recent-runs)
+              (magit-insert-heading
+                (concat (apply #'propertize
+                               (format "  [+] Load %d more…" octocat-runs-limit)
+                               'face 'octocat-dimmed hint)
+                        "\n"))))))))))
 
 
 (defun octocat--render-commits (commits &optional default-branch)
@@ -380,7 +443,16 @@ navigates to the commit detail view via `octocat-visit'."
                  (propertize (format "%-16s" author) 'face 'octocat-pr-author)
                  "  "
                  (propertize date 'face 'octocat-dimmed)
-                 "\n"))))))))))
+                 "\n")))))
+        (when (>= (length commits) octocat--commits-count)
+          (let ((hint '(mouse-face magit-section-highlight
+                        help-echo  "RET / +: load more commits")))
+            (magit-insert-section (load-more 'commits)
+              (magit-insert-heading
+                (concat (apply #'propertize
+                               (format "  [+] Load %d more…" octocat-commits-limit)
+                               'face 'octocat-dimmed hint)
+                        "\n"))))))))))
 
 (defun octocat--render-loading (repo)
   "Render a skeleton front view for REPO while data is still loading.
@@ -472,6 +544,7 @@ Render collapsible sections; delegate to the individual render helpers."
   "Keymap for `octocat-mode'.")
 (define-key octocat-mode-map (kbd "q")       #'quit-window)
 (define-key octocat-mode-map (kbd "RET")     #'octocat-visit)
+(define-key octocat-mode-map (kbd "+")       #'octocat-load-more)
 (define-key octocat-mode-map (kbd "o")       #'octocat-browse)
 (define-key octocat-mode-map (kbd "C-c C-o") #'octocat-browse)
 (define-derived-mode octocat-mode magit-section-mode "Octocat"
@@ -514,31 +587,57 @@ children are the `pull-requests', `issues', and `workflows' sections."
 Loads a disk cache (if present) and renders it immediately, then always
 fetches fresh data in the background and re-renders when it arrives.
 Issues 6 parallel API requests: PRs, issues, workflow list, the most
-recent workflow runs across all workflows, the last `octocat-commits-limit'
-commits on the default branch, and the default branch name itself."
+recent workflow runs across all workflows, the last N commits on the
+default branch (where N is the current per-session limit), and the
+default branch name itself."
   (interactive)
   (unless octocat--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
-  (let* ((buf         (current-buffer))
-         (repo        octocat--repo)
-         (cache       (octocat--cache-load repo))
+  ;; Initialise per-session limits from their defcustom defaults on the
+  ;; first call (nil → default).  Subsequent calls preserve whatever the
+  ;; user may have increased via "load more".
+  (unless octocat--prs-count    (setq octocat--prs-count    octocat-prs-limit))
+  (unless octocat--issues-count (setq octocat--issues-count octocat-issues-limit))
+  (unless octocat--commits-count (setq octocat--commits-count octocat-commits-limit))
+  (unless octocat--runs-count   (setq octocat--runs-count   octocat-runs-limit))
+  (let* ((buf           (current-buffer))
+         (repo          octocat--repo)
+         (cache         (octocat--cache-load repo))
+         ;; Snapshot limits now so all six fetch closures and maybe-render
+         ;; use the same values, even if the user triggers "load more"
+         ;; while a refresh is in flight.
+         (prs-count     octocat--prs-count)
+         (issues-count  octocat--issues-count)
+         (commits-count octocat--commits-count)
+         (runs-count    octocat--runs-count)
          ;; Capture point position before any render so both the cache
          ;; render and the live render can restore it afterwards.
-         (saved-point (octocat--save-point)))
-    ;; Render cache immediately if available; otherwise show loading skeleton.
-    (if cache
-        (progn
-          (octocat--render (plist-get cache :prs)
-                           (plist-get cache :issues)
-                           (plist-get cache :workflows)
-                           repo
-                           (plist-get cache :recent-runs)
-                           (plist-get cache :commits)
-                           (plist-get cache :default-branch))
-          (octocat--restore-point saved-point))
-      (octocat--render-loading repo))
+         (saved-point   (octocat--save-point)))
+    ;; Render cache immediately if available — but only when every limit is
+    ;; at its default.  If the user has loaded more items than the cache
+    ;; holds, rendering the cache would briefly shrink the list back to its
+    ;; default size and then snap back when the live fetch arrives (jitter).
+    ;; In that case keep whatever is currently in the buffer; the live fetch
+    ;; will update it.  On a genuine first open with no cache and an empty
+    ;; buffer, show the loading skeleton so the user sees something.
+    (let ((at-defaults (and (= prs-count     octocat-prs-limit)
+                            (= issues-count  octocat-issues-limit)
+                            (= commits-count octocat-commits-limit)
+                            (= runs-count    octocat-runs-limit))))
+      (cond
+       ((and cache at-defaults)
+        (octocat--render (plist-get cache :prs)
+                         (plist-get cache :issues)
+                         (plist-get cache :workflows)
+                         repo
+                         (plist-get cache :recent-runs)
+                         (plist-get cache :commits)
+                         (plist-get cache :default-branch))
+        (octocat--restore-point saved-point))
+       ((zerop (buffer-size))
+        (octocat--render-loading repo))))
     ;; Always fetch fresh data in the background.
-    ;; All 5 requests fire in parallel; render once all have returned.
+    ;; All 6 requests fire in parallel; render once all have returned.
     (setq mode-line-process " [refreshing…]")
     (let ((pr-result       'pending)
           (issue-result    'pending)
@@ -558,17 +657,25 @@ commits on the default branch, and the default branch name itself."
                  (with-current-buffer buf
                    (setq mode-line-process nil)
                    (let ((branch (and (stringp branch-result) branch-result)))
-                     (octocat--cache-save repo pr-result issue-result
-                                          workflow-result runs-result
-                                          commits-result branch)
+                     ;; Only persist to cache when every limit is at its
+                     ;; default, so "load more" results never corrupt the
+                     ;; stale-while-revalidate snapshot that greets the
+                     ;; user on the next buffer open.
+                     (when (and (= prs-count     octocat-prs-limit)
+                                (= issues-count  octocat-issues-limit)
+                                (= commits-count octocat-commits-limit)
+                                (= runs-count    octocat-runs-limit))
+                       (octocat--cache-save repo pr-result issue-result
+                                            workflow-result runs-result
+                                            commits-result branch))
                      (octocat--render pr-result issue-result workflow-result
                                       repo runs-result commits-result branch))
                    (octocat--restore-point saved-point))))))
-        (octocat--list-prs repo
+        (octocat--list-prs repo prs-count
                            (lambda (result)
                              (setq pr-result result)
                              (maybe-render)))
-        (octocat--list-issues repo
+        (octocat--list-issues repo issues-count
                               (lambda (result)
                                 (setq issue-result result)
                                 (maybe-render)))
@@ -576,11 +683,11 @@ commits on the default branch, and the default branch name itself."
                                  (lambda (result)
                                    (setq workflow-result result)
                                    (maybe-render)))
-        (octocat--list-recent-runs repo
+        (octocat--list-recent-runs repo runs-count
                                    (lambda (result)
                                      (setq runs-result result)
                                      (maybe-render)))
-        (octocat--list-commits repo
+        (octocat--list-commits repo commits-count
                                (lambda (result)
                                  (setq commits-result result)
                                  (maybe-render)))
@@ -711,6 +818,21 @@ commits on the default branch, and the default branch name itself."
                octocat--pr-diff-number number)
          (octocat--render-pr-diff-loading number)
          (octocat-pr-diff-refresh)))
+      ;; RET on a "load more" row fetches the next page of that list.
+      ('load-more
+       (pcase (oref section value)
+         ('prs
+          (cl-incf octocat--prs-count octocat-prs-limit)
+          (octocat-refresh))
+         ('issues
+          (cl-incf octocat--issues-count octocat-issues-limit)
+          (octocat-refresh))
+         ('commits
+          (cl-incf octocat--commits-count octocat-commits-limit)
+          (octocat-refresh))
+         ('recent-runs
+          (cl-incf octocat--runs-count octocat-runs-limit)
+          (octocat-refresh))))
       (_ nil))))
 
 (defun octocat-browse ()
@@ -759,6 +881,43 @@ commits on the default branch, and the default branch name itself."
          (message "Octocat: Opening run #%s in browser…" run-id)
          (browse-url url)))
       (_ nil))))
+
+
+;;;; Load-more command
+
+(defun octocat--pageable-section-at-point ()
+  "Return the pageable section type symbol at or above point, or nil.
+Walks up the section tree from `magit-current-section' until it finds
+a section whose type is one of `pull-requests', `issues', `commits', or
+`workflow-runs', and returns that type symbol.  Returns nil when point
+is not inside any pageable section."
+  (let ((s (magit-current-section)))
+    (while (and s (not (memq (oref s type)
+                             '(pull-requests issues commits workflow-runs))))
+      (setq s (oref s parent)))
+    (and s (oref s type))))
+
+(defun octocat-load-more ()
+  "Load more items in the pageable list section at point.
+Increments the per-session fetch limit for whichever of the Pull
+Requests, Issues, Commits, or Workflow Runs sections contains point,
+then re-runs `octocat-refresh'.  Signals an error when point is not
+inside a pageable section."
+  (interactive)
+  (pcase (octocat--pageable-section-at-point)
+    ('pull-requests
+     (cl-incf octocat--prs-count octocat-prs-limit)
+     (octocat-refresh))
+    ('issues
+     (cl-incf octocat--issues-count octocat-issues-limit)
+     (octocat-refresh))
+    ('commits
+     (cl-incf octocat--commits-count octocat-commits-limit)
+     (octocat-refresh))
+    ('workflow-runs
+     (cl-incf octocat--runs-count octocat-runs-limit)
+     (octocat-refresh))
+    (_ (user-error "Octocat: No pageable section at point"))))
 
 
 ;;;; Entry point

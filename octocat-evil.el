@@ -41,6 +41,8 @@
 (declare-function octocat-issue-add-comment  "octocat-issue"     ())
 (declare-function octocat-issue-edit-body    "octocat-issue"     ())
 (declare-function octocat-issue-edit         "octocat-issue"     ())
+(declare-function octocat-load-more          "octocat"           ())
+(declare-function octocat-workflow-load-more "octocat-workflow"  ())
 (declare-function octocat-workflow-refresh   "octocat-workflow"  (&optional _ignore-auto _noconfirm))
 (declare-function octocat-workflow-visit     "octocat-workflow"  ())
 (declare-function octocat-run-refresh        "octocat-run"       (&optional _ignore-auto _noconfirm))
@@ -59,6 +61,7 @@
   ;; to ensure RET actually dispatches to octocat-visit.
   (evil-define-key* 'normal octocat-mode-map
     (kbd "RET")     #'octocat-visit
+    (kbd "+")       #'octocat-load-more
     (kbd "o")       #'octocat-browse
     (kbd "C-c C-o") #'octocat-browse
     (kbd "q")       #'quit-window)
@@ -119,6 +122,7 @@
     (define-key aux (kbd "g") nil))
   (evil-define-key* 'normal octocat-workflow-mode-map
     (kbd "RET")     #'octocat-workflow-visit
+    (kbd "+")       #'octocat-workflow-load-more
     (kbd "o")       #'octocat-browse
     (kbd "C-c C-o") #'octocat-browse
     (kbd "q")       #'quit-window

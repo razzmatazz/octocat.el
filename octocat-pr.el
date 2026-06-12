@@ -101,13 +101,14 @@ On someone else\\='s comment: signal an error."
 
 ;;;; Data fetching
 
-(defun octocat--list-prs (repo callback)
-  "Fetch open PRs for REPO asynchronously and call CALLBACK with results.
+(defun octocat--list-prs (repo limit callback)
+  "Fetch up to LIMIT open PRs for REPO asynchronously and call CALLBACK.
 CALLBACK is called with a list of PR hash-tables, or a cons \\=(error . MSG)."
   (octocat--run-gh "prs"
                    (list "pr" "list"
                          "--repo" repo
                          "--state" "open"
+                         "--limit" (number-to-string limit)
                          "--json" "number,title,author,state,statusCheckRollup,headRefName")
                    #'octocat--parse-json-list
                    callback))
