@@ -127,22 +127,22 @@ Call CALLBACK with a list of run hash-tables (each including a
    #'octocat--parse-json-list
    callback))
 
-(defcustom octocat-prs-limit 30
+(defcustom octocat-prs-limit 15
   "Default number of open pull requests to display on the dashboard."
   :type 'integer
   :group 'octocat)
 
-(defcustom octocat-issues-limit 30
+(defcustom octocat-issues-limit 15
   "Default number of open issues to display on the dashboard."
   :type 'integer
   :group 'octocat)
 
-(defcustom octocat-runs-limit 20
+(defcustom octocat-runs-limit 15
   "Default number of recent workflow runs to display on the dashboard."
   :type 'integer
   :group 'octocat)
 
-(defcustom octocat-commits-limit 20
+(defcustom octocat-commits-limit 15
   "Default number of recent commits to display on the dashboard."
   :type 'integer
   :group 'octocat)
