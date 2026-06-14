@@ -108,10 +108,10 @@ with the `octocat-branch' face."
               'face 'octocat-branch))
 
 (defun octocat--branch-column-width (runs key)
-  "Return the branch column width for a list of RUNS hash-tables.
+  "Return the branch column width to use when rendering a workflow list.
 KEY names the hash entry holding the branch string (e.g. \"headBranch\"
-or \"headRefName\").  The result is the minimum of
-`octocat-branch-max-width' and the longest branch name in RUNS,
+or \"headRefName\") inside each element of RUNS.  The result is the
+minimum of `octocat-branch-max-width' and the longest branch name,
 with a floor of 1."
   (min octocat-branch-max-width
        (apply #'max 1
@@ -212,7 +212,8 @@ author field is absent, null, or carries no login."
 COMMIT is a hash-table from the GitHub REST commits endpoint.
 Prefers the GitHub handle: if the top-level \\\"author\\\" user object has a
 \\\"login\\\" field the result is \\\"@LOGIN\\\".  Falls back to the git author
-name from the nested \\\"commit\\\" → \\\"author\\\" → \\\"name\\\" field when the
+name from the nested \\\"commit\\\" → \\\"author\\\" → \\\"name\\\" field
+when the
 commit is not associated with a GitHub account.  Returns \"\" when neither
 is available.  For detail views where space allows, use
 `octocat--commit-author-full' instead."
@@ -512,6 +513,7 @@ across all workflows."
 (defun octocat--cache-save (repo prs issues workflows recent-runs
                             &optional commits default-branch)
   "Write dashboard data for REPO to the disk cache.
+PRS, ISSUES, WORKFLOWS are lists of hash-tables.
 RECENT-RUNS is a flat list of run hash-tables.  COMMITS is a list of
 commit hash-tables from the REST API; when nil an empty vector is stored.
 DEFAULT-BRANCH is a string such as \"main\"; when nil it is not stored.
@@ -673,7 +675,7 @@ below it.  An empty vector renders a dimmed \"(no comments)\" placeholder."
              (let* ((author  (octocat--author-login comment))
                     (body    (or (gethash "body" comment) ""))
                     (created (or (gethash "createdAt" comment) ""))
-                    (date    (octocat--format-ts created)))
+                    (date    (octocat--format-ts-full created)))
                (magit-insert-section (comment comment)
                  (magit-insert-heading
                    (concat "  "

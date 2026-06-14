@@ -85,7 +85,7 @@ symbol `error'.  Uses the GitHub REST API via `gh api'."
 Calls CALLBACK with a list of comment hash-tables (snake_case REST API
 keys), or a cons \\=(error . MSG) on failure.  The list includes both
 general comments (\\='path\\=' is :null or nil) and inline comments
-(\\='path\\=' is a file path string, \\='line\\=' is the target line number)."
+\(\\='path\\=' is a file path string, \\='line\\=' is the target line number)."
   (octocat--run-gh
    "commit-comments"
    (list "api"
@@ -124,7 +124,7 @@ many inline comments were shown there."
                  (login  (or (and user (octocat--nonempty (gethash "login" user))) ""))
                  (author (if (string-empty-p login) "(unknown)" (concat "@" login)))
                  (body   (or (gethash "body" comment) ""))
-                 (date   (octocat--format-ts
+                 (date   (octocat--format-ts-full
                           (or (octocat--nonempty (gethash "created_at" comment)) ""))))
             (magit-insert-section (commit-comment comment)
               (magit-insert-heading
@@ -180,7 +180,7 @@ called from within a diff-rendering context."
          (login  (or (and user (octocat--nonempty (gethash "login" user))) ""))
          (author (if (string-empty-p login) "(unknown)" (concat "@" login)))
          (body   (or (gethash "body" comment) ""))
-         (date   (octocat--format-ts
+         (date   (octocat--format-ts-full
                   (or (octocat--nonempty (gethash "created_at" comment)) ""))))
     (magit-insert-section (commit-comment comment)
       (magit-insert-heading
@@ -202,7 +202,7 @@ COMMENTS-BY-LINE is an alist mapping integer right-side (new-file) line
 numbers to lists of comment hash-tables.  Used for comments that carry a
 \\='line\\=' field from the GitHub API.
 COMMENTS-BY-POS is an optional alist mapping integer diff-position numbers
-(1-based, counting every line in the diff including hunk headers and removed
+\(1-based, counting every line in the diff including hunk headers and removed
 lines) to lists of comment hash-tables.  Used for older-style comments that
 carry only a \\='position\\=' field and no \\='line\\=' field.
 Parses `@@' hunk headers to track both counters simultaneously and inserts

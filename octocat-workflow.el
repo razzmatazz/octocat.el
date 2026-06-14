@@ -240,8 +240,8 @@ Handles \\='workflow-run\\=' sections (opens the run detail buffer) and
 ;;;; Load-more command
 
 (defun octocat-workflow-load-more ()
-  "Load more runs in the workflow detail buffer.
-Increments the per-session fetch limit and re-runs
+  "Fetch additional workflow entries in the workflow detail buffer.
+Increment the per-session fetch limit and re-run
 `octocat-workflow-refresh'."
   (interactive)
   (unless octocat--workflow-runs-count

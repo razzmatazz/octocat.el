@@ -18,6 +18,7 @@
 ;; These commands are defined in octocat.el which loads this file, so we
 ;; cannot require it here.  Declare them to silence the byte-compiler.
 (declare-function octocat-browse "octocat" ())
+(declare-function octocat-visit  "octocat" ())
 
 ;;;; Edit / comment commands
 
