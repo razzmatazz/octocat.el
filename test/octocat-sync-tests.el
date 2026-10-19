@@ -85,7 +85,7 @@
   "A failed fetch is recorded beside the data, and a success clears it."
   (let ((db (octocat-sync-tests--db)))
     (octocat-sync--write db "r" (octocat-sync-tests--table "n" 1) 1.0)
-    (octocat-sync--write-error db "r" "boom")
+    (octocat-sync--write-error db "r" "boom" 'transient 1.0)
     (pcase-let ((`(,data ,_ ,error) (octocat-sync--read db "r")))
       (should (= (gethash "n" data) 1))
       (should (equal error "boom")))
@@ -177,6 +177,32 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
       (octocat-sync-request '(thing 1) t)
       (should (= octocat-sync--running 2))
       (should (equal octocat-sync--queue '(("(thing 1)" thing 1)))))))
+
+(ert-deftest octocat-sync-test-error-kinds ()
+  "A failure waits by its kind before a refetch, unless forced; offline is noted."
+  (should (eq (octocat-sync--error-kind "HTTP 502: Bad Gateway") 'transient))
+  (should (eq (octocat-sync--error-kind "API rate limit exceeded") 'transient))
+  (should (eq (octocat-sync--error-kind "HTTP 404: Not Found (https://x)") 'permanent))
+  (should (eq (octocat-sync--error-kind
+               "GraphQL: Could not resolve to an Issue with the number of 9.")
+              'permanent))
+  (should (eq (octocat-sync--error-kind "error connecting to api.github.com") 'offline))
+  (octocat-sync-tests--with-sync
+    (octocat-sync-request '(thing 1))
+    (funcall (cdr (pop pending)) '(error . "HTTP 502: Bad Gateway"))
+    (octocat-sync-request '(thing 1))
+    (should-not pending)
+    (octocat-sync-request '(thing 1) t)
+    (funcall (cdr (pop pending)) '(error . "error connecting to api.github.com"))
+    (let ((snap (octocat-sync-read '(thing 1))))
+      (should (eq (plist-get snap :kind) 'offline))
+      (should (plist-get snap :offline)))
+    ;; Offline waits for nothing, and the next success clears it.
+    (octocat-sync-request '(thing 1))
+    (funcall (cdr (pop pending)) (octocat-sync-tests--table "n" 1))
+    (let ((snap (octocat-sync-read '(thing 1))))
+      (should-not (plist-get snap :error))
+      (should-not (plist-get snap :offline)))))
 
 (ert-deftest octocat-sync-test-fetch-signals ()
   "A fetch that signals as it starts fails like any other, freeing its slot."

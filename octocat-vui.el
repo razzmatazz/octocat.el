@@ -140,6 +140,36 @@ own, so a segment such as a relative date keeps its own hover text
 
 (add-hook 'octocat-sync-invalidate-functions #'octocat-vui--on-sync-invalidate)
 
+(defvar-local octocat-vui--snapshots nil
+  "Resource key to the snapshot this buffer's page reads, for its header line.")
+
+(defun octocat-vui-header-notice (snapshots)
+  "Return the header line notice for a page showing SNAPSHOTS, or nil.
+There is one when the page shows data whose refresh failed: the data
+stays, and the notice says it may be out of date.  It goes in the
+header line, not the page, so the page doesn't shift when it clears."
+  (when-let* ((snap (seq-find (lambda (s)
+                                (and (plist-get s :data) (plist-get s :error)
+                                     (not (plist-get s :loading))))
+                              snapshots)))
+    (if (eq (plist-get snap :kind) 'offline)
+        (format "Offline: showing data from %s; g to retry"
+                (if-let* ((at (plist-get snap :fetched-at)))
+                    (format-time-string "%H:%M" at)
+                  "earlier"))
+      (format "Refresh failed: %s; g to retry"
+              (car (split-string (plist-get snap :error) "\n" t))))))
+
+(defun octocat-vui--show-notice (buf)
+  "Put in BUF's header line the notice for the snapshots of its page."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (let ((notice (octocat-vui-header-notice
+                     (and octocat-vui--snapshots
+                          (hash-table-values octocat-vui--snapshots)))))
+        (setq header-line-format
+              (and notice (propertize notice 'face 'octocat-dimmed)))))))
+
 (defvar-local octocat-vui--resource-ticks nil
   "Resource key to the page tick it was last requested with, in this buffer.
 Kept per buffer, not per component, so a component remounted by a
@@ -150,8 +180,10 @@ refresh still sees that the tick is new.")
 The page re-renders when the snapshot changes.  Opening fetches SPEC
 unless it was fetched just now; a new TICK (see
 `octocat-vui-refresh-page') always does.  A component that reads it must
-not be `:memo', since the change re-renders from the page's root.  Must
-be called during render, like any hook."
+not be `:memo', since the change re-renders from the page's root.  When
+a refresh fails over shown data, the header line says so, see
+`octocat-vui-header-notice'.  Must be called during render, like any
+hook."
   (let* ((key      (octocat-sync-spec-key spec))
          (buf      (current-buffer))
          (version  (vui-use-ref 0))
@@ -172,7 +204,18 @@ be called during render, like any hook."
         (puthash key tick ticks)
         (octocat-sync-request spec (and seen (not (equal seen tick)))))
       nil)
-    (vui-use-memo (key v) (octocat-sync-read spec))))
+    (let ((snap (vui-use-memo (key v) (octocat-sync-read spec))))
+      (vui-use-effect (key snap)
+        (puthash key snap (or octocat-vui--snapshots
+                              (setq octocat-vui--snapshots
+                                    (make-hash-table :test #'equal))))
+        (octocat-vui--show-notice buf)
+        (lambda ()
+          (when-let* ((snaps (and (buffer-live-p buf)
+                                  (buffer-local-value 'octocat-vui--snapshots buf))))
+            (remhash key snaps)
+            (octocat-vui--show-notice buf))))
+      snap)))
 
 (defvar-local octocat-vui--prefetch-timer nil
   "Timer that prefetches what the row at point opens, see below.")

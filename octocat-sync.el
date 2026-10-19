@@ -72,7 +72,7 @@ The file is named after the host, such as \"sync-github.com.sqlite\"."
   "Functions called with the keys of resources whose snapshot changed.
 Called once per write, after it is committed.")
 
-(defconst octocat-sync--schema 2
+(defconst octocat-sync--schema 3
   "Version of the store's tables, kept in SQLite's `user_version'.
 Bump it also when the shape of a resource's body changes: the store is
 then recreated, rather than read in the old shape.")
@@ -97,7 +97,8 @@ Signal a `user-error' when DB was made by a newer octocat."
       (sqlite-execute db "CREATE TABLE entity (
   key TEXT PRIMARY KEY, type TEXT NOT NULL, fields TEXT NOT NULL, fetched_at REAL)")
       (sqlite-execute db "CREATE TABLE resource (
-  key TEXT PRIMARY KEY, body TEXT, hash TEXT, fetched_at REAL, error TEXT)")
+  key TEXT PRIMARY KEY, body TEXT, hash TEXT, fetched_at REAL,
+  error TEXT, error_kind TEXT, retry_at REAL)")
       (sqlite-execute db "CREATE TABLE link (
   resource TEXT, entity TEXT, PRIMARY KEY (resource, entity))")
       (sqlite-execute db "CREATE INDEX link_entity ON link (entity)")
@@ -255,11 +256,12 @@ did, and every resource linked to an entity whose fields did."
       (let ((same (equal hash (caar (sqlite-select
                                      db "SELECT hash FROM resource WHERE key = ?"
                                      (list key))))))
-        (sqlite-execute db "INSERT INTO resource (key, body, hash, fetched_at, error)
-                            VALUES (?, ?, ?, ?, NULL)
+        (sqlite-execute db "INSERT INTO resource (key, body, hash, fetched_at)
+                            VALUES (?, ?, ?, ?)
                             ON CONFLICT (key) DO UPDATE
                             SET body = excluded.body, hash = excluded.hash,
-                                fetched_at = excluded.fetched_at, error = NULL"
+                                fetched_at = excluded.fetched_at,
+                                error = NULL, error_kind = NULL, retry_at = NULL"
                         (list key json hash now))
         (unless (and same (null changed))
           (sqlite-execute db "DELETE FROM link WHERE resource = ?" (list key))
@@ -269,12 +271,39 @@ did, and every resource linked to an entity whose fields did."
         (delete-dups (append (unless same (list key))
                              (octocat-sync--linked db changed)))))))
 
-(defun octocat-sync--write-error (db key message)
-  "Record in DB that the fetch of resource KEY failed with MESSAGE.
-The resource keeps its data."
-  (sqlite-execute db "INSERT INTO resource (key, error) VALUES (?, ?)
-                      ON CONFLICT (key) DO UPDATE SET error = excluded.error"
-                  (list key message)))
+(defconst octocat-sync--retry-after '((transient . 60) (permanent . 86400))
+  "Seconds after a failure of each kind before its resource is refetched.
+An offline failure is retried on the next open.  `g' retries at once.")
+
+(defun octocat-sync--error-kind (message)
+  "Return the kind of the failure `gh' reported in MESSAGE.
+That is `offline' when GitHub could not be reached, `permanent' when
+the resource is missing or out of reach (404, 410, 401, 403), and
+`transient' otherwise, such as a 5xx or a rate limit.  `gh' commands
+other than `gh api' report no HTTP status, so this reads their words."
+  (cond ((string-match-p (concat "error connecting to\\|no such host\\|dial tcp"
+                                 "\\|connection refused\\|network is unreachable"
+                                 "\\|i/o timeout\\|TLS handshake timeout")
+                         message)
+         'offline)
+        ((string-match-p "rate limit" message) 'transient)
+        ((string-match-p (concat "HTTP 4\\(?:01\\|03\\|04\\|10\\)\\|Could not resolve to"
+                                 "\\|Not Found")
+                         message)
+         'permanent)
+        (t 'transient)))
+
+(defun octocat-sync--write-error (db key message kind now)
+  "Record in DB that the fetch of resource KEY failed at NOW with MESSAGE.
+KIND is as `octocat-sync--error-kind' returns; it sets when the
+resource is fetched again.  The resource keeps its data."
+  (let ((delay (alist-get kind octocat-sync--retry-after)))
+    (sqlite-execute db "INSERT INTO resource (key, error, error_kind, retry_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT (key) DO UPDATE
+                        SET error = excluded.error, error_kind = excluded.error_kind,
+                            retry_at = excluded.retry_at"
+                    (list key message (symbol-name kind) (and delay (+ now delay))))))
 
 (defun octocat-sync--overlay (fields key overlays)
   "Return FIELDS of entity KEY with OVERLAYS applied, or nil without either.
@@ -301,10 +330,11 @@ cycle ends in nil."
                             value)))
 
 (defun octocat-sync--read (db key &optional overlays)
-  "Return resource KEY of DB as (DATA FETCHED-AT ERROR), or nil if absent.
+  "Return resource KEY of DB as (DATA FETCHED-AT ERROR KIND), or nil if absent.
+KIND is the error's, a symbol.
 OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read."
   (when-let* ((row (car (sqlite-select
-                         db "SELECT body, fetched_at, error FROM resource WHERE key = ?"
+                         db "SELECT body, fetched_at, error, error_kind FROM resource WHERE key = ?"
                          (list key)))))
     (let ((entities (make-hash-table :test #'equal)))
       (pcase-dolist (`(,k ,fields)
@@ -317,7 +347,8 @@ OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read."
                  (octocat-sync--resolve (octocat-sync--parse (nth 0 row))
                                         entities db nil overlays))
             (nth 1 row)
-            (nth 2 row)))))
+            (nth 2 row)
+            (and (nth 3 row) (intern (nth 3 row)))))))
 
 (defun octocat-sync--linked (db entities)
   "Return the keys of the resources in DB linked to any of ENTITIES."
@@ -384,6 +415,10 @@ commit's: within it, opening doesn't refetch, but `g' does."
 (defvar octocat-sync--running 0
   "How many fetches are running.")
 
+(defvar octocat-sync--offline nil
+  "Non-nil when the last request found GitHub out of reach.
+Kept in memory only, and cleared by the next success.")
+
 (defvar octocat-sync--waiters nil
   "Callbacks of `octocat-sync-get' awaiting a fetch, as (KEY . FUNCTION).")
 
@@ -400,14 +435,16 @@ commit's: within it, opening doesn't refetch, but `g' does."
 
 (defun octocat-sync-read (spec)
   "Return a snapshot of SPEC, a plist.
-Its keys are :data :partial :loading :error :fetched-at and :mutating.
+Its keys are :data :partial :loading :error :kind :offline :fetched-at
+and :mutating.  :kind is that of :error, see `octocat-sync--error-kind';
+:offline is whether the last request found GitHub out of reach.
 It reads only the store, never the network, with the changes of pending
 mutations applied.  :partial is set only when :data is nil; see
 `octocat-sync-define-resource'.  :mutating is an alist (SLOT . LABEL)
 of the pending mutations of SPEC, see `octocat-sync-define-mutation'."
   (let ((key (octocat-sync-spec-key spec))
         (db  (octocat-sync--db)))
-    (pcase-let ((`(,data ,fetched-at ,error)
+    (pcase-let ((`(,data ,fetched-at ,error ,kind)
                  (octocat-sync--read db key (octocat-sync--overlays))))
       (list :data data
             :partial (and (null data)
@@ -417,20 +454,26 @@ of the pending mutations of SPEC, see `octocat-sync-define-mutation'."
                                                    (octocat-sync--overlays))))
             :loading (gethash key octocat-sync--loading)
             :error error
+            :kind kind
+            :offline octocat-sync--offline
             :fetched-at fetched-at
             :mutating (octocat-sync--mutating key)))))
 
 (defun octocat-sync--wanted-p (spec force)
-  "Return non-nil if SPEC should be fetched: not fetched just now, or FORCE.
-Just now is within `octocat-sync-fresh-for', or the resource's :max-age."
+  "Return non-nil if SPEC should be fetched, or FORCE.
+It is not when fetched just now, within `octocat-sync-fresh-for' or the
+resource's :max-age, nor before the retry time of a failure."
   (or force
-      (let ((fetched (caar (sqlite-select (octocat-sync--db)
-                                          "SELECT fetched_at FROM resource WHERE key = ?"
-                                          (list (octocat-sync-spec-key spec))))))
-        (or (null fetched)
-            (>= (- (float-time) fetched)
-                (max octocat-sync-fresh-for
-                     (or (plist-get (octocat-sync--props spec) :max-age) 0)))))))
+      (pcase-let ((`(,fetched ,retry-at)
+                   (car (sqlite-select (octocat-sync--db)
+                                       "SELECT fetched_at, retry_at FROM resource WHERE key = ?"
+                                       (list (octocat-sync-spec-key spec))))))
+        (let ((now (float-time)))
+          (and (not (and retry-at (< now retry-at)))
+               (or (null fetched)
+                   (>= (- now fetched)
+                       (max octocat-sync-fresh-for
+                            (or (plist-get (octocat-sync--props spec) :max-age) 0)))))))))
 
 (defun octocat-sync-request (spec &optional force)
   "Queue a fetch of SPEC unless it is running or was fetched just now.
@@ -465,9 +508,9 @@ a fetch lands."
 (defun octocat-sync-prefetch (specs)
   "Fetch SPECS at low priority, in place of the prefetches still queued.
 A prefetch runs only while no page request is queued, one at a time,
-and is skipped if its resource was fetched just now.  It only writes
-the store."
-  (when octocat-sync-prefetch
+and is skipped if its resource was fetched just now, or while offline.
+It only writes the store."
+  (when (and octocat-sync-prefetch (not octocat-sync--offline))
     (pcase-dolist (`(,key . ,_) octocat-sync--prefetches)
       (remhash key octocat-sync--loading))
     (setq octocat-sync--prefetches
@@ -522,7 +565,11 @@ when no other prefetch runs."
      (cl-adjoin key
            (condition-case err
                (if (eq (car-safe result) 'error)
-                   (progn (octocat-sync--write-error db key (cdr result)) nil)
+                   (let ((kind (octocat-sync--error-kind (cdr result))))
+                     (setq octocat-sync--offline (eq kind 'offline))
+                     (octocat-sync--write-error db key (cdr result) kind (float-time))
+                     nil)
+                 (setq octocat-sync--offline nil)
                  (octocat-sync--write db key result (float-time)))
              ;; Say a second Emacs held the lock past the timeout: drop the write.
              (error (octocat--debug-log (format "sync write %s failed" key)
