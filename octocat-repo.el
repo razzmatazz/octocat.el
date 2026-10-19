@@ -41,6 +41,7 @@
 (require 'octocat-job)
 (require 'octocat-checks)
 (require 'octocat-tree)
+(require 'octocat-search) ; `octocat--read-branch'
 (require 'octocat-vui)
 (require 'vui)
 (require 'vui-components) ; vui-collapsible, vui-heading-*, etc.
