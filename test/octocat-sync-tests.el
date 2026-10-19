@@ -241,6 +241,37 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
       (should (equal outdated '("(thing 1)")))
       (should (plist-get (octocat-sync-read '(thing 1)) :outdated)))))
 
+(ert-deftest octocat-sync-test-more ()
+  "A further page is appended to a list resource, its items stored as entities."
+  (octocat-sync-tests--with-sync
+    (let ((thirteen (octocat-sync-entity
+                     'issue "issue:o/r#13" (octocat-sync-tests--table "title" "Typo")))
+          after result)
+      (octocat-sync--write octocat-sync--db "(thing 1)"
+                           (octocat-sync-tests--table
+                            "nodes" (vector (octocat-sync-tests--issue "Crash"))
+                            "cursor" "c1")
+                           1.0)
+      (octocat-sync-more '(thing 1)
+                         (lambda (cursor done)
+                           (setq after cursor)
+                           (funcall done (octocat-sync-tests--table
+                                          "nodes" (vector thirteen) "cursor" nil)))
+                         (lambda (r) (setq result (or r 'ok))))
+      (should (equal after "c1"))
+      (should (eq result 'ok))
+      (let ((data (plist-get (octocat-sync-read '(thing 1)) :data)))
+        (should (equal (mapcar (lambda (n) (gethash "title" n)) (gethash "nodes" data))
+                       '("Crash" "Typo")))
+        (should-not (gethash "cursor" data)))
+      (should (sqlite-select octocat-sync--db
+                             "SELECT 1 FROM link WHERE resource = ? AND entity = ?"
+                             '("(thing 1)" "issue:o/r#13")))
+      ;; No cursor left: nothing to fetch.
+      (octocat-sync-more '(thing 1) (lambda (&rest _) (error "Unexpected fetch"))
+                         (lambda (r) (setq result r)))
+      (should (eq (car-safe result) 'error)))))
+
 (ert-deftest octocat-sync-test-fetch-signals ()
   "A fetch that signals as it starts fails like any other, freeing its slot."
   (octocat-sync-tests--with-sync

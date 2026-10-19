@@ -586,6 +586,34 @@ a fetch lands."
       (push (cons (octocat-sync-spec-key spec) callback) octocat-sync--waiters)
       (octocat-sync-request spec (null data)))))
 
+(defun octocat-sync-more (spec more &optional on-done)
+  "Fetch the page after the stored data of SPEC, a list resource, and append it.
+The data is a table of \"nodes\" and the \"cursor\" after the last.
+MORE is a function of that CURSOR and DONE: it fetches the next page
+and calls DONE with a tree of the same shape, or (error . MESSAGE).
+ON-DONE, if given, is called with nil, or (error . MESSAGE).  Nothing is
+fetched while SPEC is: the next fetch of it replaces the pages with the
+first again."
+  (let* ((key  (octocat-sync-spec-key spec))
+         (db   (octocat-sync--db))
+         (body (caar (sqlite-select db "SELECT body FROM resource WHERE key = ?" (list key))))
+         (tree (and body (octocat-sync--parse body)))
+         (cursor (and tree (gethash "cursor" tree))))
+    (if (or (null cursor) (gethash key octocat-sync--loading))
+        (when on-done (funcall on-done '(error . "Nothing more to load yet")))
+      (octocat-sync--set-loading key t)
+      (funcall more cursor
+               (lambda (result)
+                 (octocat-sync--set-loading key nil)
+                 (unless (eq (car-safe result) 'error)
+                   ;; The stored nodes are refs already; the new ones
+                   ;; are split out as any fetch's.
+                   (puthash "nodes" (vconcat (gethash "nodes" tree) (gethash "nodes" result)) tree)
+                   (puthash "cursor" (gethash "cursor" result) tree)
+                   (octocat-sync--notify (cl-adjoin key (octocat-sync--write db key tree (float-time))
+                                                    :test #'equal)))
+                 (when on-done (funcall on-done (and (eq (car-safe result) 'error) result))))))))
+
 (defun octocat-sync-prefetch (specs)
   "Fetch SPECS at low priority, in place of the prefetches still queued.
 A prefetch runs only while no page request is queued, one at a time,
