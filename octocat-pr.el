@@ -54,6 +54,7 @@
 (declare-function octocat-repo-vui--login-link "octocat-repo" (login))
 (declare-function octocat-repo-vui--separate "octocat-repo" (items sep))
 (declare-function octocat-issue-open "octocat-issue" (repo number))
+(declare-function octocat-issue-new "octocat-issue" ())
 (declare-function octocat-repo-vui--milestone "octocat-repo" (item))
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
                   (repo commit head-info author-w &optional subject-w))
@@ -1055,6 +1056,7 @@ A new TICK fetches them again."
 (define-key octocat-pr-mode-map (kbd "C-c C-o") #'octocat-pr-browse)
 (define-key octocat-pr-mode-map (kbd "C-c C-a") #'octocat-pr-add-comment)
 (define-key octocat-pr-mode-map (kbd "C-c C-e") #'octocat-pr-edit)
+(define-key octocat-pr-mode-map (kbd "C-c C-n") #'octocat-issue-new)
 (define-key octocat-pr-mode-map (kbd "C-c C-m") #'octocat-pr-merge)
 (define-key octocat-pr-mode-map (kbd "C-c C-r") #'octocat-pr-diff-review)
 (define-key octocat-pr-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
@@ -1198,6 +1200,7 @@ the background, in place: what is unfolded stays so."
   (setq-local octocat-vui-list--states '("open" "closed" "merged" "all"))
   (setq-local octocat-vui-list--view "pr-list")
   (setq-local revert-buffer-function #'octocat-pr-list-refresh))
+(define-key octocat-pr-list-mode-map (kbd "C-c C-n") #'octocat-issue-new)
 
 (provide 'octocat-pr)
 ;;; octocat-pr.el ends here

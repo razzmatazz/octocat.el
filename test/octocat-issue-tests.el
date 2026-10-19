@@ -37,5 +37,18 @@
       (should (equal (gethash "login" (gethash "author" page)) "alice"))
       (should (equal (gethash "body" (aref (gethash "comments" page) 0)) "me too")))))
 
+(ert-deftest octocat-issue-test-parse-message ()
+  "The first line is the title, the rest the body."
+  (should (equal (octocat-issue--parse-message "  Crash on start \n\nSteps:\n1. run\n")
+                 '("Crash on start" . "Steps:\n1. run")))
+  (should (equal (octocat-issue--parse-message "Title only") '("Title only" . ""))))
+
+(ert-deftest octocat-issue-test-parse-created ()
+  "The number is read from the URL `gh issue create' prints."
+  (should (= (octocat-issue--parse-created
+              "https://github.com/o/r/issues/42\n")
+             42))
+  (should-error (octocat-issue--parse-created "oops")))
+
 (provide 'octocat-issue-tests)
 ;;; octocat-issue-tests.el ends here

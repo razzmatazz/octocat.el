@@ -105,6 +105,15 @@ C-c C-k   discard (confirms if modified, kills edit buffer)
 The header line shows the action and a keyboard hint.  The source buffer
 is refreshed automatically on success.  Under Evil it opens in insert state.
 
+A new issue is written in the same buffer, opened by `C-c C-n` from the
+PR and issue lists and detail pages.  It has a title and a body, so it
+takes the commit-message shape: the first line is the title, the rest
+the body.  One buffer keeps both in reach, and the title cannot be
+forgotten behind a second prompt.  Unlike a comment, whose page shows it
+under way, a new issue has no page yet, so the buffer stays open while
+GitHub creates the issue, keeps the text on failure, and on success
+gives way to the new issue's page.
+
 ### Single-line fields → `read-string` in the minibuffer
 
 Used for **titles** — content that is always a single line and where

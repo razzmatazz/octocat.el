@@ -90,6 +90,7 @@
 (declare-function octocat-checks-refresh    "octocat-checks"    (&optional _ignore-auto _noconfirm))
 (declare-function octocat-issue-refresh      "octocat-issue"     (&optional _ignore-auto _noconfirm))
 (declare-function octocat-issue-add-comment  "octocat-issue"     ())
+(declare-function octocat-issue-new          "octocat-issue"     ())
 (declare-function octocat-issue-edit-body    "octocat-issue"     ())
 (declare-function octocat-issue-browse       "octocat-issue"     ())
 (declare-function octocat-pr-browse          "octocat-pr"        ())
@@ -143,7 +144,9 @@ Buffer-local, as the query field's keymap replaces the mode's keymap,
 and with it the mode's Evil bindings: after ESC in the field, `q'
 would start recording a macro."
   (pcase-dolist (`(,key . ,def) octocat-evil--list-bindings)
-    (evil-local-set-key 'normal (kbd key) def)))
+    (evil-local-set-key 'normal (kbd key) def))
+  (when (derived-mode-p 'octocat-pr-list-mode 'octocat-issue-list-mode)
+    (evil-local-set-key 'normal (kbd "C-c C-n") #'octocat-issue-new)))
 
 (defun octocat-evil--list-query-submitted ()
   "Leave insert state once the query field is submitted."
@@ -233,6 +236,7 @@ Off an entry, such as on the header, move left."
     (kbd "C-c C-o") #'octocat-pr-browse
     (kbd "C-c C-a") #'octocat-pr-add-comment
     (kbd "C-c C-e") #'octocat-pr-edit
+    (kbd "C-c C-n") #'octocat-issue-new
     (kbd "C-c C-m") #'octocat-pr-merge
     (kbd "C-c C-r") #'octocat-pr-diff-review
     (kbd "C-c C-v") #'octocat-toggle-markdown
@@ -305,6 +309,7 @@ Off an entry, such as on the header, move left."
     (kbd "C-c C-o") #'octocat-issue-browse
     (kbd "C-c C-a") #'octocat-issue-add-comment
     (kbd "C-c C-e") #'octocat-issue-edit
+    (kbd "C-c C-n") #'octocat-issue-new
     (kbd "C-c C-v") #'octocat-toggle-markdown
     (kbd "C-c C-j") #'octocat-switch-repo
     (kbd "C-c C-s") #'octocat-search-repo

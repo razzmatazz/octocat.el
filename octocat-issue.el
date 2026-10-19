@@ -144,6 +144,67 @@ On someone else\\='s comment: signal an error."
      (t
       (user-error "Octocat: Nothing to edit here")))))
 
+;;;; New issue
+
+(defun octocat-issue--parse-message (text)
+  "Split TEXT from the new-issue editor into (TITLE . BODY).
+The first line is the title and the rest the body, as in a commit
+message."
+  (let* ((lines (split-string text "\n")))
+    (cons (string-trim (car lines))
+          (string-trim (string-join (cdr lines) "\n")))))
+
+(defun octocat-issue--parse-created (output)
+  "Return the number of the issue whose URL `gh issue create' printed in OUTPUT."
+  (if (string-match "/issues/\\([0-9]+\\)" output)
+      (string-to-number (match-string 1 output))
+    (error "No issue URL in: %s" (string-trim output))))
+
+(octocat-sync-define-mutation create-issue (repo title body)
+  :label "Creating issue…"
+  :send (lambda (done)
+          (octocat--run-gh "issue-create"
+                           (list "issue" "create" "--repo" repo
+                                 "--title" title "--body" body)
+                           #'octocat-issue--parse-created done))
+  :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
+                            (repo-summary ,repo))))
+
+(defun octocat-issue--submit-new (text source on-success on-error)
+  "Create an issue from TEXT in the repo of `octocat-edit--user-data'.
+Open it from SOURCE once GitHub answers; the editor stays open until
+then, through ON-SUCCESS or ON-ERROR, as there is no page to show the
+issue under way."
+  (let ((repo (plist-get octocat-edit--user-data :repo))
+        (msg  (octocat-issue--parse-message text)))
+    (if (string-empty-p (car msg))
+        (funcall on-error "the first line, the title, is empty")
+      (octocat-sync-submit
+       `(create-issue ,repo ,(car msg) ,(cdr msg))
+       (lambda (result)
+         (if (eq (car-safe result) 'error)
+             (funcall on-error (cdr result))
+           (funcall on-success)
+           ;; In the window of the page it was written from.
+           (when-let* ((win (get-buffer-window source)))
+             (select-window win)
+             (with-current-buffer source
+               (octocat-issue-open repo result)))))))))
+
+(defun octocat-issue-new ()
+  "Open an editor to write a new issue for the repository shown.
+The first line is the title, the rest the body."
+  (interactive)
+  (let ((repo (or octocat-vui-list--repo (octocat--search-repo--current-repo))))
+    (unless repo
+      (user-error "Octocat: Cannot determine current repository"))
+    (octocat--open-edit-buffer
+     (format "New issue in %s — title on the first line" repo)
+     #'octocat-issue--submit-new
+     #'ignore
+     nil
+     (list :repo repo))))
+
 (defun octocat-issue-browse ()
   "Open the comment at point, or else the whole issue, in the browser."
   (interactive)
@@ -293,6 +354,7 @@ A new TICK fetches everything again."
 (define-key octocat-issue-mode-map (kbd "C-c C-o") #'octocat-issue-browse)
 (define-key octocat-issue-mode-map (kbd "C-c C-a") #'octocat-issue-add-comment)
 (define-key octocat-issue-mode-map (kbd "C-c C-e") #'octocat-issue-edit)
+(define-key octocat-issue-mode-map (kbd "C-c C-n") #'octocat-issue-new)
 (define-key octocat-issue-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
 (define-key octocat-issue-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
 (define-key octocat-issue-mode-map (kbd "C-c C-s") #'octocat-search-repo)
@@ -366,6 +428,7 @@ the background, in place: what is unfolded stays so."
   (setq-local octocat-vui-list--states '("open" "closed" "all"))
   (setq-local octocat-vui-list--view "issue-list")
   (setq-local revert-buffer-function #'octocat-issue-list-refresh))
+(define-key octocat-issue-list-mode-map (kbd "C-c C-n") #'octocat-issue-new)
 
 (provide 'octocat-issue)
 ;;; octocat-issue.el ends here
