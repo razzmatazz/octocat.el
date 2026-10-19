@@ -543,13 +543,18 @@ unfolded, until the fresh data replaces it."
                       (cons 'error (or (and data (gethash "log_error" data)) ""))))))
     (apply #'vui-vstack
            (octocat-vui-actions-top-row repo)
-           (pcase (octocat-vui-snapshot-status result)
-             ('pending (list (vui-text name :face 'octocat-run-job-name)
-                             (vui-newline)
-                             (vui-text (octocat-vui-line-skeleton "  "))))
-             ('error   (list (vui-text (format "  Error: %s" (plist-get result :error))
-                                       :face 'error)))
-             (_ (let ((job (gethash "job" data)))
+           (list
+            (octocat-vui-resource-view
+             result
+             :skeleton (lambda (_)
+                         (vui-vstack (vui-text name :face 'octocat-run-job-name)
+                                     (vui-newline)
+                                     (vui-text (octocat-vui-line-skeleton "  "))))
+             :render
+             (lambda (_)
+               (let ((job (gethash "job" data)))
+                 (apply
+                  #'vui-vstack
                   (append (octocat-job--header job)
                           (list (vui-newline))
                           (octocat-job--steps job log bulk
@@ -560,7 +565,7 @@ unfolded, until the fresh data replaces it."
                           (when-let* ((anns (octocat-job-annotations
                                              (mapcar (lambda (a) (cons nil a))
                                                      (gethash "annotations" data)))))
-                            (cons (vui-newline) anns)))))))))
+                            (cons (vui-newline) anns)))))))))))
 
 
 ;;;; Major mode

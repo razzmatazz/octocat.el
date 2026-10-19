@@ -426,7 +426,7 @@ PATH is this directory's full repository path (\"\" for the root)."
          (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil)))
     (pcase (octocat-vui-snapshot-status result)
       ('error
-       (vui-text (propertize (format "%s  Error: %s" indent (plist-get result :error))
+       (vui-text (propertize (concat indent "  " (octocat-vui-error-text result))
                              'face 'error)))
       ('ready
        (let ((entries (octocat-tree--sorted-entries (plist-get result :data))))
@@ -505,7 +505,7 @@ new TICK refetches it again."
             (append (octocat-tree--header repo branch)
                     (octocat-vui-repo-tabs repo 'code)))
      (pcase (octocat-vui-snapshot-status result)
-       ('error (vui-text (propertize (format "  Error: %s" (plist-get result :error))
+       ('error (vui-text (propertize (concat "  " (octocat-vui-error-text result))
                                      'face 'error)))
        ;; The root directory is itself the tree with this SHA; everything
        ;; below it is fetched lazily as directories are expanded.
@@ -967,8 +967,7 @@ TICK fetches them again."
      (pcase status
        ('pending (vui-text (octocat-vui-line-skeleton "  ")))
        ('error
-        (vui-text (propertize (format "  Error loading commits: %s"
-                                      (plist-get result :error))
+        (vui-text (propertize (concat "  " (octocat-vui-error-text result))
                               'face 'error)))
        (_ (if (null commits)
               (vui-text (propertize "  (no commits found)" 'face 'octocat-dimmed))

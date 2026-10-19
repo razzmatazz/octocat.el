@@ -254,11 +254,11 @@ A new TICK fetches them again."
            (vui-text (concat "Checks"
                              (when ref (concat "  " (propertize ref 'face 'octocat-branch)))))
            (vui-newline)
-           (pcase (octocat-vui-snapshot-status checks)
-             ('pending (list (vui-text (octocat-vui-line-skeleton "  "))))
-             ('error   (list (vui-text (format "  Error: %s" (plist-get checks :error))
-                                       :face 'error)))
-             (_ (octocat-checks--list repo (plist-get checks :data)))))))
+           (list
+            (octocat-vui-resource-view
+             checks
+             :skeleton (lambda (_) (vui-text (octocat-vui-line-skeleton "  ")))
+             :render (lambda (data) (apply #'vui-vstack (octocat-checks--list repo data))))))))
 
 
 ;;;; Major mode

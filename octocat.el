@@ -396,7 +396,7 @@ store until the fresh data arrives; a new TICK fetches both again."
      (octocat--dashboard-section
       "Recent Repositories"
       (if (plist-get repos :data) (append (plist-get repos :data) nil) 'pending)
-      (and (eq (octocat-vui-snapshot-status repos) 'error) (plist-get repos :error))
+      (and (eq (octocat-vui-snapshot-status repos) 'error) (octocat-vui-error-text repos))
       "(no repositories)"
       (lambda (data)
         (vui-list data #'octocat--dashboard-repo-row
@@ -406,7 +406,7 @@ store until the fresh data arrives; a new TICK fetches both again."
       "Feed"
       (if (or (car shown) (plist-get feed :data)) (car shown) 'pending)
       (and (null (car shown)) (eq (octocat-vui-snapshot-status feed) 'error)
-           (plist-get feed :error))
+           (octocat-vui-error-text feed))
       "(no recent activity)"
       (lambda (data)
         (vui-fragment

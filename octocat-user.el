@@ -258,7 +258,7 @@ A new TICK fetches them again."
        (vui-text "Repositories" :face 'octocat-section-heading)
        (cond
         ((and (null data) (plist-get snap :error) (not loading))
-         (vui-text (plist-get snap :error) :face 'octocat-dimmed))
+         (vui-text (octocat-vui-error-text snap) :face 'octocat-dimmed))
         ((and (null data) (null repos))
          (vui-text (octocat-vui-line-skeleton "  ")))
         (t
@@ -333,14 +333,13 @@ time the window's width changes."
 A new TICK fetches everything again."
   :render
   (let* ((snap    (octocat-vui-use-resource (list 'user-profile login) tick))
-         (profile (plist-get snap :data))
          (handle  (vui-text (propertize (concat "@" login) 'face 'octocat-repo))))
     (vui-vstack
-     (cond
-      (profile (vui-component 'octocat-user--header :profile profile))
-      ((and (plist-get snap :error) (not (plist-get snap :loading)))
-       (vui-vstack handle (vui-text (plist-get snap :error) :face 'octocat-dimmed)))
-      (t (vui-vstack handle (vui-text (octocat-vui-skeleton '((24) (40) (18)))))))
+     (when (eq (octocat-vui-snapshot-status snap) 'error) handle)
+     (octocat-vui-resource-view
+      snap
+      :skeleton (lambda (_) (vui-vstack handle (vui-text (octocat-vui-skeleton '((24) (40) (18))))))
+      :render (lambda (profile) (vui-component 'octocat-user--header :profile profile)))
      (vui-newline)
      (vui-component 'octocat-user--pinned-section :login login :tick tick)
      (vui-component 'octocat-user--repos-section :login login :tick tick))))

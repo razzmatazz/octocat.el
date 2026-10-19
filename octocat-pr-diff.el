@@ -240,7 +240,7 @@ everything again."
                          (octocat--label-background) tab-w 'files))))
       ((and (plist-get pr :error) (not (plist-get pr :loading)))
        (vui-vstack
-        (vui-text (format "Error: %s" (plist-get pr :error)) :face 'error)
+        (vui-text (octocat-vui-error-text pr) :face 'error)
         (octocat-pr--tabs 'files repo number tab-w)))
       (t (vui-vstack
           (vui-text (format "%s#%d  diff" repo number)
@@ -248,7 +248,7 @@ everything again."
           (octocat-pr--tabs 'files repo number tab-w))))
      (pcase (octocat-vui-snapshot-status files)
        ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
-       ('error   (vui-text (format "  Error: %s" (plist-get files :error)) :face 'error))
+       ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
        (_ (octocat-diff-files-section (plist-get files :data) by-path
                                       raw (octocat--markdown-width))))
      (vui-newline)

@@ -263,7 +263,7 @@ WIDTH are as for `octocat-diff--comment-lines'."
                                  'face 'octocat-section-heading))
            (pcase status
              ('pending (list (vui-text (octocat-vui-skeleton '(("  " 36))))))
-             ('error   (list (vui-text (format "  %s" (plist-get comments :error))
+             ('error   (list (vui-text (concat "  " (octocat-vui-error-text comments))
                                        :face 'octocat-dimmed)))
              (_ (if (seq-empty-p all)
                     (list (vui-text (format "  (no %ss)" noun) :face 'octocat-dimmed))

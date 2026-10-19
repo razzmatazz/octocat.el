@@ -968,44 +968,45 @@ again."
                           (octocat-timeline-entries
                            (octocat-pr--items repo pr events bg)
                            raw (octocat--markdown-width))))))
-    (cond
-     (pr
-      (let ((on-visit-check
-             (lambda ()
-               (octocat-checks-open repo (or (octocat-pr--head-sha pr) "")
-                                    (octocat--nonempty (gethash "headRefName" pr))))))
-        (apply #'vui-vstack
-               (append
-                (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width)))
-                entries
-                ;; Under the timeline, as they add to it; the checks and
-                ;; merge are about the PR as a whole.
-                (octocat-timeline-buttons-or-action
-                 (list '("+ Add a comment" "RET: write a comment" octocat-pr-add-comment)
-                       (pcase (gethash "state" pr)
-                         ("OPEN"   '("Close pull request" "RET: close this pull request"
-                                     octocat-pr-close))
-                         ("CLOSED" '("Reopen pull request" "RET: reopen this pull request"
-                                     octocat-pr-reopen))))
-                 (alist-get 'action mutating))
-                (list (vui-newline))
-                ;; An open PR's checks are in its merge box, as on GitHub.
-                (or (octocat-pr--merge-section pr on-visit-check
-                                               (alist-get 'merge mutating)
-                                               awaiting (alist-get 'approve mutating))
-                    (octocat-checks-block
-                     (or (octocat--get pr "statusCheckRollup") [])
-                     on-visit-check))))))
-     ((and (plist-get snap :error) (not (plist-get snap :loading)))
-      (vui-text (format "  Error: %s" (plist-get snap :error)) :face 'error))
-     ;; The list fetched the PR: its header paints at once.
-     ((plist-get snap :partial)
-      (apply #'vui-vstack
-             (append
-              (delq nil (octocat-pr--header repo (plist-get snap :partial) bg
-                                            (octocat--markdown-width)))
-              (list (vui-text (octocat-vui-post-skeleton width))))))
-     (t (vui-text (octocat-vui-detail-skeleton repo number width octocat-pr--tab-labels))))))
+    (octocat-vui-resource-view
+     snap
+     :skeleton (lambda (partial)
+                 (if partial
+                     ;; The list fetched the PR: its header paints at once.
+                     (apply #'vui-vstack
+                            (append (delq nil (octocat-pr--header repo partial bg
+                                                                  (octocat--markdown-width)))
+                                    (list (vui-text (octocat-vui-post-skeleton width)))))
+                   (vui-text (octocat-vui-detail-skeleton repo number width
+                                                          octocat-pr--tab-labels))))
+     :render
+     (lambda (_)
+       (let ((on-visit-check
+              (lambda ()
+                (octocat-checks-open repo (or (octocat-pr--head-sha pr) "")
+                                     (octocat--nonempty (gethash "headRefName" pr))))))
+         (apply #'vui-vstack
+                (append
+                 (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width)))
+                 entries
+                 ;; Under the timeline, as they add to it; the checks and
+                 ;; merge are about the PR as a whole.
+                 (octocat-timeline-buttons-or-action
+                  (list '("+ Add a comment" "RET: write a comment" octocat-pr-add-comment)
+                        (pcase (gethash "state" pr)
+                          ("OPEN"   '("Close pull request" "RET: close this pull request"
+                                      octocat-pr-close))
+                          ("CLOSED" '("Reopen pull request" "RET: reopen this pull request"
+                                      octocat-pr-reopen))))
+                  (alist-get 'action mutating))
+                 (list (vui-newline))
+                 ;; An open PR's checks are in its merge box, as on GitHub.
+                 (or (octocat-pr--merge-section pr on-visit-check
+                                                (alist-get 'merge mutating)
+                                                awaiting (alist-get 'approve mutating))
+                     (octocat-checks-block
+                      (or (octocat--get pr "statusCheckRollup") [])
+                      on-visit-check)))))))))
 
 
 (vui-defcomponent octocat-pr-commits--page (repo number tick)
@@ -1016,29 +1017,28 @@ A new TICK fetches them again."
          (snap  (octocat-pr--use-data repo number tick))
          (pr    (plist-get snap :data))
          (days  (vui-use-memo (pr) (and pr (octocat-pr--commit-days pr)))))
-    (cond
-     (pr
-      (let* ((commits   (apply #'append (mapcar #'cdr days)))
-             (author-w  (octocat-repo-vui--author-width commits))
-             (subject-w (octocat-repo-vui--subject-width commits width author-w)))
-        (apply #'vui-vstack
-               (append
-                (delq nil (octocat-pr--header repo pr (octocat--label-background) width 'commits))
-                (mapcan (lambda (day)
-                          (cons (vui-text (car day) :face 'octocat-section-heading)
-                                (append
-                                 (mapcar (lambda (c)
-                                           (octocat-repo-vui--commit-row
-                                            repo c nil author-w subject-w))
-                                         (cdr day))
-                                 (list (vui-newline)))))
-                        days)))))
-     ((and (plist-get snap :error) (not (plist-get snap :loading)))
-      (vui-vstack
-       (vui-text (format "Error: %s" (plist-get snap :error)) :face 'error)
-       (octocat-pr--tabs 'commits repo number width)))
-     (t (vui-text (octocat-vui-detail-skeleton repo number (octocat-vui-window-width)
-                                               octocat-pr--tab-labels))))))
+    (octocat-vui-resource-view
+     snap
+     :skeleton (lambda (_)
+                 (vui-text (octocat-vui-detail-skeleton repo number (octocat-vui-window-width)
+                                                        octocat-pr--tab-labels)))
+     :render
+     (lambda (_)
+       (let* ((commits   (apply #'append (mapcar #'cdr days)))
+              (author-w  (octocat-repo-vui--author-width commits))
+              (subject-w (octocat-repo-vui--subject-width commits width author-w)))
+         (apply #'vui-vstack
+                (append
+                 (delq nil (octocat-pr--header repo pr (octocat--label-background) width 'commits))
+                 (mapcan (lambda (day)
+                           (cons (vui-text (car day) :face 'octocat-section-heading)
+                                 (append
+                                  (mapcar (lambda (c)
+                                            (octocat-repo-vui--commit-row
+                                             repo c nil author-w subject-w))
+                                          (cdr day))
+                                  (list (vui-newline)))))
+                         days))))))))
 
 
 ;;;; Major mode
