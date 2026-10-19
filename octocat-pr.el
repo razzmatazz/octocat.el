@@ -488,7 +488,8 @@ a narrow window."
           (octocat--run-gh "merge" (octocat-pr--merge-args repo number method text delete)
                            #'ignore done))
   :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number)
-                            (list-items pulls ,repo _ _) (counts pulls ,repo))))
+                            (list-items pulls ,repo _ _) (counts pulls ,repo)
+                            (repo-summary ,repo))))
 
 (defun octocat-pr--submit-merge (text source on-success on-error)
   "Merge the PR in SOURCE buffer with commit message TEXT.
@@ -705,7 +706,8 @@ lists do not share.")
 
 (octocat-sync-define-resource pr (repo number)
   :entity (octocat-sync-item-key 'pr repo number)
-  :invalidates (lambda () `((list-items pulls ,repo _ _) (counts pulls ,repo)))
+  :invalidates (lambda () `((list-items pulls ,repo _ _) (counts pulls ,repo)
+                                (repo-summary ,repo)))
   :fetch (lambda (done)
            (octocat--fetch-pr
             repo number

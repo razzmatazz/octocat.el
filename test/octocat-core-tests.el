@@ -116,6 +116,20 @@
                  '(:open 2 :closed 5))))
 
 
+(ert-deftest octocat-core-test-parse-repo-summary-fork ()
+  "A fork's summary carries its parent, default branch and counts."
+  (should (equal (octocat--parse-repo-summary
+                  "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\"},\"parent\":{\"nameWithOwner\":\"up/stream\"},\"issues\":{\"totalCount\":3},\"pullRequests\":{\"totalCount\":2}}}}")
+                 '(:default-branch "main" :fork-parent "up/stream"
+                   :open-issues 3 :open-prs 2))))
+
+(ert-deftest octocat-core-test-parse-repo-summary-empty-repo ()
+  "A non-fork with no default branch yields nils, not errors."
+  (should (equal (octocat--parse-repo-summary
+                  "{\"data\":{\"repository\":{\"defaultBranchRef\":null,\"parent\":null,\"issues\":{\"totalCount\":0},\"pullRequests\":{\"totalCount\":0}}}}")
+                 '(:default-branch nil :fork-parent nil
+                   :open-issues 0 :open-prs 0))))
+
 (ert-deftest octocat-core-test-cap-width ()
   "Only a capped page keeps to `octocat-max-width'."
   (with-temp-buffer

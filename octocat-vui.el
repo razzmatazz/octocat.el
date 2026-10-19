@@ -972,27 +972,60 @@ what is below it without a blank line."
                    (list (vui-text (make-string (max 0 (- width used)) ?\s)
                                    :face 'underline))))))
 
-(defun octocat-vui-repo-tabs (repo current &optional issues prs)
+(defcustom octocat-repo-summary-ttl 300
+  "Seconds a repo's summary, with its open issue and PR counts, is reused.
+Within this, opening a page with the repo tabs doesn't refetch it; `g',
+or closing, reopening or merging an item of the repo, does.  It is at
+least `octocat-sync-fresh-for'."
+  :type 'integer
+  :group 'octocat)
+
+(octocat-sync-define-resource repo-summary (repo)
+  :max-age octocat-repo-summary-ttl
+  :fetch (lambda (done)
+           (octocat--fetch-repo-summary
+            repo
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error)
+                                r
+                              (let ((h (make-hash-table :test #'equal)))
+                                (while r
+                                  (puthash (substring (symbol-name (pop r)) 1) (pop r) h))
+                                h)))))))
+
+(defun octocat-vui-repo-tabs (repo current tick)
   "Return a list of vnodes: the tab strip of REPO's pages, as on GitHub.
 The tabs are those of `octocat--repo-tabs'.  CURRENT is the symbol of
-the list page being shown; its tab is drawn as a heading and is not
-clickable.  The others open their page for REPO.  ISSUES and PRS, when
-non-nil, are open counts shown on their tabs (a string such as \"…\"
-while they load)."
-  (mapcar
-   (lambda (tab)
-     (pcase-let* ((`(,sym ,label ,help ,fn) tab)
-                  (label (pcase sym
-                           ('issues (if issues (format "%s (%s)" label issues) label))
-                           ('pulls  (if prs (format "%s (%s)" label prs) label))
-                           (_ label))))
-       (if (eq sym current)
-           (vui-text label :face 'octocat-section-heading)
-         (vui-button label
-                     :face 'octocat-dimmed
-                     :help-echo help
-                     :on-click (lambda () (funcall fn repo))))))
-   octocat--repo-tabs))
+the page being shown; its tab is drawn as a heading and is not
+clickable.  The others open their page for REPO.  The issue and PR tabs
+show the open counts of the `repo-summary' resource, \"…\" while it
+loads; a new TICK refetches it.  Reads the store, so call it during
+render, like any hook."
+  (let* ((snap    (octocat-vui-use-resource (list 'repo-summary repo) tick))
+         (summary (plist-get snap :data))
+         (count   (lambda (field)
+                    (pcase (octocat-vui-snapshot-status snap)
+                      ('ready   (gethash field summary))
+                      ('pending "…"))))
+         (nodes
+          (mapcar
+           (lambda (tab)
+             (pcase-let* ((`(,sym ,label ,help ,fn) tab)
+                          (n     (pcase sym
+                                   ('issues (funcall count "open-issues"))
+                                   ('pulls  (funcall count "open-prs"))))
+                          (label (if n (format "%s (%s)" label n) label)))
+               (if (eq sym current)
+                   (vui-text label :face '(octocat-section-heading underline))
+                 (vui-button label
+                             :face '(octocat-dimmed underline)
+                             :help-echo help
+                             :on-click (lambda () (funcall fn repo))))))
+           octocat--repo-tabs)))
+    ;; One node, so the gaps between the tabs are underlined too.
+    (list (apply #'vui-hstack :spacing 0
+                 (cdr (mapcan (lambda (n) (list (vui-text "  " :face 'underline) n))
+                              nodes))))))
 
 (octocat-sync-define-resource counts (kind repo)
   :fetch (lambda (done)
@@ -1023,7 +1056,7 @@ them again."
             (octocat-vui-row (propertize repo 'face 'octocat-repo)
                              (lambda () (octocat-visit-repo repo))
                              "RET: open repository page")
-            (octocat-vui-repo-tabs repo tab))
+            (octocat-vui-repo-tabs repo tab tick))
      (vui-newline)
      (when (and counts (gethash "open" counts))
        (vui-fragment

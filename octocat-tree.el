@@ -504,7 +504,7 @@ new TICK refetches it again."
     (vui-vstack
      (apply #'vui-hstack :spacing 2
             (append (octocat-tree--header repo branch)
-                    (octocat-vui-repo-tabs repo 'code)))
+                    (octocat-vui-repo-tabs repo 'code tick)))
      (pcase (octocat-vui-snapshot-status result)
        ('error (vui-text (propertize (concat "  " (octocat-vui-error-text result))
                                      'face 'error)))

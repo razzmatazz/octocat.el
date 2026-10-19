@@ -41,20 +41,6 @@
   (octocat-repo-tests--with-remote ""
     (should-error (octocat-repo--current-repo) :type 'user-error)))
 
-(ert-deftest octocat-repo-test-parse-summary-fork ()
-  "A fork's summary carries its parent, default branch and counts."
-  (should (equal (octocat-repo--parse-summary
-                  "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\"},\"parent\":{\"nameWithOwner\":\"up/stream\"},\"issues\":{\"totalCount\":3},\"pullRequests\":{\"totalCount\":2}}}}")
-                 '(:default-branch "main" :fork-parent "up/stream"
-                   :open-issues 3 :open-prs 2))))
-
-(ert-deftest octocat-repo-test-parse-summary-empty-repo ()
-  "A non-fork with no default branch yields nils, not errors."
-  (should (equal (octocat-repo--parse-summary
-                  "{\"data\":{\"repository\":{\"defaultBranchRef\":null,\"parent\":null,\"issues\":{\"totalCount\":0},\"pullRequests\":{\"totalCount\":0}}}}")
-                 '(:default-branch nil :fork-parent nil
-                   :open-issues 0 :open-prs 0))))
-
 (ert-deftest octocat-repo-test-state-label ()
   "State labels are fixed-width words; only open PRs can be drafts."
   (should (equal (substring-no-properties (octocat-repo-vui--state-label "OPEN")) "open  "))

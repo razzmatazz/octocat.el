@@ -592,7 +592,8 @@ lost."
                  (let ((kind (if (equal kind "pr") 'pulls 'issues)))
                    `((timeline-events ,repo ,number)
                      (list-items ,kind ,repo _ _)
-                     (counts ,kind ,repo)))))
+                     (counts ,kind ,repo)
+                     (repo-summary ,repo)))))
 
 (octocat-sync-define-mutation set-title (kind repo number title)
   :label "Renaming…"

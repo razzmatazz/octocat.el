@@ -209,7 +209,8 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
 
 (octocat-sync-define-resource issue (repo number)
   :entity (octocat-sync-item-key 'issue repo number)
-  :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)))
+  :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
+                                (repo-summary ,repo)))
   :fetch (lambda (done)
            (octocat--fetch-issue
             repo number

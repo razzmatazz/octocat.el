@@ -1243,6 +1243,39 @@ in `octocat--parse-counts', or a cons \\=(error . MSG).  One API call."
      #'octocat--parse-counts
      callback)))
 
+(defconst octocat--repo-summary-query
+  "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){defaultBranchRef{name} parent{nameWithOwner} issues(states:OPEN){totalCount} pullRequests(states:OPEN){totalCount}}}"
+  "GraphQL query behind `octocat--fetch-repo-summary'.")
+
+(defun octocat--parse-repo-summary (json-string)
+  "Parse the GraphQL response JSON-STRING into a summary plist.
+Keys: :default-branch (string or nil), :fork-parent (\"owner/repo\" or
+nil), :open-issues and :open-prs (integers)."
+  (let* ((repo (gethash "repository"
+                        (gethash "data" (json-parse-string json-string :null-object nil))))
+         (ref    (gethash "defaultBranchRef" repo))
+         (parent (gethash "parent" repo)))
+    (list :default-branch (and ref (gethash "name" ref))
+          :fork-parent    (and parent (gethash "nameWithOwner" parent))
+          :open-issues    (gethash "totalCount" (gethash "issues" repo))
+          :open-prs       (gethash "totalCount" (gethash "pullRequests" repo)))))
+
+(defun octocat--fetch-repo-summary (repo callback)
+  "Fetch the repo-view summary for REPO asynchronously in one API call.
+Calls CALLBACK with the plist described in `octocat--parse-repo-summary',
+or a cons \\=(error . MSG) on failure.  One GraphQL request replaces what
+would otherwise be separate default-branch, fork-parent and
+issue/PR-count lookups."
+  (let ((parts (split-string repo "/")))
+    (octocat--run-gh
+     "repo-summary"
+     (list "api" "graphql"
+           "-f" (concat "query=" octocat--repo-summary-query)
+           "-F" (concat "owner=" (car parts))
+           "-F" (concat "name=" (cadr parts)))
+     #'octocat--parse-repo-summary
+     callback)))
+
 (defun octocat--list-labels (repo callback)
   "Fetch the labels of REPO asynchronously and call CALLBACK.
 CALLBACK is called with a list of tables of \"name\" and \"color\", or a

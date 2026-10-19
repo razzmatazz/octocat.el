@@ -225,7 +225,7 @@ shown up until the fresh data replaces it."
                       (list label help
                             (unless (eq tab sym) (lambda () (vui-set-state :tab sym)))))))
     (vui-vstack
-     (vui-component 'octocat-vui-list-header :repo repo :tab 'actions)
+     (vui-component 'octocat-vui-list-header :repo repo :tab 'actions :tick tick)
      (octocat-vui-tab-row
       (list (funcall tab-of 'runs "Runs" "RET: show the recent runs")
             (funcall tab-of 'workflows

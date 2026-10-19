@@ -370,53 +370,6 @@ and the longest knows the most; one with another head is out of date."
                     best))
                 others base)))
 
-(defconst octocat-repo--summary-query
-  "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){defaultBranchRef{name} parent{nameWithOwner} issues(states:OPEN){totalCount} pullRequests(states:OPEN){totalCount}}}"
-  "GraphQL query behind `octocat-repo--fetch-summary'.")
-
-(defun octocat-repo--parse-summary (json-string)
-  "Parse the GraphQL response JSON-STRING into a summary plist.
-Keys: :default-branch (string or nil), :fork-parent (\"owner/repo\" or
-nil), :open-issues and :open-prs (integers)."
-  (let* ((repo (gethash "repository"
-                        (gethash "data" (json-parse-string json-string :null-object nil))))
-         (ref    (gethash "defaultBranchRef" repo))
-         (parent (gethash "parent" repo)))
-    (list :default-branch (and ref (gethash "name" ref))
-          :fork-parent    (and parent (gethash "nameWithOwner" parent))
-          :open-issues    (gethash "totalCount" (gethash "issues" repo))
-          :open-prs       (gethash "totalCount" (gethash "pullRequests" repo)))))
-
-(defun octocat-repo--fetch-summary (repo callback)
-  "Fetch the repo-view summary for REPO asynchronously in one API call.
-Calls CALLBACK with the plist described in `octocat-repo--parse-summary',
-or a cons \\=(error . MSG) on failure.  One GraphQL request replaces what
-would otherwise be separate default-branch, fork-parent and
-issue/PR-count lookups."
-  (let ((parts (split-string repo "/")))
-    (octocat--run-gh
-     "repo-summary"
-     (list "api" "graphql"
-           "-f" (concat "query=" octocat-repo--summary-query)
-           "-F" (concat "owner=" (car parts))
-           "-F" (concat "name=" (cadr parts)))
-     #'octocat-repo--parse-summary
-     callback)))
-
-
-(octocat-sync-define-resource repo-summary (repo)
-  :fetch (lambda (done)
-           (octocat-repo--fetch-summary
-            repo
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (let ((h (make-hash-table :test #'equal)))
-                                (while r
-                                  (puthash (substring (symbol-name (pop r)) 1) (pop r) h))
-                                h)))))))
-
-
 ;;;; Row rendering
 ;;
 ;; The generic row / sticky-async / load-more helpers live in
@@ -1147,14 +1100,6 @@ under its blob SHA, so while the branch stays put no request is made."
 
 ;;;; Root
 
-(defun octocat-repo-vui--nav-buttons (repo summary)
-  "Return the tab strip of REPO's pages, as GitHub's tabs.
-The issue and PR tabs show their open counts from SUMMARY, the data of
-the `repo-summary' resource, or an ellipsis while it loads."
-  (octocat-vui-repo-tabs repo 'code
-                         (or (and summary (gethash "open-issues" summary)) "…")
-                         (or (and summary (gethash "open-prs" summary)) "…")))
-
 (vui-defcomponent octocat-repo-vui--root (repo branch local-dir unpushed raw tick)
   "Root component for the repo buffer: header, local-head/fork-parent
 info, issue/PR summary line, then the UNPUSHED, the commits and the
@@ -1181,7 +1126,7 @@ Everything but the commits and docs comes from one summary resource."
     (vui-vstack
      (apply #'vui-hstack :spacing 2
             (vui-text repo :face 'octocat-repo)
-            (octocat-repo-vui--nav-buttons repo summary))
+            (octocat-vui-repo-tabs repo 'code tick))
      (when local-dir
        (vui-text
         (concat (propertize "Local clone:" 'face 'octocat-dimmed)

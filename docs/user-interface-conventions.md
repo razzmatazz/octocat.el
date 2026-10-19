@@ -654,8 +654,9 @@ repository page".
 
 ### The tab strip
 
-The repo page and the issue / PR / Actions list pages share
-one strip, `octocat-vui-repo-tabs`, imitating GitHub's repository tabs:
+The repo page, the file tree and the issue / PR / Actions list pages
+share one strip, `octocat-vui-repo-tabs`, imitating GitHub's repository
+tabs:
 
 ```
 owner/repo  [Code]  [Issues (N)]  [Pull requests (N)]  [Actions]
@@ -666,8 +667,16 @@ owner/repo  [Code]  [Issues (N)]  [Pull requests (N)]  [Actions]
   `octocat-section-heading` and is not clickable.
 - Code is the repo page itself, as on GitHub, so it is current there.
   The file tree is one key away, `C-c C-t`, rather than a tab.
-- On list pages the counts are `(…)` until known; the repo page passes the
-  open counts from its summary.
+- The strip is underlined, gaps included, so it reads as a tab bar
+  rather than a row of buttons.  Unlike `octocat-vui-tab-row` it stops at
+  the last tab: it shares its line with the repo name.
+- The issue and PR tabs show the open counts of the `repo-summary`
+  resource, which the strip reads itself, so every page that draws it
+  shows the counts; they are `(…)` until it first loads.  The summary is
+  reused for `octocat-repo-summary-ttl` seconds (5 minutes by default)
+  before opening a page refetches it.  `g` refetches it at once, and closing,
+  reopening or merging an item outdates it, so the counts follow your own
+  changes.
 - Pages that show the strip put it on the top line, next to the repo name.
   Item counts
   ("N open · M closed") go on their own dimmed line.
