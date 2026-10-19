@@ -51,8 +51,8 @@ defers it, e.g. `(run-at-time 0 nil ...)`.
 
 ## Reading the sync store
 
-Pages on the sync layer (`octocat-sync.el`: so far the user page, the
-issue and PR lists, and the issue and PR pages) don't fetch.  They name
+Pages on the sync layer (`octocat-sync.el`: so far the user, issue, PR,
+commit, checks and Actions pages and lists) don't fetch.  They name
 a resource, such as `(user-profile "octocat")`, and read it with
 `octocat-vui-use-resource`.  It returns a snapshot: `:data` from the
 SQLite store, `:loading` while a fetch runs, and `:error` from the last
@@ -65,8 +65,8 @@ showing an entity (a user, an issue) whose fields changed, and each
 page reading one re-renders once from its root.  So a component that
 reads a resource must not be `:memo`, or it would keep the old snapshot.
 
-Issues and PRs are entities, and so are their authors, assignees and
-labels.  A list row and the issue's page store the same entity, so the
+Issues, PRs and workflow runs are entities, and so are authors,
+assignees and labels.  A list row and the issue's page store the same entity, so the
 list shows what the page last fetched.  The page's resource keeps what
 the list doesn't share, such as comments, beside the entity
 (`octocat-sync-detail`), and `octocat-vui-use-detail` reads both back

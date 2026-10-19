@@ -711,7 +711,9 @@ lists do not share.")
             (lambda (r)
               (funcall done (if (eq (car-safe r) 'error)
                                 r
-                              (octocat-sync-detail 'pr repo r octocat-pr--parts)))))))
+                              (octocat-sync-detail
+                                 r octocat-pr--parts
+                                 (lambda (f) (octocat-sync-item 'pr repo f)))))))))
 
 
 ;;;; Rendering

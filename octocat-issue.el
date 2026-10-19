@@ -215,7 +215,9 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
             (lambda (r)
               (funcall done (if (eq (car-safe r) 'error)
                                 r
-                              (octocat-sync-detail 'issue repo r '("comments"))))))))
+                              (octocat-sync-detail
+                                 r '("comments")
+                                 (lambda (f) (octocat-sync-item 'issue repo f)))))))))
 
 ;;;; Rendering
 ;;

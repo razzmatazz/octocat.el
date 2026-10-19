@@ -27,31 +27,32 @@
 ;;; Code:
 
 (require 'octocat-core)
+(require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)
 (require 'vui-components) ; vui-list, etc.
 (require 'octocat-repo) ; row builders and fetchers
 
 
-(defun octocat-actions--use-cached (repo type key loader &optional save-p id)
-  "Return the result of LOADER for KEY, a list cached as TYPE of REPO.
-SAVE-P, when given, says whether to save a fresh result.  ID names the
-cache entry, \"all\" by default.  See `octocat-vui-use-cached'.  Must
-be called during render."
-  (octocat-vui-use-cached
-   key
-   (lambda () (plist-get (octocat--items-cache-load repo type (or id "all")) :items))
-   (lambda (items)
-     (when (or (null save-p) (funcall save-p))
-       (octocat--items-cache-save repo type (or id "all") items)))
-   (lambda (resolve reject)
-     (funcall loader (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))
+(octocat-sync-define-resource runs (repo limit args)
+  ;; ARGS are `gh run list' options filtering the runs.
+  :fetch (lambda (done)
+           (octocat-repo--list-recent-runs
+            repo limit
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error)
+                                r
+                              (let ((tree (make-hash-table :test #'equal)))
+                                (puthash "nodes" (vconcat (mapcar (lambda (run) (octocat-sync-run repo run))
+                                                                  r))
+                                         tree)
+                                tree))))
+            args)))
 
-(defun octocat-actions--loading-p (result)
-  "Return whether RESULT is loading or showing data about to be replaced."
-  (and (or (eq (plist-get result :status) 'pending)
-           (plist-get result :refreshing))
-       t))
+(octocat-sync-define-resource workflows (repo)
+  :fetch (lambda (done)
+           (octocat-repo--list-workflows
+            repo (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
 ;;;; Run filters
 ;;
@@ -147,24 +148,23 @@ tokens of QUERY that are no qualifier of `octocat-actions--run-qualifiers'."
 (vui-defcomponent octocat-actions--runs-section (repo current-branch tick query)
   "The Runs tab of REPO's Actions page: its recent runs matching QUERY.
 See `octocat-actions--run-args' for QUERY.  TICK is the page's refresh
-tick.  Each query's first page is cached."
+tick."
   :state ((limit octocat-section-limit))
   :render
   (let* ((parsed  (octocat-actions--run-args query))
-         (result  (octocat-actions--use-cached
-                   ;; Only the first page is cached: a longer list would shrink back.
-                   repo "recent-runs" (list 'recent-runs repo limit tick query)
-                   (lambda (callback)
-                     (octocat-repo--list-recent-runs repo limit callback (car parsed)))
-                   (lambda () (= limit octocat-section-limit))
-                   (if (car parsed) (secure-hash 'md5 (format "%S" (car parsed))) "all")))
-         (loading (octocat-actions--loading-p result)))
+         (snap    (octocat-vui-use-resource (list 'runs repo limit (car parsed)) tick))
+         (shown   (vui-use-ref nil))
+         (data    (plist-get snap :data))
+         (loading (plist-get snap :loading)))
+    ;; Each limit is its own resource: keep the shorter list while the
+    ;; longer one loads.
+    (when data (setcar shown (append (gethash "nodes" data) nil)))
     (octocat-vui-use-mode-line-loading loading)
-    (pcase (plist-get result :status)
+    (pcase (if (car shown) 'ready (octocat-vui-snapshot-status snap))
        ('pending (vui-text (octocat-vui-line-skeleton)))
-       ('error   (vui-text (format "%s\n" (plist-get result :error)) :face 'octocat-dimmed))
+       ('error   (vui-text (format "%s\n" (plist-get snap :error)) :face 'octocat-dimmed))
        ('ready
-        (let* ((runs (plist-get result :data))
+        (let* ((runs (car shown))
                (wf-w (if runs
                          (min 25 (apply #'max 1
                                         (mapcar (lambda (r) (length (or (gethash "workflowName" r) "")))
@@ -189,24 +189,24 @@ tick.  Each query's first page is cached."
                 (octocat-repo-vui--workflow-run-row
                  repo r current-branch wf-w title-w branch-w))
               (lambda (r) (gethash "databaseId" r))))
-           (when (and runs (or (plist-get result :refreshing)
-                               (>= (length runs) limit)))
+           (when (and runs (or (>= (length runs) limit)
+                               (and loading (> limit octocat-section-limit))))
              (octocat-vui-load-more-button
               'load-more-runs octocat-section-limit
               "RET: load more runs"
               (lambda () (vui-set-state :limit (+ limit octocat-section-limit)))
-              (and (plist-get result :refreshing) (< (length runs) limit)) 0
+              (and loading (< (length runs) limit)) 0
               (octocat-vui-line-skeleton)))))))))
 
-(defun octocat-actions--workflows (repo result)
-  "Return the Workflows tab of REPO's Actions page, from RESULT.
-RESULT is the page's `octocat-actions--use-cached' result of the
-workflows (no pagination: run history lives on the Runs tab)."
-  (pcase (plist-get result :status)
+(defun octocat-actions--workflows (repo snap)
+  "Return the Workflows tab of REPO's Actions page, from SNAP.
+SNAP is the sync snapshot of the workflows (no pagination: run history
+lives on the Runs tab)."
+  (pcase (octocat-vui-snapshot-status snap)
     ('pending (vui-text (octocat-vui-line-skeleton)))
-    ('error   (vui-text (format "%s\n" (plist-get result :error)) :face 'octocat-dimmed))
+    ('error   (vui-text (format "%s\n" (plist-get snap :error)) :face 'octocat-dimmed))
     ('ready
-     (let ((workflows (plist-get result :data)))
+     (let ((workflows (append (plist-get snap :data) nil)))
        (if (null workflows)
            (vui-text "(no workflows)\n" :face 'octocat-dimmed)
          (let* ((state-w (apply #'max (mapcar (lambda (wf)
@@ -223,20 +223,17 @@ workflows (no pagination: run history lives on the Runs tab)."
   "The Actions page of REPO: a Runs and a Workflows tab, Runs first.
 The runs are those matching QUERY, filtered above them.
 The workflows are fetched whichever tab shows, for the count on their
-tab; cached, it shows at once.  A new TICK refetches, keeping what is
+tab; stored, it shows at once.  A new TICK refetches, keeping what is
 shown up until the fresh data replaces it."
   :state ((tab 'runs))
   :render
-  (let* ((workflows (octocat-actions--use-cached
-                     repo "workflows" (list 'workflows repo tick)
-                     (lambda (callback) (octocat-repo--list-workflows repo callback))))
-         (count     (and (eq (plist-get workflows :status) 'ready)
-                         (length (plist-get workflows :data))))
+  (let* ((workflows (octocat-vui-use-resource (list 'workflows repo) tick))
+         (count     (and (plist-get workflows :data) (length (plist-get workflows :data))))
          (tab-of    (lambda (sym label help)
                       (list label help
                             (unless (eq tab sym) (lambda () (vui-set-state :tab sym)))))))
     (octocat-vui-use-mode-line-loading
-     (and (eq tab 'workflows) (octocat-actions--loading-p workflows)))
+     (and (eq tab 'workflows) (plist-get workflows :loading)))
     (vui-vstack
      (vui-component 'octocat-vui-list-header :repo repo :tab 'actions)
      (octocat-vui-tab-row
@@ -256,8 +253,9 @@ shown up until the fresh data replaces it."
 
 (defun octocat-actions-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current Actions page buffer.
-The page paints the disk cache at once and fetches the workflows and runs
-in the background; a refresh keeps the old content up meanwhile."
+The page paints from the sync store at once and fetches the workflows
+and runs in the background; a refresh keeps the old content up
+meanwhile."
   (interactive)
   (unless octocat-vui-list--repo
     (user-error "Octocat: Buffer is not associated with a repository"))

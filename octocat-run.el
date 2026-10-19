@@ -32,10 +32,10 @@
 
 (require 'octocat-core)
 (require 'octocat-job)
+(require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)
 
-(declare-function octocat-repo-vui--resolve-or-reject "octocat-repo" (result resolve reject))
 (declare-function octocat-search-repo "octocat-search" ())
 
 
@@ -186,19 +186,10 @@ LOCAL-BRANCH, the checked-out branch, is highlighted when it is the run's."
             (list (vui-text "  (no jobs)" :face 'octocat-dimmed))
           (mapcar (lambda (job) (octocat-run--job-row repo run-id job)) jobs))))
 
-(defun octocat-run--cached (repo type id key loader)
-  "Return the result of LOADER for KEY, cached on disk as TYPE item ID of REPO.
-See `octocat-vui-use-cached'.  Must be called during render."
-  (octocat-vui-use-cached
-   key
-   (lambda () (octocat--detail-cache-load repo type id))
-   (lambda (data) (octocat--detail-cache-save repo type id data))
-   loader))
-
 (defun octocat-run--annotation-entries (results)
   "Return the RESULTS of `octocat--fetch-run-annotations' as a vector.
 Each entry is a hash-table of \"job\", its name, and \"annotations\", a
-vector: a shape the disk cache can store as JSON."
+vector: a shape the store can hold as JSON."
   (vconcat
    (mapcar (lambda (r)
              (let ((h (make-hash-table :test #'equal)))
@@ -207,59 +198,73 @@ vector: a shape the disk cache can store as JSON."
                h))
            results)))
 
+(octocat-sync-define-resource run (repo run-id)
+  :entity (format "run:%s/%s" (downcase repo) run-id)
+  :fetch (lambda (done)
+           (octocat--fetch-run
+            repo run-id
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error)
+                                r
+                              (octocat-sync-detail r '("jobs")
+                                                   (lambda (f) (octocat-sync-run repo f)))))))))
+
+(octocat-sync-define-resource run-annotations (repo _run-id jobs)
+  ;; JOBS, the (ID . NAME) of each job, are only known once the run is.
+  :fetch (lambda (done)
+           (octocat--fetch-run-annotations
+            repo
+            (vconcat (mapcar (pcase-lambda (`(,id . ,name))
+                               (let ((job (make-hash-table :test #'equal)))
+                                 (puthash "databaseId" id job)
+                                 (puthash "name" name job)
+                                 job))
+                             jobs))
+            (lambda (r) (funcall done (octocat-run--annotation-entries r))))))
+
+(octocat-sync-define-resource run-artifacts (repo run-id)
+  :fetch (lambda (done) (octocat--fetch-run-artifacts repo run-id done)))
+
 (vui-defcomponent octocat-run--page (repo run-id tick)
   "Workflow run RUN-ID of REPO.
 A new TICK refetches everything, keeping what is shown until the fresh
 data replaces it."
   :render
   (let* ((local-branch (vui-use-memo () (octocat--current-branch)))
-         (run   (octocat-run--cached
-                 repo "run" run-id (list 'run repo run-id tick)
-                 (lambda (resolve reject)
-                   (octocat--fetch-run
-                    repo run-id
-                    (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))
-         (data  (and (eq (plist-get run :status) 'ready) (plist-get run :data)))
+         (run   (octocat-vui-use-detail (list 'run repo run-id) tick))
+         (data  (or (plist-get run :data) (plist-get run :partial)))
          (jobs  (and data (octocat-run--jobs data)))
-         ;; Keyed by the jobs too: they are only known once the run is.
-         (anns  (octocat-run--cached
-                 repo "run-annotations" run-id
-                 (list 'run-annotations repo run-id tick
-                       (mapcar (lambda (j) (gethash "databaseId" j)) jobs))
-                 (lambda (resolve _reject)
-                   (if jobs
-                       (octocat--fetch-run-annotations
-                        repo (vconcat jobs)
-                        (lambda (r) (funcall resolve (octocat-run--annotation-entries r))))
-                     (funcall resolve nil)))))
-         (arts  (octocat-run--cached
-                 repo "run-artifacts" run-id (list 'run-artifacts repo run-id tick)
-                 (lambda (resolve _reject)
-                   (octocat--fetch-run-artifacts repo run-id resolve))))
-         (loading (and (cl-some (lambda (r) (or (eq (plist-get r :status) 'pending)
-                                                (plist-get r :refreshing)))
-                                (list run anns arts))
-                       t)))
+         (anns  (octocat-vui-use-resource
+                 (list 'run-annotations repo run-id
+                       (mapcar (lambda (j) (cons (gethash "databaseId" j) (or (gethash "name" j) "")))
+                               jobs))
+                 tick))
+         (arts  (octocat-vui-use-resource (list 'run-artifacts repo run-id) tick))
+         (loading (and (cl-some (lambda (r) (plist-get r :loading)) (list run anns arts)) t)))
     (octocat-vui-use-mode-line-loading loading)
     (apply #'vui-vstack
            (octocat-vui-actions-top-row repo)
-           (pcase (plist-get run :status)
-             ('pending (list (vui-text (format "run %s" run-id) :face 'octocat-dimmed)
-                             (vui-newline)
-                             (vui-text (octocat-vui-line-skeleton "  "))))
-             ('error   (list (vui-text (format "  Error: %s" (plist-get run :error))
-                                       :face 'error)))
-             (_ (append (octocat-run--header data local-branch)
-                        (list (vui-newline))
-                        (octocat-run--jobs-section repo run-id jobs)
-                        (when-let* ((section (octocat-job-artifacts
-                                              repo run-id (or (plist-get arts :data) []))))
-                          (cons (vui-newline) section))
-                        (when-let* ((section (octocat-job-annotations
-                                              (cl-loop for entry across (or (plist-get anns :data) [])
-                                                       append (cl-loop for ann across (gethash "annotations" entry)
-                                                                       collect (cons (gethash "job" entry) ann))))))
-                          (cons (vui-newline) section))))))))
+           (cond
+            ((and (null data) (eq (octocat-vui-snapshot-status run) 'error))
+             (list (vui-text (format "  Error: %s" (plist-get run :error)) :face 'error)))
+            ((null data)
+             (list (vui-text (format "run %s" run-id) :face 'octocat-dimmed)
+                   (vui-newline)
+                   (vui-text (octocat-vui-line-skeleton "  "))))
+            (t (append (octocat-run--header data local-branch)
+                       (list (vui-newline))
+                       ;; A list's copy of the run has no jobs yet.
+                       (if (plist-get run :data)
+                           (octocat-run--jobs-section repo run-id jobs)
+                         (list (vui-text (octocat-vui-line-skeleton "  "))))
+                       (when-let* ((section (octocat-job-artifacts
+                                             repo run-id (or (plist-get arts :data) []))))
+                         (cons (vui-newline) section))
+                       (when-let* ((section (octocat-job-annotations
+                                             (cl-loop for entry across (or (plist-get anns :data) [])
+                                                      append (cl-loop for ann across (gethash "annotations" entry)
+                                                                      collect (cons (gethash "job" entry) ann))))))
+                         (cons (vui-newline) section))))))))
 
 
 ;;;; Major mode
@@ -299,7 +304,7 @@ data replaces it."
 
 (defun octocat-run-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current run buffer.
-The page paints the disk cache at once and fetches the run, its
+The page paints from the sync store at once and fetches the run, its
 annotations and artifacts in the background.  A refresh keeps the old
 content up until the fresh data arrives, for following a running job."
   (interactive)
