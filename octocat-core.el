@@ -1127,6 +1127,19 @@ From an octocat page, in the selected window; from elsewhere, wherever
   (unless (window-prev-buffers)
     (set-window-parameter nil 'octocat-dedicated t)))
 
+(defun octocat-call-in-other-window (fn)
+  "Call FN, showing the page it opens in another window, selected.
+A lone window is split to the right, and `octocat-quit-window' deletes
+the new one; else another window is reused, so repeated opens keep one
+pane."
+  (let ((display-buffer-overriding-action
+         '((display-buffer-reuse-window
+            display-buffer-use-some-window
+            display-buffer-in-direction)
+           (direction . right)
+           (inhibit-same-window . t))))
+    (funcall fn)))
+
 (defun octocat--still-selected-p (buffer)
   "Return non-nil when BUFFER is still the selected window's buffer.
 An async callback may show a page or open a prompt only then: the user

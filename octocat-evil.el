@@ -63,6 +63,7 @@
 (declare-function octocat-repo-up            "octocat-repo"      ())
 (declare-function octocat-tree--entry-at-point-p "octocat-tree" ())
 (declare-function octocat-tree-visit         "octocat-tree"      ())
+(declare-function octocat-tree-visit-other-window "octocat-tree" ())
 (declare-function octocat-file-refresh       "octocat-tree"      (&optional _ignore-auto _noconfirm))
 (declare-function octocat-file-browse        "octocat-tree"      ())
 (declare-function octocat-file-log-open      "octocat-tree"      ())
@@ -191,6 +192,9 @@ Off an entry, such as on the header, move left."
   (evil-define-key* 'normal octocat-repo-mode-map
     (kbd "l")       #'octocat-evil-tree-l
     (kbd "h")       #'octocat-evil-tree-h
+    (kbd "o")       #'octocat-tree-visit
+    (kbd "O")       #'octocat-tree-visit-other-window
+    (kbd "S-<return>") #'octocat-tree-visit-other-window
     (kbd "C-c C-o") #'octocat-repo-browse
     (kbd "C-c C-v") #'octocat-toggle-markdown
     (kbd "C-c C-f") #'octocat-tree-find-file
@@ -337,7 +341,6 @@ Off an entry, such as on the header, move left."
   ;; ── octocat-file-mode ─────────────────────────────────────────────────
   (evil-define-key* 'normal octocat-file-mode-map
     (kbd "C-c C-o") #'octocat-file-browse
-    (kbd "o")       #'octocat-file-browse
     (kbd "C-c C-f") #'octocat-tree-find-file
     (kbd "C-c C-l") #'octocat-file-log-open
     (kbd "C-c C-j") #'octocat-switch-repo
@@ -350,7 +353,6 @@ Off an entry, such as on the header, move left."
   (evil-define-key* 'normal octocat-file-log-mode-map
     (kbd "RET")     #'octocat-file-log-visit
     (kbd "C-c C-o") #'octocat-file-log-browse
-    (kbd "o")       #'octocat-file-log-browse
     (kbd "C-c C-j") #'octocat-switch-repo
     (kbd "C-c C-s") #'octocat-search-repo
     (kbd "gs")      #'octocat-search-repo

@@ -37,7 +37,7 @@
 ;; octocat-file-log-mode derives from `vui-mode' and is rendered by
 ;; `octocat-file-log--page': one line per commit, carrying the commit's
 ;; SHA in the `octocat-file-log--sha' text property, which RET
-;; (`octocat-file-log-visit') and o (`octocat-file-log-browse') read.
+;; (`octocat-file-log-visit') and C-c C-o (`octocat-file-log-browse') read.
 ;; The repo page lists the root's first entries flat, as GitHub's does;
 ;; RET on a directory opens the tree browser, `octocat-tree-mode', the
 ;; whole tree opened down to it, as GitHub's sidebar (see "Rendering —
@@ -102,7 +102,6 @@ The rest expands on RET.  Nil never folds."
     map)
   "Keymap for `octocat-file-mode'.")
 (define-key octocat-file-mode-map (kbd "C-c C-o") #'octocat-file-browse)
-(define-key octocat-file-mode-map (kbd "o")       #'octocat-file-browse)
 (define-key octocat-file-mode-map (kbd "C-c C-f") #'octocat-tree-find-file)
 (define-key octocat-file-mode-map (kbd "C-c C-l") #'octocat-file-log-open)
 (define-key octocat-file-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
@@ -140,7 +139,6 @@ The rest expands on RET.  Nil never folds."
 (define-key octocat-file-log-mode-map (kbd "q")       #'octocat-quit-window)
 (define-key octocat-file-log-mode-map (kbd "RET")     #'octocat-file-log-visit)
 (define-key octocat-file-log-mode-map (kbd "C-c C-o") #'octocat-file-log-browse)
-(define-key octocat-file-log-mode-map (kbd "o")       #'octocat-file-log-browse)
 (define-key octocat-file-log-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
 (define-key octocat-file-log-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 (define-key octocat-file-log-mode-map (kbd "gr")      #'octocat-file-log-refresh)
@@ -335,8 +333,8 @@ keymaps."
                                            'face face 'mouse-face 'highlight
                                            'help-echo
                                            (if (eq type 'dir)
-                                               "RET: open directory  C-c C-o: browse on GitHub"
-                                             "RET: view file  C-c C-o: browse on GitHub")))
+                                               "RET: open directory  S-RET: in other window  C-c C-o: browse on GitHub"
+                                             "RET: view file  S-RET: in other window  C-c C-o: browse on GitHub")))
                        props)))))
 
 
@@ -578,6 +576,12 @@ binding outranks the button's own."
     (when-let* ((activate (octocat-tree--activate-at-point)))
       (funcall activate))))
 
+(defun octocat-tree-visit-other-window ()
+  "Open the file or the directory at point in another window.
+In the tree browser a directory toggles in place, as with RET."
+  (interactive)
+  (octocat-call-in-other-window #'octocat-tree-visit))
+
 (defun octocat-tree--open-file-by-path (repo branch path sha)
   "Open the file viewer buffer for PATH (blob SHA) in REPO on BRANCH.
 With SHA nil, as from a github.com link, it is looked up first."
@@ -761,7 +765,7 @@ they keep working under Evil."
                                'mouse-face            'highlight)
                          line)
     (octocat-vui--default-help-echo
-     line "RET: open commit details  o: browse on GitHub")))
+     line "RET: open commit details  C-c C-o: browse on GitHub")))
 
 (vui-defcomponent octocat-file-log--page (repo ref path tick)
   "The file log page: a REPO and PATH header, then the commits of PATH.

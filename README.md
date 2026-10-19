@@ -85,6 +85,7 @@ repository page does: the first `octocat-tree-entries` (15) of them,
 then a `[Browse code]` button, which says how many more there are and
 opens the tree browser (below).  `RET` on a file opens it in the file
 viewer, and `RET` on a directory opens the tree browser at it.
+`S-RET` opens either in another window instead (see the tree browser).
 
 Below the files the page shows the repository's README, as GitHub does.
 A selector above it offers the other documents found at the root — Code
@@ -125,8 +126,10 @@ octocat.el / docs
 directory: the one the last commit, `[N commits]` and the path line are
 of, highlighted in the tree.  `RET` on a file opens it in the file
 viewer.  The path line (`octocat.el / docs`) moves to each directory
-above, and `^` up one at a time.  Under Evil, as in treemacs-evil, `l`
-opens the entry at point and `h` goes up a directory.  The entries are
+above, and `^` up one at a time.  `S-RET` opens a file in a window to
+the right (or another existing window), and `q` there closes it.  Under
+Evil, as in treemacs-evil, `l` opens the entry at point and `h` goes up
+a directory; `o` is `RET` and `O` is `S-RET`.  The entries are
 not buttons, so `TAB` does not step from file to file.  The repo name
 on the top line leads back to the repo page.  A github.com link to a
 path (`/tree/main/src/parser`) opens the browser at it.
@@ -212,7 +215,7 @@ Use `C-c C-e` to edit the body or a comment you authored.
 #### Commit navigation
 
 From the **Commits** section, press `RET` on a commit line to open the commit
-detail view (see below).  Press `o` (or `C-c C-o`) on a commit line to open
+detail view (see below).  Press `C-c C-o` on a commit line to open
 it directly in your browser.
 
 ---
@@ -291,8 +294,8 @@ link with one ref, where github.com picks the base, opens in the browser.
 
 `RET` on a file of the repo page's tree, or a github.com `/blob/REF/PATH`
 link, opens a read-only buffer showing the raw file content
-with syntax highlighting inferred from the file extension.  Press `o` (or
-`C-c C-o`) to open the file on GitHub, `C-c C-l` to open the file's commit
+with syntax highlighting inferred from the file extension.  Press
+`C-c C-o` to open the file on GitHub, `C-c C-l` to open the file's commit
 history, and `gr` to reload.  `[Browse tree]` on its top line opens the tree
 browser at the file's branch, opened down to the file.
 
@@ -311,7 +314,7 @@ owner/repo  src/foo.el  (7 commits)
 ```
 
 - **`RET`** on a commit row opens its full commit detail view.
-- **`o` / `C-c C-o`** opens the commit on GitHub in the browser.
+- **`C-c C-o`** opens the commit on GitHub in the browser.
 - **`gr`** re-fetches the commit list from the API.
 - **`q`** closes the buffer.
 
