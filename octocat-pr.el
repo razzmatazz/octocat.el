@@ -705,6 +705,7 @@ lists do not share.")
 
 (octocat-sync-define-resource pr (repo number)
   :entity (octocat-sync-item-key 'pr repo number)
+  :invalidates (lambda () `((list-items pulls ,repo _ _) (counts pulls ,repo)))
   :fetch (lambda (done)
            (octocat--fetch-pr
             repo number

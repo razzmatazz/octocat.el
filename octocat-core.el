@@ -1413,7 +1413,7 @@ OR in it cannot escape the repo scope."
 
 (defconst octocat--list-item-fields
   '((pulls  . "...on PullRequest{number title state isDraft reviewDecision createdAt author{login} labels(first:100){nodes{name color}} comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{state contexts{checkRunCountsByState{state count} statusContextCountsByState{state count}}}}}}}")
-    (issues . "...on Issue{number title state createdAt author{login} labels(first:100){nodes{name color}} comments{totalCount} closedByPullRequestsReferences(first:5){nodes{number}}}"))
+    (issues . "...on Issue{number title state createdAt author{login} labels(first:100){nodes{name color}} comments{totalCount} closedByPullRequestsReferences(first:20){nodes{number repository{name owner{login}}}}}"))
   "The GraphQL fields of a list row, by KIND.
 Only what the row shows: `gh pr/issue list --json' would fetch every
 comment's body and every check run, many times the size and the API cost.

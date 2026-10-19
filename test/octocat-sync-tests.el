@@ -222,6 +222,25 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
       (should-not (plist-get snap :error))
       (should-not (plist-get snap :offline)))))
 
+(ert-deftest octocat-sync-test-entity-change-outdates-lists ()
+  "A fetch changing a resource's entity outdates its lists, unless it is the first."
+  (octocat-sync-tests--with-sync
+    (let ((title "A") outdated)
+      (add-hook 'octocat-sync-invalidate-functions (lambda (keys) (setq outdated keys)))
+      (octocat-sync-define-resource item ()
+        :entity "issue:o/r#12"
+        :invalidates (lambda () '((thing _)))
+        :fetch (lambda (done) (funcall done (octocat-sync-tests--issue title))))
+      (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1) 1.0)
+      (octocat-sync-request '(item) t)
+      (should-not outdated)
+      (octocat-sync-request '(item) t)
+      (should-not outdated)
+      (setq title "B")
+      (octocat-sync-request '(item) t)
+      (should (equal outdated '("(thing 1)")))
+      (should (plist-get (octocat-sync-read '(thing 1)) :outdated)))))
+
 (ert-deftest octocat-sync-test-fetch-signals ()
   "A fetch that signals as it starts fails like any other, freeing its slot."
   (octocat-sync-tests--with-sync
