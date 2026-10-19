@@ -24,12 +24,6 @@
     (should (stringp result))
     (should (= (length content) (length result)))))
 
-(ert-deftest octocat-tree-test-branch-glyph ()
-  "octocat--branch-glyph returns a non-empty string."
-  (let ((g (octocat--branch-glyph)))
-    (should (stringp g))
-    (should (> (length g) 0))))
-
 (defmacro octocat-tree-tests--with-store (&rest body)
   "Evaluate BODY with an empty in-memory sync store and queue."
   (declare (indent 0))

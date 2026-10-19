@@ -915,7 +915,6 @@ default branch, nor sit on top of it."
     (vui-vstack
      (vui-text
       (concat (propertize "Local commits not on " 'face 'octocat-section-heading)
-              (octocat--branch-glyph)
               (propertize (or (plist-get unpushed :upstream) "origin") 'face 'octocat-branch)
               (propertize (format " (%d)" (length commits)) 'face 'octocat-section-heading)
               (when (> behind 0)
@@ -931,15 +930,13 @@ the DEFAULT branch.  Without LABEL the heading is plain \"Commits\"."
   (if (and (stringp label) (not (string-empty-p label)))
       (apply #'vui-hstack :spacing 1
              (vui-text "Commits" :face 'octocat-section-heading)
-             (vui-hstack :spacing 0
-               (vui-text (octocat--branch-glyph))
-               (vui-button (format "[%s ▾]" label)
-                           :no-decoration t
-                           :face (if (equal label current-branch)
-                                     'octocat-branch-current
-                                   'octocat-branch)
-                           :help-echo "RET: show another branch (C-c C-b)"
-                           :on-click #'octocat-repo-switch-branch))
+             (vui-button (format "[%s ▾]" label)
+                         :no-decoration t
+                         :face (if (equal label current-branch)
+                                   'octocat-branch-current
+                                 'octocat-branch)
+                         :help-echo "RET: show another branch (C-c C-b)"
+                         :on-click #'octocat-repo-switch-branch)
              (when reset
                (list (vui-button (if default (format "[reset to %s]" default) "[reset]")
                                  :no-decoration t
@@ -1133,8 +1130,7 @@ Everything but the commits and docs comes from one summary resource."
                 "  "
                 (propertize local-dir 'face 'octocat-branch)
                 (cond (current-branch
-                       (concat "  " (octocat--branch-glyph)
-                               (propertize current-branch 'face 'octocat-branch-current)))
+                       (concat "  " (propertize current-branch 'face 'octocat-branch-current)))
                       ((plist-get head-info :hash)
                        (concat "  detached at "
                                (propertize (plist-get head-info :hash)

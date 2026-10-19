@@ -226,7 +226,7 @@ switched there).  The **[Code]** tab in the header of the list pages leads
 to the repo page itself, as on GitHub.
 
 ```
-owner/repo  ⎇[main ▾]  [Code]
+owner/repo  [main ▾]  [Code]
 ▸ src/
 ▸ tests/
   .gitignore
