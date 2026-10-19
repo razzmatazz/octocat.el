@@ -72,7 +72,7 @@ The file is named after the host, such as \"sync-github.com.sqlite\"."
   "Functions called with the keys of resources whose snapshot changed.
 Called once per write, after it is committed.")
 
-(defconst octocat-sync--schema 3
+(defconst octocat-sync--schema 4
   "Version of the store's tables, kept in SQLite's `user_version'.
 Bump it also when the shape of a resource's body changes: the store is
 then recreated, rather than read in the old shape.")
@@ -98,7 +98,7 @@ Signal a `user-error' when DB was made by a newer octocat."
   key TEXT PRIMARY KEY, type TEXT NOT NULL, fields TEXT NOT NULL, fetched_at REAL)")
       (sqlite-execute db "CREATE TABLE resource (
   key TEXT PRIMARY KEY, body TEXT, hash TEXT, fetched_at REAL,
-  error TEXT, error_kind TEXT, retry_at REAL)")
+  invalidated_at REAL, error TEXT, error_kind TEXT, retry_at REAL)")
       (sqlite-execute db "CREATE TABLE link (
   resource TEXT, entity TEXT, PRIMARY KEY (resource, entity))")
       (sqlite-execute db "CREATE INDEX link_entity ON link (entity)")
@@ -118,7 +118,10 @@ Signal a `user-error' when DB was made by a newer octocat."
                                      octocat-sync-directory))))
           (sqlite-pragma db "journal_mode=WAL")
           (sqlite-pragma db "busy_timeout=2000")
-          (setq octocat-sync--db (octocat-sync--create db))))))
+          (setq octocat-sync--db (octocat-sync--create db))
+          ;; Once a session, when Emacs is idle.
+          (run-with-idle-timer 30 nil #'octocat-sync-collect)
+          octocat-sync--db))))
 
 (defmacro octocat-sync--transaction (db &rest body)
   "Run BODY in a transaction on DB, rolled back if BODY signals."
@@ -129,6 +132,41 @@ Signal a `user-error' when DB was made by a newer octocat."
        (unwind-protect
            (prog1 (progn ,@body) (setq ,ok t))
          (if ,ok (sqlite-commit ,d) (sqlite-rollback ,d))))))
+
+(defcustom octocat-sync-keep-for (* 30 24 60 60)
+  "Seconds a resource is kept in the store after its last fetch."
+  :type 'number
+  :group 'octocat)
+
+(defun octocat-sync--collect (db now)
+  "Delete from DB, as of NOW, what nothing needs any more.
+That is the resources not fetched for `octocat-sync-keep-for', and
+records of failures with no data past their retry time; then the
+entities no resource links to.  Return how many resources went."
+  (let ((cutoff (- now octocat-sync-keep-for)))
+    (octocat-sync--transaction db
+      (let ((old (mapcar #'car (sqlite-select
+                                db "SELECT key FROM resource
+                                    WHERE fetched_at < ?1
+                                       OR (body IS NULL AND COALESCE(retry_at, 0) < ?2)"
+                                (list cutoff now)))))
+        (dolist (key old)
+          (sqlite-execute db "DELETE FROM link WHERE resource = ?" (list key))
+          (sqlite-execute db "DELETE FROM resource WHERE key = ?" (list key)))
+        (sqlite-execute db "DELETE FROM entity
+                            WHERE key NOT IN (SELECT entity FROM link)")
+        (length old)))))
+
+(defun octocat-sync-collect ()
+  "Delete from the store what nothing needs any more.
+See `octocat-sync--collect'.  It runs once a session, when idle."
+  (interactive)
+  (let ((n (condition-case err
+               (octocat-sync--collect (octocat-sync--db) (float-time))
+             (error (octocat--debug-log "sync collect failed" (error-message-string err))
+                    nil))))
+    (when (called-interactively-p 'interactive)
+      (message "Octocat: Collected %s resources" (or n 0)))))
 
 
 ;;;; JSON trees and entities
@@ -260,7 +298,7 @@ did, and every resource linked to an entity whose fields did."
                             VALUES (?, ?, ?, ?)
                             ON CONFLICT (key) DO UPDATE
                             SET body = excluded.body, hash = excluded.hash,
-                                fetched_at = excluded.fetched_at,
+                                fetched_at = excluded.fetched_at, invalidated_at = NULL,
                                 error = NULL, error_kind = NULL, retry_at = NULL"
                         (list key json hash now))
         (unless (and same (null changed))
@@ -364,8 +402,8 @@ OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read."
   (and (= (length pattern) (length spec))
        (cl-every (lambda (p v) (or (eq p '_) (equal p v))) pattern spec)))
 
-(defun octocat-sync--outdate (db patterns)
-  "Mark the resources of DB matching any of PATTERNS as never fetched.
+(defun octocat-sync--outdate (db patterns now)
+  "Mark the resources of DB matching any of PATTERNS outdated as of NOW.
 Return their keys.  Their data stays, but the next open refetches them."
   (let (keys)
     (pcase-dolist (`(,key) (sqlite-select db "SELECT key FROM resource"))
@@ -374,7 +412,7 @@ Return their keys.  Their data stays, but the next open refetches them."
                    (seq-some (lambda (p) (octocat-sync--spec-match-p p spec)) patterns))
           (push key keys))))
     (dolist (key keys)
-      (sqlite-execute db "UPDATE resource SET fetched_at = NULL WHERE key = ?" (list key)))
+      (sqlite-execute db "UPDATE resource SET invalidated_at = ? WHERE key = ?" (list now key)))
     keys))
 
 
@@ -462,15 +500,17 @@ of the pending mutations of SPEC, see `octocat-sync-define-mutation'."
 (defun octocat-sync--wanted-p (spec force)
   "Return non-nil if SPEC should be fetched, or FORCE.
 It is not when fetched just now, within `octocat-sync-fresh-for' or the
-resource's :max-age, nor before the retry time of a failure."
+resource's :max-age, unless a mutation made it outdated since; nor
+before the retry time of a failure."
   (or force
-      (pcase-let ((`(,fetched ,retry-at)
+      (pcase-let ((`(,fetched ,retry-at ,outdated)
                    (car (sqlite-select (octocat-sync--db)
-                                       "SELECT fetched_at, retry_at FROM resource WHERE key = ?"
+                                       "SELECT fetched_at, retry_at, invalidated_at
+                                        FROM resource WHERE key = ?"
                                        (list (octocat-sync-spec-key spec))))))
         (let ((now (float-time)))
           (and (not (and retry-at (< now retry-at)))
-               (or (null fetched)
+               (or (null fetched) outdated
                    (>= (- now fetched)
                        (max octocat-sync-fresh-for
                             (or (plist-get (octocat-sync--props spec) :max-age) 0)))))))))
@@ -686,7 +726,7 @@ them."
         (error (octocat--debug-log "sync mutation write failed" (error-message-string err)))))
     (octocat-sync--notify (octocat-sync--touched db mutation))
     (unless (eq (car-safe result) 'error)
-      (when-let* ((keys (and patterns (octocat-sync--outdate db patterns))))
+      (when-let* ((keys (and patterns (octocat-sync--outdate db patterns (float-time)))))
         (run-hook-with-args 'octocat-sync-invalidate-functions keys)))))
 
 
