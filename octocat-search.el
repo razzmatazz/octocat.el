@@ -30,8 +30,9 @@
 ;; painted at once and refreshed in the background, the list being rebuilt
 ;; when the response arrives.
 ;;
-;; It also holds the branch picker, `octocat--read-branch', whose list
-;; comes from the sync store.
+;; It also holds the stage of `octocat-switch-repo', which searches all
+;; of GitHub's repos, and the branch picker, `octocat--read-branch'; both
+;; keep their results in the sync store.
 
 ;;; Code:
 
@@ -392,6 +393,72 @@ Prefix a hash (e.g. \"a1b2c3\") to narrow to a specific commit."
                       (get-text-property 0 'octocat-search-item chosen))))
       (when item
         (octocat--search-open-item item)))))
+
+;;;; Repo search
+
+(defcustom octocat-repo-search-cache-ttl 3600
+  "Seconds a repo search result is reused by `octocat-switch-repo'.
+Within it a query seen before shows its stored result with no `gh
+search repos' call; older, the result shows while it is refetched.
+It is at least `octocat-sync-fresh-for'."
+  :type 'integer
+  :group 'octocat)
+
+(octocat-sync-define-resource repo-search (query)
+  :max-age octocat-repo-search-cache-ttl
+  :fetch (lambda (done)
+           (octocat--run-gh
+            "search-repos"
+            (if (string-prefix-p "@" query)
+                ;; `gh search' has no users subcommand; -X GET keeps -f
+                ;; fields in the query string.
+                (list "api" "-X" "GET" "search/users"
+                      "-f" (concat "q=" (substring query 1))
+                      "-f" "per_page=15"
+                      "--jq" "[.items[] | {login}]")
+              (list "search" "repos" "--limit" "30" "--json" "fullName" query))
+            (lambda (output)
+              (vconcat (mapcar (lambda (r)
+                                 (if-let* ((login (gethash "login" r)))
+                                     (concat "@" login)
+                                   (gethash "fullName" r)))
+                               (octocat--parse-json-list output))))
+            done)))
+
+(defun octocat--async-search-repos ()
+  "Return a consult async stage searching GitHub for the input's repos.
+Input starting with \"@\" searches users instead.  The stored result of
+the input shows at once, and the fetched one replaces it.  New input
+cancels the fetch of the last if it is still queued, so it never waits
+behind input typed past.  Debounce it upstream with
+`consult--async-min-input' and `consult--async-throttle'."
+  (lambda (sink)
+    (let (current)
+      (lambda (action)
+        (pcase action
+          ((pred stringp)
+           (when current (octocat-sync-cancel current))
+           (let ((spec (list 'repo-search action)))
+             (setq current spec)
+             (funcall sink 'flush)
+             (when-let* ((stored (plist-get (octocat-sync-read spec) :data)))
+               (funcall sink (append stored nil)))
+             (funcall sink [indicator running])
+             (octocat-sync-get
+              spec
+              (lambda (result)
+                (when (eq current spec)
+                  (if (eq (car-safe result) 'error)
+                      (funcall sink [indicator failed])
+                    (funcall sink 'flush)
+                    (when (> (length result) 0)
+                      (funcall sink (append result nil)))
+                    (funcall sink [indicator finished])))))))
+          ((or 'cancel 'destroy)
+           (when current (octocat-sync-cancel current))
+           (setq current nil)
+           (funcall sink action))
+          (_ (funcall sink action)))))))
 
 ;;;; Branch picker
 

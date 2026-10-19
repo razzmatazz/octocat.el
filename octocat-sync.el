@@ -579,12 +579,31 @@ refreshing outdated data."
   "Call CALLBACK with the data of SPEC, or (error . MESSAGE).
 For code outside a vui page.  It is called at once when the store holds
 data fetched just now, or within the resource's :max-age; else once
-a fetch lands."
-  (let ((data (plist-get (octocat-sync-read spec) :data)))
+a fetch lands.  Stored data waiting out a failure's retry time is given
+at once too, since no fetch will land."
+  (let ((key    (octocat-sync-spec-key spec))
+        (data   (plist-get (octocat-sync-read spec) :data))
+        (waiter (cons nil callback)))
     (if (and data (not (octocat-sync--wanted-p spec nil)))
         (funcall callback data)
-      (push (cons (octocat-sync-spec-key spec) callback) octocat-sync--waiters)
-      (octocat-sync-request spec (null data)))))
+      (setcar waiter key)
+      (push waiter octocat-sync--waiters)
+      (octocat-sync-request spec (null data))
+      (when (and (memq waiter octocat-sync--waiters)
+                 (not (gethash key octocat-sync--loading)))
+        (setq octocat-sync--waiters (delq waiter octocat-sync--waiters))
+        (funcall callback data)))))
+
+(defun octocat-sync-cancel (spec)
+  "Drop the fetch of SPEC, and the `octocat-sync-get' callbacks awaiting it.
+Only a fetch still queued is dropped: one running finishes and is
+stored, but calls back no one."
+  (let ((key (octocat-sync-spec-key spec)))
+    (setq octocat-sync--waiters
+          (seq-remove (lambda (w) (equal (car w) key)) octocat-sync--waiters))
+    (when (assoc key octocat-sync--queue)
+      (setq octocat-sync--queue (assoc-delete-all key octocat-sync--queue))
+      (octocat-sync--set-loading key nil))))
 
 (defun octocat-sync-more (spec more &optional on-done)
   "Fetch the page after the stored data of SPEC, a list resource, and append it.

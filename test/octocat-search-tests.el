@@ -1,0 +1,68 @@
+;;; octocat-search-tests.el --- ERT tests for octocat-search.el  -*- lexical-binding: t; -*-
+
+;;; Commentary:
+
+;; Run via:
+;;   eask test ert test/octocat-search-tests.el
+
+;;; Code:
+
+(require 'ert)
+(require 'octocat)
+
+(defmacro octocat-search-tests--with-store (&rest body)
+  "Run BODY against an empty in-memory store and queue.
+Each `gh' call is pushed to `calls' as (ARGS . CALLBACK), not run."
+  (declare (indent 0))
+  `(let ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
+         (octocat-sync--loading (make-hash-table :test #'equal))
+         (octocat-sync--queue nil)
+         (octocat-sync--prefetches nil)
+         (octocat-sync--prefetching nil)
+         (octocat-sync--running 0)
+         (octocat-sync--waiters nil)
+         (calls nil))
+     (cl-letf (((symbol-function 'octocat--run-gh)
+                (lambda (_name args parse callback)
+                  (push (cons args (lambda (output) (funcall callback (funcall parse output))))
+                        calls))))
+       ,@body)))
+
+(defun octocat-search-tests--sink (log)
+  "Return a consult sink keeping its candidates in the car of LOG."
+  (lambda (action)
+    (pcase action
+      ('flush (setcar log nil))
+      ((pred consp) (setcar log (append (car log) action)))
+      ((pred vectorp) (setcdr log action)))))
+
+(ert-deftest octocat-search-test-repo-search ()
+  "Stored results show at once; new input cancels a queued fetch."
+  (octocat-search-tests--with-store
+    (let* ((log (list nil))
+           (stage (funcall (octocat--async-search-repos) (octocat-search-tests--sink log))))
+      (funcall stage "emacs")
+      (should (equal (car (car calls)) '("search" "repos" "--limit" "30"
+                                         "--json" "fullName" "emacs")))
+      (funcall (cdr (pop calls)) "[{\"fullName\":\"o/emacs\"}]")
+      (should (equal (car log) '("o/emacs")))
+      (should (equal (cdr log) [indicator finished]))
+      ;; Fresh: shown again with no fetch.
+      (funcall stage "emacs")
+      (should-not calls)
+      (should (equal (car log) '("o/emacs")))
+      ;; Users; a fetch queued behind full slots is dropped by new input.
+      (let ((octocat-sync--running octocat-sync-max-requests))
+        (funcall stage "@ali")
+        (should (assoc "(repo-search \"@ali\")" octocat-sync--queue))
+        (funcall stage "@alice")
+        (should-not (assoc "(repo-search \"@ali\")" octocat-sync--queue)))
+      (setq octocat-sync--queue nil)
+      (setq octocat-sync--running 0)
+      (clrhash octocat-sync--loading)
+      (funcall stage "@alice")
+      (funcall (cdr (pop calls)) "[{\"login\":\"alice\"}]")
+      (should (equal (car log) '("@alice"))))))
+
+(provide 'octocat-search-tests)
+;;; octocat-search-tests.el ends here

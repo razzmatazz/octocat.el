@@ -75,15 +75,6 @@
   :type 'directory
   :group 'octocat)
 
-(defcustom octocat-repo-search-cache-ttl 3600
-  "Seconds before a cached repo search result expires.
-When `octocat-switch-repo' receives a query string it has seen before,
-it serves the cached candidate list if the entry is younger than this
-value, skipping the `gh search repos' network call entirely.  Set to 0
-to disable caching."
-  :type 'integer
-  :group 'octocat)
-
 (defcustom octocat-list-page-size 15
   "Number of items the PR and issue list pages show, and load, at a time.
 See `octocat-list-compact-page-size' for their compact view."
@@ -687,49 +678,6 @@ Without the counts (see `octocat--flatten-list-item') it is
         (prin1 data (current-buffer))
         (insert "\n")))))
 
-;;;; Disk cache
-
-(defun octocat--search-cache-file (query)
-  "Return the cache file path for repo search results for QUERY."
-  (expand-file-name
-   (concat (secure-hash 'sha256 query) ".json")
-   (expand-file-name "search-repos" octocat-cache-directory)))
-
-(defun octocat--search-cache-load (query)
-  "Load cached repo search results for QUERY from disk.
-Returns a cons (TIMESTAMP . CANDIDATES) when a valid entry exists, or
-nil when the file is absent or cannot be parsed.  The caller is
-responsible for checking whether the entry has expired."
-  (let ((file (octocat--search-cache-file query)))
-    (when (file-readable-p file)
-      (condition-case nil
-          (let* ((data       (json-parse-string
-                              (with-temp-buffer
-                                (insert-file-contents file)
-                                (buffer-string))))
-                 (timestamp  (gethash "timestamp"  data))
-                 (candidates (cl-coerce (gethash "candidates" data) 'list)))
-            (cons timestamp candidates))
-        (error nil)))))
-
-(defun octocat--search-cache-save (query candidates)
-  "Persist repo search CANDIDATES for QUERY to disk.
-CANDIDATES is a list of \"owner/name\" strings.  Skips silently on
-write errors so a full disk never breaks interactive search."
-  (let* ((file (octocat--search-cache-file query))
-         (dir  (file-name-directory file))
-         (obj  (let ((h (make-hash-table :test #'equal)))
-                 (puthash "timestamp"  (float-time)        h)
-                 (puthash "query"      query               h)
-                 (puthash "candidates" (vconcat candidates) h)
-                 h)))
-    (make-directory dir t)
-    (condition-case nil
-        (with-temp-file file
-          (set-buffer-multibyte nil)
-          (insert (json-serialize obj)))
-      (error nil))))
-
 ;;;; Timestamp formatting
 
 (defun octocat--format-ts (ts)
@@ -1034,95 +982,7 @@ After toggling, the buffer is refreshed via `octocat--refresh-fn'."
 (defvar octocat-repo--local-dir)
 (defvar octocat-repo--branch)
 
-(defun octocat--async-search-repos ()
-  "Return a consult async pipeline stage that queries GitHub for repos.
-Fires `gh search repos --limit 30 --json fullName QUERY' for each input
-string it receives and forwards results to SINK once the process exits.
-Composes with `consult--async-min-input' and `consult--async-throttle'
-for debouncing; use those upstream in the pipeline.
-
-The stage speaks the full consult sink protocol: it forwards every
-non-string action to SINK unchanged, sends `[indicator running]' when a
-process is launched, and sends `flush'/candidates/`[indicator finished]'
-from the process sentinel when results arrive."
-  (lambda (sink)
-    (let (proc proc-buf)
-      (lambda (action)
-        (pcase action
-          ;; New input string — serve from cache if fresh, otherwise fetch.
-          ((pred stringp)
-           (when (and proc (process-live-p proc))
-             (delete-process proc))
-           (when (buffer-live-p proc-buf)
-             (kill-buffer proc-buf))
-           (setq proc nil proc-buf nil)
-           (let ((cached (octocat--search-cache-load action)))
-             (if (and cached
-                      (> octocat-repo-search-cache-ttl 0)
-                      (< (- (float-time) (car cached))
-                         octocat-repo-search-cache-ttl))
-                 ;; Cache hit — deliver results without touching the network.
-                 (progn
-                   (funcall sink 'flush)
-                   (when (cdr cached)
-                     (funcall sink (cdr cached)))
-                   (funcall sink [indicator finished]))
-               ;; Cache miss or expired — launch gh.
-               (funcall sink [indicator running])
-               (setq proc-buf (generate-new-buffer " *octocat-search-repos*"))
-               (setq proc
-                     (make-process
-                      :name            "octocat-search-repos"
-                      :buffer          proc-buf
-                      :command         (if (string-prefix-p "@" action)
-                                           ;; `gh search' has no users
-                                           ;; subcommand; -X GET keeps -f
-                                           ;; fields in the query string.
-                                           (list "gh" "api" "-X" "GET"
-                                                 "search/users"
-                                                 "-f" (concat "q=" (substring action 1))
-                                                 "-f" "per_page=15"
-                                                 "--jq" "[.items[] | {login}]")
-                                         (list "gh" "search" "repos"
-                                               "--limit" "30"
-                                               "--json" "fullName"
-                                               action))
-                      :connection-type 'pipe
-                      :noquery         t
-                      :sentinel
-                      (lambda (p event)
-                        (cond
-                         ((string-prefix-p "finished" event)
-                          (let ((candidates
-                                 (condition-case _
-                                     (with-current-buffer (process-buffer p)
-                                       (mapcar (lambda (r)
-                                                 (if-let* ((login (gethash "login" r)))
-                                                     (concat "@" login)
-                                                   (gethash "fullName" r)))
-                                               (octocat--parse-json-list
-                                                (buffer-string))))
-                                   (error nil))))
-                            (octocat--search-cache-save action candidates)
-                            (funcall sink 'flush)
-                            (when candidates
-                              (funcall sink candidates))
-                            (funcall sink [indicator finished])))
-                         ((string-prefix-p "killed" event)
-                          (funcall sink [indicator killed]))
-                         (t
-                          (funcall sink [indicator failed])))))))))
-          ;; Session ending — clean up the process and forward to sink.
-          ((or 'cancel 'destroy)
-           (when (and proc (process-live-p proc))
-             (delete-process proc))
-           (when (buffer-live-p proc-buf)
-             (kill-buffer proc-buf))
-           (setq proc nil proc-buf nil)
-           (funcall sink action))
-          ;; All other actions (setup, flush, vectors, …) — pass through.
-          (_ (funcall sink action)))))))
-
+(declare-function octocat--async-search-repos "octocat-search" ())
 (declare-function octocat-user-open "octocat-user" (login))
 
 (defun octocat-switch-repo ()

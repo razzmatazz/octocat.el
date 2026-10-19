@@ -196,6 +196,37 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
       (should (= octocat-sync--running 2))
       (should (equal octocat-sync--queue '(("(thing 1)" thing 1)))))))
 
+(ert-deftest octocat-sync-test-get-and-cancel ()
+  "A get calls back once its fetch lands, at once while a failure waits to
+retry, and never once cancelled."
+  (octocat-sync-tests--with-sync
+    (let ((octocat-sync--waiters nil)
+          got)
+      (octocat-sync-get '(thing 1) (lambda (r) (setq got r)))
+      (funcall (cdr (pop pending)) (octocat-sync-tests--table "n" 1))
+      (should (= (gethash "n" got) 1))
+      ;; Old data, then a failed refetch: the next get gives the old data.
+      (sqlite-execute octocat-sync--db "UPDATE resource SET fetched_at = 0")
+      (octocat-sync-request '(thing 1))
+      (funcall (cdr (pop pending)) '(error . "HTTP 502: Bad Gateway"))
+      (setq got nil)
+      (octocat-sync-get '(thing 1) (lambda (r) (setq got r)))
+      (should (= (gethash "n" got) 1))
+      (should-not octocat-sync--waiters)
+      ;; Cancelled while queued: dropped, and no one is called back.
+      (let ((octocat-sync-max-requests 1))
+        (octocat-sync-request '(thing 2))
+        (setq got nil)
+        (octocat-sync-get '(thing 3) (lambda (r) (setq got r)))
+        (should (assoc "(thing 3)" octocat-sync--queue))
+        (octocat-sync-cancel '(thing 3))
+        (should-not octocat-sync--queue)
+        (should-not octocat-sync--waiters)
+        (should-not (plist-get (octocat-sync-read '(thing 3)) :loading))
+        (funcall (cdr (pop pending)) (octocat-sync-tests--table "n" 2))
+        (should-not pending)
+        (should-not got)))))
+
 (ert-deftest octocat-sync-test-error-kinds ()
   "A failure waits by its kind before a refetch, unless forced; offline is noted."
   (should (eq (octocat-sync--error-kind "HTTP 502: Bad Gateway") 'transient))
