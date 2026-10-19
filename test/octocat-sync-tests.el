@@ -92,6 +92,24 @@
     (octocat-sync--write db "r" (octocat-sync-tests--table "n" 1) 2.0)
     (should-not (nth 2 (octocat-sync--read db "r")))))
 
+(ert-deftest octocat-sync-test-collect ()
+  "Collection deletes old resources and failed fetches, then unlinked entities only."
+  (let ((db (octocat-sync-tests--db))
+        (octocat-sync-keep-for 100))
+    (octocat-sync--write db "old" (octocat-sync-tests--table
+                                   "user" (octocat-sync-user
+                                           (octocat-sync-tests--table "login" "carol")))
+                         1.0)
+    (octocat-sync--write db "new" (octocat-sync-tests--table
+                                   "nodes" (vector (octocat-sync-tests--issue "A")))
+                         500.0)
+    (octocat-sync--write-error db "failed" "boom" 'transient 400.0)
+    (should (= (octocat-sync--collect db 550.0) 2))
+    (should (equal (mapcar #'car (sqlite-select db "SELECT key FROM resource")) '("new")))
+    ;; The issue is still linked; carol was linked only from the old resource.
+    (should (equal (mapcar #'car (sqlite-select db "SELECT key FROM entity"))
+                   '("issue:o/r#12")))))
+
 (ert-deftest octocat-sync-test-schema ()
   "An older schema is recreated; a newer one signals."
   (let ((db (sqlite-open nil)))
@@ -264,7 +282,9 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
                        "Boom"))
         (should-not (plist-get (octocat-sync-read '(thing 1)) :mutating))
         (should (equal invalidated '("(thing 2)")))
-        (should-not (nth 1 (octocat-sync--read octocat-sync--db "(thing 2)")))))))
+        ;; Outdated: kept, but refetched however recently fetched.
+        (should (gethash "n" (car (octocat-sync--read octocat-sync--db "(thing 2)"))))
+        (should (octocat-sync--wanted-p '(thing 2) nil))))))
 
 (ert-deftest octocat-sync-test-mutation-failure ()
   "A failed mutation drops only its own change; one sent after it stays."
