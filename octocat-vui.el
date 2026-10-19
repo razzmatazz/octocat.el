@@ -1108,59 +1108,56 @@ PAGE is as `octocat--parse-list-items' returns; each item is an entity."
 
 (vui-defcomponent octocat-vui--search-results (repo kind query row-fn compact tick)
   "The KIND items of REPO matching QUERY, as for `octocat-vui-search-list'.
-The first page is a sync resource, painted from the store while it is
-refetched; \"load more\" fetches only the page after the last, by its
-cursor.  A new TICK refetches the first page."
-  ;; MORE is (:items LIST :cursor C): the items of the pages after the
-  ;; first, and the cursor after the last of them.
-  :state ((more nil) (fetching nil))
+They are a sync resource, painted from the store while it is refetched;
+\"load more\" appends the page after the last to it, by its cursor (see
+`octocat-sync-more').  A new TICK refetches the first page."
+  :state ((fetching nil))
   :render
   (let* ((width  (octocat-vui-window-width))
          (type   (if (eq kind 'pulls) "prs" "issues"))
          (noun   (if (eq kind 'pulls) "pull requests" "issues"))
          (limit  (if compact octocat-list-compact-page-size octocat-list-page-size))
          (no-state (and compact (not (octocat-vui-list-filter-active-p query))))
-         (snap   (octocat-vui-use-resource (list 'list-items kind repo query limit) tick))
-         (first  (plist-get snap :data))
-         (items  (append (and first (gethash "nodes" first)) (plist-get more :items)))
-         (cursor (if more (plist-get more :cursor) (and first (gethash "cursor" first)))))
+         (spec   (list 'list-items kind repo query limit))
+         (snap   (octocat-vui-use-resource spec tick)))
     (octocat-vui-use-mode-line-loading fetching)
-    (cond
-     ((and (null first) (plist-get snap :error) (not (plist-get snap :loading)))
-      (vui-text (format "%s\n" (plist-get snap :error)) :face 'octocat-dimmed))
-     ((null first) (vui-text (octocat-vui-list-skeleton width compact no-state)))
-     (t
-      (vui-fragment
-        (if (null items)
-            (vui-text (format (if (octocat-vui-list-filter-active-p query)
-                                  "(no %s match the filters)\n"
-                                "(no %s)\n")
-                              noun)
-                      :face 'octocat-dimmed)
-          (octocat-vui-reveal-list
-           items
-           (lambda (item) (funcall row-fn item width compact no-state))
-           (lambda (item) (gethash "number" item))))
-        (when (and items cursor)
-          (octocat-vui-load-more-button
-           (intern (format "load-more-%s" type)) limit
-           (format "RET: load more %s" noun)
-           (lambda ()
-             (vui-set-state :fetching t)
-             (octocat--list-items
-              kind repo
-              (vui-async-callback (r)
-                (vui-set-state :fetching nil)
-                (if (eq (car-safe r) 'error)
-                    (message "Octocat: %s" (cdr r))
-                  (vui-set-state
-                   :more (lambda (m)
-                           (list :items  (append (plist-get m :items)
-                                                 (plist-get r :items))
-                                 :cursor (plist-get r :cursor))))))
-              query cursor limit))
-           fetching 0
-           (octocat-vui-list-skeleton width compact no-state))))))))
+    (octocat-vui-resource-view
+     snap
+     :skeleton (lambda (_) (vui-text (octocat-vui-list-skeleton width compact no-state)))
+     :render
+     (lambda (data)
+       (let ((items  (append (gethash "nodes" data) nil))
+             (cursor (gethash "cursor" data)))
+         (vui-fragment
+          (if (null items)
+              (vui-text (format (if (octocat-vui-list-filter-active-p query)
+                                    "(no %s match the filters)\n"
+                                  "(no %s)\n")
+                                noun)
+                        :face 'octocat-dimmed)
+            (octocat-vui-reveal-list
+             items
+             (lambda (item) (funcall row-fn item width compact no-state))
+             (lambda (item) (gethash "number" item))))
+          (when (and items cursor)
+            (octocat-vui-load-more-button
+             (intern (format "load-more-%s" type)) limit
+             (format "RET: load more %s" noun)
+             (lambda ()
+               (vui-set-state :fetching t)
+               (octocat-sync-more
+                spec
+                (lambda (after done)
+                  (octocat--list-items
+                   kind repo
+                   (lambda (r)
+                     (funcall done (if (eq (car-safe r) 'error) r (octocat-vui--list-tree kind repo r))))
+                   query after limit))
+                (vui-async-callback (r)
+                  (vui-set-state :fetching nil)
+                  (when r (message "Octocat: %s" (cdr r))))))
+             fetching 0
+             (octocat-vui-list-skeleton width compact no-state)))))))))
 
 
 ;;;; List filters
