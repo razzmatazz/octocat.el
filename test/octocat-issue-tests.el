@@ -23,7 +23,12 @@
                           (list :items (list (json-parse-string
                                               "{\"number\":12,\"title\":\"Old\",\"commentCount\":0}"))))
                          1.0)
-    (should (member "list" (octocat-sync--write db "issue" (octocat-sync-detail 'issue "o/r" issue '("comments")) 2.0)))
+    (should (member "list"
+                    (octocat-sync--write
+                     db "issue"
+                     (octocat-sync-detail issue '("comments")
+                                          (lambda (f) (octocat-sync-item 'issue "o/r" f)))
+                     2.0)))
     (let ((row (aref (gethash "nodes" (car (octocat-sync--read db "list"))) 0)))
       (should (equal (gethash "title" row) "Crash"))
       (should (= (gethash "commentCount" row) 1))

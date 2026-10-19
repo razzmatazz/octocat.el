@@ -657,13 +657,19 @@ are never a page of it."
     (octocat-sync-entity type (octocat-sync-item-key type repo (gethash "number" item))
                          fields)))
 
-(defun octocat-sync-detail (type repo item parts)
-  "Return ITEM, an issue or PR of REPO, as the tree of its page's resource.
-TYPE is `issue' or `pr'.  The item is an entity, under \"item\", shared
-with the lists that show it.  PARTS are the keys of ITEM that are pages
-of a connection, such as \"comments\": an entity holds no such field,
-so they stay with the resource.  The comments are counted on the
-entity, as the lists count them."
+(defun octocat-sync-run (repo run)
+  "Return the `run' entity of RUN, a workflow run of REPO, by `gh run' names."
+  (octocat-sync-entity 'run (format "run:%s/%s" (downcase repo) (gethash "databaseId" run))
+                       (copy-hash-table run)))
+
+(defun octocat-sync-detail (item parts make)
+  "Return ITEM, such as an issue, as the tree of its page's resource.
+MAKE returns the entity of a table of fields, such as
+`octocat-sync-item' does; the entity goes under \"item\", shared with
+the lists that show it.  PARTS are the keys of ITEM that are pages of a
+connection, such as \"comments\": an entity holds no such field, so
+they stay with the resource.  The comments are counted on the entity,
+as the lists count them."
   (let ((fields (copy-hash-table item))
         (tree   (make-hash-table :test #'equal)))
     (dolist (part parts)
@@ -671,7 +677,7 @@ entity, as the lists count them."
       (remhash part fields))
     (when (member "comments" parts)
       (puthash "commentCount" (length (gethash "comments" item)) fields))
-    (puthash "item" (octocat-sync-item type repo fields) tree)
+    (puthash "item" (funcall make fields) tree)
     tree))
 
 (defun octocat-sync-detail-item (data)

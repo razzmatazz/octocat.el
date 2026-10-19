@@ -889,9 +889,10 @@ of the branch, `octocat-branch-max-width' by default."
            (octocat--format-title title title-w)
            "  "
            (propertize date 'face 'octocat-dimmed))))
-    (octocat-vui-row line
+    (octocat-vui-row (propertize line 'octocat-sync-prefetch
+                                 `((run ,repo ,run-id) (run-artifacts ,repo ,run-id)))
                      (lambda () (octocat-repo-vui--open-workflow-run repo run))
-                     "RET: viewworkflow run")))
+                     "RET: view workflow run")))
 
 (defconst octocat-repo-vui--author-max-width 30
   "Widest author column of the commit list; longer names are truncated.")

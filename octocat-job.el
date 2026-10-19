@@ -42,10 +42,10 @@
 
 (require 'ansi-color)
 (require 'octocat-core)
+(require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)
 
-(declare-function octocat-repo-vui--resolve-or-reject "octocat-repo" (result resolve reject))
 (declare-function octocat-run-open "octocat-run" (repo run-id))
 (declare-function octocat-search-repo "octocat-search" ())
 
@@ -70,7 +70,7 @@
 (defun octocat--fetch-job (repo run-id job-id callback)
   "Fetch job detail, log, annotations, and artifacts for JOB-ID in REPO.
 RUN-ID is the numeric workflow run ID (used for the artifacts request).
-Calls CALLBACK asynchronously with a hash-table, which the disk cache
+Calls CALLBACK asynchronously with a hash-table, which the sync store
 can store as JSON, of:
 - \"job\", a hash-table from the GitHub REST API.
 - \"log\", the raw `gh run view --log' text (see `octocat--job-parse-log'),
@@ -497,6 +497,10 @@ hash-table; a nil JOB-NAME is not shown."
                   entries))))
 
 
+(octocat-sync-define-resource job (repo run-id job-id)
+  :fetch (lambda (done) (octocat--fetch-job repo run-id job-id done)))
+
+
 ;;;; Page
 
 (defun octocat-job--header (job)
@@ -530,27 +534,18 @@ A new TICK refetches the job, keeping what is shown, and which steps are
 unfolded, until the fresh data replaces it."
   :state ((bulk nil))
   :render
-  (let* ((result  (octocat-vui-use-cached
-                    (list 'job repo job-id tick)
-                    (lambda () (octocat--detail-cache-load repo "job" job-id))
-                    (lambda (data) (octocat--detail-cache-save repo "job" job-id data))
-                    (lambda (resolve reject)
-                      (octocat--fetch-job
-                       repo run-id job-id
-                       (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))
-         (data    (and (eq (plist-get result :status) 'ready) (plist-get result :data)))
+  (let* ((result  (octocat-vui-use-resource (list 'job repo run-id job-id) tick))
+         (data    (plist-get result :data))
          (raw     (and data (gethash "log" data)))
          (log     (vui-use-memo (raw)
                     (if raw
                         (octocat--job-parse-log raw)
                       (cons 'error (or (and data (gethash "log_error" data)) "")))))
-         (loading (and (or (eq (plist-get result :status) 'pending)
-                           (plist-get result :refreshing))
-                       t)))
+         (loading (plist-get result :loading)))
     (octocat-vui-use-mode-line-loading loading)
     (apply #'vui-vstack
            (octocat-vui-actions-top-row repo)
-           (pcase (plist-get result :status)
+           (pcase (octocat-vui-snapshot-status result)
              ('pending (list (vui-text name :face 'octocat-run-job-name)
                              (vui-newline)
                              (vui-text (octocat-vui-line-skeleton "  "))))
@@ -607,7 +602,7 @@ unfolded, until the fresh data replaces it."
 
 (defun octocat-job-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current job buffer.
-The page paints the disk cache at once and fetches the job and its log
+The page paints from the sync store at once and fetches the job and its log
 in the background.  A refresh keeps the steps unfolded and the old
 content up until the fresh data arrives, for following a running job."
   (interactive)
