@@ -253,7 +253,7 @@ A new TICK fetches them again."
 
 (defvar octocat-workflow-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-workflow-mode'.")
 (define-key octocat-workflow-mode-map (kbd "q") #'octocat-quit-window)

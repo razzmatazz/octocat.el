@@ -284,7 +284,7 @@ data replaces it."
 
 (defvar octocat-run-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-run-mode'.")
 (define-key octocat-run-mode-map (kbd "q") #'octocat-quit-window)

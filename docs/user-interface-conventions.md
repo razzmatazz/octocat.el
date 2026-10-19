@@ -389,7 +389,7 @@ re-call the helper per line.
 
 Every mode binds `C-c C-o` to its own browse command, which opens the item
 the buffer shows, and no other key opens the browser (bare `o` is free
-for opening in Emacs, as Evil's `o`/`O` in the tree): `octocat-pr-browse`, `octocat-issue-browse`,
+for opening in Emacs, as Evil's `o`/`O` on every page): `octocat-pr-browse`, `octocat-issue-browse`,
 `octocat-commit-browse`, `octocat-checks-browse`, `octocat-workflow-browse`,
 `octocat-run-browse`, `octocat-job-browse`, `octocat-repo-browse`,
 `octocat-vui-list-browse` and so on.  Each reads the buffer-local variables
@@ -473,11 +473,17 @@ expects:
   window's previous buffer, so `q` steps back out page by page.  A window
   that octocat created (marked `octocat-dedicated` when it is first shown)
   is deleted once no other octocat page it showed is left.
-- **`S-RET` opens in another window** (Evil: `O`, with `o` as `RET`):
-  wrap the RET action in `octocat-call-in-other-window`.  A lone window
+- **`S-RET` opens in another window** (Evil: `O`, with `o` as `RET`),
+  on every page: `octocat-visit-other-window` looks up whatever RET is
+  bound to at point (a row's `keymap`, a button, the mode's own RET)
+  and runs it inside `octocat-call-in-other-window`, so a new page
+  needs nothing extra as long as it opens through `octocat-display-buffer`
+  synchronously, before any fetch.  The key lives in
+  `octocat-vui-page-map`, the parent of every vui page's keymap; Evil's
+  `o`/`O` are bound per mode in `octocat-evil-setup`.  A lone window
   is split to the right, and the new window is selected; `q` deletes
   it, as it is `octocat-dedicated`.  Otherwise another window is reused,
-  so repeated opens keep one pane.  So far only the tree has it.
+  so repeated opens keep one pane.
 
 `q` is not a history: it relies on the window's previous buffers, as in
 Magit.  A real back/forward (as `help-mode`'s `l`/`r`) could be added

@@ -255,7 +255,7 @@ new TICK fetches them again."
 
 (defvar octocat-commit-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-commit-mode'.")
 (define-key octocat-commit-mode-map (kbd "q") #'octocat-quit-window)

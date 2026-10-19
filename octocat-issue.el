@@ -285,7 +285,7 @@ A new TICK fetches everything again."
 
 (defvar octocat-issue-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-issue-mode'.")
 (define-key octocat-issue-mode-map (kbd "q") #'octocat-quit-window)

@@ -102,6 +102,7 @@ The rest expands on RET.  Nil never folds."
     map)
   "Keymap for `octocat-file-mode'.")
 (define-key octocat-file-mode-map (kbd "C-c C-o") #'octocat-file-browse)
+(define-key octocat-file-mode-map (kbd "S-<return>") #'octocat-visit-other-window)
 (define-key octocat-file-mode-map (kbd "C-c C-f") #'octocat-tree-find-file)
 (define-key octocat-file-mode-map (kbd "C-c C-l") #'octocat-file-log-open)
 (define-key octocat-file-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
@@ -133,7 +134,7 @@ The rest expands on RET.  Nil never folds."
 
 (defvar octocat-file-log-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-file-log-mode'.")
 (define-key octocat-file-log-mode-map (kbd "q")       #'octocat-quit-window)
@@ -575,12 +576,6 @@ binding outranks the button's own."
       (push-button)
     (when-let* ((activate (octocat-tree--activate-at-point)))
       (funcall activate))))
-
-(defun octocat-tree-visit-other-window ()
-  "Open the file or the directory at point in another window.
-In the tree browser a directory toggles in place, as with RET."
-  (interactive)
-  (octocat-call-in-other-window #'octocat-tree-visit))
 
 (defun octocat-tree--open-file-by-path (repo branch path sha)
   "Open the file viewer buffer for PATH (blob SHA) in REPO on BRANCH.

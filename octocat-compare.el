@@ -202,7 +202,7 @@ new TICK fetches it again."
 
 (defvar octocat-compare-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-compare-mode'.")
 (define-key octocat-compare-mode-map (kbd "q") #'octocat-quit-window)

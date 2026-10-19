@@ -85,7 +85,7 @@ repository page does: the first `octocat-tree-entries` (15) of them,
 then a `[Browse code]` button, which says how many more there are and
 opens the tree browser (below).  `RET` on a file opens it in the file
 viewer, and `RET` on a directory opens the tree browser at it.
-`S-RET` opens either in another window instead (see the tree browser).
+`S-RET` opens either in another window instead, as on every page.
 
 Below the files the page shows the repository's README, as GitHub does.
 A selector above it offers the other documents found at the root — Code
@@ -126,8 +126,8 @@ octocat.el / docs
 directory: the one the last commit, `[N commits]` and the path line are
 of, highlighted in the tree.  `RET` on a file opens it in the file
 viewer.  The path line (`octocat.el / docs`) moves to each directory
-above, and `^` up one at a time.  `S-RET` opens a file in a window to
-the right (or another existing window), and `q` there closes it.  Under
+above, and `^` up one at a time.  `S-RET` opens a file in another
+window (see Keybindings).  Under
 Evil, as in treemacs-evil, `l` opens the entry at point and `h` goes up
 a directory; `o` is `RET` and `O` is `S-RET`.  The entries are
 not buttons, so `TAB` does not step from file to file.  The repo name
@@ -325,6 +325,7 @@ owner/repo  src/foo.el  (7 commits)
 | Key | Action |
 |-----|--------|
 | `RET` | Context-dependent: open detail view, navigate to commit, or inline-edit title / body / comment at point |
+| `S-RET` | What `RET` does, but the page opens in another window (Evil: `O`, and `o` is `RET`) |
 | `C-c C-o` | Open item at point in browser |
 | `C-c C-a` | Add a comment (PR and issue detail views) |
 | `C-c C-r` | Submit a review (all PR pages: conversation, commits, files changed); `C-c C-t` picks Comment / Approve / Request changes |
@@ -350,6 +351,9 @@ sessions; the others go back to the default view when reopened.
 
 RET opens a page in the same window and `q` steps back, as in Magit (see
 [UI conventions](docs/user-interface-conventions.md#windows-opening-pages-and-q)).
+`S-RET`, on any page, opens it in a window to the right instead, or in
+another window already there, so repeated opens reuse one pane; `q`
+there closes the window it made.
 On Doom Emacs, let `q` reach octocat pages with
 `(add-hook 'doom-real-buffer-functions #'octocat-buffer-p)`.
 

@@ -92,7 +92,7 @@ Falls back to the user's GitHub page when point is not on a row."
 
 (defvar octocat-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-mode' (GitHub account dashboard).")
 (define-key octocat-mode-map (kbd "q")       #'octocat-quit-window)

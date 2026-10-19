@@ -64,7 +64,8 @@
 (declare-function octocat-repo-up            "octocat-repo"      ())
 (declare-function octocat-tree--entry-at-point-p "octocat-tree" ())
 (declare-function octocat-tree-visit         "octocat-tree"      ())
-(declare-function octocat-tree-visit-other-window "octocat-tree" ())
+(declare-function octocat-visit              "octocat-core"      ())
+(declare-function octocat-visit-other-window "octocat-core"      ())
 (declare-function octocat-file-refresh       "octocat-tree"      (&optional _ignore-auto _noconfirm))
 (declare-function octocat-file-browse        "octocat-tree"      ())
 (declare-function octocat-file-log-open      "octocat-tree"      ())
@@ -124,6 +125,8 @@ insert a newline into it."
 
 (defconst octocat-evil--list-bindings
   '(("RET"     . octocat-evil-list-ret)
+    ("o"       . octocat-visit)
+    ("O"       . octocat-visit-other-window)
     ("C-c C-o" . octocat-vui-list-browse)
     ("C-c C-j" . octocat-switch-repo)
     ("C-c C-s" . octocat-search-repo)
@@ -193,9 +196,6 @@ Off an entry, such as on the header, move left."
   (evil-define-key* 'normal octocat-repo-mode-map
     (kbd "l")       #'octocat-evil-tree-l
     (kbd "h")       #'octocat-evil-tree-h
-    (kbd "o")       #'octocat-tree-visit
-    (kbd "O")       #'octocat-tree-visit-other-window
-    (kbd "S-<return>") #'octocat-tree-visit-other-window
     (kbd "C-c C-o") #'octocat-repo-browse
     (kbd "C-c C-v") #'octocat-toggle-markdown
     (kbd "C-c C-f") #'octocat-tree-find-file
@@ -361,6 +361,23 @@ Off an entry, such as on the header, move left."
     (kbd "gr")      #'octocat-file-log-refresh)
   (evil-define-key* 'motion octocat-file-log-mode-map
     (kbd "RET")     #'octocat-file-log-visit)
+
+  ;; ── o and O on every page but the lists (see above) ──────────────────
+  ;; As treemacs-evil: `o' is RET and `O' opens in another window.  Each
+  ;; mode's own map, as Evil's auxiliary keymaps are not reliably found
+  ;; through the shared parent `octocat-vui-page-map'.
+  (dolist (map (list octocat-mode-map octocat-repo-mode-map
+                     octocat-user-mode-map octocat-pr-mode-map
+                     octocat-commit-mode-map octocat-compare-mode-map
+                     octocat-checks-mode-map octocat-pr-diff-mode-map
+                     octocat-pr-commits-mode-map octocat-issue-mode-map
+                     octocat-workflow-mode-map octocat-run-mode-map
+                     octocat-job-mode-map octocat-file-mode-map
+                     octocat-file-log-mode-map))
+    (evil-define-key* 'normal map
+      (kbd "o")          #'octocat-visit
+      (kbd "O")          #'octocat-visit-other-window
+      (kbd "S-<return>") #'octocat-visit-other-window))
 
   ;; ── octocat-edit-mode ─────────────────────────────────────────────────
   ;; Comment, review and body editors open to be typed in.

@@ -1433,13 +1433,12 @@ Point goes to it."
 
 (defvar octocat-repo-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-repo-mode'.")
 (define-key octocat-repo-mode-map (kbd "q") #'octocat-quit-window)
 (define-key octocat-repo-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-repo-mode-map (kbd "^") #'octocat-repo-up)
-(define-key octocat-repo-mode-map (kbd "S-<return>") #'octocat-tree-visit-other-window)
 (define-key octocat-repo-mode-map (kbd "C-c C-f") #'octocat-tree-find-file)
 (define-key octocat-repo-mode-map (kbd "C-c C-b") #'octocat-repo-switch-branch)
 (define-key octocat-repo-mode-map (kbd "C-c C-o") #'octocat-repo-browse)

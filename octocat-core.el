@@ -1140,6 +1140,23 @@ pane."
            (inhibit-same-window . t))))
     (funcall fn)))
 
+(defun octocat-visit ()
+  "Do what RET does at point.
+Rows, buttons and modes each bind RET their own way, so this looks the
+binding up rather than knowing them.  `last-command-event' is RET's, as
+`push-button' reads it."
+  (interactive)
+  (let ((command (or (key-binding [return] t) (key-binding (kbd "RET") t)))
+        (last-command-event ?\r))
+    (if (commandp command)
+        (call-interactively command)
+      (user-error "Octocat: Nothing to open here"))))
+
+(defun octocat-visit-other-window ()
+  "Do what RET does at point, showing the page it opens in another window."
+  (interactive)
+  (octocat-call-in-other-window #'octocat-visit))
+
 (defun octocat--still-selected-p (buffer)
   "Return non-nil when BUFFER is still the selected window's buffer.
 An async callback may show a page or open a prompt only then: the user

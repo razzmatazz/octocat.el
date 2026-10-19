@@ -274,7 +274,7 @@ A new TICK fetches them again."
 
 (defvar octocat-checks-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-checks-mode'.")
 (define-key octocat-checks-mode-map (kbd "q") #'octocat-quit-window)

@@ -275,7 +275,7 @@ everything again."
 
 (defvar octocat-pr-diff-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-pr-diff-mode'.")
 (define-key octocat-pr-diff-mode-map (kbd "q") #'octocat-quit-window)

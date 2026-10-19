@@ -30,6 +30,7 @@
 ;;
 ;; Contents:
 ;;
+;;   `octocat-vui-page-map'          parent keymap of every vui page
 ;;   `octocat-vui-row'               RET-able, per-segment-styled line
 ;;   `octocat-vui-use-resource'      read a sync resource; re-render on change
 ;;   `octocat-vui-refresh-page'      mount a page, or refresh it in place
@@ -58,6 +59,13 @@
 (require 'vui-components)
 
 (defvar octocat-repo-vui--state-width)  ; defconst in octocat-repo.el
+
+(defvar octocat-vui-page-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map vui-mode-map)
+    (define-key map (kbd "S-<return>") #'octocat-visit-other-window)
+    map)
+  "Parent keymap of every vui-rendered octocat page, for the keys all share.")
 
 (defun octocat-vui-row (line on-visit &optional help-echo)
   "Build a RET-able row vnode from already-propertized LINE.
@@ -891,7 +899,7 @@ The choice is remembered for this page of this repository."
 
 (defvar octocat-vui-list-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-vui-list-mode' and the list pages derived from it.")
 (define-key octocat-vui-list-mode-map (kbd "q") #'octocat-quit-window)

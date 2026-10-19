@@ -1047,7 +1047,7 @@ A new TICK fetches them again."
 
 (defvar octocat-pr-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-pr-mode'.")
 (define-key octocat-pr-mode-map (kbd "q") #'octocat-quit-window)
@@ -1125,7 +1125,7 @@ the background, in place: what is unfolded stays so."
 
 (defvar octocat-pr-commits-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-pr-commits-mode'.")
 (define-key octocat-pr-commits-mode-map (kbd "q") #'octocat-quit-window)
