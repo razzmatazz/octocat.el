@@ -59,7 +59,7 @@
 (defvar octocat--run-repo)
 (defvar octocat--job-repo)
 (defvar octocat--checks-repo)
-(defvar octocat-tree--repo)
+(defvar octocat-tree--file-repo)
 
 
 ;;;; Options
@@ -865,7 +865,8 @@ is asked first and the matching view opened."
 (declare-function octocat-job-open      "octocat-job"      (repo run-id job-id name))
 (declare-function octocat-workflow-open "octocat-workflow" (repo id name path))
 (declare-function octocat-user-open     "octocat-user"     (login))
-(declare-function octocat-tree-open     "octocat-tree"     (&optional repo branch))
+(declare-function octocat-commits-open  "octocat-repo"     (repo &optional ref path))
+(declare-function octocat-tree--open-file-by-path "octocat-tree" (repo branch path sha))
 (declare-function octocat-issue-list    "octocat"          (&optional repo))
 (declare-function octocat-pr-list       "octocat"          (&optional repo))
 (declare-function octocat-actions       "octocat"          (&optional repo))
@@ -881,9 +882,11 @@ is asked first and the matching view opened."
 (defun octocat--github-url-target (url)
   "Return the octocat view of github.com URL as (KIND ARGS...), or nil.
 KIND is `user', `repo', `pr', `pr-diff', `pr-commits', `issue', `commit',
-`compare', `run', `job', `workflow', `pr-list', `issue-list', `actions'
-or `tree'; nil means octocat has no view for URL.  A `tree' URL's branch
-is taken to be its next segment: a branch with a slash is cut short.  A
+`compare', `run', `job', `workflow', `pr-list', `issue-list', `actions',
+`tree', `commits' or `blob'; nil means octocat has no view for URL.  The
+ARGS of the last three are the repo and the path segments after the
+kind, a ref and then a path: a ref may have slashes, so which segments
+are the ref takes asking GitHub, see `octocat--open-ref-path'.  A
 `compare' URL needs both refs: with one, GitHub picks the base."
   (when (string-match "\\`https?://\\(?:www\\.\\)?github\\.com\\(/[^?#]*\\)?\\(?:[?#].*\\)?\\'"
                       url)
@@ -901,8 +904,10 @@ is taken to be its next segment: a branch with a slash is cut short.  A
              ('("pulls") (list 'pr-list repo))
              ('("issues") (list 'issue-list repo))
              ('("actions") (list 'actions repo))
-             ('("tree") (list 'tree repo))
-             (`("tree" ,branch . ,_) (list 'tree repo branch))
+             (`(,(and kind (or "tree" "commits")) . ,segs)
+              `(,(intern kind) ,repo ,@(mapcar #'url-unhex-string segs)))
+             (`("blob" ,ref ,file . ,segs)
+              `(blob ,repo ,@(mapcar #'url-unhex-string (cons ref (cons file segs)))))
              (`("pull" ,n "commits" ,s . ,_)
               (and (funcall num n) (funcall sha s) (list 'commit repo s)))
              (`("pull" ,n "commits")
@@ -922,6 +927,57 @@ is taken to be its next segment: a branch with a slash is cut short.  A
                    (list 'job repo (funcall num r) (funcall num j))))
              (`("actions" "runs" ,r . ,_) (and (funcall num r) (list 'run repo (funcall num r))))
              (`("actions" "workflows" ,file) (list 'workflow repo file)))))))))
+
+(defconst octocat--ref-prefixes-max 10
+  "Most leading segments of a github.com path tried as a ref.")
+
+(defun octocat--split-ref-path (segments resolved)
+  "Split SEGMENTS of a github.com path into (REF . PATH), as GitHub does.
+RESOLVED are the counts of leading SEGMENTS that name a ref; the most
+is the ref, else the first segment.  PATH is the rest joined by
+slashes, or nil when none is left."
+  (let* ((n    (apply #'max 1 resolved))
+         (rest (nthcdr n segments)))
+    (cons (string-join (seq-take segments n) "/")
+          (and rest (string-join rest "/")))))
+
+(defun octocat--ref-prefixes-query (n)
+  "Return a GraphQL query resolving N revs, $e1 and on, as p1 and on."
+  (let ((is (number-sequence 1 n)))
+    (format "query($owner:String!,$name:String!,%s){repository(owner:$owner,name:$name){%s}}"
+            (mapconcat (lambda (i) (format "$e%d:String!" i)) is ",")
+            (mapconcat (lambda (i) (format "p%d:object(expression:$e%d){oid}" i i)) is " "))))
+
+(defun octocat--open-ref-path (repo segments open)
+  "Call OPEN with the ref and the path that SEGMENTS of a REPO link name.
+SEGMENTS follow \"tree\", \"commits\" or \"blob\" in the link.  A ref
+may have slashes, as \"feature/x\", so with more than one segment GitHub
+is asked which leading ones name one, in one query.  With none, the ref
+and path are nil: the default branch."
+  (if (null (cdr segments))
+      (funcall open (car segments) nil)
+    (let* ((n     (min (length segments) octocat--ref-prefixes-max))
+           (parts (split-string repo "/")))
+      (octocat--run-gh
+       "ref-prefixes"
+       (append (list "api" "graphql"
+                     "-f" (concat "query=" (octocat--ref-prefixes-query n))
+                     "-f" (concat "owner=" (car parts))
+                     "-f" (concat "name=" (cadr parts)))
+               (mapcan (lambda (i)
+                         (list "-f" (format "e%d=%s^{commit}" i
+                                            (string-join (seq-take segments i) "/"))))
+                       (number-sequence 1 n)))
+       (lambda (json)
+         (let ((r (gethash "repository"
+                           (gethash "data" (json-parse-string json :null-object nil)))))
+           (seq-filter (lambda (i) (and r (gethash (format "p%d" i) r)))
+                       (number-sequence 1 n))))
+       (lambda (resolved)
+         ;; Unresolved, the first segment is the ref, which the page reports.
+         (let ((split (octocat--split-ref-path
+                       segments (if (eq (car-safe resolved) 'error) nil resolved))))
+           (funcall open (car split) (cdr split))))))))
 
 (defun octocat-browse-url (url &rest _)
   "Open github.com URL in the octocat view showing it.
@@ -943,7 +999,14 @@ The handler `octocat-open-github-urls' adds to `browse-url-handlers'."
     (`(pr-list ,repo)      (octocat-pr-list repo))
     (`(issue-list ,repo)   (octocat-issue-list repo))
     (`(actions ,repo)      (octocat-actions repo))
-    (`(tree ,repo . ,branch) (octocat-tree-open repo (car branch)))
+    (`(tree ,repo . ,segs)
+     (octocat--open-ref-path repo segs (lambda (ref path) (octocat-visit-repo repo ref path))))
+    (`(commits ,repo . ,segs)
+     (octocat--open-ref-path repo segs (lambda (ref path) (octocat-commits-open repo ref path))))
+    (`(blob ,repo . ,segs)
+     (octocat--open-ref-path repo segs
+                             (lambda (ref path)
+                               (octocat-tree--open-file-by-path repo ref path nil))))
     (_ (user-error "Octocat: no view for %s" url))))
 
 ;; So `browse-url-with-browser-kind' skips it when asked for a browser.
@@ -982,7 +1045,10 @@ After toggling, the buffer is refreshed via `octocat--refresh-fn'."
 
 (defvar octocat-repo--repo)
 (defvar octocat-repo--local-dir)
-(defvar octocat-repo--branch)
+(defvar octocat-repo--ref)
+(defvar octocat-repo--path)
+(defvar octocat-repo--reveal)
+(defvar octocat-repo--focus)
 
 (declare-function octocat--async-search-repos "octocat-search" ())
 (declare-function octocat-user-open "octocat-user" (login))
@@ -1022,7 +1088,7 @@ The selected repository is opened via `octocat-visit-repo', a selected
 ;; The Code / Issues / Pull requests / Actions strip the repo page and the
 ;; list pages (issues, PRs, actions) show beside the repo name, as
 ;; GitHub's tabs do, drawn by `octocat-vui-repo-tabs'.  Code is the repo
-;; page, as on GitHub; the file tree is `C-c C-t' from there.  Detail
+;; page, as on GitHub, with the file tree on it.  Detail
 ;; pages leave it out; their repo name leads back to the repo page.
 
 (declare-function octocat-issue-list "octocat"      (&optional repo))
@@ -1085,10 +1151,12 @@ left."
       (when (window-live-p window)
         (delete-window window)))))
 
-(defun octocat-visit-repo (repo)
+(defun octocat-visit-repo (repo &optional ref path)
   "Open (or switch to) the *REPO* buffer.
 REPO is an \"owner/name\" string.  This is the shared implementation used
-by the repo-nav section in every detail view."
+by the repo-nav section in every detail view.  REF, a branch, tag or
+SHA, is the one to show instead of the default branch; PATH, a
+directory or file to open the tree down to, with point on it."
   (let* ((buf-name (format "*%s*" repo))
          (buf      (get-buffer-create buf-name)))
     (octocat-display-buffer buf)
@@ -1096,7 +1164,10 @@ by the repo-nav section in every detail view."
       (octocat-repo-mode))
     (setq octocat-repo--repo      repo
           octocat-repo--local-dir (octocat-repo--local-dir-for repo)
-          octocat-repo--branch    nil)
+          octocat-repo--ref       ref
+          octocat-repo--path      path
+          octocat-repo--reveal    path
+          octocat-repo--focus     path)
     (octocat-repo-refresh)))
 
 ;;;; Current repo detection
@@ -1116,7 +1187,7 @@ back to parsing the git origin remote via `octocat-repo--current-repo'."
       (and (boundp 'octocat--run-repo)      (ignore-errors octocat--run-repo))
       (and (boundp 'octocat--job-repo)      (ignore-errors octocat--job-repo))
       (and (boundp 'octocat--checks-repo)   (ignore-errors octocat--checks-repo))
-      (and (boundp 'octocat-tree--repo)     (ignore-errors octocat-tree--repo))
+      (and (boundp 'octocat-tree--file-repo) (ignore-errors octocat-tree--file-repo))
       (ignore-errors (octocat-repo--current-repo))))
 
 ;;;; List filters

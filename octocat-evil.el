@@ -56,18 +56,13 @@
 (defvar octocat-workflow-mode-map)
 (defvar octocat-run-mode-map)
 (defvar octocat-job-mode-map)
-(defvar octocat-tree-mode-map)
 (defvar octocat-file-mode-map)
 (defvar octocat-file-log-mode-map)
 
-(declare-function octocat-tree-open          "octocat-tree"      ())
 (declare-function octocat-tree-find-file     "octocat-tree"      ())
-(declare-function octocat-tree-switch-branch "octocat-tree"      ())
-(declare-function octocat-tree-collapse-or-up "octocat-tree"    ())
+(declare-function octocat-repo-up            "octocat-repo"      ())
 (declare-function octocat-tree--entry-at-point-p "octocat-tree" ())
 (declare-function octocat-tree-visit         "octocat-tree"      ())
-(declare-function octocat-tree-browse        "octocat-tree"      ())
-(declare-function octocat-tree-refresh       "octocat-tree"      (&optional _ignore-auto _noconfirm))
 (declare-function octocat-file-refresh       "octocat-tree"      (&optional _ignore-auto _noconfirm))
 (declare-function octocat-file-browse        "octocat-tree"      ())
 (declare-function octocat-file-log-open      "octocat-tree"      ())
@@ -158,7 +153,7 @@ would start recording a macro."
 (declare-function octocat-job-refresh        "octocat-job"       (&optional _ignore-auto _noconfirm))
 
 (defun octocat-evil-tree-l ()
-  "Open the file or toggle the directory at point, as in treemacs-evil.
+  "Open the file or the directory at point, as in treemacs-evil.
 Off an entry, such as on the header, move right."
   (interactive)
   (if (octocat-tree--entry-at-point-p)
@@ -166,11 +161,11 @@ Off an entry, such as on the header, move right."
     (call-interactively #'evil-forward-char)))
 
 (defun octocat-evil-tree-h ()
-  "Collapse the directory at point, or move to its parent, as in treemacs-evil.
+  "List the directory containing the one shown, as in treemacs-evil.
 Off an entry, such as on the header, move left."
   (interactive)
   (if (octocat-tree--entry-at-point-p)
-      (octocat-tree-collapse-or-up)
+      (octocat-repo-up)
     (call-interactively #'evil-backward-char)))
 
 
@@ -191,8 +186,11 @@ Off an entry, such as on the header, move left."
 
   ;; ── octocat-repo-mode ─────────────────────────────────────────────────
   ;; Each row binds its own RET via a `keymap' text property, so only the
-  ;; global bindings go here.
+  ;; global bindings go here, and the file tree's, as in treemacs-evil.
+  ;; The commits page derives from this mode, so it has these too.
   (evil-define-key* 'normal octocat-repo-mode-map
+    (kbd "l")       #'octocat-evil-tree-l
+    (kbd "h")       #'octocat-evil-tree-h
     (kbd "C-c C-o") #'octocat-repo-browse
     (kbd "C-c C-v") #'octocat-toggle-markdown
     (kbd "C-c C-f") #'octocat-tree-find-file
@@ -335,23 +333,6 @@ Off an entry, such as on the header, move left."
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-job-refresh
     (kbd "q")       #'octocat-quit-window)
-
-  ;; ── octocat-tree-mode ─────────────────────────────────────────────────
-  ;; TAB is left to the buttons' own keymaps: it walks them, which
-  ;; `octocat-tree-toggle-or-forward' does in normal state.
-  (evil-define-key* 'normal octocat-tree-mode-map
-    (kbd "RET")     #'octocat-tree-visit
-    (kbd "l")       #'octocat-evil-tree-l
-    (kbd "h")       #'octocat-evil-tree-h
-    (kbd "C-c C-f") #'octocat-tree-find-file
-    (kbd "C-c C-b") #'octocat-tree-switch-branch
-    (kbd "C-c C-o") #'octocat-tree-browse
-    (kbd "C-c C-j") #'octocat-switch-repo
-    (kbd "o")       #'octocat-tree-browse
-    (kbd "q")       #'octocat-quit-window
-    (kbd "gr")      #'octocat-tree-refresh)
-  (evil-define-key* 'motion octocat-tree-mode-map
-    (kbd "RET")     #'octocat-tree-visit)
 
   ;; ── octocat-file-mode ─────────────────────────────────────────────────
   (evil-define-key* 'normal octocat-file-mode-map

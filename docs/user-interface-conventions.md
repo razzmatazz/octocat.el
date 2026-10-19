@@ -623,14 +623,14 @@ where the bare identity would collide.
 
 | Page | Name |
 |---|---|
-| Repo | `*owner/repo*` |
+| Repo / commits | `*owner/repo*`, `*owner/repo commits*` |
 | PR / issue | `*owner/repo#12*` |
 | PR diff / commits | `*owner/repo#12 diff*`, `*owner/repo#12 commits*` |
 | Commit / checks | `*owner/repo@abc1234*`, `*owner/repo@abc1234 checks*` |
 | Run / job | `*owner/repo run 123*`, `*owner/repo job 456*` |
 | Workflow | `*owner/repo/CI*` |
 | Lists | `*owner/repo prs*`, `issues`, `actions` |
-| Tree / file / file log | `*owner/repo tree*`, `*owner/repo:path*`, `*owner/repo:path log*` |
+| File / file log | `*owner/repo:path*`, `*owner/repo:path log*` |
 | User | `*@login*` |
 | Edit | `*<title>*` |
 
@@ -654,7 +654,7 @@ repository page".
 
 ### The tab strip
 
-The repo page, the file tree and the issue / PR / Actions list pages
+The repo page, its commits page and the issue / PR / Actions list pages
 share one strip, `octocat-vui-repo-tabs`, imitating GitHub's repository
 tabs:
 
@@ -665,8 +665,10 @@ owner/repo  [Code]  [Issues (N)]  [Pull requests (N)]  [Actions]
 - Tabs are buttons (bracketed), so they follow the rule above.
 - The tab of the page being shown is drawn as an un-bracketed
   `octocat-section-heading` and is not clickable.
-- Code is the repo page itself, as on GitHub, so it is current there.
-  The file tree is one key away, `C-c C-t`, rather than a tab.
+- Code is the repo page itself, as on GitHub, so it is current there and
+  on the commits page, which GitHub keeps under Code too.  The repo
+  page lists the root's files, and once a directory is opened the whole
+  tree, as GitHub's sidebar.
 - The strip is underlined, gaps included, so it reads as a tab bar
   rather than a row of buttons.  Unlike `octocat-vui-tab-row` it stops at
   the last tab: it shares its line with the repo name.

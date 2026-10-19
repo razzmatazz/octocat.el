@@ -851,7 +851,6 @@ would pull the user back to it (see docs/using-vui.md)."
 (declare-function octocat-issue-list "octocat" ())
 (declare-function octocat-pr-list "octocat" ())
 (declare-function octocat-actions "octocat" ())
-(declare-function octocat-tree-open "octocat-tree" (&optional repo branch))
 (declare-function octocat-search-repo "octocat-search" ())
 
 (defvar-local octocat-vui-list--repo nil

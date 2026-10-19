@@ -20,10 +20,13 @@
 
 ;;; Commentary:
 
-;; Per-repository overview buffer: a one-call summary (open issue/PR
-;; counts, with buttons into the list pages in octocat-pr.el, octocat-issue.el, octocat-actions.el) and the
-;; recent Commits.  The PR, issue and workflow/run lists live on their own
-;; pages; this file still holds their shared row builders and fetchers.
+;; Per-repository overview buffer, as GitHub's Code tab: the ref shown
+;; with its last commit, one directory's files (octocat-tree.el) and its
+;; README.  RET on a directory moves the page into it.  The history of
+;; the ref, or of a path, is its own page, `octocat-commits-mode', also
+;; here.
+;; The PR, issue and workflow/run lists live on their own pages; this
+;; file still holds their shared row builders and fetchers.
 ;; The `M-x octocat-repo' entry point is defined in octocat.el (see
 ;; CONTRIBUTING.md, "Entry points"); this file defines `octocat-repo-mode'
 ;; and all of its supporting logic.
@@ -51,7 +54,6 @@
 ;; parallel, so a plain `require' does not guarantee the callee is already
 ;; compiled when this file is.
 (declare-function octocat-run-open                 "octocat-run"      (repo run-id))
-(declare-function octocat-tree-open                "octocat-tree"     ())
 (declare-function octocat-tree-find-file           "octocat-tree"     ())
 (declare-function octocat-issue-list               "octocat"          ())
 (declare-function octocat-pr-list                  "octocat"          ())
@@ -69,8 +71,8 @@ every time its \"Load more\" button is used."
   :type 'integer
   :group 'octocat)
 
-(defcustom octocat-repo-commits-page-size 10
-  "Number of commits the repo buffer shows, and loads, at a time."
+(defcustom octocat-repo-commits-page-size 25
+  "Number of commits the commits page shows, and loads, at a time."
   :type 'integer
   :group 'octocat)
 
@@ -98,10 +100,20 @@ Set at buffer-open time from `default-directory' when the buffer is
 opened from inside a git working tree.  Nil means the buffer was opened
 in detached mode — tracking a remote repository without a local clone.")
 
-(defvar-local octocat-repo--branch nil
-  "Branch the page shows, or nil for the default branch.
-Chosen with `octocat-repo-switch-branch'; kept by `g', cleared when the
-page is opened anew.  The Code tab browses it too.")
+(defvar-local octocat-repo--ref nil
+  "Ref the page shows: a branch, tag or SHA, or nil for the default branch.
+Chosen with `octocat-repo-switch-branch' or by a github.com link; kept
+by `g', cleared when the page is opened anew.")
+
+(defvar-local octocat-repo--path nil
+  "Directory the page lists, as a repository path, or nil for the root.
+On the commits page, the path whose history it shows, or nil.")
+
+(defvar-local octocat-repo--reveal nil
+  "Path the tree was opened down to, when the page entered a directory.")
+
+(defvar-local octocat-repo--focus nil
+  "Path of the entry to put point on once the page lists it, or nil.")
 
 (defvar-local octocat-repo--default-branch nil
   "The repository's default branch, once its summary is known.")
@@ -232,13 +244,14 @@ failure."
    callback))
 
 (defconst octocat-repo--history-query
-  "query($owner:String!,$name:String!,$ref:String!,$limit:Int!,$after:String){repository(owner:$owner,name:$name){object(expression:$ref){...on Commit{history(first:$limit,after:$after){edges{cursor node{oid messageHeadline authoredDate author{name email user{login}}}}}}}}}"
+  "query($owner:String!,$name:String!,$ref:String!,$limit:Int!,$after:String,$path:String){repository(owner:$owner,name:$name){object(expression:$ref){...on Commit{history(first:$limit,after:$after,path:$path){edges{cursor node{oid messageHeadline authoredDate author{name email user{login}}}}}}}}}"
   "GraphQL query behind `octocat-repo--list-commits'.
 Only what a row shows: the REST commits endpoint sends ~15 times as much.")
 
-(defun octocat-repo--list-commits (repo ref callback &optional after)
+(defun octocat-repo--list-commits (repo ref path callback &optional after)
   "Fetch a page of the commits of REPO, from REF back.
-REF is a branch or SHA; nil means the head of the default branch.
+REF is a branch or SHA; nil means the head of the default branch.  PATH,
+when non-nil, keeps only the commits that touched it.
 AFTER, a commit's \"cursor\", fetches the page after that commit.  A
 page holds `octocat-repo-commits-page-size' commits.  Calls CALLBACK with
 a list of commits from `octocat-repo--parse-history', or a cons
@@ -252,73 +265,94 @@ a list of commits from `octocat-repo--parse-history', or a cons
                    "-f" (concat "name=" (cadr parts))
                    "-f" (concat "ref=" (or ref "HEAD"))
                    "-F" (format "limit=%d" octocat-repo-commits-page-size))
-             (and after (list "-f" (concat "after=" after))))
+             (and after (list "-f" (concat "after=" after)))
+             (and path (list "-f" (concat "path=" path))))
      #'octocat-repo--parse-history
      callback)))
 
+(defun octocat-repo--history-commit (node)
+  "Return the commit NODE of a GraphQL history shaped as REST has it.
+That is what the rows read: \"sha\"; \"commit\", with the \"message\"
+\(its headline only) and the git \"author\" (name, email, date); and
+\"author\", the GitHub user or :null."
+  (let* ((a      (gethash "author" node))
+         (user   (and (hash-table-p a) (gethash "user" a)))
+         (git    (make-hash-table :test #'equal))
+         (c      (make-hash-table :test #'equal))
+         (commit (make-hash-table :test #'equal)))
+    (when (hash-table-p a)
+      (puthash "name" (gethash "name" a) git)
+      (puthash "email" (gethash "email" a) git))
+    (puthash "date" (gethash "authoredDate" node) git)
+    (puthash "message" (gethash "messageHeadline" node) c)
+    (puthash "author" git c)
+    (puthash "sha" (gethash "oid" node) commit)
+    (puthash "commit" c commit)
+    (puthash "author" (if (hash-table-p user) user :null) commit)
+    commit))
+
 (defun octocat-repo--parse-history (json-string)
   "Parse the commit history response JSON-STRING into a list of commits.
-Each is shaped as the REST commits endpoint has it, which is what the
-rows read: \"sha\"; \"commit\", with the \"message\" (its headline only)
-and the git \"author\" (name, email, date); and \"author\", the GitHub
-user or :null.  It also has its \"cursor\", for the page after it."
+Each is shaped by `octocat-repo--history-commit', with its \"cursor\",
+for the page after it."
   (let* ((repo (gethash "repository" (gethash "data" (json-parse-string json-string))))
          (obj  (and (hash-table-p repo) (gethash "object" repo))))
     (unless (hash-table-p obj)
       (error "No such branch or commit"))
     (mapcar (lambda (edge)
-              (let* ((node   (gethash "node" edge))
-                     (a      (gethash "author" node))
-                     (user   (and (hash-table-p a) (gethash "user" a)))
-                     (git    (make-hash-table :test #'equal))
-                     (c      (make-hash-table :test #'equal))
-                     (commit (make-hash-table :test #'equal)))
-                (when (hash-table-p a)
-                  (puthash "name" (gethash "name" a) git)
-                  (puthash "email" (gethash "email" a) git))
-                (puthash "date" (gethash "authoredDate" node) git)
-                (puthash "message" (gethash "messageHeadline" node) c)
-                (puthash "author" git c)
-                (puthash "sha" (gethash "oid" node) commit)
-                (puthash "commit" c commit)
-                (puthash "author" (if (hash-table-p user) user :null) commit)
+              (let ((commit (octocat-repo--history-commit (gethash "node" edge))))
                 (puthash "cursor" (gethash "cursor" edge) commit)
                 commit))
             (gethash "edges" (gethash "history" obj)))))
 
-(defconst octocat-repo--root-query
-  "query($owner:String!,$name:String!,$expr:String!){repository(owner:$owner,name:$name){object(expression:$expr){...on Tree{entries{name type oid}}}}}"
-  "GraphQL query behind `octocat-repo--list-root'.")
+(defconst octocat-repo--head-query
+  "query($owner:String!,$name:String!,$expr:String!,$dir:String!,$path:String){repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate author{name email user{login}}}}}} dir:object(expression:$dir){__typename oid}}}"
+  "GraphQL query behind `octocat-repo--fetch-head'.")
 
-(defun octocat-repo--list-root (repo ref callback)
-  "Fetch the files at the root of REPO at REF (nil for the default branch).
-Calls CALLBACK with a list of hash-tables with \"name\" and \"oid\", or
-a cons \\=(error . MSG)."
-  (let ((parts (split-string repo "/")))
+(defun octocat-repo--parse-head (json-string ref path)
+  "Parse the response JSON-STRING of `octocat-repo--head-query'.
+It is for PATH, nil for the root, at REF.  Return the last commit that
+touched PATH, as `octocat-repo--history-commit' shapes it, with
+\"tree\", the SHA of PATH's tree, or its blob's when \"kind\" is
+\"blob\", and \"total\", the commits that touched PATH."
+  (let* ((repo   (gethash "repository" (gethash "data" (json-parse-string json-string))))
+         (obj    (and (hash-table-p repo) (gethash "object" repo)))
+         (dir    (and (hash-table-p repo) (gethash "dir" repo)))
+         (hist   (and (hash-table-p obj) (gethash "history" obj)))
+         (nodes  (and hist (gethash "nodes" hist)))
+         (node   (and (> (length nodes) 0) (aref nodes 0))))
+    (unless (hash-table-p obj)
+      (error "No branch, tag or commit %s" (or ref "HEAD")))
+    (unless (and (hash-table-p dir) (hash-table-p node))
+      (error "No %s at %s" path (or ref "HEAD")))
+    (let ((commit (octocat-repo--history-commit node)))
+      (puthash "tree" (gethash "oid" dir) commit)
+      (puthash "kind" (if (equal (gethash "__typename" dir) "Blob") "blob" "tree") commit)
+      (puthash "total" (gethash "totalCount" hist) commit)
+      commit)))
+
+(defun octocat-repo--fetch-head (repo ref path callback)
+  "Fetch the last commit and the tree of PATH of REPO at REF.
+REF is a branch, tag or SHA, as on github.com, nil for the default
+branch; PATH nil is the root.  Calls CALLBACK with the commit from
+`octocat-repo--parse-head', or a cons \\=(error . MSG)."
+  (let ((parts (split-string repo "/"))
+        (rev   (or ref "HEAD")))
     (octocat--run-gh
-     "repo-root"
-     (list "api" "graphql"
-           "-f" (concat "query=" octocat-repo--root-query)
-           "-f" (concat "owner=" (car parts))
-           "-f" (concat "name=" (cadr parts))
-           "-f" (concat "expr=" (or ref "HEAD") ":"))
-     (lambda (json)
-       (let* ((r   (gethash "repository"
-                            (gethash "data" (json-parse-string json :null-object nil))))
-              (obj (and r (gethash "object" r))))
-         (seq-filter (lambda (e) (equal (gethash "type" e) "blob"))
-                     (and obj (gethash "entries" obj)))))
+     "repo-head"
+     (append (list "api" "graphql"
+                   "-f" (concat "query=" octocat-repo--head-query)
+                   "-f" (concat "owner=" (car parts))
+                   "-f" (concat "name=" (cadr parts))
+                   ;; Peels an annotated tag to its commit.
+                   "-f" (concat "expr=" rev "^{commit}")
+                   "-f" (concat "dir=" rev ":" path))
+             (and path (list "-f" (concat "path=" path))))
+     (lambda (json) (octocat-repo--parse-head json ref path))
      callback)))
 
-(octocat-sync-define-resource repo-root (repo sha)
-  ;; A commit's files never change.
-  :max-age (* 30 24 60 60)
-  :fetch (lambda (done)
-           (if (null sha)
-               (funcall done [])
-             (octocat-repo--list-root
-              repo sha
-              (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r))))))))
+(octocat-sync-define-resource repo-head (repo ref path)
+  :fetch (lambda (done) (octocat-repo--fetch-head repo ref path done)))
 
 (defconst octocat-repo--doc-kinds
   '((readme   "README"          "readme")
@@ -335,7 +369,7 @@ case, is STEM, a regexp, with or without an extension.")
   (string-match-p "\\.\\(?:md\\|markdown\\|mdown\\|mkdn?\\)\\'" (downcase name)))
 
 (defun octocat-repo--docs (entries)
-  "Return the documents among ENTRIES, root files from `octocat-repo--list-root'.
+  "Return the documents among ENTRIES, the root's `tree-dir' entries.
 Each is (KIND LABEL ENTRY), in the order of `octocat-repo--doc-kinds'.
 Of several files of a kind a markdown one wins, then the shortest name,
 so README.md beats README.txt and README."
@@ -345,10 +379,11 @@ so README.md beats README.txt and README."
            (let* ((re (concat "\\`" stem "\\(?:\\.[^.]+\\)?\\'"))
                   (hits (seq-filter (lambda (e)
                                       (let ((case-fold-search t))
-                                        (string-match-p re (gethash "name" e))))
+                                        (and (equal (gethash "type" e) "blob")
+                                             (string-match-p re (gethash "path" e)))))
                                     entries))
                   (rank (lambda (e)
-                          (let ((n (gethash "name" e)))
+                          (let ((n (gethash "path" e)))
                             (+ (if (octocat-repo--markdown-file-p n) 0 1000)
                                (length n))))))
              (when hits
@@ -854,8 +889,8 @@ date, so the rows fill the page but do not wrap."
               (apply #'max 0 (mapcar (lambda (c) (string-width (octocat-repo-vui--subject c)))
                                      commits))))))
 
-(defun octocat-repo-vui--commit-row (repo commit head-info author-w &optional subject-w)
-  "Return a row vnode for COMMIT in REPO.
+(defun octocat-repo-vui--commit-line (commit head-info author-w &optional subject-w)
+  "Return the line of COMMIT: its short SHA, subject, author and date.
 HEAD-INFO as in `octocat-repo-vui--commits-section'; the local HEAD
 commit is highlighted.  AUTHOR-W is the width of the author column, see
 `octocat-repo-vui--author-width'; SUBJECT-W that of the subject column,
@@ -869,25 +904,28 @@ commit is highlighted.  AUTHOR-W is the width of the author column, see
                         (string-prefix-p head-hash sha)))
          (subject   (octocat-repo-vui--subject commit))
          (author    (octocat--commit-author commit))
-         (date      (octocat-repo-vui--date commit))
-         (line
-          (concat
-           (propertize (format "%-7s" short)
-                       'face (if is-head 'octocat-branch-current 'octocat-commit-sha))
-           "  "
-           (if is-head
-               (let* ((text (truncate-string-to-width subject subject-w nil nil "…"))
-                      (pad  (make-string (- subject-w (string-width text)) ?\s)))
-                 (concat (propertize text 'face 'octocat-branch-current) pad))
-             (octocat--format-title subject subject-w))
-           "  "
-           (propertize (truncate-string-to-width author author-w nil ?\s "…")
-                       'face 'octocat-pr-author)
-           "  "
-           (propertize date 'face 'octocat-dimmed))))
-    (octocat-vui-row line
-                     (lambda () (octocat-repo-vui--open-commit repo commit))
-                     "RET: viewcommit")))
+         (date      (octocat-repo-vui--date commit)))
+    (concat
+     (propertize (format "%-7s" short)
+                 'face (if is-head 'octocat-branch-current 'octocat-commit-sha))
+     "  "
+     (if is-head
+         (let* ((text (truncate-string-to-width subject subject-w nil nil "…"))
+                (pad  (make-string (- subject-w (string-width text)) ?\s)))
+           (concat (propertize text 'face 'octocat-branch-current) pad))
+       (octocat--format-title subject subject-w))
+     "  "
+     (propertize (truncate-string-to-width author author-w nil ?\s "…")
+                 'face 'octocat-pr-author)
+     "  "
+     (propertize date 'face 'octocat-dimmed))))
+
+(defun octocat-repo-vui--commit-row (repo commit head-info author-w &optional subject-w)
+  "Return a row vnode for COMMIT in REPO, RET opening it.
+The other arguments are as for `octocat-repo-vui--commit-line'."
+  (octocat-vui-row (octocat-repo-vui--commit-line commit head-info author-w subject-w)
+                   (lambda () (octocat-repo-vui--open-commit repo commit))
+                   "RET: view commit"))
 
 
 (defun octocat-repo-vui--unpushed-row (commit)
@@ -922,69 +960,88 @@ default branch, nor sit on top of it."
      (apply #'vui-vstack (mapcar #'octocat-repo-vui--unpushed-row commits))
      (vui-newline))))
 
-(defun octocat-repo-vui--commits-heading (label current-branch reset default)
-  "Return the Commits heading for the branch named LABEL.
-LABEL is a picker button, as GitHub's branch dropdown, highlighted when
-it is the local CURRENT-BRANCH.  RESET non-nil adds a button back to
-the DEFAULT branch.  Without LABEL the heading is plain \"Commits\"."
-  (if (and (stringp label) (not (string-empty-p label)))
+(defun octocat-repo-vui--ref-label (ref)
+  "Return how the picker names REF: a full SHA is cut to seven characters."
+  (if (string-match-p "\\`[0-9a-f]\\{40\\}\\'" ref) (substring ref 0 7) ref))
+
+(defun octocat-repo-vui--picker-labels (label reset default)
+  "Return the labels of the buttons of the picker of the ref named LABEL.
+The second, with RESET non-nil, goes back to the DEFAULT branch."
+  (cons (format "[%s ▾]" (octocat-repo-vui--ref-label label))
+        (and reset (list (if default (format "[reset to %s]" default) "[reset]")))))
+
+(defun octocat-repo-vui--picker-width (label reset default)
+  "Return the width of the picker `octocat-repo-vui--ref-picker' draws.
+LABEL, RESET and DEFAULT are as for it."
+  (let ((labels (octocat-repo-vui--picker-labels label reset default)))
+    (+ (apply #'+ (mapcar #'string-width labels)) (1- (length labels)))))
+
+(defun octocat-repo-vui--ref-picker (label current-branch reset default)
+  "Return the picker of the ref named LABEL, as GitHub's branch dropdown.
+It is highlighted when it is the local CURRENT-BRANCH.  RESET non-nil
+adds a button back to the DEFAULT branch.  Nil while LABEL is unknown."
+  (when (and (stringp label) (not (string-empty-p label)))
+    (pcase-let ((`(,pick ,back) (octocat-repo-vui--picker-labels label reset default)))
       (apply #'vui-hstack :spacing 1
-             (vui-text "Commits" :face 'octocat-section-heading)
-             (vui-button (format "[%s ▾]" label)
+             (vui-button pick
                          :no-decoration t
                          :face (if (equal label current-branch)
                                    'octocat-branch-current
                                  'octocat-branch)
                          :help-echo "RET: show another branch (C-c C-b)"
                          :on-click #'octocat-repo-switch-branch)
-             (when reset
-               (list (vui-button (if default (format "[reset to %s]" default) "[reset]")
+             (when back
+               (list (vui-button back
                                  :no-decoration t
                                  :face 'octocat-dimmed
                                  :help-echo "RET: show the default branch"
-                                 :on-click #'octocat-repo-reset-branch))))
-    (vui-text "Commits" :face 'octocat-section-heading)))
+                                 :on-click #'octocat-repo-reset-branch)))))))
 
-(octocat-sync-define-resource commits (repo branch)
+(defun octocat-repo-vui--commits-heading (label current-branch reset default)
+  "Return the Commits heading, with the picker of the ref named LABEL.
+LABEL, CURRENT-BRANCH, RESET and DEFAULT are as for
+`octocat-repo-vui--ref-picker'."
+  (let ((heading (vui-text "Commits" :face 'octocat-section-heading))
+        (picker  (octocat-repo-vui--ref-picker label current-branch reset default)))
+    (if picker (vui-hstack :spacing 1 heading picker) heading)))
+
+(octocat-sync-define-resource commits (repo ref path)
   :fetch (lambda (done)
            (octocat-repo--list-commits
-            repo branch
+            repo ref path
             (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
 (vui-defcomponent octocat-repo-vui--commits-section
-    (repo branch default-branch current-branch head-info on-head tick)
+    (repo ref path default-branch current-branch head-info tick)
   "Commits section for REPO.
-The commits are those of BRANCH, or of the default branch when nil;
-the branch appears once in the title instead of on every row, with
-a button back to DEFAULT-BRANCH when it is another.  It is highlighted
-when it is also the local CURRENT-BRANCH.  HEAD-INFO is the
-plist from `octocat--head-info', used to highlight the local HEAD commit.
-The first page is a sync resource; \"load more\" fetches a page at a
-time, pinned to the head shown.  ON-HEAD is called with the SHA of the
-head shown, stored or fresh, whenever it changes, or with nil when there
-are no commits to show."
+The commits are those of REF, or of the default branch when nil, that
+touched PATH, or all of them when nil; the ref appears once in the
+title instead of on every row, with a button back to DEFAULT-BRANCH
+when it is another.  It is highlighted when it is
+also the local CURRENT-BRANCH.  HEAD-INFO is the plist from
+`octocat--head-info', used to highlight the local HEAD commit.  The
+first page is a sync resource; \"load more\" fetches a page at a time,
+pinned to the head shown."
   ;; MORE is (:items LIST :done BOOL): the commits after the last load
   ;; more, DONE when that page came back short (end of history).
   :state ((limit octocat-repo-commits-page-size) (more nil) (fetching nil))
   :render
   (let* ((size    octocat-repo-commits-page-size)
-         (snap    (octocat-vui-use-resource (list 'commits repo branch) tick))
+         (snap    (octocat-vui-use-resource (list 'commits repo ref path) tick))
          (first   (append (plist-get snap :data) nil))
          (more-items (plist-get more :items))
          (commits (octocat-repo--commits-merge first more-items))
          (status  (octocat-vui-snapshot-status snap))
          (done    (or (and (plist-get more :done) (eq commits more-items))
                       (/= 0 (% (length commits) size))))
-         (label   (or branch default-branch)))
+         (label   (or ref default-branch)))
     (octocat-vui-use-mode-line-loading fetching)
-    (let ((head (pcase status
-                  ('ready (if commits (gethash "sha" (car commits)) 'none))
-                  ('error 'none))))
-      (vui-use-effect (head)
-        (when head (funcall on-head (and (stringp head) head)))
-        nil))
     (vui-vstack
-     (octocat-repo-vui--commits-heading label current-branch (and branch t) default-branch)
+     (let ((heading (octocat-repo-vui--commits-heading
+                     label current-branch (and ref t) default-branch)))
+       (if path
+           (vui-hstack :spacing 2 heading (vui-text path :face 'octocat-branch))
+         heading))
      (pcase status
        ('pending (vui-text (octocat-vui-line-skeleton)))
        ('error   (vui-text (octocat-vui-error-text snap) :face 'octocat-dimmed))
@@ -1007,11 +1064,11 @@ are no commits to show."
               'load-more-commits size
               "RET: load more commits"
               (lambda ()
-                (octocat-repo-vui--load-more-commits repo commits (+ limit size)))
+                (octocat-repo-vui--load-more-commits repo path commits (+ limit size)))
               fetching 0 (octocat-vui-line-skeleton))))))))))
 
-(defun octocat-repo-vui--load-more-commits (repo commits limit)
-  "Show LIMIT of COMMITS of REPO, fetching the next page when short.
+(defun octocat-repo-vui--load-more-commits (repo path commits limit)
+  "Show LIMIT of COMMITS of REPO that touched PATH, fetching more when short.
 Called from the load-more button of `octocat-repo-vui--commits-section'.
 The page is fetched at the head of COMMITS, after the last of them, so
 the history it pages through cannot shift under it."
@@ -1026,8 +1083,37 @@ the history it pages through cannot shift under it."
                 :more (list :items (append commits r)
                             :done (< (length r) octocat-repo-commits-page-size)))))))
       (vui-set-state :fetching t)
-      (octocat-repo--list-commits repo (gethash "sha" (car commits)) on-page
+      (octocat-repo--list-commits repo (gethash "sha" (car commits)) path on-page
                                   (gethash "cursor" (car (last commits)))))))
+
+(defun octocat-repo-vui--head-row (repo ref path commit picker picker-w width)
+  "Return the line atop the files: PICKER, then COMMIT, of PATH at REF.
+COMMIT is the last that touched PATH, nil for the root.  PICKER is the
+ref picker, PICKER-W columns wide, or nil.  COMMIT shows its short SHA,
+subject and date, RET opening it, and ends in a button to the commits
+page of PATH at REF of REPO, with the count of its history.  The subject
+is cut so the line fits WIDTH columns."
+  (let* ((sha       (or (gethash "sha" commit) ""))
+         (subject   (octocat-repo-vui--subject commit))
+         (date      (octocat-repo-vui--date commit))
+         (count     (format "[%s commits]" (gethash "total" commit)))
+         (rest      (+ (if picker (+ picker-w 2) 0) 7 2 2 (string-width date)
+                       2 (string-width count)))
+         (subject-w (max 1 (min (string-width subject) (- width rest))))
+         (line      (concat (propertize (substring sha 0 (min 7 (length sha)))
+                                        'face 'octocat-commit-sha)
+                            "  " (octocat--format-title subject subject-w)
+                            "  " (propertize date 'face 'octocat-dimmed))))
+    (octocat-vui-row
+     (append (and picker (list picker "  "))
+             (list line "  "
+                   (vui-button count
+                               :no-decoration t
+                               :face 'octocat-dimmed
+                               :help-echo "RET: list the commits"
+                               :on-click (lambda () (octocat-commits-open repo ref path)))))
+     (lambda () (octocat-repo-vui--open-commit repo commit))
+     "RET: view commit")))
 
 ;;;; Docs
 
@@ -1052,27 +1138,27 @@ it copies as from the file."
               (octocat--markdown-string text "" raw width)
             (octocat-markdown-render-verbatim text "")))))
 
-(vui-defcomponent octocat-repo-vui--docs-section (repo head waiting raw)
-  "The README of REPO at commit HEAD, and a selector of its other documents.
-They are those of `octocat-repo--doc-kinds' at the root of HEAD, the
-head of the branch shown.  WAITING is non-nil until the commits section
-knows it; till then, and while the listing loads, grey bars stand in
-for the section.  RAW shows markdown verbatim.  A long document is folded after
-`octocat-repo-doc-lines'.  The listing is stored under HEAD and a file
-under its blob SHA, so while the branch stays put no request is made."
+(vui-defcomponent octocat-repo-vui--docs-section (repo tree raw)
+  "The README of REPO at root TREE, and a selector of its other documents.
+They are those of `octocat-repo--doc-kinds' among the files of TREE,
+the root tree of the commit shown; while its listing loads, grey bars
+stand in for the section.  RAW shows markdown verbatim.  A long
+document is folded after `octocat-repo-doc-lines'.  The listing is the
+tree's own and a file is stored under its blob SHA, so while the branch
+stays put no request is made."
   :state ((kind nil))
   :render
-  (let* ((root  (octocat-vui-use-resource (list 'repo-root repo head) nil))
+  (let* ((root  (octocat-vui-use-resource (list 'tree-dir repo tree) nil))
          (docs  (and (plist-get root :data)
                      (octocat-repo--docs (append (plist-get root :data) nil))))
          (doc   (or (assq kind docs) (car docs)))
          (entry (nth 2 doc))
-         (oid   (and entry (gethash "oid" entry)))
+         (oid   (and entry (gethash "sha" entry)))
          (blob  (octocat-vui-use-resource (list 'blob repo oid) nil))
          (width (octocat--markdown-width))
          (text  (vui-use-memo ((plist-get blob :data) raw width)
                   (and entry (plist-get blob :data)
-                       (octocat-repo--doc-text (gethash "name" entry)
+                       (octocat-repo--doc-text (gethash "path" entry)
                                                (octocat-tree--blob-content
                                                 (plist-get blob :data))
                                                raw width)))))
@@ -1089,24 +1175,50 @@ under its blob SHA, so while the branch stays put no request is made."
                       text (octocat-vui-line-ends text) octocat-repo-doc-lines
                       ;; One per document, so switching starts folded.
                       (intern (format "doc-fold-%s" (car doc))) ""))))))
-     ((or waiting (eq (octocat-vui-snapshot-status root) 'pending))
-      (vui-vstack
-       (vui-newline)
-       (vui-text (concat (octocat-vui-skeleton '((6 "  " 12 "  " 7)))
-                         "\n" (octocat-vui-line-skeleton))))))))
+     ((eq (octocat-vui-snapshot-status root) 'pending)
+      (octocat-repo-vui--docs-skeleton)))))
+
+(defun octocat-repo-vui--docs-skeleton ()
+  "Return grey bars standing in for the docs section."
+  (vui-vstack
+   (vui-newline)
+   (vui-text (concat (octocat-vui-skeleton '((6 "  " 12 "  " 7)))
+                     "\n" (octocat-vui-line-skeleton)))))
 
 ;;;; Root
 
-(vui-defcomponent octocat-repo-vui--root (repo branch local-dir unpushed raw tick)
-  "Root component for the repo buffer: header, local-head/fork-parent
-info, issue/PR summary line, then the UNPUSHED, the commits and the
-docs sections.  BRANCH is the branch whose commits and docs to show, nil
-for the default.  RAW shows markdown verbatim.
-Everything but the commits and docs comes from one summary resource."
-  ;; HEAD is (BRANCH . SHA), the head the commits section shows (nil SHA
-  ;; when none), for the docs at that commit; BRANCH tells a switched-from
-  ;; branch's apart.
-  :state ((head nil))
+(defun octocat-repo-vui--path-line (repo path on-dir)
+  "Return the path line of PATH of REPO, as GitHub's above files.
+Each directory of it but the last is a button calling ON-DIR with its
+path; the repository's name leads back to the root, \"\"."
+  (let* ((crumb (lambda (label face dir)
+                  (vui-button label :no-decoration t :face face
+                              :help-echo (format "RET: open %s" (if (string-empty-p dir) "/" dir))
+                              :on-click (lambda () (funcall on-dir dir)))))
+         (parts (split-string path "/"))
+         (nodes (list (funcall crumb (cadr (split-string repo "/")) 'octocat-repo "")))
+         (dir   ""))
+    (while parts
+      (setq dir (octocat-tree--join dir (car parts)))
+      (push (vui-text " / " :face 'octocat-dimmed) nodes)
+      (push (if (cdr parts)
+                (funcall crumb (car parts) 'octocat-branch dir)
+              (vui-text (car parts) :face 'octocat-section-heading))
+            nodes)
+      (setq parts (cdr parts)))
+    (apply #'vui-hstack :spacing 0 (nreverse nodes))))
+
+(vui-defcomponent octocat-repo-vui--root
+    (repo ref path reveal focus local-dir unpushed raw tick)
+  "Root component for the repo buffer, as GitHub's Code tab: header,
+local-head/fork-parent info, the UNPUSHED section, then the picker of
+REF and the last commit of PATH, the files and PATH's README.  REF is a
+branch, tag or SHA, nil for the default branch.  At the root, PATH nil,
+the files are the root's entries; below it they are the whole tree,
+opened down to REVEAL, as GitHub's sidebar.  Point goes to FOCUS, an
+entry's path, once it is shown.  RAW shows markdown verbatim.  The
+header comes from one summary resource and the rest from the
+`repo-head' of PATH, and of the root, at REF."
   :render
   (let* ((buf            (current-buffer))
          (head-info      (octocat--head-info))
@@ -1114,7 +1226,14 @@ Everything but the commits and docs comes from one summary resource."
          (snap           (octocat-vui-use-resource (list 'repo-summary repo) tick))
          (summary        (plist-get snap :data))
          (default-branch (and summary (gethash "default-branch" summary)))
-         (fork-parent    (and summary (gethash "fork-parent" summary))))
+         (fork-parent    (and summary (gethash "fork-parent" summary)))
+         (head-snap      (octocat-vui-use-resource (list 'repo-head repo ref path) tick))
+         (head           (plist-get head-snap :data))
+         (root           (plist-get (octocat-vui-use-resource (list 'repo-head repo ref nil) tick)
+                                    :data))
+         (dir-p          (and head (equal (gethash "kind" head) "tree")))
+         (tree           (and dir-p (gethash "tree" head)))
+         (branch         (or ref default-branch "HEAD")))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
         (with-current-buffer buf
@@ -1143,48 +1262,141 @@ Everything but the commits and docs comes from one summary resource."
      (vui-newline)
      (when unpushed
        (octocat-repo-vui--unpushed-section unpushed))
+     (let* ((label  (or ref default-branch))
+            (picker (octocat-repo-vui--ref-picker label current-branch
+                                                  (and ref t) default-branch))
+            (beside (lambda (node)
+                      (if picker (vui-hstack :spacing 2 picker node) node))))
+       (pcase (octocat-vui-snapshot-status head-snap)
+         ('error (funcall beside (vui-text (octocat-vui-error-text head-snap)
+                                           :face 'octocat-dimmed)))
+         ('ready (octocat-repo-vui--head-row
+                  repo ref path head picker
+                  (and picker (octocat-repo-vui--picker-width label (and ref t) default-branch))
+                  (octocat-vui-window-width)))
+         (_ (funcall beside (vui-text (octocat-vui-skeleton '((7 "  " 40 "  " 12))))))))
+     (when path
+       (octocat-repo-vui--path-line
+        repo path (lambda (dir) (octocat-repo--show-path dir dir t))))
+     ;; The files hang on the root's head only, so moving within the
+     ;; tree keeps it up while the new directory's commit loads.
+     (cond
+      ((null root) (vui-text (octocat-tree--skeleton)))
+      ((null path)
+       (vui-component 'octocat-tree--dir
+                      :key ref :repo repo :branch branch :sha (gethash "tree" root)
+                      :focus focus :on-dir (lambda (dir) (octocat-repo--show-path dir))))
+      (t
+       ;; Each ref, and each directory entered from the root, opens the
+       ;; tree afresh; moving within it keeps what is open.
+       (vui-component 'octocat-tree--subtree
+                      :key (list ref reveal)
+                      :repo repo :branch branch :sha (gethash "tree" root)
+                      :depth 0 :path "" :reveal reveal :current path :focus focus
+                      :on-dir (lambda (dir) (octocat-repo--show-path dir nil t)))))
+     (cond (tree (vui-component 'octocat-repo-vui--docs-section
+                                :key (list ref path) :repo repo :tree tree :raw raw))
+           ((not head) (octocat-repo-vui--docs-skeleton))))))
+
+(vui-defcomponent octocat-repo-vui--commits-page (repo ref path tick)
+  "Root component of the commits page: the history of REF of REPO.
+REF is a branch, tag or SHA, nil for the default branch.  PATH, when
+non-nil, keeps the commits that touched it, as GitHub's History."
+  :render
+  (let* ((buf            (current-buffer))
+         (head-info      (octocat--head-info))
+         (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
+                                    :data))
+         (default-branch (and summary (gethash "default-branch" summary))))
+    (vui-use-effect (default-branch)
+      (when (buffer-live-p buf)
+        (with-current-buffer buf
+          (setq octocat-repo--default-branch default-branch)))
+      nil)
+    (vui-vstack
+     (vui-component 'octocat-vui-list-header :repo repo :tab 'code :kind nil :tick tick)
      (vui-component 'octocat-repo-vui--commits-section
-                    :key (or branch 'default)
-                    :repo repo :branch branch :default-branch default-branch
-                    :current-branch current-branch :head-info head-info :tick tick
-                    :on-head (vui-async-callback (sha)
-                               (vui-set-state :head (cons branch sha))))
-     (let ((known (and head (equal (car head) branch))))
-       (vui-component 'octocat-repo-vui--docs-section
-                      :key (or branch 'default)
-                      :repo repo :raw raw
-                      :head (and known (cdr head)) :waiting (not known))))))
+                    :key (list ref path)
+                    :repo repo :ref ref :path path :default-branch default-branch
+                    :current-branch (plist-get head-info :branch)
+                    :head-info head-info :tick tick))))
 
 
 ;;;; Major mode
 
 (defun octocat-repo-browse ()
-  "Open the current repository's GitHub page in a browser."
+  "Open what point is on, or else the page, on GitHub.
+On a tree entry that is the file or directory; elsewhere the directory
+at the ref shown, or on the commits page its commits."
   (interactive)
   (unless octocat-repo--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
-  (message "Octocat: Opening %s in browser…" octocat-repo--repo)
-  (octocat-browse-external (format "https://github.com/%s" octocat-repo--repo)))
+  (let* ((repo   octocat-repo--repo)
+         (ref    octocat-repo--ref)
+         (path   octocat-repo--path)
+         (branch (or ref octocat-repo--default-branch "HEAD"))
+         (type   (octocat-tree--type-at-point))
+         (url    (cond ((derived-mode-p 'octocat-commits-mode)
+                        (concat "https://github.com/" repo "/commits"
+                                (cond (path (concat "/" branch "/" path))
+                                      (ref  (concat "/" ref)))))
+                       ((memq type '(file dir))
+                        (octocat-tree--entry-url repo branch type (octocat-tree--path-at-point)))
+                       (path (format "https://github.com/%s/tree/%s/%s" repo branch path))
+                       (ref  (format "https://github.com/%s/tree/%s" repo ref))
+                       (t    (concat "https://github.com/" repo)))))
+    (message "Octocat: Opening %s in browser…" url)
+    (octocat-browse-external url)))
+
+(defun octocat-repo--show-ref (ref)
+  "Show REF on this page, nil for the default branch, in place.
+The page stays in its directory, as GitHub's does."
+  (setq octocat-repo--ref ref
+        octocat-repo--focus nil)
+  (or (if (derived-mode-p 'octocat-commits-mode)
+          (octocat-vui-update-page :ref ref)
+        (octocat-vui-update-page :ref ref :focus nil))
+      (funcall revert-buffer-function)))
+
+(defun octocat-repo--show-path (dir &optional focus keep)
+  "Show directory DIR on this page, in place; \"\" is the root.
+Below the root the page shows the whole tree, opened down to DIR, or
+with KEEP as it is.  Point goes to FOCUS, an entry's path, by default
+DIR when the tree is opened afresh."
+  (let ((path (unless (string-empty-p dir) dir)))
+    (setq octocat-repo--path   path
+          octocat-repo--reveal (and path (if keep octocat-repo--reveal path))
+          octocat-repo--focus  (or focus (and path (not keep) path)))
+    (or (octocat-vui-update-page :path path :reveal octocat-repo--reveal
+                                 :focus octocat-repo--focus)
+        (funcall revert-buffer-function))))
+
+(defun octocat-repo-up ()
+  "Show the directory containing the one shown, point on it.
+From a top-level one, back to the root's entries, point on the one left."
+  (interactive)
+  (unless octocat-repo--path
+    (user-error "Octocat: Already at the top"))
+  (let ((parent (octocat-tree--parent octocat-repo--path)))
+    (if (string-empty-p parent)
+        (octocat-repo--show-path "" octocat-repo--path)
+      (octocat-repo--show-path parent parent t))))
 
 (defun octocat-repo-switch-branch ()
-  "Show the commits of another branch, picked from the repository's."
+  "Show another branch, picked from the repository's."
   (interactive)
   (unless octocat-repo--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
   (let* ((default octocat-repo--default-branch)
          (picked  (octocat--read-branch
                    octocat-repo--repo default (plist-get (octocat--head-info) :branch)
-                   (or octocat-repo--branch default))))
-    (setq octocat-repo--branch (unless (equal picked default) picked))
-    (or (octocat-vui-update-page :branch octocat-repo--branch)
-        (octocat-repo-refresh))))
+                   (or octocat-repo--ref default))))
+    (octocat-repo--show-ref (unless (equal picked default) picked))))
 
 (defun octocat-repo-reset-branch ()
-  "Show the commits of the default branch again."
+  "Show the default branch again."
   (interactive)
-  (setq octocat-repo--branch nil)
-  (or (octocat-vui-update-page :branch nil)
-      (octocat-repo-refresh)))
+  (octocat-repo--show-ref nil))
 
 (defvar octocat-repo-mode-map
   (let ((map (make-sparse-keymap)))
@@ -1193,7 +1405,7 @@ Everything but the commits and docs comes from one summary resource."
   "Keymap for `octocat-repo-mode'.")
 (define-key octocat-repo-mode-map (kbd "q") #'octocat-quit-window)
 (define-key octocat-repo-mode-map (kbd "g") #'revert-buffer)
-(define-key octocat-repo-mode-map (kbd "C-c C-t") #'octocat-tree-open)
+(define-key octocat-repo-mode-map (kbd "^") #'octocat-repo-up)
 (define-key octocat-repo-mode-map (kbd "C-c C-f") #'octocat-tree-find-file)
 (define-key octocat-repo-mode-map (kbd "C-c C-b") #'octocat-repo-switch-branch)
 (define-key octocat-repo-mode-map (kbd "C-c C-o") #'octocat-repo-browse)
@@ -1214,6 +1426,16 @@ Everything but the commits and docs comes from one summary resource."
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup))
 
+;; The repo page's own state, so `C-c C-b', `C-c C-f' and `C-c C-o' work
+;; on it alike.
+(define-derived-mode octocat-commits-mode octocat-repo-mode "Octocat-Commits"
+  "Major mode for the commits of a repository's branch, tag or commit.
+
+\\{octocat-commits-mode-map}"
+  :group 'octocat
+  (setq-local revert-buffer-function #'octocat-commits-refresh)
+  (setq-local octocat--refresh-fn #'octocat-commits-refresh))
+
 
 ;;;; Async refresh
 
@@ -1226,12 +1448,38 @@ the top of this file)."
     (user-error "Octocat: Buffer is not associated with a repository"))
   (octocat-vui-refresh-page 'octocat-repo-vui--root octocat-repo--repo
                             (list :repo octocat-repo--repo
-                                  :branch octocat-repo--branch
+                                  :ref octocat-repo--ref
+                                  :path octocat-repo--path
+                                  :reveal octocat-repo--reveal
+                                  :focus octocat-repo--focus
                                   :local-dir octocat-repo--local-dir
                                   :raw octocat--markdown-raw
                                   :unpushed (and octocat-repo--local-dir
                                                  (octocat-repo--unpushed
                                                   octocat-repo--local-dir)))))
+
+(defun octocat-commits-open (repo &optional ref path)
+  "Open (or switch to) the commits page of REPO, from REF back.
+REF is a branch, tag or SHA, nil for the default branch.  PATH, a file
+or directory, keeps the commits that touched it."
+  (let ((buf (get-buffer-create (format "*%s commits*" repo))))
+    (octocat-display-buffer buf)
+    (unless (derived-mode-p 'octocat-commits-mode)
+      (octocat-commits-mode))
+    (setq octocat-repo--repo      repo
+          octocat-repo--local-dir (octocat-repo--local-dir-for repo)
+          octocat-repo--ref       ref
+          octocat-repo--path      path)
+    (octocat-commits-refresh)))
+
+(defun octocat-commits-refresh (&optional _ignore-auto _noconfirm)
+  "Refresh the current commits page, in place."
+  (interactive)
+  (unless octocat-repo--repo
+    (user-error "Octocat: Buffer is not associated with a repository"))
+  (octocat-vui-refresh-page 'octocat-repo-vui--commits-page octocat-repo--repo
+                            (list :repo octocat-repo--repo :ref octocat-repo--ref
+                                  :path octocat-repo--path)))
 
 ;; NOTE: the `M-x octocat-repo' entry point itself (the `;;;###autoload'
 ;; command) is defined in `octocat.el', not here -- see CONTRIBUTING.md,

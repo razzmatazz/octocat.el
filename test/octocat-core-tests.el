@@ -181,7 +181,11 @@
                   ("https://github.com/octo/cat/actions"           (actions "octo/cat"))
                   ("https://github.com/octo/cat/tree"              (tree "octo/cat"))
                   ("https://github.com/octo/cat/tree/main"         (tree "octo/cat" "main"))
-                  ("https://github.com/octo/cat/tree/main/src/a"   (tree "octo/cat" "main"))
+                  ("https://github.com/octo/cat/tree/feat/x/src/"  (tree "octo/cat" "feat" "x" "src"))
+                  ("https://github.com/octo/cat/tree/a%23b"        (tree "octo/cat" "a#b"))
+                  ("https://github.com/octo/cat/commits"           (commits "octo/cat"))
+                  ("https://github.com/octo/cat/commits/v1.0"      (commits "octo/cat" "v1.0"))
+                  ("https://github.com/octo/cat/blob/main/x.el"    (blob "octo/cat" "main" "x.el"))
                   ("https://github.com/octo/cat/actions/runs/42"   (run "octo/cat" 42))
                   ("https://github.com/octo/cat/actions/runs/42/attempts/2" (run "octo/cat" 42))
                   ("https://github.com/octo/cat/actions/runs/42/job/99" (job "octo/cat" 42 99))
@@ -191,7 +195,7 @@
                    (commit "torvalds/linux" "0123abc4567"))
                   ("https://github.com/torvalds/linux/actions/runs/5" (run "torvalds/linux" 5))
                   ;; No octocat view: left to the browser.
-                  ("https://github.com/octo/cat/blob/main/x.el"    nil)
+                  ("https://github.com/octo/cat/blob/main"         nil)
                   ("https://github.com/octo/cat/wiki"              nil)
                   ("https://github.com/octo/cat/compare/feature"   nil)
                   ("https://github.com/octo/cat/compare"           nil)
@@ -221,11 +225,19 @@
               ((symbol-function 'octocat-pr-list)       (lambda (&rest a) (push (cons 'pr-list a) opened)))
               ((symbol-function 'octocat-issue-list)    (lambda (&rest a) (push (cons 'issue-list a) opened)))
               ((symbol-function 'octocat-actions)       (lambda (&rest a) (push (cons 'actions a) opened)))
-              ((symbol-function 'octocat-tree-open)     (lambda (&rest a) (push (cons 'tree a) opened))))
+              ((symbol-function 'octocat-commits-open)  (lambda (&rest a) (push (cons 'commits a) opened)))
+              ((symbol-function 'octocat-tree--open-file-by-path)
+               (lambda (&rest a) (push (cons 'file a) opened)))
+              ;; Of feat/x/src/a.el, GitHub has feat and feat/x.
+              ((symbol-function 'octocat--run-gh)
+               (lambda (_name _args parse callback)
+                 (funcall callback (funcall parse "{\"data\":{\"repository\":{\"p1\":{\"oid\":\"1\"},\"p2\":{\"oid\":\"2\"},\"p3\":null,\"p4\":null}}}")))))
       (dolist (path '("octocat" "o/r" "o/r/pull/1" "o/r/pull/1/files" "o/r/pull/1/commits" "o/r/issues/2"
                       "o/r/commit/abc1234" "o/r/compare/a...b" "o/r/actions/runs/3" "o/r/actions/runs/3/job/4"
                       "o/r/actions/workflows/ci.yml"
-                      "o/r/pulls" "o/r/issues" "o/r/actions" "o/r/tree/main"))
+                      "o/r/pulls" "o/r/issues" "o/r/actions" "o/r/tree/main"
+                      "o/r/tree" "o/r/tree/feat/x/src/a.el" "o/r/commits/main"
+                      "o/r/commits/feat/x/src/a.el" "o/r/blob/feat/x/src/a.el"))
         (octocat-browse-url (concat "https://github.com/" path))))
     (should (equal (nreverse opened)
                    '((user "octocat") (repo "o/r") (pr "o/r" 1) (pr-diff "o/r" 1) (pr-commits "o/r" 1)
@@ -234,7 +246,15 @@
                      (job "o/r" 3 4 nil)
                      (workflow "o/r" "ci.yml" "ci.yml" ".github/workflows/ci.yml")
                      (pr-list "o/r") (issue-list "o/r")
-                     (actions "o/r") (tree "o/r" "main"))))))
+                     (actions "o/r") (repo "o/r" "main" nil) (repo "o/r" nil nil)
+                     (repo "o/r" "feat/x" "src/a.el") (commits "o/r" "main" nil)
+                     (commits "o/r" "feat/x" "src/a.el") (file "o/r" "feat/x" "src/a.el" nil))))))
+
+(ert-deftest octocat-core-test-split-ref-path ()
+  "The most leading segments naming a ref are the ref, else the first."
+  (should (equal (octocat--split-ref-path '("feat" "x" "src") '(1 2)) '("feat/x" . "src")))
+  (should (equal (octocat--split-ref-path '("main" "src" "a.el") nil) '("main" . "src/a.el")))
+  (should (equal (octocat--split-ref-path '("feat" "x") '(2)) '("feat/x"))))
 
 (ert-deftest octocat-core-test-browse-url-handler ()
   "`browse-url' sends the github.com links octocat can show to it.
@@ -242,7 +262,7 @@ Other links, and an explicit request for an external browser, skip it;
 `octocat-open-github-urls' turns it off."
   (should (eq (browse-url-select-handler "https://github.com/o/r/pull/1")
               #'octocat-browse-url))
-  (should-not (eq (browse-url-select-handler "https://github.com/o/r/blob/main/x")
+  (should-not (eq (browse-url-select-handler "https://github.com/o/r/wiki")
                   #'octocat-browse-url))
   (should-not (eq (browse-url-select-handler "https://github.com/o/r/pull/1" 'external)
                   #'octocat-browse-url))

@@ -41,25 +41,41 @@
   "Store DATA as fetched just now for SPEC."
   (octocat-sync--write octocat-sync--db (octocat-sync-spec-key spec) data (float-time)))
 
-(defun octocat-tree-tests--mount-root (fetch-root-sha)
-  "Mount `octocat-tree--root' with FETCH-ROOT-SHA as the root SHA fetcher."
-  (unless (derived-mode-p 'octocat-tree-mode)
-    (octocat-tree-mode))
-  (setq octocat-tree--repo "owner/repo"
-        octocat-tree--branch "main")
-  (cl-letf (((symbol-function 'octocat-tree--fetch-root-sha) fetch-root-sha)
-            ((symbol-function 'octocat-tree--fetch-dir)
-             (lambda (&rest _) (error "Unexpected directory fetch"))))
-    (octocat-tree-refresh)))
+(defvar octocat-tree-tests--visited nil
+  "The directories the mounted files asked the page to show, latest first.")
 
-(defun octocat-tree-tests--mount-tree (entries)
-  "Mount `octocat-tree--root' in the current buffer with root ENTRIES.
-The root SHA resolves at once and the root directory's children are
-stored, so no gh call is made."
-  (octocat-tree-mode)
-  (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha") entries)
-  (octocat-tree-tests--mount-root
-   (lambda (_repo _branch callback) (funcall callback "rootsha"))))
+(defun octocat-tree-tests--mount-tree (&optional focus)
+  "List the root, tree \"rootsha\", of owner/repo here, as the repo page does.
+Point goes to FOCUS; moving into a directory is recorded in
+`octocat-tree-tests--visited'.  A listing not in the store is an error,
+so no gh call is made."
+  (unless (derived-mode-p 'octocat-repo-mode)
+    (octocat-repo-mode))
+  (setq octocat-tree-tests--visited nil)
+  (cl-letf (((symbol-function 'octocat-tree--fetch-dir)
+             (lambda (&rest _) (error "Unexpected directory fetch"))))
+    (octocat-vui-refresh-page 'octocat-tree--dir "tree"
+                              (list :repo "owner/repo" :branch "main" :sha "rootsha"
+                                    :focus focus
+                                    :on-dir (lambda (dir)
+                                              (push dir octocat-tree-tests--visited))))))
+
+(defun octocat-tree-tests--mount-full-tree (reveal current &optional focus)
+  "Show the whole tree of root \"rootsha\" here, opened down to REVEAL.
+CURRENT is the page's directory and FOCUS where point goes, as for
+`octocat-tree--subtree'.  Moves are recorded as for
+`octocat-tree-tests--mount-tree'."
+  (unless (derived-mode-p 'octocat-repo-mode)
+    (octocat-repo-mode))
+  (setq octocat-tree-tests--visited nil)
+  (cl-letf (((symbol-function 'octocat-tree--fetch-dir)
+             (lambda (&rest _) (error "Unexpected directory fetch"))))
+    (octocat-vui-refresh-page 'octocat-tree--subtree "tree"
+                              (list :repo "owner/repo" :branch "main" :sha "rootsha"
+                                    :depth 0 :path "" :reveal reveal :current current
+                                    :focus focus
+                                    :on-dir (lambda (dir)
+                                              (push dir octocat-tree-tests--visited))))))
 
 (defun octocat-tree-tests--entry (path type sha)
   "Return a tree API entry for PATH of TYPE (\"tree\" or \"blob\") and SHA."
@@ -70,17 +86,13 @@ stored, so no gh call is made."
     h))
 
 (ert-deftest octocat-tree-test-paints-from-store ()
-  "The stored root SHA and listing paint without a fetch."
+  "The stored listing paints without a fetch."
   (octocat-tree-tests--with-store
-    (let ((root (make-hash-table :test #'equal)))
-      (puthash "sha" "rootsha" root)
-      (octocat-tree-tests--store '(tree-root "owner/repo" "main") root))
     (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
                                (vector (octocat-tree-tests--entry "cached.el" "blob" "b1")))
     (with-temp-buffer
-      (octocat-tree-tests--mount-root #'ignore)
-      (should (string-match-p "cached\\.el" (buffer-string)))
-      (should (equal octocat-tree--root-sha "rootsha")))))
+      (octocat-tree-tests--mount-tree)
+      (should (string-match-p "cached\\.el" (buffer-string))))))
 
 (ert-deftest octocat-tree-test-blob-store ()
   "A fetched blob, which need not be text, is stored and then served without a fetch."
@@ -98,13 +110,12 @@ stored, so no gh call is made."
       (should (equal got bytes)))))
 
 (ert-deftest octocat-tree-test-render-entries-empty ()
-  "Mounting the tree with an empty entries vector produces a valid buffer."
+  "An empty root says so."
   (octocat-tree-tests--with-store
+    (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha") [])
     (with-temp-buffer
-      (octocat-tree-tests--mount-tree [])
-      (should (> (buffer-size) 0))
-      (should (string-match-p "owner/repo" (buffer-string)))
-      (should (string-match-p "\\[main ▾\\]" (buffer-string))))))
+      (octocat-tree-tests--mount-tree)
+      (should (string-match-p "(empty)" (buffer-string))))))
 
 (ert-deftest octocat-tree-test-render-entries-mixed ()
   "The tree shows dirs before files and uses correct labels."
@@ -121,7 +132,8 @@ stored, so no gh call is made."
                            (puthash "sha"  "def456"    h)
                            h))
              (entries    (vector dir-entry file-entry)))
-        (octocat-tree-tests--mount-tree entries)
+        (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha") entries)
+        (octocat-tree-tests--mount-tree)
         (let ((text (buffer-string)))
           (should (string-match-p "src" text))
           (should (string-match-p "README.md" text))
@@ -129,34 +141,74 @@ stored, so no gh call is made."
           (should (< (string-match "src" text)
                      (string-match "README.md" text))))))))
 
-(ert-deftest octocat-tree-test-entries-are-tab-stops ()
-  "Each entry is a button that RET runs; a directory expands in place."
+(ert-deftest octocat-tree-test-entries-are-not-tab-stops ()
+  "An entry is a line RET runs, not a button; a directory's moves into it."
   (with-temp-buffer
     (octocat-tree-tests--with-store
-      (octocat-tree-mode)
       (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
-                                 (vector (octocat-tree-tests--entry "src" "tree" "srcsha")))
-      (octocat-tree-tests--store '(tree-dir "owner/repo" "srcsha")
-                                 (vector (octocat-tree-tests--entry "a.el" "blob" "b1")))
-      (octocat-tree-tests--mount-root
-       (lambda (_repo _branch callback) (funcall callback "rootsha")))
+                                 (vector (octocat-tree-tests--entry "a.el" "blob" "b1")
+                                         (octocat-tree-tests--entry "src" "tree" "srcsha")))
+      (octocat-tree-tests--mount-tree)
       (goto-char (point-min))
+      (should-not (next-button (point-min)))
+      (should (equal (octocat-tree--path-at-point) "src"))
+      (should-not (eq (key-binding (kbd "TAB")) (key-binding (kbd "RET"))))
+      (octocat-tree-visit)
+      (should (equal octocat-tree-tests--visited '("src")))
       (forward-line 1)
-      (should (button-at (point)))
+      (should (equal (octocat-tree--path-at-point) "a.el")))))
+
+(ert-deftest octocat-tree-test-full-tree ()
+  "In a directory the whole tree shows, opened down to it, which RET toggles."
+  (with-temp-buffer
+    (octocat-tree-tests--with-store
+      (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
+                                 (vector (octocat-tree-tests--entry "doc" "tree" "docsha")
+                                         (octocat-tree-tests--entry "src" "tree" "srcsha")
+                                         (octocat-tree-tests--entry "a.el" "blob" "b1")))
+      (octocat-tree-tests--store '(tree-dir "owner/repo" "srcsha")
+                                 (vector (octocat-tree-tests--entry "x.el" "blob" "b2")))
+      (octocat-tree-tests--mount-full-tree "src" "src" "src")
+      (accept-process-output nil 0.01)
+      (should (string-match-p "▸ doc/\n▾ src/\n    x\\.el\n  a\\.el" (buffer-string)))
       (should (equal (octocat-tree--path-at-point) "src"))
       (octocat-tree-visit)
       (vui-flush-sync)
-      (should (string-match-p "▾ src/" (buffer-string)))
-      (should (string-match-p "a\\.el" (buffer-string)))
-      (forward-line 1)
-      (should (button-at (next-button (line-beginning-position))))
-      (should (equal (octocat-tree--path-at-point) "src/a.el"))
-      (octocat-tree-up)
-      (should (equal (octocat-tree--path-at-point) "src"))
-      (octocat-tree-collapse-or-up)
-      (vui-flush-sync)
+      (should (equal octocat-tree-tests--visited '("src")))
       (should (string-match-p "▸ src/" (buffer-string)))
-      (should-error (octocat-tree-up) :type 'user-error))))
+      (should-not (string-match-p "x\\.el" (buffer-string))))))
+
+(ert-deftest octocat-tree-test-folds-long-directories ()
+  "Past `octocat-tree-entries' a directory folds behind a marker that RET unfolds."
+  (octocat-tree-tests--with-store
+    (octocat-tree-tests--store
+     '(tree-dir "owner/repo" "rootsha")
+     (vconcat (mapcar (lambda (i) (octocat-tree-tests--entry (format "f%02d" i) "blob" "b"))
+                      (number-sequence 1 5))))
+    (with-temp-buffer
+      (let ((octocat-tree-entries 3))
+        (octocat-tree-tests--mount-tree)
+        (should (string-match-p "f03" (buffer-string)))
+        (should-not (string-match-p "f04" (buffer-string)))
+        (should (string-match-p "2 more entries" (buffer-string)))
+        (let ((octocat-tree-entries nil))
+          (with-temp-buffer
+            (octocat-tree-tests--mount-tree)
+            (should (string-match-p "f05" (buffer-string)))))))))
+
+(ert-deftest octocat-tree-test-focus ()
+  "Point moves to the focused entry once listed, unfolded when it was folded."
+  (octocat-tree-tests--with-store
+    (octocat-tree-tests--store
+     '(tree-dir "owner/repo" "rootsha")
+     (vconcat (mapcar (lambda (i) (octocat-tree-tests--entry (format "f%02d" i) "blob" "b"))
+                      (number-sequence 1 5))))
+    (with-temp-buffer
+      (let ((octocat-tree-entries 1))
+        (octocat-tree-tests--mount-tree "f05")
+        (accept-process-output nil 0.01)
+        (should (string-match-p "f04" (buffer-string)))
+        (should (equal (octocat-tree--path-at-point) "f05"))))))
 
 (defconst octocat-tree-tests--file-log-commits-json
   (concat "[{\"sha\":\"a1b2c3d4e5f6\",\"author\":{\"login\":\"ann\"},"
@@ -174,7 +226,7 @@ Its fetch gives the car of RESULT, or never returns when there is none."
   (setq octocat-file-log--repo "owner/repo"
         octocat-file-log--path "src/foo.el")
   (cl-letf (((symbol-function 'octocat-tree--fetch-file-commits)
-             (lambda (_repo _path callback)
+             (lambda (_repo _ref _path callback)
                (when result (funcall callback (car result))))))
     (octocat-file-log-refresh)))
 

@@ -215,16 +215,34 @@
 
 (ert-deftest octocat-repo-test-docs ()
   "The documents are found by name, a markdown README winning, in GitHub's order."
-  (let* ((entry (lambda (name)
+  (let* ((entry (lambda (name &optional type)
                   (let ((h (make-hash-table :test #'equal)))
-                    (puthash "name" name h)
+                    (puthash "path" name h)
+                    (puthash "type" (or type "blob") h)
                     h)))
          (docs (octocat-repo--docs
-                (mapcar entry '("LICENSE" "Makefile" "README" "readme.md"
-                                "README.txt" "CONTRIBUTING.md" "licenses.txt")))))
+                (cons (funcall entry "SECURITY" "tree")
+                      (mapcar entry '("LICENSE" "Makefile" "README" "readme.md"
+                                      "README.txt" "CONTRIBUTING.md" "licenses.txt"))))))
     (should (equal (mapcar #'car docs) '(readme contrib license)))
-    (should (equal (gethash "name" (nth 2 (assq 'readme docs))) "readme.md"))
-    (should (equal (gethash "name" (nth 2 (assq 'license docs))) "LICENSE"))))
+    (should (equal (gethash "path" (nth 2 (assq 'readme docs))) "readme.md"))
+    (should (equal (gethash "path" (nth 2 (assq 'license docs))) "LICENSE"))))
+
+(ert-deftest octocat-repo-test-parse-head ()
+  "A directory at a ref has its last commit, its tree and its history count."
+  (let ((head (octocat-repo--parse-head
+               "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\"}}}}"
+               "main" "src")))
+    (should (equal (gethash "sha" head) "abc"))
+    (should (equal (octocat--commit-author head) "@ann"))
+    (should (equal (gethash "tree" head) "t1"))
+    (should (equal (gethash "kind" head) "tree"))
+    (should (equal (gethash "total" head) 42)))
+  (should-error (octocat-repo--parse-head
+                 "{\"data\":{\"repository\":{\"object\":null,\"dir\":null}}}" "nope" nil))
+  (should-error (octocat-repo--parse-head
+                 "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":0,\"nodes\":[]}},\"dir\":null}}}"
+                 "main" "missing")))
 
 (provide 'octocat-repo-tests)
 ;;; octocat-repo-tests.el ends here

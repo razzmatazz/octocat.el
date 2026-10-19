@@ -20,27 +20,28 @@
 
 ;;; Commentary:
 
-;; Three modes for browsing a repository's files:
+;; A repository's files, as the repo page lists them, and two modes for
+;; one file:
 ;;
-;;   octocat-tree-mode     — interactive tree browser; dirs expand on demand
+;;   `octocat-tree--dir'     — one directory of the repo page, as on GitHub
 ;;   octocat-file-mode     — read-only file content viewer with syntax highlighting
 ;;   octocat-file-log-mode — commit log for a single file (git log -- <path>)
 ;;
 ;; Entry points:
-;;   `octocat-tree-open'     — open the tree browser (C-c C-t in repo mode,
-;;                             or the Code tab of any repo page)
-;;   `octocat-file-log-open' — open the file commit log (C-c C-l in file mode)
+;;   the repo page (`octocat-visit-repo'), which lists a directory
+;;   `octocat-tree-find-file' — pick any file of the ref shown (C-c C-f)
+;;   `octocat-file-log-open'  — open the file commit log (C-c C-l in file mode)
 ;;
 ;; octocat-file-mode derives from `special-mode'.
 ;; octocat-file-log-mode derives from `vui-mode' and is rendered by
 ;; `octocat-file-log--page': one line per commit, carrying the commit's
 ;; SHA in the `octocat-file-log--sha' text property, which RET
 ;; (`octocat-file-log-visit') and o (`octocat-file-log-browse') read.
-;; octocat-tree-mode derives from `vui-mode' and is rendered with vui.el:
-;; `octocat-tree--dir' (lazy, cached child fetch) and `octocat-tree--node'
-;; (one line; directories own their expanded state) recurse from
-;; `octocat-tree--root'.  Each line carries text properties so commands
-;; work regardless of keymap precedence (e.g. under Evil):
+;; The root's entries are listed flat, as GitHub's repo page has them;
+;; RET on a directory moves the page into it, which shows the whole tree
+;; opened down to it, as GitHub's sidebar does (see "Rendering — tree").
+;; Each line carries text properties so commands work regardless of
+;; keymap precedence (e.g. under Evil):
 ;;
 ;;   octocat-tree--type      \\='dir | \\='file  — kind of entry
 ;;   octocat-tree--entry     <hash-table>    — the GitHub API entry object
@@ -56,32 +57,21 @@
 (require 'vui)
 (require 'vui-components)
 
-;; octocat-repo buffer-locals accessed from octocat-tree-open.
+;; The repo page's buffer-locals, read by `octocat-tree-find-file'.
 (defvar octocat-repo--repo)
-(defvar octocat-repo--branch)
+(defvar octocat-repo--ref)
 (defvar octocat-repo--default-branch)
 
 (declare-function octocat-commit-open "octocat-commit" (repo sha))
 
 
-;;;; Buffer-local variables — tree mode
+;;;; User options
 
-(defvar-local octocat-tree--repo nil
-  "The \"owner/repo\" string for the tree browser buffer.")
-
-(defvar-local octocat-tree--branch nil
-  "Branch/ref name currently being browsed.")
-
-(defvar-local octocat-tree--default-branch nil
-  "The repository's default branch, when known; listed first by the picker.")
-
-(defvar-local octocat-tree--root-sha nil
-  "SHA of the root git tree object for the current branch.")
-
-(defvar-local octocat-tree--all-files nil
-  "Cached result of the recursive tree fetch used by `octocat-tree-find-file'.
-An alist mapping file path strings to their blob SHA strings.
-Populated on first call and reused until the root SHA changes.")
+(defcustom octocat-tree-entries 15
+  "Entries of a directory the repo page lists before the rest is folded away.
+The rest expands on RET.  Nil never folds."
+  :type '(choice (const :tag "Never fold" nil) integer)
+  :group 'octocat)
 
 
 ;;;; Buffer-local variables — file mode
@@ -97,46 +87,6 @@ Populated on first call and reused until the root SHA changes.")
 
 (defvar-local octocat-tree--file-branch nil
   "Branch/ref name for the file being displayed.")
-
-
-;;;; Mode: octocat-tree-mode
-
-(defvar octocat-tree-mode-map
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
-    map)
-  "Keymap for `octocat-tree-mode'.")
-(define-key octocat-tree-mode-map (kbd "RET")     #'octocat-tree-visit)
-(define-key octocat-tree-mode-map (kbd "TAB")     #'octocat-tree-toggle-or-forward)
-(define-key octocat-tree-mode-map (kbd "<tab>")   #'octocat-tree-toggle-or-forward)
-(define-key octocat-tree-mode-map (kbd "^")       #'octocat-tree-up)
-(define-key octocat-tree-mode-map (kbd "n")       #'next-line)
-(define-key octocat-tree-mode-map (kbd "p")       #'previous-line)
-(define-key octocat-tree-mode-map (kbd "C-c C-f") #'octocat-tree-find-file)
-(define-key octocat-tree-mode-map (kbd "C-c C-b") #'octocat-tree-switch-branch)
-(define-key octocat-tree-mode-map (kbd "q")       #'octocat-quit-window)
-(define-key octocat-tree-mode-map (kbd "C-c C-o") #'octocat-tree-browse)
-(define-key octocat-tree-mode-map (kbd "o")       #'octocat-tree-browse)
-(define-key octocat-tree-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-tree-mode-map (kbd "C-c C-s") #'octocat-search-repo)
-(define-key octocat-tree-mode-map (kbd "gr")      #'octocat-tree-refresh)
-
-(defvar octocat-tree--dir-button-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "TAB")   #'octocat-tree-toggle-or-forward)
-    (define-key map (kbd "<tab>") #'octocat-tree-toggle-or-forward)
-    map)
-  "Keymap of a directory's button; it outranks vui's TAB on buttons.")
-
-(define-derived-mode octocat-tree-mode vui-mode "Octocat-Tree"
-  "Major mode for browsing a GitHub repository file tree.
-The buffer is rendered by vui.el; see `octocat-tree--root'.
-
-\\{octocat-tree-mode-map}"
-  :group 'octocat
-  (setq-local buffer-read-only t)
-  (setq-local truncate-lines t)
-  (setq-local revert-buffer-function #'octocat-tree-refresh))
 
 
 ;;;; Mode: octocat-file-mode
@@ -172,7 +122,7 @@ The buffer is rendered by vui.el; see `octocat-tree--root'.
   "Relative file path whose commit history is being shown.")
 
 (defvar-local octocat-file-log--branch nil
-  "Branch/ref name for the file log buffer.")
+  "Ref the file log lists the commits from, or nil for the default branch.")
 
 
 ;;;; Mode: octocat-file-log-mode
@@ -202,27 +152,7 @@ The buffer is rendered by vui.el; see `octocat-file-log--page'.
   (octocat--ts-eldoc-setup))
 
 
-;;;; Branch glyph helper
-
-
-
 ;;;; API fetch helpers
-
-(defun octocat-tree--fetch-root-sha (repo branch callback)
-  "Fetch the root SHA for REPO on BRANCH asynchronously.
-BRANCH is any ref, \"HEAD\" included.  The SHA is of its commit, which
-the trees API takes for the commit's tree.  Calls CALLBACK with a SHA
-string, or a cons (error . MSG)."
-  (octocat--run-gh
-   "tree-root-sha"
-   (list "api" (format "repos/%s/commits/%s" repo branch)
-         "-H" "Accept: application/vnd.github.sha")
-   (lambda (output)
-     (let ((s (string-trim output)))
-       (if (string-empty-p s)
-           (error "Empty tree SHA in branch response")
-         s)))
-   callback))
 
 (defun octocat-tree--fetch-dir (repo sha callback)
   "Fetch the children of directory with SHA in REPO asynchronously.
@@ -277,25 +207,39 @@ not be text."
    callback))
 
 
+(defconst octocat-tree--blob-query
+  "query($owner:String!,$name:String!,$expr:String!){repository(owner:$owner,name:$name){object(expression:$expr){...on Blob{oid}}}}"
+  "GraphQL query behind `octocat-tree--fetch-blob-sha'.")
+
+(defun octocat-tree--fetch-blob-sha (repo ref path callback)
+  "Fetch the blob SHA of file PATH of REPO at REF.
+Calls CALLBACK with the SHA, or a cons (error . MSG)."
+  (let ((parts (split-string repo "/")))
+    (octocat--run-gh
+     "blob-sha"
+     (list "api" "graphql"
+           "-f" (concat "query=" octocat-tree--blob-query)
+           "-f" (concat "owner=" (car parts))
+           "-f" (concat "name=" (cadr parts))
+           "-f" (concat "expr=" ref ":" path))
+     (lambda (json)
+       (let* ((r   (gethash "repository"
+                            (gethash "data" (json-parse-string json :null-object nil))))
+              (obj (and r (gethash "object" r))))
+         (or (and obj (gethash "oid" obj))
+             (error "No file %s at %s" path ref))))
+     callback)))
+
+
 ;;;; Sync resources
 ;;
-;; A branch's root SHA is refetched on open.  Directory listings and file
-;; contents are named by tree and blob SHA, which name fixed contents, so
-;; they are kept for `octocat-tree--fixed-max-age'.
+;; Directory listings and file contents are named by tree and blob SHA,
+;; which name fixed contents, so they are kept for
+;; `octocat-tree--fixed-max-age'.  The tree of a directory at a ref comes
+;; with its last commit, the repo page's `repo-head' resource.
 
 (defconst octocat-tree--fixed-max-age (* 30 24 60 60)
   "Seconds to keep what a SHA names, which never changes.")
-
-(octocat-sync-define-resource tree-root (repo branch)
-  :fetch (lambda (done)
-           (octocat-tree--fetch-root-sha
-            repo branch
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (let ((h (make-hash-table :test #'equal)))
-                                (puthash "sha" r h)
-                                h)))))))
 
 (octocat-sync-define-resource tree-dir (repo sha)
   :max-age octocat-tree--fixed-max-age
@@ -314,6 +258,20 @@ not be text."
                   (funcall done (if (eq (car-safe r) 'error)
                                     r
                                   (progn (puthash "base64" r h) h)))))))))
+
+(octocat-sync-define-resource tree-files (repo sha)
+  :max-age octocat-tree--fixed-max-age
+  :fetch (lambda (done)
+           (octocat-tree--fetch-all-files
+            repo sha
+            (lambda (r)
+              (funcall done
+                       (if (eq (car-safe r) 'error)
+                           r
+                         (let ((h (make-hash-table :test #'equal :size (length r))))
+                           (pcase-dolist (`(,path . ,blob) r)
+                             (puthash path blob h))
+                           h)))))))
 
 (defun octocat-tree--blob-content (data)
   "Return the content of a file from DATA, the `blob' resource's."
@@ -344,53 +302,47 @@ PATH is used only to select the mode via `auto-mode-alist'."
 
 ;;;; Rendering helpers
 
-(defun octocat-tree--entry-line (indent glyph name face type entry path activate
-                                        &optional open)
+(defun octocat-tree--entry-line (indent name face type entry path activate)
   "Return one tree line as a vnode (no trailing newline).
-INDENT is a string of leading spaces.  GLYPH is a 1-2 char icon.
-NAME is the file/dir name.  FACE is applied to the icon+name.
-TYPE is \\='dir or \\='file.  ENTRY is the API hash-table.  PATH is the
-entry's full repository path: the API's own \"path\" field is only the
-name within its directory, so it is wrong below the root.  ACTIVATE is a
-zero-argument function run by RET on the line.  OPEN is non-nil for an
-expanded directory.
+INDENT is a string of leading spaces.  NAME is the file/dir name, with
+any glyph before it, drawn in FACE.  TYPE is \\='dir or \\='file.
+ENTRY is the API hash-table.  PATH is the entry's full repository path:
+the API's own \"path\" field is only the name within its directory.
+ACTIVATE is a zero-argument function run by RET on the line.
 
-The icon+name is a button, so TAB stops on each entry.  The
-type/entry/path/activate properties span the entire line including the
-indent (the button keeps its label's), so `get-text-property' at
-`line-beginning-position' works regardless of nesting depth.  Commands
-read them rather than relying on a keymap, so they keep working under
-Evil, whose state keymaps outrank text-property keymaps."
-  (let ((props (list 'octocat-tree--type     type
+The line is not a button, so TAB does not stop on every entry: in a
+long listing, walking the page's buttons would be walking its files.
+The type/entry/path/activate properties span the entire line, indent
+included, so `get-text-property' at `line-beginning-position' finds
+them.  Commands read them rather than relying on the line's keymap, so
+they keep working under Evil, whose state keymaps outrank text-property
+keymaps."
+  (let ((map   (make-sparse-keymap))
+        (props (list 'octocat-tree--type     type
                      'octocat-tree--entry    entry
                      'octocat-tree--path     path
-                     'octocat-tree--activate activate
-                     'octocat-tree--open     open))
-        (help  (if (eq type 'dir)
-                   "RET: expand  o: browse on GitHub"
-                 "RET: view file  o: browse on GitHub")))
-    (vui-fragment
-     (unless (string-empty-p indent)
-       (vui-text (apply #'propertize indent props)))
-     (vui-button (apply #'propertize (concat glyph " " name) props)
-                 :no-decoration t
-                 :face face
-                 :help-echo help
-                 :keymap (and (eq type 'dir) octocat-tree--dir-button-map)
-                 :on-click activate))))
+                     'octocat-tree--activate activate)))
+    (define-key map (kbd "RET") (lambda () (interactive) (funcall activate)))
+    (vui-region :keymap map
+      (vui-text (apply #'propertize
+                       (concat indent
+                               (propertize name
+                                           'face face 'mouse-face 'highlight
+                                           'help-echo
+                                           (if (eq type 'dir)
+                                               "RET: open directory  C-c C-o: browse on GitHub"
+                                             "RET: view file  C-c C-o: browse on GitHub")))
+                       props)))))
 
 
-;;;; Rendering — tree mode
-
-(defun octocat-tree--header (repo branch)
-  "Return the vnodes of the tree header for REPO on BRANCH.
-BRANCH is a picker button, as GitHub's branch dropdown."
-  (list (vui-text (propertize (or repo "") 'face 'octocat-repo 'octocat-tree--type 'header))
-        (vui-button (format "[%s ▾]" (or branch ""))
-                    :no-decoration t
-                    :face 'octocat-branch
-                    :help-echo "RET: browse another branch (C-c C-b)"
-                    :on-click #'octocat-tree-switch-branch)))
+;;;; Rendering — tree
+;;
+;; Two views of a ref's files, as GitHub has them.  At the root the page
+;; lists the root's entries, `octocat-tree--dir'.  In a directory it
+;; shows the whole tree, GitHub's sidebar, opened down to it: a
+;; recursion of `octocat-tree--subtree', the entries of one directory,
+;; and `octocat-tree--node', one entry, a directory owning whether it is
+;; expanded.  Nodes are keyed by path, so a refetch keeps what is open.
 
 (defun octocat-tree--sorted-entries (entries)
   "Return ENTRIES (a vector) as a list sorted dirs-first then alphabetically."
@@ -404,114 +356,144 @@ BRANCH is a picker button, as GitHub's branch dropdown."
                 (t (string< (gethash "path" a "")
                             (gethash "path" b ""))))))))
 
-;; The tree is a recursion of two components:
-;;
-;;   `octocat-tree--dir'   reads the children of one directory SHA from
-;;                         the sync store and lists them as nodes.
-;;   `octocat-tree--node'  one entry's line; a directory node owns its
-;;                         expanded/collapsed state and, when expanded,
-;;                         nests another `octocat-tree--dir'.
-;;
-;; Lines carry no trailing newline: `vui-list' separates siblings, and a
-;; node's children follow it after one `vui-newline'.  Nodes are keyed by
-;; path, not SHA, so a directory changed by a new root SHA stays expanded;
-;; its listing stays up until the new one is loaded.
+(defun octocat-tree--join (dir name)
+  "Return the path of NAME inside directory path DIR (\"\" for the root)."
+  (if (string-empty-p dir) name (concat dir "/" name)))
 
-(vui-defcomponent octocat-tree--dir (repo branch sha depth path)
-  "Children of the directory with tree SHA, at nesting DEPTH.
-PATH is this directory's full repository path (\"\" for the root)."
+(defun octocat-tree--parent (path)
+  "Return the path of the directory containing PATH, \"\" for the root."
+  (let ((dir (file-name-directory path)))
+    (if dir (directory-file-name dir) "")))
+
+(defun octocat-tree--reveals-p (path reveal)
+  "Return non-nil when PATH is REVEAL or a directory on the way to it."
+  (and reveal (string-prefix-p (concat path "/") (concat reveal "/"))))
+
+(defun octocat-tree--use-listing (repo sha dir focus)
+  "Read the entries of directory DIR, tree SHA of REPO, for a render.
+Return (STATUS ENTRIES PATHS): the snapshot status, the entries sorted
+and their full paths.  Once they are listed point moves to FOCUS, the
+path of one of them.  A hook: call it during render."
+  (let* ((buf     (current-buffer))
+         (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
+         (status  (octocat-vui-snapshot-status result))
+         (entries (and (eq status 'ready)
+                       (octocat-tree--sorted-entries (plist-get result :data))))
+         (paths   (mapcar (lambda (e) (octocat-tree--join dir (gethash "path" e)))
+                          entries)))
+    (vui-use-effect (focus status)
+      ;; After the render: a first mount ends at `point-min'.
+      (when (and focus (member focus paths))
+        (run-at-time 0 nil #'octocat-tree--jump-to buf focus))
+      nil)
+    (list (if (eq status 'error) result status) entries paths)))
+
+(defun octocat-tree--listing (status entries indent key limit row)
+  "Return the vnode of a directory's ENTRIES as STATUS has them.
+STATUS is from `octocat-tree--use-listing', the snapshot itself on an
+error.  ROW draws an entry.  Past LIMIT entries the rest fold behind a
+marker after INDENT, named KEY."
+  (pcase status
+    ('ready
+     (if (null entries)
+         (vui-text (propertize (concat indent "(empty)") 'face 'octocat-dimmed))
+       (vui-component
+        'octocat-vui-fold-rest
+        :total (length entries) :limit limit :noun "entries"
+        :prefix indent :key key
+        :render (lambda (n)
+                  (vui-list (seq-take entries n) row
+                            (lambda (entry)
+                              (concat (gethash "type" entry) ":" (gethash "path" entry))))))))
+    ('pending (vui-text (octocat-tree--skeleton indent)))
+    (snap (vui-text (propertize (concat indent (octocat-vui-error-text snap)) 'face 'error)))))
+
+(vui-defcomponent octocat-tree--dir (repo branch sha focus on-dir)
+  "The root's entries, its tree SHA of REPO at BRANCH, as GitHub lists them.
+RET on a directory calls ON-DIR with its path; on a file it opens it.
+Point moves to FOCUS, an entry's path, once it is listed.  Past
+`octocat-tree-entries' the entries are folded, unless FOCUS is among
+them."
   :render
-  (let* ((indent  (make-string (* depth 2) ?\s))
-         (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil)))
-    (pcase (octocat-vui-snapshot-status result)
-      ('error
-       (vui-text (propertize (concat indent "  " (octocat-vui-error-text result))
-                             'face 'error)))
-      ('ready
-       (let ((entries (octocat-tree--sorted-entries (plist-get result :data))))
-         (if (null entries)
-             (vui-text (propertize (concat indent "  (empty)") 'face 'octocat-dimmed))
-           (vui-list entries
-                     (lambda (entry)
-                       (vui-component 'octocat-tree--node
-                                      :repo repo :branch branch
-                                      :entry entry :depth depth :parent path))
-                     (lambda (entry)
-                       (concat (gethash "type" entry) ":" (gethash "path" entry)))))))
-      (_ (vui-text (octocat-tree--skeleton indent))))))
+  (pcase-let ((`(,status ,entries ,paths) (octocat-tree--use-listing repo sha "" focus)))
+    (octocat-tree--listing
+     status entries "" 'tree-fold (unless (member focus paths) octocat-tree-entries)
+     (lambda (entry)
+       (let* ((name (or (gethash "path" entry) ""))
+              (sha  (or (gethash "sha" entry) "")))
+         (if (equal (gethash "type" entry) "tree")
+             (octocat-tree--entry-line "" (concat name "/") 'octocat-branch 'dir entry name
+                                       (lambda () (funcall on-dir name)))
+           (octocat-tree--entry-line "" name 'default 'file entry name
+                                     (lambda ()
+                                       (octocat-tree--open-file-by-path
+                                        repo branch name sha)))))))))
 
-(defun octocat-tree--skeleton (indent)
-  "Return grey bars shaped like a few tree entries, each after INDENT."
-  (octocat-vui-skeleton (mapcar (lambda (n) (list indent "  " n)) '(14 22 10 18))))
+(vui-defcomponent octocat-tree--subtree
+    (repo branch sha depth path reveal current focus on-dir)
+  "The entries of directory PATH, tree SHA, at nesting DEPTH of the tree.
+They are of REPO at BRANCH.  Directories on the way to REVEAL start
+expanded, and CURRENT, the page's directory, is highlighted.  RET on a
+directory toggles it and calls ON-DIR with its path; on a file it opens
+it.  Point moves to FOCUS, an entry's path, once it is listed.  Past
+`octocat-tree-entries' the entries fold, unless the way to REVEAL or
+FOCUS is among the folded ones."
+  :render
+  (pcase-let* ((`(,status ,entries ,paths)
+                (octocat-tree--use-listing repo sha path focus))
+               (indent (make-string (* depth 2) ?\s))
+               (needed (cl-position-if (lambda (p)
+                                         (or (equal p focus)
+                                             (octocat-tree--reveals-p p reveal)))
+                                       paths)))
+    (octocat-tree--listing
+     status entries indent (intern (concat "tree-fold:" path))
+     (and octocat-tree-entries
+          (not (and needed (>= needed octocat-tree-entries)))
+          octocat-tree-entries)
+     (lambda (entry)
+       (vui-component 'octocat-tree--node
+                      :repo repo :branch branch :entry entry :depth depth
+                      :parent path :reveal reveal :current current
+                      :focus focus :on-dir on-dir)))))
 
-(vui-defcomponent octocat-tree--node (repo branch entry depth parent)
+(vui-defcomponent octocat-tree--node
+    (repo branch entry depth parent reveal current focus on-dir)
   "One tree ENTRY (hash-table) at nesting DEPTH, inside directory PARENT.
-PARENT is the containing directory's full path (\"\" at the root)."
-  :state ((expanded nil))
+The other arguments are as for `octocat-tree--subtree'."
+  :state ((expanded (octocat-tree--reveals-p
+                     (octocat-tree--join parent (or (gethash "path" entry) ""))
+                     reveal)))
   :render
   (let* ((name   (or (gethash "path" entry) ""))
-         (path   (if (string-empty-p parent) name (concat parent "/" name)))
-         (type   (or (gethash "type" entry) ""))
-         (sha    (or (gethash "sha"  entry) ""))
+         (path   (octocat-tree--join parent name))
+         (sha    (or (gethash "sha" entry) ""))
          (indent (make-string (* depth 2) ?\s)))
-    (if (equal type "tree")
-        (let* ((toggle (vui-with-async-context
-                         (vui-set-state :expanded (lambda (old) (not old)))))
-               (line   (octocat-tree--entry-line
-                        indent (if expanded "▾" "▸") (concat name "/")
-                        'octocat-branch 'dir entry path toggle expanded)))
-          (vui-fragment
-           line
-           (when expanded
-             (vui-fragment
-              (vui-newline)
-              (vui-component 'octocat-tree--dir
-                             :repo repo :branch branch
-                             :sha sha :depth (1+ depth) :path path)))))
-      ;; Blob — leaf node.  Single-space glyph matches the width of "▸"/"▾"
-      ;; so that file names align with directory names at the same depth.
+    (if (equal (gethash "type" entry) "tree")
+        (vui-fragment
+         (octocat-tree--entry-line
+          indent (concat (if expanded "▾ " "▸ ") name "/")
+          (if (equal path current) '(octocat-section-heading octocat-branch) 'octocat-branch)
+          'dir entry path
+          (vui-with-async-context
+            (vui-set-state :expanded (lambda (old) (not old)))
+            (funcall on-dir path)))
+         (when expanded
+           (vui-fragment
+            (vui-newline)
+            (vui-component 'octocat-tree--subtree
+                           :repo repo :branch branch :sha sha :depth (1+ depth)
+                           :path path :reveal reveal :current current
+                           :focus focus :on-dir on-dir))))
+      ;; Two spaces stand for "▸ ", so names line up with directories'.
       (octocat-tree--entry-line
-       indent " " name 'default 'file entry path
-       (lambda ()
-         (octocat-tree--open-file-by-path
-          repo branch path sha))))))
+       indent (concat "  " name) (if (equal path current) 'octocat-section-heading 'default)
+       'file entry path
+       (lambda () (octocat-tree--open-file-by-path repo branch path sha))))))
 
-(vui-defcomponent octocat-tree--root (repo branch tick)
-  "Root component of the tree buffer: the tree of BRANCH of REPO.
-Another BRANCH starts the tree afresh, folded and painted from the sync
-store; a new TICK refetches it in place."
-  :render
-  (vui-component 'octocat-tree--branch
-                 :key (or branch 'default) :repo repo :branch branch :tick tick))
-
-(vui-defcomponent octocat-tree--branch (repo branch tick)
-  "The tree of BRANCH of REPO: header, then the root directory.
-The root SHA of BRANCH is painted from the sync store and refetched; a
-new TICK refetches it again."
-  :render
-  (let* ((buf    (current-buffer))
-         (result (octocat-vui-use-resource (list 'tree-root repo branch) tick))
-         (sha    (let ((d (plist-get result :data))) (and d (gethash "sha" d)))))
-    (vui-use-effect (sha)
-      (when (and sha (buffer-live-p buf))
-        (with-current-buffer buf
-          (unless (equal sha octocat-tree--root-sha)
-            (setq octocat-tree--root-sha sha
-                  octocat-tree--all-files nil))))
-      nil)
-    (vui-vstack
-     (apply #'vui-hstack :spacing 2
-            (append (octocat-tree--header repo branch)
-                    (octocat-vui-repo-tabs repo 'code tick)))
-     (pcase (octocat-vui-snapshot-status result)
-       ('error (vui-text (propertize (concat "  " (octocat-vui-error-text result))
-                                     'face 'error)))
-       ;; The root directory is itself the tree with this SHA; everything
-       ;; below it is fetched lazily as directories are expanded.
-       ('ready (vui-component 'octocat-tree--dir
-                              :repo repo :branch branch :sha sha
-                              :depth 0 :path ""))
-       (_ (vui-text (octocat-tree--skeleton "")))))))
+(defun octocat-tree--skeleton (&optional indent)
+  "Return grey bars shaped like a few tree entries, each after INDENT."
+  (octocat-vui-skeleton (mapcar (lambda (n) (list (or indent "") n)) '(14 22 10 18))))
 
 
 ;;;; Rendering — file mode
@@ -565,6 +547,14 @@ new TICK refetches it again."
   "Return non-nil when the current line is a file or directory entry."
   (memq (octocat-tree--type-at-point) '(dir file)))
 
+(defun octocat-tree--jump-to (buf path)
+  "Move point in BUF, and in the windows showing it, to the entry at PATH."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (when (octocat-tree--goto-path path)
+        (dolist (win (get-buffer-window-list buf nil t))
+          (set-window-point win (point)))))))
+
 (defun octocat-tree--goto-path (path)
   "Move point to the name of the entry with PATH, if it is shown."
   (let ((pos (save-excursion
@@ -572,90 +562,15 @@ new TICK refetches it again."
                (catch 'found
                  (while (not (eobp))
                    (when (equal (octocat-tree--path-at-point) path)
-                     (back-to-indentation)
-                     (throw 'found (point)))
+                     (throw 'found (line-beginning-position)))
                    (forward-line 1))))))
     (when pos (goto-char pos))))
 
 
-;;;; Interactive commands — tree mode
-
-(defun octocat-tree-open (&optional repo branch)
-  "Open the file tree browser for the current octocat-repo buffer.
-With REPO, an \"owner/name\" string, open it for that repository
-instead; this is how the tab strip of the other repo pages gets here.
-BRANCH, when given, is the branch to browse."
-  (interactive)
-  (unless (or repo (derived-mode-p 'octocat-repo-mode))
-    (user-error "Octocat: Not in an octocat-repo buffer"))
-  (let* ((in-repo  (derived-mode-p 'octocat-repo-mode))
-         (repo     (or repo octocat-repo--repo))
-         (default  (and in-repo octocat-repo--default-branch))
-         (branch   (or branch (and in-repo octocat-repo--branch) default "HEAD"))
-         (buf-name (format "*%s tree*" repo))
-         (buf      (get-buffer-create buf-name)))
-    (octocat-display-buffer buf)
-    (unless (derived-mode-p 'octocat-tree-mode)
-      (octocat-tree-mode))
-    (setq octocat-tree--repo   repo
-          octocat-tree--branch branch)
-    (when default
-      (setq octocat-tree--default-branch default))
-    (octocat-tree-refresh)))
-
-(defun octocat-tree-switch-branch ()
-  "Browse the tree of another branch, picked from the repository's."
-  (interactive)
-  (unless octocat-tree--repo
-    (user-error "Octocat: Buffer is not associated with a repository"))
-  (setq octocat-tree--branch   (octocat--read-branch
-                                octocat-tree--repo octocat-tree--default-branch
-                                (plist-get (octocat--head-info) :branch)
-                                octocat-tree--branch)
-        octocat-tree--root-sha nil)
-  (octocat-tree-refresh))
-
-(defun octocat-tree-refresh (&optional _ignore-auto _noconfirm)
-  "Refresh the tree buffer from the GitHub API.
-Refetches the root SHA, keeping what is expanded; the cached tree shows
-until it arrives."
-  (interactive)
-  (unless octocat-tree--repo
-    (user-error "Octocat: Buffer is not associated with a repository"))
-  (octocat-vui-refresh-page 'octocat-tree--root
-                            octocat-tree--repo
-                            (list :repo octocat-tree--repo
-                                  :branch octocat-tree--branch)))
-
-(defun octocat-tree-toggle-or-forward ()
-  "Toggle the directory at point, as TAB does in treemacs or magit.
-Elsewhere, and in Evil's normal state, where TAB walks the buttons,
-move to the next button instead."
-  (interactive)
-  (if (and (eq (octocat-tree--type-at-point) 'dir)
-           (not (memq (bound-and-true-p evil-state) '(normal motion))))
-      (funcall (octocat-tree--activate-at-point))
-    (call-interactively #'vui-forward)))
-
-(defun octocat-tree-up ()
-  "Move point to the directory containing the entry at point."
-  (interactive)
-  (let ((path (or (octocat-tree--path-at-point)
-                  (user-error "Octocat: No entry at point"))))
-    (unless (string-search "/" path)
-      (user-error "Octocat: Already at the top"))
-    (octocat-tree--goto-path (directory-file-name (file-name-directory path)))))
-
-(defun octocat-tree-collapse-or-up ()
-  "Collapse the directory at point, or else move to its containing one."
-  (interactive)
-  (if (and (eq (octocat-tree--type-at-point) 'dir)
-           (get-text-property (line-beginning-position) 'octocat-tree--open))
-      (funcall (octocat-tree--activate-at-point))
-    (octocat-tree-up)))
+;;;; Interactive commands — tree
 
 (defun octocat-tree-visit ()
-  "Open the file at point in `octocat-file-mode', or toggle a directory.
+  "Open the file or the directory at point.
 On a button, such as the header's branch picker, press it: Evil's RET
 binding outranks the button's own."
   (interactive)
@@ -665,7 +580,8 @@ binding outranks the button's own."
       (funcall activate))))
 
 (defun octocat-tree--open-file-by-path (repo branch path sha)
-  "Open the file viewer buffer for PATH (blob SHA) in REPO on BRANCH."
+  "Open the file viewer buffer for PATH (blob SHA) in REPO on BRANCH.
+With SHA nil, as from a github.com link, it is looked up first."
   (let* ((buf-name (format "*%s:%s*" repo path))
          (buf      (get-buffer-create buf-name)))
     (octocat-display-buffer buf)
@@ -678,162 +594,52 @@ binding outranks the button's own."
     (octocat-tree--render-file-loading path)
     (octocat-file-refresh)))
 
-(defun octocat-tree--do-find-file (repo branch root-sha)
-  "Fetch the recursive file list for REPO/BRANCH (root SHA ROOT-SHA).
-Uses `completing-read' to let the user pick a file, then opens it."
-  (let ((buf (current-buffer)))
-    (if octocat-tree--all-files
-        ;; Already cached — jump straight to completing-read.
-        (let* ((path (completing-read "Find file: " octocat-tree--all-files nil t))
-               (sha  (cdr (assoc path octocat-tree--all-files))))
-          (octocat-tree--open-file-by-path repo branch path sha))
-      ;; Not yet cached — fetch, cache, then prompt.
-      (setq mode-line-process (octocat-vui-mode-line-busy ":loading"))
-      (octocat-tree--fetch-all-files
-       repo root-sha
-       (lambda (result)
-         (when (buffer-live-p buf)
-           (with-current-buffer buf
-             (setq mode-line-process nil)
-             (if (eq (car-safe result) 'error)
-                 (message "Octocat: Error loading file list: %s" (cdr result))
-               (setq octocat-tree--all-files result)
-               (let* ((path (completing-read "Find file: " result nil t))
-                      (sha  (cdr (assoc path result))))
-                 (octocat-tree--open-file-by-path repo branch path sha))))))))))
+(defun octocat-tree--load-files (repo ref callback)
+  "Call CALLBACK with every file of REPO at REF, nil for the default branch.
+They are a hash-table of path to blob SHA, from the store when there,
+or (error . MSG)."
+  (octocat-sync-get
+   (list 'repo-head repo ref nil)
+   (lambda (head)
+     (if (eq (car-safe head) 'error)
+         (funcall callback head)
+       (octocat-sync-get (list 'tree-files repo (gethash "tree" head)) callback)))))
 
 (defun octocat-tree-find-file ()
   "Interactively find and open a file in this repository by path.
-Fetches the full recursive file tree (cached after first call), presents
-all file paths via `completing-read', and opens the selected file in
-`octocat-file-mode'.  Works from both `octocat-tree-mode' and
-`octocat-repo-mode' buffers."
+Offers every file of the ref shown, through `completing-read', and opens
+the one picked in `octocat-file-mode'.  The list is fetched once per
+commit.  Works from the repo page and from a file viewer."
   (interactive)
-  (cond
-   ((derived-mode-p 'octocat-tree-mode)
-    (unless octocat-tree--repo
+  (pcase-let* ((`(,repo ,ref ,label)
+                (cond ((derived-mode-p 'octocat-repo-mode)
+                       (list octocat-repo--repo octocat-repo--ref
+                             (or octocat-repo--ref octocat-repo--default-branch "HEAD")))
+                      ((derived-mode-p 'octocat-file-mode)
+                       (list octocat-tree--file-repo octocat-tree--file-branch
+                             octocat-tree--file-branch))
+                      (t (user-error "Octocat: Not in a repo or file buffer"))))
+               (buf (current-buffer)))
+    (unless repo
       (user-error "Octocat: Buffer is not associated with a repository"))
-    (unless octocat-tree--root-sha
-      (user-error "Octocat: Tree root SHA not yet loaded; wait for refresh to finish"))
-    (octocat-tree--do-find-file octocat-tree--repo
-                                octocat-tree--branch
-                                octocat-tree--root-sha))
-   ((derived-mode-p 'octocat-repo-mode)
-    (unless octocat-repo--repo
-      (user-error "Octocat: Buffer is not associated with a repository"))
-    ;; Repo buffers don't keep a root SHA — open (or reuse) the tree buffer
-    ;; so we can delegate to its cache.  octocat-tree-open switches to the
-    ;; buffer and runs a refresh if needed, so root-sha will be set.
-    (let* ((repo   octocat-repo--repo)
-           (branch (or octocat-repo--branch octocat-repo--default-branch "HEAD"))
-           (buf-name (format "*%s tree*" repo))
-           (tree-buf (get-buffer buf-name)))
-      (if (and tree-buf
-               (equal (buffer-local-value 'octocat-tree--branch tree-buf) branch)
-               (buffer-local-value 'octocat-tree--root-sha tree-buf))
-          ;; Tree buffer already has a loaded root SHA — use its cache.
-          (with-current-buffer tree-buf
-            (octocat-tree--do-find-file repo branch octocat-tree--root-sha))
-        ;; No tree buffer yet (or root not loaded).  Fetch the root SHA
-        ;; fresh without opening the tree browser.
-        (setq mode-line-process (octocat-vui-mode-line-busy ":loading"))
-        (let ((repo-buf (current-buffer)))
-          (octocat-tree--fetch-root-sha
-           repo branch
-           (lambda (sha-result)
-             (when (buffer-live-p repo-buf)
-               (with-current-buffer repo-buf
-                 (setq mode-line-process nil)
-                 (if (eq (car-safe sha-result) 'error)
-                     (message "Octocat: Error fetching tree root: %s"
-                              (cdr sha-result))
-                   ;; Now fetch all files; we don't have a tree buffer to
-                   ;; cache in, so just fetch+prompt directly.
-                   (setq mode-line-process (octocat-vui-mode-line-busy ":loading"))
-                   (octocat-tree--fetch-all-files
-                    repo sha-result
-                    (lambda (files-result)
-                      (when (buffer-live-p repo-buf)
-                        (with-current-buffer repo-buf
-                          (setq mode-line-process nil)
-                          (if (eq (car-safe files-result) 'error)
-                              (message "Octocat: Error loading file list: %s"
-                                       (cdr files-result))
-                            (let* ((path (completing-read "Find file: "
-                                                          files-result nil t))
-                                   (sha  (cdr (assoc path files-result))))
-                              (octocat-tree--open-file-by-path
-                               repo branch path sha))))))))))))))))
-   ((derived-mode-p 'octocat-file-mode)
-    (unless octocat-tree--file-repo
-      (user-error "Octocat: Buffer is not associated with a file"))
-    ;; File buffers don't keep a root SHA.  Reuse an existing tree buffer's
-    ;; cache when available; otherwise fetch the root SHA fresh.
-    (let* ((repo     octocat-tree--file-repo)
-           (branch   octocat-tree--file-branch)
-           (buf-name (format "*%s tree*" repo))
-           (tree-buf (get-buffer buf-name)))
-      (if (and tree-buf
-               (equal (buffer-local-value 'octocat-tree--branch tree-buf) branch)
-               (buffer-local-value 'octocat-tree--root-sha tree-buf))
-          ;; Tree buffer already has a loaded root SHA — use its cache.
-          (with-current-buffer tree-buf
-            (octocat-tree--do-find-file repo branch octocat-tree--root-sha))
-        ;; No tree buffer yet (or root not loaded).  Fetch the root SHA
-        ;; fresh without opening the tree browser.
-        (setq mode-line-process (octocat-vui-mode-line-busy ":loading"))
-        (let ((file-buf (current-buffer)))
-          (octocat-tree--fetch-root-sha
-           repo branch
-           (lambda (sha-result)
-             (when (buffer-live-p file-buf)
-               (with-current-buffer file-buf
-                 (setq mode-line-process nil)
-                 (if (eq (car-safe sha-result) 'error)
-                     (message "Octocat: Error fetching tree root: %s"
-                              (cdr sha-result))
-                   (setq mode-line-process (octocat-vui-mode-line-busy ":loading"))
-                   (octocat-tree--fetch-all-files
-                    repo sha-result
-                    (lambda (files-result)
-                      (when (buffer-live-p file-buf)
-                        (with-current-buffer file-buf
-                          (setq mode-line-process nil)
-                          (if (eq (car-safe files-result) 'error)
-                              (message "Octocat: Error loading file list: %s"
-                                       (cdr files-result))
-                            (let* ((path (completing-read "Find file: "
-                                                          files-result nil t))
-                                   (sha  (cdr (assoc path files-result))))
-                              (octocat-tree--open-file-by-path
-                               repo branch path sha))))))))))))))))
-   (t
-    (user-error "Octocat: Not in a repo or tree buffer"))))
+    (setq mode-line-process (octocat-vui-mode-line-busy ":loading"))
+    (octocat-tree--load-files
+     repo ref
+     (lambda (files)
+       (when (buffer-live-p buf)
+         (with-current-buffer buf
+           (setq mode-line-process nil)
+           (if (eq (car-safe files) 'error)
+               (message "Octocat: Error loading file list: %s" (cdr files))
+             (let ((path (completing-read "Find file: " files nil t)))
+               (octocat-tree--open-file-by-path
+                repo label path (gethash path files))))))))))
 
-(defun octocat-tree-browse ()
-  "Open the current tree entry on GitHub in the browser."
-  (interactive)
-  (let* ((repo   octocat-tree--repo)
-         (branch octocat-tree--branch)
-         (type   (octocat-tree--type-at-point))
-         (path   (octocat-tree--path-at-point)))
-    (unless (and repo branch)
-      (user-error "Octocat: Buffer has no repo or branch context"))
-    (pcase type
-      ('file
-       (let ((url (format "https://github.com/%s/blob/%s/%s"
-                          repo branch path)))
-         (message "Octocat: Opening %s in browser…" path)
-         (octocat-browse-external url)))
-      ('dir
-       (let ((url (format "https://github.com/%s/tree/%s/%s"
-                            repo branch path)))
-         (message "Octocat: Opening %s/ in browser…" path)
-         (octocat-browse-external url)))
-      (_
-       (let ((url (format "https://github.com/%s/tree/%s" repo branch)))
-         (message "Octocat: Opening %s tree in browser…" repo)
-         (octocat-browse-external url))))))
+(defun octocat-tree--entry-url (repo ref type path)
+  "Return the github.com URL of the tree entry at PATH of REPO at REF.
+TYPE is `file' or `dir'."
+  (format "https://github.com/%s/%s/%s/%s"
+          repo (if (eq type 'file) "blob" "tree") ref path))
 
 
 ;;;; Interactive commands — file mode
@@ -865,11 +671,22 @@ The blob is fixed by its SHA, so a stored copy is shown without a fetch."
                               (format "Error loading file: %s\n" (cdr result))
                               'face 'error)))
                  (octocat-tree--render-file path result))))))
-      ;; No SHA — show an error.
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (insert (propertize "Error: no blob SHA available for this file.\n"
-                            'face 'error))))))
+      ;; Known only by path, as from a link: look the blob up.
+      (octocat-tree--render-file-loading path)
+      (setq mode-line-process (octocat-vui-mode-line-busy ":loading"))
+      (octocat-tree--fetch-blob-sha
+       repo (or octocat-tree--file-branch "HEAD") path
+       (lambda (result)
+         (when (buffer-live-p buf)
+           (with-current-buffer buf
+             (setq mode-line-process nil)
+             (if (eq (car-safe result) 'error)
+                 (let ((inhibit-read-only t))
+                   (erase-buffer)
+                   (insert (propertize (format "Error loading file: %s\n" (cdr result))
+                                       'face 'error)))
+               (setq octocat-tree--file-sha result)
+               (octocat-file-refresh)))))))))
 
 (defun octocat-file-browse ()
   "Open the current file on GitHub in the browser."
@@ -887,24 +704,27 @@ The blob is fixed by its SHA, so a stored copy is shown without a fetch."
 
 ;;;; API fetch helper — file commits
 
-(defun octocat-tree--fetch-file-commits (repo path callback)
+(defun octocat-tree--fetch-file-commits (repo ref path callback)
   "Fetch commit history for PATH in REPO asynchronously.
-Requests up to 25 commits touching PATH using the GitHub REST
-commits endpoint with the \\='path\\=' filter.  Calls CALLBACK with a
-list of commit hash-tables, or a cons (error . MSG) on failure."
+Requests up to 25 commits touching PATH, from REF back (nil for the
+default branch), using the GitHub REST commits endpoint with the
+\\='path\\=' filter.  Calls CALLBACK with a list of commit hash-tables,
+or a cons (error . MSG) on failure."
   (octocat--run-gh
    "file-commits"
    (list "api"
-         (format "repos/%s/commits?per_page=25&path=%s"
-                 repo (url-hexify-string path)))
+         (format "repos/%s/commits?per_page=25&path=%s%s"
+                 repo (url-hexify-string path)
+                 (if ref (concat "&sha=" (url-hexify-string ref)) "")))
    #'octocat--parse-json-list
    callback))
 
 
-(octocat-sync-define-resource file-log (repo path)
+(octocat-sync-define-resource file-log (repo ref path)
   :fetch (lambda (done)
            (octocat-tree--fetch-file-commits
-            repo path (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
+            repo ref path
+            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
 
 ;;;; Rendering — file log mode
@@ -944,12 +764,13 @@ they keep working under Evil."
     (octocat-vui--default-help-echo
      line "RET: open commit details  o: browse on GitHub")))
 
-(vui-defcomponent octocat-file-log--page (repo path tick)
+(vui-defcomponent octocat-file-log--page (repo ref path tick)
   "The file log page: a REPO and PATH header, then the commits of PATH.
-The header leaves out the commit count until they are known.  A new
-TICK fetches them again."
+They are those from REF back, nil for the default branch.  The header
+leaves out the commit count until they are known.  A new TICK fetches
+them again."
   :render
-  (let* ((result  (octocat-vui-use-resource (list 'file-log repo path) tick))
+  (let* ((result  (octocat-vui-use-resource (list 'file-log repo ref path) tick))
          (status  (octocat-vui-snapshot-status result))
          (commits (append (plist-get result :data) nil)))
     (vui-vstack
@@ -981,24 +802,26 @@ TICK fetches them again."
 
 (defun octocat-file-log-open ()
   "Open the commit log browser for the file shown in the current buffer.
-Works from an `octocat-file-mode' buffer.  Opens (or switches to) the
-\\='*REPO:PATH log*\\=' buffer and refreshes it."
+Works from an `octocat-file-mode' buffer."
   (interactive)
   (unless (derived-mode-p 'octocat-file-mode)
     (user-error "Octocat: Not in a file viewer buffer"))
   (unless (and octocat-tree--file-repo octocat-tree--file-path)
     (user-error "Octocat: Buffer has no file context"))
-  (let* ((repo     octocat-tree--file-repo)
-         (path     octocat-tree--file-path)
-         (branch   octocat-tree--file-branch)
-         (buf-name (format "*%s:%s log*" repo path))
-         (buf      (get-buffer-create buf-name)))
+  (octocat-file-log-open-path octocat-tree--file-repo octocat-tree--file-branch
+                              octocat-tree--file-path))
+
+(defun octocat-file-log-open-path (repo ref path)
+  "Open (or switch to) the \\='*REPO:PATH log*\\=' buffer, from REF back.
+REF nil, or \"HEAD\", is the default branch."
+  (let ((buf (get-buffer-create (format "*%s:%s log*" repo path)))
+        (ref (unless (equal ref "HEAD") ref)))
     (octocat-display-buffer buf)
     (unless (derived-mode-p 'octocat-file-log-mode)
       (octocat-file-log-mode))
     (setq octocat-file-log--repo   repo
           octocat-file-log--path   path
-          octocat-file-log--branch branch)
+          octocat-file-log--branch ref)
     (octocat-file-log-refresh)))
 
 (defun octocat-file-log-refresh (&optional _ignore-auto _noconfirm)
@@ -1007,8 +830,10 @@ Works from an `octocat-file-mode' buffer.  Opens (or switches to) the
   (unless (and octocat-file-log--repo octocat-file-log--path)
     (user-error "Octocat: Buffer is not associated with a file"))
   (octocat-vui-refresh-page 'octocat-file-log--page
-                            (cons octocat-file-log--repo octocat-file-log--path)
+                            (list octocat-file-log--repo octocat-file-log--branch
+                                  octocat-file-log--path)
                             (list :repo octocat-file-log--repo
+                                  :ref octocat-file-log--branch
                                   :path octocat-file-log--path)))
 
 (defun octocat-file-log-visit ()
