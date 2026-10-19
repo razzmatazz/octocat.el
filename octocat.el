@@ -36,6 +36,7 @@
 ;;; Code:
 
 (require 'octocat-core)
+(require 'octocat-sync)
 (require 'octocat-pr)
 (require 'octocat-commit)
 (require 'octocat-pr-diff)

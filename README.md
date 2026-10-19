@@ -11,7 +11,7 @@ A GitHub client for Emacs, powered by the [`gh`](https://cli.github.com/) comman
 
 ## Requirements
 
-- [Emacs](https://www.gnu.org/software/emacs/) 29.1 or later
+- [Emacs](https://www.gnu.org/software/emacs/) 29.1 or later, built with SQLite (`(sqlite-available-p)` returns `t`); pages keep what they fetched in a SQLite store
 - [GitHub CLI (`gh`)](https://cli.github.com/) — must be installed and authenticated
 - [vui.el](https://melpa.org/#/vui) — declarative UI library every octocat buffer is drawn with, from MELPA
 

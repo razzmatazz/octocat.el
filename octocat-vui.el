@@ -52,6 +52,7 @@
 ;;; Code:
 
 (require 'octocat-core) ; `octocat-dimmed' face
+(require 'octocat-sync)
 (require 'cl-lib)
 (require 'seq)
 (require 'subr-x)
@@ -147,6 +148,55 @@ fresh data replaces it.  Must be called during render, like any hook."
       (when fresh (funcall save fresh))
       nil)
     (octocat-vui-with-stale sticky cached)))
+
+;; Pages read the sync store through `octocat-vui-use-resource'.  Each
+;; hook registers its buffer and version ref under its resource key; a
+;; change bumps the versions and re-renders each buffer once.
+
+(defvar octocat-vui--subscriptions (make-hash-table :test #'equal)
+  "Resource key to the (BUFFER . VERSION-REF) of each hook reading it.")
+
+(defun octocat-vui--on-sync-change (keys)
+  "Re-render, once each, the pages reading a resource in KEYS."
+  (let (buffers)
+    (dolist (key keys)
+      (pcase-dolist (`(,buf . ,version) (gethash key octocat-vui--subscriptions))
+        (setcar version (1+ (car version)))
+        (cl-pushnew buf buffers)))
+    (dolist (buf buffers)
+      (when-let* ((root (and (buffer-live-p buf) (vui-get-instance buf))))
+        (vui-rerender root)))))
+
+(add-hook 'octocat-sync-change-functions #'octocat-vui--on-sync-change)
+
+(defun octocat-vui-use-resource (spec tick)
+  "Return the sync snapshot of SPEC, a plist (:data :loading :error ...).
+The page re-renders when the snapshot changes.  Opening fetches SPEC
+unless it was fetched just now; a new TICK (see
+`octocat-vui-refresh-page') always does.  A component that reads it must
+not be `:memo', since the change re-renders from the page's root.  Must
+be called during render, like any hook."
+  (let* ((key      (octocat-sync-spec-key spec))
+         (buf      (current-buffer))
+         (version  (vui-use-ref 0))
+         (last     (vui-use-ref nil))
+         (v        (car version)))
+    (vui-use-effect (key)
+      (let ((entry (cons buf version)))
+        (push entry (gethash key octocat-vui--subscriptions))
+        (lambda ()
+          (let ((rest (delq entry (gethash key octocat-vui--subscriptions))))
+            (if rest
+                (puthash key rest octocat-vui--subscriptions)
+              (remhash key octocat-vui--subscriptions))))))
+    (vui-use-effect (key tick)
+      ;; Only a new tick for the same key is a refresh.
+      (let ((force (and (equal (car-safe (car last)) key)
+                        (not (equal (cdr (car last)) tick)))))
+        (setcar last (cons key tick))
+        (octocat-sync-request spec force))
+      nil)
+    (vui-use-memo (key v) (octocat-sync-read spec))))
 
 (defun octocat-vui-with-stale (result stale)
   "Return RESULT, or STALE shown as `ready' while RESULT is still pending.
