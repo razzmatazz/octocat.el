@@ -112,14 +112,9 @@
     (octocat--items-cache-save "o/r" "prs" "id" nil)
     (should-not (octocat--items-cache-load "o/r" "prs" "id"))))
 
-(ert-deftest octocat-core-test-counts-and-summary-cache-roundtrip ()
-  "Counts and the repo summary survive a save/load, nils included."
+(ert-deftest octocat-core-test-summary-cache-roundtrip ()
+  "The repo summary survives a save/load, nils included."
   (octocat-core-tests--with-cache-dir
-    (octocat--counts-cache-save "o/r" 'pulls '(:open 1 :closed 0 :merged 9))
-    (should (equal (octocat--counts-cache-load "o/r" 'pulls)
-                   '(:open 1 :closed 0 :merged 9)))
-    (octocat--counts-cache-save "o/r" 'issues '(:open 3 :closed 4))
-    (should (equal (octocat--counts-cache-load "o/r" 'issues) '(:open 3 :closed 4)))
     (octocat-repo--summary-cache-save
      "o/r" '(:default-branch "main" :fork-parent nil :open-issues 2 :open-prs 1))
     (should (equal (octocat-repo--summary-cache-load "o/r")

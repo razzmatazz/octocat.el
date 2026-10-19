@@ -135,34 +135,122 @@
                      "f00")))
     (should-not (plist-get (octocat-sync-read '(issue "o/r" 13)) :partial))))
 
+(defmacro octocat-sync-tests--with-sync (&rest body)
+  "Run BODY against a fresh in-memory store and empty queues.
+Resource `thing' (N) is defined; its fetches are pushed to `pending' as
+(N . DONE), and every notification to `notified'."
+  (declare (indent 0))
+  `(let* ((octocat-sync--db (octocat-sync-tests--db))
+          (octocat-sync--loading (make-hash-table :test #'equal))
+          (octocat-sync--queue nil)
+          (octocat-sync--prefetches nil)
+          (octocat-sync--prefetching nil)
+          (octocat-sync--pending nil)
+          (octocat-sync--running 0)
+          (octocat-sync--resources (make-hash-table :test #'eq))
+          (octocat-sync--mutations (make-hash-table :test #'eq))
+          (octocat-sync-change-functions nil)
+          (octocat-sync-invalidate-functions nil)
+          (octocat-sync-prefetch t)
+          (pending nil)
+          (notified nil))
+     (octocat-sync-define-resource thing (n)
+       :fetch (lambda (done) (push (cons n done) pending)))
+     (add-hook 'octocat-sync-change-functions (lambda (keys) (push keys notified)))
+     ,@body))
+
 (ert-deftest octocat-sync-test-queue ()
   "One fetch runs per key, at most the cap at once, and each result notifies."
-  (let* ((octocat-sync--db (octocat-sync-tests--db))
-         (octocat-sync--loading (make-hash-table :test #'equal))
-         (octocat-sync--queue nil)
-         (octocat-sync--running 0)
-         (octocat-sync--resources (make-hash-table :test #'eq))
-         (octocat-sync-max-requests 2)
-         (octocat-sync-change-functions nil)
-         (pending nil)
-         (notified nil))
-    (octocat-sync-define-resource thing (n)
-      :fetch (lambda (done) (push (cons n done) pending)))
-    (add-hook 'octocat-sync-change-functions (lambda (keys) (push keys notified)))
-    (dolist (n '(1 1 2 3))
-      (octocat-sync-request (list 'thing n)))
-    (should (= (length pending) 2))
-    (should (plist-get (octocat-sync-read '(thing 3)) :loading))
-    (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
-    (should (equal (car notified) '("(thing 1)")))
-    (should (= (length pending) 3))
-    (should (= (gethash "n" (plist-get (octocat-sync-read '(thing 1)) :data)) 1))
-    ;; Fresh, so not fetched again unless forced.
-    (octocat-sync-request '(thing 1))
-    (should (= (length pending) 3))
-    (octocat-sync-request '(thing 1) t)
-    (should (= octocat-sync--running 2))
-    (should (equal octocat-sync--queue '(("(thing 1)" thing 1))))))
+  (octocat-sync-tests--with-sync
+    (let ((octocat-sync-max-requests 2))
+      (dolist (n '(1 1 2 3))
+        (octocat-sync-request (list 'thing n)))
+      (should (= (length pending) 2))
+      (should (plist-get (octocat-sync-read '(thing 3)) :loading))
+      (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
+      (should (equal (car notified) '("(thing 1)")))
+      (should (= (length pending) 3))
+      (should (= (gethash "n" (plist-get (octocat-sync-read '(thing 1)) :data)) 1))
+      ;; Fresh, so not fetched again unless forced.
+      (octocat-sync-request '(thing 1))
+      (should (= (length pending) 3))
+      (octocat-sync-request '(thing 1) t)
+      (should (= octocat-sync--running 2))
+      (should (equal octocat-sync--queue '(("(thing 1)" thing 1)))))))
+
+(ert-deftest octocat-sync-test-prefetch ()
+  "Prefetches wait for page requests, run one at a time, and replace queued ones."
+  (octocat-sync-tests--with-sync
+    (let ((octocat-sync-max-requests 4))
+      (octocat-sync-prefetch '((thing 1) (thing 2)))
+      (should (equal (mapcar #'car pending) '(1)))
+      ;; A new rest of point replaces the queued (thing 2), not the running one.
+      (octocat-sync-prefetch '((thing 3)))
+      (should-not (plist-get (octocat-sync-read '(thing 2)) :loading))
+      (should (equal (mapcar #'car octocat-sync--prefetches) '("(thing 3)")))
+      ;; Opening a queued prefetch makes it a page request, at once.
+      (octocat-sync-request '(thing 3))
+      (should (equal (mapcar #'car pending) '(3 1)))
+      (should-not octocat-sync--prefetches)
+      (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
+      (should-not octocat-sync--prefetching)
+      ;; Fresh: nothing to prefetch.
+      (octocat-sync-prefetch '((thing 1)))
+      (should-not octocat-sync--prefetches))))
+
+(ert-deftest octocat-sync-test-mutation ()
+  "An optimistic change shows on linked resources at once, and is written on success."
+  (octocat-sync-tests--with-sync
+    (let ((sent nil) (invalidated nil))
+      (add-hook 'octocat-sync-invalidate-functions (lambda (keys) (setq invalidated keys)))
+      (octocat-sync-define-mutation rename (title)
+        :label "Renaming…"
+        :resources (lambda () '((thing 1)))
+        :optimistic (lambda () `(("issue:o/r#12" ("title" . ,title))))
+        :send (lambda (done) (push done sent))
+        :invalidates (lambda () '((thing _))))
+      (octocat-sync--write octocat-sync--db "(list)"
+                           (octocat-sync-tests--table
+                            "nodes" (vector (octocat-sync-tests--issue "Crash")))
+                           1.0)
+      (octocat-sync--write octocat-sync--db "(thing 2)" (octocat-sync-tests--table "n" 2) 1.0)
+      (cl-flet ((title () (gethash "title" (aref (gethash "nodes" (plist-get (octocat-sync-read '(list)) :data)) 0))))
+        (octocat-sync-submit '(rename "Boom"))
+        (should (equal (title) "Boom"))
+        (should (member "(list)" (car notified)))
+        (should (equal (plist-get (octocat-sync-read '(thing 1)) :mutating) "Renaming…"))
+        (should (equal (gethash "title" (octocat-sync--stored-fields octocat-sync--db "issue:o/r#12"))
+                       "Crash"))
+        (funcall (car sent) nil)
+        (should (equal (title) "Boom"))
+        (should (equal (gethash "title" (octocat-sync--stored-fields octocat-sync--db "issue:o/r#12"))
+                       "Boom"))
+        (should-not (plist-get (octocat-sync-read '(thing 1)) :mutating))
+        (should (equal invalidated '("(thing 2)")))
+        (should-not (nth 1 (octocat-sync--read octocat-sync--db "(thing 2)")))))))
+
+(ert-deftest octocat-sync-test-mutation-failure ()
+  "A failed mutation drops only its own change; one sent after it stays."
+  (octocat-sync-tests--with-sync
+    (let ((sent nil))
+      (octocat-sync-define-mutation rename (title)
+        :label "Renaming…"
+        :optimistic (lambda () `(("issue:o/r#12" ("title" . ,title))))
+        :send (lambda (done) (push done sent)))
+      (octocat-sync--write octocat-sync--db "(list)"
+                           (octocat-sync-tests--table
+                            "nodes" (vector (octocat-sync-tests--issue "Crash")))
+                           1.0)
+      (cl-flet ((title () (gethash "title" (aref (gethash "nodes" (plist-get (octocat-sync-read '(list)) :data)) 0))))
+        (let ((inhibit-message t))
+          (octocat-sync-submit '(rename "One"))
+          (octocat-sync-submit '(rename "Two"))
+          (should (equal (title) "Two"))
+          ;; The first fails; the second, sent after it, stays.
+          (funcall (nth 1 sent) '(error . "nope"))
+          (should (equal (title) "Two"))
+          (funcall (nth 0 sent) nil)
+          (should (equal (title) "Two")))))))
 
 (provide 'octocat-sync-tests)
 ;;; octocat-sync-tests.el ends here

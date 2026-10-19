@@ -1508,23 +1508,6 @@ Keys: :open, :closed and, for pull requests, :merged."
                        (and entry (list key (gethash "totalCount" entry)))))
                    '(:open :closed :merged)))))
 
-(defun octocat--counts-cache-load (repo kind)
-  "Load the cached counts plist of KIND (`issues' or `pulls') for REPO, or nil."
-  (when-let* ((data (octocat--detail-cache-load repo "counts" (symbol-name kind))))
-    (let (plist)
-      (dolist (key '(:open :closed :merged))
-        (when-let* ((n (gethash (substring (symbol-name key) 1) data)))
-          (when (integerp n) (setq plist (append plist (list key n))))))
-      plist)))
-
-(defun octocat--counts-cache-save (repo kind counts)
-  "Persist the COUNTS plist of KIND (`issues' or `pulls') for REPO."
-  (let ((data (make-hash-table :test #'equal)))
-    (dolist (key '(:open :closed :merged))
-      (when (plist-get counts key)
-        (puthash (substring (symbol-name key) 1) (plist-get counts key) data)))
-    (octocat--detail-cache-save repo "counts" (symbol-name kind) data)))
-
 (defun octocat--fetch-counts (repo kind callback)
   "Fetch the open/closed(/merged) counts of KIND in REPO asynchronously.
 KIND is `issues' or `pulls'.  CALLBACK is called with the plist described

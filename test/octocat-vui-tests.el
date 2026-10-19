@@ -151,5 +151,59 @@
       (should-not (octocat-vui--turn-page-spinners buf))
       (should-not octocat-vui--page-spinner))))
 
+(defvar octocat-vui-tests--renders 0
+  "How many times `octocat-vui-tests--reader' rendered.")
+
+(vui-defcomponent octocat-vui-tests--reader (spec tick)
+  "Show the \"n\" of SPEC's data, read through `octocat-vui-use-resource'."
+  :render
+  (let ((data (plist-get (octocat-vui-use-resource spec tick) :data)))
+    (cl-incf octocat-vui-tests--renders)
+    (vui-text (format "n=%S" (and data (gethash "n" data))))))
+
+(ert-deftest octocat-vui-test-use-resource ()
+  "A page re-renders on a write to what it reads, and only then.
+Opening fetches, a new tick forces a refetch, and killing the page
+unsubscribes it."
+  (let* ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
+         (octocat-sync--loading (make-hash-table :test #'equal))
+         (octocat-sync--queue nil)
+         (octocat-sync--prefetches nil)
+         (octocat-sync--running 0)
+         (octocat-sync--resources (make-hash-table :test #'eq))
+         (octocat-sync-change-functions (list #'octocat-vui--on-sync-change))
+         (octocat-vui--subscriptions (make-hash-table :test #'equal))
+         (octocat-vui-tests--renders 0)
+         (vui-render-delay nil)
+         (pending nil)
+         (buf nil))
+    (octocat-sync-define-resource thing (n)
+      :fetch (lambda (done) (push (cons n done) pending)))
+    (cl-flet ((answer (n)
+                (let ((h (make-hash-table :test #'equal)))
+                  (puthash "n" n h)
+                  (funcall (cdr (assq n pending)) h)))
+              (text () (with-current-buffer buf
+                         (string-trim (buffer-substring-no-properties
+                                       (point-min) (point-max))))))
+      (unwind-protect
+          (let ((root (vui-mount (vui-component 'octocat-vui-tests--reader
+                                                :spec '(thing 1) :tick 1)
+                                 "*octocat-vui-test*")))
+            (setq buf (get-buffer "*octocat-vui-test*"))
+            (should (equal (mapcar #'car pending) '(1)))
+            (answer 1)
+            (should (equal (text) "n=1"))
+            (let ((renders octocat-vui-tests--renders))
+              (octocat-sync-request '(thing 2))
+              (answer 2)
+              (should (= octocat-vui-tests--renders renders)))
+            ;; Fresh, but a new tick is `g'.
+            (vui-update-props root (list :spec '(thing 1) :tick 2))
+            (should (equal (mapcar #'car pending) '(1 2 1)))
+            (kill-buffer buf)
+            (should (= (hash-table-count octocat-vui--subscriptions) 0)))
+        (when (buffer-live-p buf) (kill-buffer buf))))))
+
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here

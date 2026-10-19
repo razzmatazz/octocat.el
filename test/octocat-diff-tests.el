@@ -39,15 +39,16 @@
     (should (equal (nth 1 (octocat-diff--comment-lines c t 80)) "  │ **hi**"))))
 
 (ert-deftest octocat-diff-test-comments-section ()
-  "General comments are boxed; inline ones only counted."
+  "General comments are boxed; inline ones only counted.
+The comments come as a sync snapshot."
   (let ((text (lambda (data)
                 (with-temp-buffer
                   (vui-render (octocat-diff-comments-section
-                               "Comments" (list :status 'ready :data data) nil 80))
+                               "Comments" (list :data data) nil 80))
                   (buffer-substring-no-properties (point-min) (point-max))))))
-    (should (string-search "(no comments)" (funcall text nil)))
+    (should (string-search "(no comments)" (funcall text [])))
     (let ((out (funcall text
-                        (list (json-parse-string
+                        (vector (json-parse-string
                                "{\"user\":{\"login\":\"me\"},\"body\":\"hi\",\"created_at\":\"\"}")
                               (json-parse-string
                                "{\"path\":\"a.el\",\"body\":\"x\",\"created_at\":\"\"}")))))

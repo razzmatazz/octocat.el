@@ -55,7 +55,6 @@
 (declare-function octocat-repo-vui--separate "octocat-repo" (items sep))
 (declare-function octocat-issue-open "octocat-issue" (repo number))
 (declare-function octocat-repo-vui--milestone "octocat-repo" (item))
-(declare-function octocat-repo-vui--resolve-or-reject "octocat-repo" (result resolve reject))
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
                   (repo commit head-info author-w &optional subject-w))
 (declare-function octocat-repo-vui--subject-width "octocat-repo" (commits width author-w))
@@ -64,7 +63,6 @@
 ;; The views the PR page opens; octocat.el loads them all.
 (declare-function octocat-checks-open  "octocat-checks"  (repo sha ref))
 (declare-function octocat-pr-diff-open "octocat-pr-diff" (repo number))
-(declare-function octocat-pr-diff-refresh "octocat-pr-diff" (&optional _ignore-auto _noconfirm))
 
 ;; Forward declarations for buffer-locals defined later in this file.
 ;; Needed so the byte-compiler doesn't warn about free variables in
@@ -162,36 +160,12 @@ See `octocat-timeline-submit' for ON-SUCCESS."
      #'ignore
      body)))
 
-(defun octocat-pr--rename (repo num refresh)
-  "Prompt for a new title of pull request NUM of REPO and apply it.
-REFRESH is the function that re-renders the current buffer afterwards;
-it runs in that buffer, so the PR and PR diff pages can share this."
-  (let* ((pr      (octocat-sync-detail-read (list 'pr repo num)))
-         (current (or (and pr (octocat--nonempty (gethash "title" pr))) ""))
-         (new     (string-trim (read-string "PR title: " current)))
-         (buf     (current-buffer)))
-    (when (string-empty-p new)
-      (user-error "Octocat: Title must not be empty"))
-    (unless (string-equal new current)
-      ;; In the mode line: the page has no button for this to replace.
-      (octocat-vui-mode-line-action buf ":saving")
-      (octocat--run-gh
-       "edit-title"
-       (list "pr" "edit" (number-to-string num) "--repo" repo "--title" new)
-       #'identity
-       (lambda (result)
-         (octocat-vui-mode-line-action buf nil)
-         (if (eq (car-safe result) 'error)
-             (message "Octocat: failed to update title: %s" (cdr result))
-           (when (buffer-live-p buf)
-             (with-current-buffer buf (funcall refresh)))))))))
-
 (defun octocat-pr-edit-title ()
   "Prompt in the minibuffer to rename the title of the current PR."
   (interactive)
   (unless (and octocat--pr-repo octocat--pr-number)
     (user-error "Octocat: Buffer is not associated with a pull request"))
-  (octocat-pr--rename octocat--pr-repo octocat--pr-number #'octocat-pr-refresh))
+  (octocat-timeline-rename "pr" octocat--pr-repo octocat--pr-number))
 
 (defun octocat-pr-edit ()
   "Edit the thing at point in the current PR buffer.
@@ -791,19 +765,21 @@ Calls CALLBACK with a list of run hash-tables, or \=(error . MSG)."
       (append (gethash "workflow_runs" (json-parse-string (string-trim output))) nil))
     callback))
 
+(octocat-sync-define-resource awaiting-runs (repo sha)
+  :fetch (lambda (done)
+           (if (not sha)
+               (funcall done [])
+             (octocat-pr--fetch-awaiting-runs
+              repo sha
+              (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r))))))))
+
 (defun octocat-pr--use-awaiting-runs (repo sha tick)
   "Return each workflow run of commit SHA in REPO awaiting approval.
 Nil until they are fetched, when SHA is nil, or when they cannot be,
 as for a repo without Actions.  A new TICK fetches them again.  Must be
 called during render, like any hook."
-  (let ((async (octocat-vui-use-async-sticky (list 'awaiting-runs repo sha tick)
-                 (lambda (resolve reject)
-                   (if (not sha)
-                       (funcall resolve nil)
-                     (octocat-pr--fetch-awaiting-runs
-                      repo sha
-                      (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))))
-    (and (eq (plist-get async :status) 'ready) (plist-get async :data))))
+  (append (plist-get (octocat-vui-use-resource (list 'awaiting-runs repo sha) tick) :data)
+          nil))
 
 (defun octocat-pr--commit-items (repo pr)
   "Return a timeline item for each commit of PR (a hash-table) in REPO.
@@ -939,12 +915,7 @@ TAB is the page showing it, `conversation' (the default), `commits' or
      (octocat-repo-vui--detail-header
       repo pr
       (octocat-repo-vui--state-label state (gethash "isDraft" pr))
-      (lambda ()
-        (octocat-pr--rename repo number
-                            (pcase tab
-                              ('files   #'octocat-pr-diff-refresh)
-                              ('commits #'octocat-pr-commits-refresh)
-                              (_        #'octocat-pr-refresh))))
+      (lambda () (octocat-timeline-rename "pr" repo number))
       bg
       ;; The list leaves the branch out; the page shows it and its base,
       ;; once known: a header painted from a list's copy lacks them.
@@ -1053,7 +1024,7 @@ runs.  A new TICK fetches everything again."
                                      octocat-pr-close))
                          ("CLOSED" '("Reopen pull request" "RET: reopen this pull request"
                                      octocat-pr-reopen))))
-                 action)
+                 (or action (plist-get snap :mutating)))
                 (list (vui-newline))
                 ;; An open PR's checks are in its merge box, as on GitHub.
                 (or (octocat-pr--merge-section pr on-visit-check merging

@@ -40,12 +40,11 @@
 (require 'octocat-core)
 (require 'octocat-diff)
 (require 'octocat-edit)
+(require 'octocat-sync)
 (require 'octocat-timeline)
 (require 'octocat-vui)
 (require 'vui)
 
-(declare-function octocat-repo-vui-use-cached "octocat-repo"
-                  (type repo number fetch &optional as-list tick))
 (declare-function octocat-pr--use-data "octocat-pr" (repo number tick))
 (declare-function octocat-pr--header "octocat-pr" (repo pr bg width &optional tab))
 (declare-function octocat-pr--current "octocat-pr" ())
@@ -97,6 +96,16 @@ Uses the GitHub REST API via `gh api'."
          (format "repos/%s/pulls/%d/comments" repo number))
    #'octocat--parse-json-list
    callback))
+
+
+(octocat-sync-define-resource pr-files (repo number)
+  :fetch (lambda (done) (octocat--fetch-pr-diff repo number done)))
+
+(octocat-sync-define-resource pr-review-comments (repo number)
+  :fetch (lambda (done)
+           (octocat--fetch-pr-review-comments
+            repo number
+            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
 
 ;;;; Review submission
@@ -229,16 +238,11 @@ TICK fetches everything again."
   :render
   (let* ((pr       (octocat-pr--use-data repo number tick))
          (tab-w    (octocat--markdown-width))
-         (files    (octocat-repo-vui-use-cached
-                    "pr-diff" repo number #'octocat--fetch-pr-diff nil tick))
-         (comments (octocat-repo-vui-use-cached
-                    "pr-review-comments" repo number
-                    #'octocat--fetch-pr-review-comments t tick))
+         (files    (octocat-vui-use-resource (list 'pr-files repo number) tick))
+         (comments (octocat-vui-use-resource (list 'pr-review-comments repo number) tick))
          (loading  (and (or (plist-get pr :loading)
-                            (memq 'pending (list (plist-get files :status)
-                                                 (plist-get comments :status)))
-                            (plist-get files :refreshing)
-                            (plist-get comments :refreshing))
+                            (plist-get files :loading)
+                            (plist-get comments :loading))
                         t))
          (by-path  (vui-use-memo ((plist-get comments :data))
                      (octocat-diff-by-path (plist-get comments :data)))))
@@ -259,7 +263,7 @@ TICK fetches everything again."
           (vui-text (format "%s#%d  diff" repo number)
                     :face 'octocat-dimmed)
           (octocat-pr--tabs 'files repo number tab-w))))
-     (pcase (plist-get files :status)
+     (pcase (octocat-vui-snapshot-status files)
        ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
        ('error   (vui-text (format "  Error: %s" (plist-get files :error)) :face 'error))
        (_ (octocat-diff-files-section (plist-get files :data) by-path

@@ -74,6 +74,19 @@ as one table, as `gh issue view` gives it.  Before the page's first
 fetch lands, `:partial` holds the list's copy, so the page paints its
 real header with grey bars below.
 
+An action that changes an issue or PR, such as renaming or closing it,
+is a mutation (`octocat-sync-define-mutation`).  Its optimistic change
+applies in memory at once, so every page showing the item shows it
+before GitHub answers; the page draws its `:mutating` label in place of
+its buttons.  On success the change is stored and the resources it made
+outdated (its timeline, the lists it may leave) are refetched if on
+screen; on failure it is dropped.
+
+List rows name what they open in an `octocat-sync-prefetch` text
+property.  When point rests on a row for `octocat-sync-prefetch-delay`,
+those resources are fetched at low priority, so opening the row usually
+needs no request.
+
 To add a resource, define it beside its page with
 `octocat-sync-define-resource`.  Its `:fetch` calls `DONE` with the
 parsed tree, each shared record wrapped in `octocat-sync-entity` with

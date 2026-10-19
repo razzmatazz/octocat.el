@@ -30,13 +30,15 @@
 ;; leaving {"__ref": KEY} in the resource's body.  Reading puts the
 ;; entity's fields back in place of each ref.
 ;;
-;; This is the first slice of the plan: store, entities, resources, a
-;; capped queue and change notification.  Mutations, invalidation,
-;; prefetch, retry delays and collection are still to come.
+;; A mutation changes the entities it will change at once, in memory,
+;; and writes them once GitHub accepts it; see "Mutations" below.
+;;
+;; Still to come, from the plan: retry delays and collection.
 
 ;;; Code:
 
 (require 'cl-lib)
+(require 'seq)
 (require 'subr-x)
 (require 'octocat-core)
 
@@ -48,6 +50,16 @@ The file is named after the host, such as \"sync-github.com.sqlite\"."
 
 (defcustom octocat-sync-fresh-for 30
   "Seconds after a fetch during which opening a resource doesn't refetch it."
+  :type 'number
+  :group 'octocat)
+
+(defcustom octocat-sync-prefetch t
+  "Whether to fetch what a list row opens while point rests on it."
+  :type 'boolean
+  :group 'octocat)
+
+(defcustom octocat-sync-prefetch-delay 0.3
+  "Seconds point must rest on a list row before its page is prefetched."
   :type 'number
   :group 'octocat)
 
@@ -254,14 +266,8 @@ did, and every resource linked to an entity whose fields did."
           (dolist (entity (octocat-sync--reachable db body))
             (sqlite-execute db "INSERT INTO link (resource, entity) VALUES (?, ?)"
                             (list key entity))))
-        (delete-dups
-         (append (unless same (list key))
-                 (and changed
-                      (mapcar #'car
-                              (sqlite-select
-                               db (format "SELECT DISTINCT resource FROM link WHERE entity IN (%s)"
-                                          (mapconcat (lambda (_) "?") changed ", "))
-                               changed)))))))))
+        (delete-dups (append (unless same (list key))
+                             (octocat-sync--linked db changed)))))))
 
 (defun octocat-sync--write-error (db key message)
   "Record in DB that the fetch of resource KEY failed with MESSAGE.
@@ -270,20 +276,33 @@ The resource keeps its data."
                       ON CONFLICT (key) DO UPDATE SET error = excluded.error"
                   (list key message)))
 
-(defun octocat-sync--resolve (value entities db seen)
+(defun octocat-sync--overlay (fields key overlays)
+  "Return FIELDS of entity KEY with OVERLAYS applied, or nil without either.
+OVERLAYS is a list of (KEY . FIELDS), applied in order.  FIELDS may be
+changed."
+  (dolist (overlay overlays)
+    (when (equal (car overlay) key)
+      (unless fields (setq fields (make-hash-table :test #'equal)))
+      (maphash (lambda (k v) (puthash k v fields)) (cdr overlay))))
+  fields)
+
+(defun octocat-sync--resolve (value entities db seen overlays)
   "Return VALUE with each ref replaced by its entity's fields, recursively.
-ENTITIES maps keys to parsed fields; a key missing from it is read from
-DB.  SEEN lists the entities being resolved, so a cycle ends in nil."
+ENTITIES maps keys to parsed fields, OVERLAYS applied; a key missing
+from it is read from DB.  SEEN lists the entities being resolved, so a
+cycle ends in nil."
   (if-let* ((key (octocat-sync--ref-key value)))
       (unless (member key seen)
         (octocat-sync--resolve (or (gethash key entities)
-                                   (octocat-sync--stored-fields db key))
-                               entities db (cons key seen)))
-    (octocat-sync--map-tree (lambda (v) (octocat-sync--resolve v entities db seen))
+                                   (octocat-sync--overlay
+                                    (octocat-sync--stored-fields db key) key overlays))
+                               entities db (cons key seen) overlays))
+    (octocat-sync--map-tree (lambda (v) (octocat-sync--resolve v entities db seen overlays))
                             value)))
 
-(defun octocat-sync--read (db key)
-  "Return resource KEY of DB as (DATA FETCHED-AT ERROR), or nil if absent."
+(defun octocat-sync--read (db key &optional overlays)
+  "Return resource KEY of DB as (DATA FETCHED-AT ERROR), or nil if absent.
+OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read."
   (when-let* ((row (car (sqlite-select
                          db "SELECT body, fetched_at, error FROM resource WHERE key = ?"
                          (list key)))))
@@ -293,11 +312,39 @@ DB.  SEEN lists the entities being resolved, so a cycle ends in nil."
                                         JOIN entity e ON e.key = l.entity
                                         WHERE l.resource = ?"
                                     (list key)))
-        (puthash k (octocat-sync--parse fields) entities))
+        (puthash k (octocat-sync--overlay (octocat-sync--parse fields) k overlays) entities))
       (list (and (nth 0 row)
-                 (octocat-sync--resolve (octocat-sync--parse (nth 0 row)) entities db nil))
+                 (octocat-sync--resolve (octocat-sync--parse (nth 0 row))
+                                        entities db nil overlays))
             (nth 1 row)
             (nth 2 row)))))
+
+(defun octocat-sync--linked (db entities)
+  "Return the keys of the resources in DB linked to any of ENTITIES."
+  (and entities
+       (mapcar #'car
+               (sqlite-select
+                db (format "SELECT DISTINCT resource FROM link WHERE entity IN (%s)"
+                           (mapconcat (lambda (_) "?") entities ", "))
+                entities))))
+
+(defun octocat-sync--spec-match-p (pattern spec)
+  "Return non-nil if SPEC matches PATTERN, where `_' matches anything."
+  (and (= (length pattern) (length spec))
+       (cl-every (lambda (p v) (or (eq p '_) (equal p v))) pattern spec)))
+
+(defun octocat-sync--outdate (db patterns)
+  "Mark the resources of DB matching any of PATTERNS as never fetched.
+Return their keys.  Their data stays, but the next open refetches them."
+  (let (keys)
+    (pcase-dolist (`(,key) (sqlite-select db "SELECT key FROM resource"))
+      (let ((spec (ignore-errors (car (read-from-string key)))))
+        (when (and (consp spec)
+                   (seq-some (lambda (p) (octocat-sync--spec-match-p p spec)) patterns))
+          (push key keys))))
+    (dolist (key keys)
+      (sqlite-execute db "UPDATE resource SET fetched_at = NULL WHERE key = ?" (list key)))
+    keys))
 
 
 ;;;; Resources
@@ -312,7 +359,9 @@ fetches the resource and calls DONE with the parsed tree, its shared
 records wrapped in `octocat-sync-entity', or with (error . MESSAGE).
 :entity, optional, is the key of the resource's main entity: until the
 resource is first fetched, a snapshot carries that entity's fields, as
-another resource stored them, in :partial."
+another resource stored them, in :partial.  :max-age, optional, is how
+many seconds a fetch stays good for data that rarely changes, such as a
+commit's: within it, opening doesn't refetch, but `g' does."
   (declare (indent 2))
   `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--resources))
 
@@ -335,55 +384,114 @@ another resource stored them, in :partial."
 (defvar octocat-sync--running 0
   "How many fetches are running.")
 
+(defvar octocat-sync--prefetches nil
+  "Queued prefetches, as (KEY . SPEC), run after the page requests.")
+
+(defvar octocat-sync--prefetching nil
+  "The key of the prefetch running, or nil.")
+
 (defun octocat-sync--notify (keys)
   "Tell `octocat-sync-change-functions' that the resources KEYS changed."
   (when keys
     (run-hook-with-args 'octocat-sync-change-functions keys)))
 
 (defun octocat-sync-read (spec)
-  "Return a snapshot of SPEC: (:data :partial :loading :error :fetched-at).
-It reads only the store, never the network.  :partial is set only when
-:data is nil; see `octocat-sync-define-resource'."
+  "Return a snapshot of SPEC, a plist.
+Its keys are :data :partial :loading :error :fetched-at and :mutating.
+It reads only the store, never the network, with the changes of pending
+mutations applied.  :partial is set only when :data is nil; see
+`octocat-sync-define-resource'.  :mutating is the label of a pending
+mutation of SPEC, see `octocat-sync-define-mutation'."
   (let ((key (octocat-sync-spec-key spec))
         (db  (octocat-sync--db)))
-    (pcase-let ((`(,data ,fetched-at ,error) (octocat-sync--read db key)))
+    (pcase-let ((`(,data ,fetched-at ,error)
+                 (octocat-sync--read db key (octocat-sync--overlays))))
       (list :data data
             :partial (and (null data)
                           (when-let* ((entity (plist-get (octocat-sync--props spec) :entity)))
                             (octocat-sync--resolve (octocat-sync--ref entity)
-                                                   (make-hash-table :test #'equal) db nil)))
+                                                   (make-hash-table :test #'equal) db nil
+                                                   (octocat-sync--overlays))))
             :loading (gethash key octocat-sync--loading)
             :error error
-            :fetched-at fetched-at))))
+            :fetched-at fetched-at
+            :mutating (octocat-sync--mutating key)))))
+
+(defun octocat-sync--wanted-p (spec force)
+  "Return non-nil if SPEC should be fetched: not fetched just now, or FORCE.
+Just now is within `octocat-sync-fresh-for', or the resource's :max-age."
+  (or force
+      (let ((fetched (caar (sqlite-select (octocat-sync--db)
+                                          "SELECT fetched_at FROM resource WHERE key = ?"
+                                          (list (octocat-sync-spec-key spec))))))
+        (or (null fetched)
+            (>= (- (float-time) fetched)
+                (max octocat-sync-fresh-for
+                     (or (plist-get (octocat-sync--props spec) :max-age) 0)))))))
 
 (defun octocat-sync-request (spec &optional force)
   "Queue a fetch of SPEC unless it is running or was fetched just now.
-Within `octocat-sync-fresh-for' of the last fetch, nothing is fetched
-unless FORCE.  Return immediately; the store reports the result."
-  (let* ((key (octocat-sync-spec-key spec))
-         (db  (octocat-sync--db))
-         (fetched (caar (sqlite-select db "SELECT fetched_at FROM resource WHERE key = ?"
-                                       (list key)))))
-    (unless (or (gethash key octocat-sync--loading)
-                (and (not force) fetched
-                     (< (- (float-time) fetched) octocat-sync-fresh-for)))
+See `octocat-sync--wanted-p' for FORCE.  A queued prefetch of SPEC is
+raised to a page request.  Return immediately; the store reports the
+result."
+  (let ((key (octocat-sync-spec-key spec)))
+    (cond
+     ((assoc key octocat-sync--prefetches)
+      (setq octocat-sync--prefetches (assoc-delete-all key octocat-sync--prefetches))
+      (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
+      (octocat-sync--notify (list key))
+      (octocat-sync--pump))
+     ((and (not (gethash key octocat-sync--loading))
+           (octocat-sync--wanted-p spec force))
       (puthash key t octocat-sync--loading)
       (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
       (octocat-sync--notify (list key))
-      (octocat-sync--pump))))
+      (octocat-sync--pump)))))
+
+(defun octocat-sync-prefetch (specs)
+  "Fetch SPECS at low priority, in place of the prefetches still queued.
+A prefetch runs only while no page request is queued, one at a time,
+and is skipped if its resource was fetched just now.  It only writes
+the store."
+  (when octocat-sync-prefetch
+    (pcase-dolist (`(,key . ,_) octocat-sync--prefetches)
+      (remhash key octocat-sync--loading))
+    (setq octocat-sync--prefetches
+          (delq nil (mapcar (lambda (spec)
+                              (let ((key (octocat-sync-spec-key spec)))
+                                (unless (or (gethash key octocat-sync--loading)
+                                            (not (octocat-sync--wanted-p spec nil)))
+                                  (puthash key t octocat-sync--loading)
+                                  (cons key spec))))
+                            specs)))
+    (octocat-sync--pump)))
+
+(defun octocat-sync--start (key spec)
+  "Start fetching SPEC, whose key is KEY."
+  (cl-incf octocat-sync--running)
+  (funcall (plist-get (octocat-sync--props spec) :fetch)
+           (lambda (result) (octocat-sync--done key result))))
 
 (defun octocat-sync--pump ()
-  "Start queued fetches while fewer than `octocat-sync-max-requests' run."
+  "Start queued fetches while fewer than `octocat-sync-max-requests' run.
+Page requests go first; a prefetch only when none is queued, and only
+when no other prefetch runs."
   (while (and octocat-sync--queue
               (< octocat-sync--running octocat-sync-max-requests))
-    (pcase-let* ((`(,key . ,spec) (pop octocat-sync--queue))
-                 (fetch (plist-get (octocat-sync--props spec) :fetch)))
-      (cl-incf octocat-sync--running)
-      (funcall fetch (lambda (result) (octocat-sync--done key result))))))
+    (pcase-let ((`(,key . ,spec) (pop octocat-sync--queue)))
+      (octocat-sync--start key spec)))
+  (when (and octocat-sync--prefetches
+             (null octocat-sync--prefetching)
+             (< octocat-sync--running octocat-sync-max-requests))
+    (pcase-let ((`(,key . ,spec) (pop octocat-sync--prefetches)))
+      (setq octocat-sync--prefetching key)
+      (octocat-sync--start key spec))))
 
 (defun octocat-sync--done (key result)
   "Store RESULT, the outcome of fetching resource KEY, and notify."
   (cl-decf octocat-sync--running)
+  (when (equal key octocat-sync--prefetching)
+    (setq octocat-sync--prefetching nil))
   (remhash key octocat-sync--loading)
   (let ((db (octocat-sync--db)))
     (octocat-sync--notify
@@ -399,6 +507,106 @@ unless FORCE.  Return immediately; the store reports the result."
                     nil))
            :test #'equal)))
   (octocat-sync--pump))
+
+;;;; Mutations
+;;
+;; A mutation's optimistic change is an overlay in memory that reads
+;; apply over the stored fields, so every page showing the entity shows
+;; it at once.  It is never written to SQLite before GitHub accepts it.
+
+(defvar octocat-sync-invalidate-functions nil
+  "Functions called with the keys of resources a mutation made outdated.
+Their data stays; a page showing one should refetch it.")
+
+(defvar octocat-sync--mutations (make-hash-table :test #'eq)
+  "Mutation name to a function of the spec's arguments returning its plist.")
+
+(defvar octocat-sync--pending nil
+  "Mutations sent and not yet answered, oldest first.
+Each is a plist (:changes ALIST :resources KEYS :label LABEL), where
+ALIST holds (ENTITY-KEY . FIELDS).")
+
+(defmacro octocat-sync-define-mutation (name args &rest props)
+  "Define the mutation NAME, whose spec is (NAME . ARGS).
+PROPS are evaluated with ARGS bound:
+:label        what it is doing, such as \"Closing issue…\";
+:resources    a function returning the specs of the resources it acts
+              on: their snapshots carry :mutating LABEL while it runs;
+:optimistic   optional, a function returning a list of (ENTITY-KEY .
+              FIELDS), FIELDS an alist of the values it will set;
+:send         a function of DONE that sends it and calls DONE with nil,
+              or with (error . MESSAGE);
+:invalidates  optional, a function returning the specs, `_' matching
+              anything, of resources it makes outdated."
+  (declare (indent 2))
+  `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--mutations))
+
+(defun octocat-sync--overlays ()
+  "Return the optimistic overlays of the pending mutations, in order."
+  (mapcan (lambda (m) (copy-sequence (plist-get m :changes))) octocat-sync--pending))
+
+(defun octocat-sync--mutating (key)
+  "Return the label of the newest pending mutation of resource KEY, or nil."
+  (plist-get (seq-find (lambda (m) (member key (plist-get m :resources)))
+                       (reverse octocat-sync--pending))
+             :label))
+
+(defun octocat-sync--touched (db mutation)
+  "Return the keys of the resources in DB that MUTATION is visible on."
+  (delete-dups (append (plist-get mutation :resources)
+                       (octocat-sync--linked db (mapcar #'car (plist-get mutation :changes))))))
+
+(defun octocat-sync-submit (spec &optional on-done)
+  "Send the mutation SPEC, applying its optimistic change at once.
+ON-DONE, if given, is called with nil on success, or (error . MESSAGE).
+On failure the change is dropped and the error shown in the echo area."
+  (let* ((props (apply (or (gethash (car spec) octocat-sync--mutations)
+                           (error "Octocat: Unknown mutation `%s'" (car spec)))
+                       (cdr spec)))
+         (db    (octocat-sync--db))
+         (mutation
+          (list :changes (mapcar (lambda (change)
+                                   (let ((fields (make-hash-table :test #'equal)))
+                                     (pcase-dolist (`(,k . ,v) (cdr change))
+                                       (puthash k v fields))
+                                     (cons (car change) fields)))
+                                 (and (plist-get props :optimistic)
+                                      (funcall (plist-get props :optimistic))))
+                :resources (mapcar #'octocat-sync-spec-key
+                                   (and (plist-get props :resources)
+                                        (funcall (plist-get props :resources))))
+                :label (plist-get props :label))))
+    (setq octocat-sync--pending (append octocat-sync--pending (list mutation)))
+    (octocat-sync--notify (octocat-sync--touched db mutation))
+    (funcall (plist-get props :send)
+             (lambda (result)
+               (octocat-sync--answered
+                mutation result
+                (and (plist-get props :invalidates)
+                     (funcall (plist-get props :invalidates))))
+               (when on-done (funcall on-done result))))))
+
+(defun octocat-sync--answered (mutation result patterns)
+  "Settle MUTATION once GitHub answered RESULT; outdate PATTERNS on success.
+On success its changes are written to the store, as GitHub now has
+them."
+  (let ((db (octocat-sync--db)))
+    (setq octocat-sync--pending (delq mutation octocat-sync--pending))
+    (if (eq (car-safe result) 'error)
+        (message "Octocat: %s failed: %s"
+                 (string-remove-suffix "…" (plist-get mutation :label)) (cdr result))
+      (condition-case err
+          (octocat-sync--transaction db
+            (pcase-dolist (`(,key . ,fields) (plist-get mutation :changes))
+              (when-let* ((type (caar (sqlite-select db "SELECT type FROM entity WHERE key = ?"
+                                                     (list key)))))
+                (octocat-sync--merge db key (intern type) fields (float-time)))))
+        (error (octocat--debug-log "sync mutation write failed" (error-message-string err)))))
+    (octocat-sync--notify (octocat-sync--touched db mutation))
+    (unless (eq (car-safe result) 'error)
+      (when-let* ((keys (and patterns (octocat-sync--outdate db patterns))))
+        (run-hook-with-args 'octocat-sync-invalidate-functions keys)))))
+
 
 ;;;; GitHub entities
 ;;
