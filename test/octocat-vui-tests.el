@@ -249,5 +249,30 @@ unsubscribes it."
             (should (= (hash-table-count octocat-vui--subscriptions) 0)))
         (when (buffer-live-p buf) (kill-buffer buf))))))
 
+(ert-deftest octocat-vui-test-list-stored-candidates ()
+  "Stored candidates are given at once and refreshed behind; none stored waits."
+  (let ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
+        (octocat-sync--loading (make-hash-table :test #'equal))
+        (octocat-sync--queue nil)
+        (octocat-sync--prefetches nil)
+        (octocat-sync--prefetching nil)
+        (octocat-sync--running 0)
+        (octocat-sync--waiters nil)
+        (fetches 0)
+        deliver got)
+    (cl-letf (((symbol-function 'octocat--list-people)
+               (lambda (_repo callback) (cl-incf fetches) (setq deliver callback))))
+      (let ((fetch (octocat-vui-list--stored 'assignees)))
+        (funcall fetch "o/r" (lambda (r) (setq got r)))
+        (should-not got)
+        (funcall deliver '("alice" "bob"))
+        (should (equal got '("alice" "bob")))
+        ;; Old data: given at once, and refetched for the next prompt.
+        (sqlite-execute octocat-sync--db "UPDATE resource SET fetched_at = 0")
+        (setq got nil)
+        (funcall fetch "o/r" (lambda (r) (setq got r)))
+        (should (equal got '("alice" "bob")))
+        (should (= fetches 2))))))
+
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here

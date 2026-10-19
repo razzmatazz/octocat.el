@@ -1334,14 +1334,53 @@ See `octocat-vui-list--qualifiers'."
   (run-hooks 'octocat-vui-list-query-submit-hook)
   (octocat-vui-list--apply query))
 
+(octocat-sync-define-resource labels (repo)
+  :fetch (lambda (done)
+           (octocat--list-labels
+            repo (lambda (r)
+                   (funcall done (if (eq (car-safe r) 'error)
+                                     r
+                                   (cl-map 'vector (lambda (l) (octocat-sync-label repo l))
+                                           r)))))))
+
+(octocat-sync-define-resource assignees (repo)
+  :fetch (lambda (done)
+           (octocat--list-people
+            repo (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
+
+(defun octocat-vui-list--stored (resource &optional name)
+  "Return a fetch function of `octocat-vui-list--edit-facet' reading RESOURCE.
+RESOURCE is the name of a resource of the repo, holding a vector; NAME,
+if given, turns each item into its candidate.  Stored data is given at
+once, even when old: a prompt can't change its candidates once open, so
+the refresh behind it is for the next prompt.  Only an empty store
+waits for the fetch."
+  (lambda (repo callback)
+    (let ((spec    (list resource repo))
+          (deliver (lambda (r)
+                     (funcall callback (if (eq (car-safe r) 'error)
+                                           r
+                                         (mapcar (or name #'identity) r))))))
+      (if-let* ((data (plist-get (octocat-sync-read spec) :data)))
+          (progn (octocat-sync-request spec)
+                 (funcall deliver data))
+        (octocat-sync-get spec deliver)))))
+
+(defun octocat-vui-list--label-name (label)
+  "Return the name of LABEL, a table, in its face, for completion to show."
+  (let ((face (octocat--label-face label (octocat--label-background))))
+    (if face
+        (propertize (gethash "name" label) 'face face)
+      (gethash "name" label))))
+
 (defun octocat-vui-list--edit-facet (prefix prompt multi fetch extra)
   "Toggle the PREFIX qualifier of the query through a prompt named PROMPT.
-Candidates come from FETCH (`octocat--list-labels' or
-`octocat--list-people') plus EXTRA.  MULTI allows several values,
-read with `octocat-vui-list--read-multiple'.  The
-fetch is asynchronous; the prompt opens once it completes, outside the
-process sentinel.  A failed fetch only logs a message, leaving free text
-as the way to enter a value."
+Candidates come from FETCH, a function of the repo and a callback, such
+as `octocat-vui-list--stored' returns, plus EXTRA.  MULTI allows several
+values, read with `octocat-vui-list--read-multiple'.  The
+fetch may be asynchronous; the prompt opens once it completes, outside
+the process sentinel.  A failed fetch only logs a message, leaving free
+text as the way to enter a value."
   (let ((buf   (current-buffer))
         (repo  octocat-vui-list--repo)
         (query (octocat-vui-list-query)))
@@ -1382,20 +1421,22 @@ as the way to enter a value."
   (interactive)
   (octocat-vui-list--check-filterable)
   (octocat-vui-list--edit-facet "author:" "Author" nil
-                                #'octocat--list-people '("@me")))
+                                (octocat-vui-list--stored 'assignees) '("@me")))
 
 (defun octocat-vui-list-filter-assignee ()
   "Filter by assignee."
   (interactive)
   (octocat-vui-list--check-filterable)
   (octocat-vui-list--edit-facet "assignee:" "Assignee" nil
-                                #'octocat--list-people '("@me")))
+                                (octocat-vui-list--stored 'assignees) '("@me")))
 
 (defun octocat-vui-list-filter-label ()
   "Filter by labels (all selected labels must match)."
   (interactive)
   (octocat-vui-list--check-filterable)
-  (octocat-vui-list--edit-facet "label:" "Label" t #'octocat--list-labels nil))
+  (octocat-vui-list--edit-facet "label:" "Label" t
+                                (octocat-vui-list--stored 'labels #'octocat-vui-list--label-name)
+                                nil))
 
 (defun octocat-vui-list-clear-filter ()
   "Reset the query of the current list to the default."

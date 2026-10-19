@@ -1523,23 +1523,16 @@ in `octocat--parse-counts', or a cons \\=(error . MSG).  One API call."
      callback)))
 
 (defun octocat--list-labels (repo callback)
-  "Fetch the label names of REPO asynchronously and call CALLBACK.
-CALLBACK is called with a list of strings, each in its label's face so
-completion shows the colours, or a cons \\=(error . MSG)."
-  (let ((bg (octocat--label-background)))
-    (octocat--run-gh "labels"
-                     (list "label" "list"
-                           "--repo" repo
-                           "--limit" "200"
-                           "--json" "name,color")
-                     (lambda (output)
-                       (mapcar (lambda (h)
-                                 (let ((face (octocat--label-face h bg)))
-                                   (if face
-                                       (propertize (gethash "name" h) 'face face)
-                                     (gethash "name" h))))
-                               (octocat--parse-json-list output)))
-                     callback)))
+  "Fetch the labels of REPO asynchronously and call CALLBACK.
+CALLBACK is called with a list of tables of \"name\" and \"color\", or a
+cons \\=(error . MSG)."
+  (octocat--run-gh "labels"
+                   (list "label" "list"
+                         "--repo" repo
+                         "--limit" "200"
+                         "--json" "name,color")
+                   #'octocat--parse-json-list
+                   callback))
 
 (defun octocat--list-people (repo callback)
   "Fetch the logins that can be assigned in REPO and call CALLBACK.
