@@ -63,15 +63,6 @@
   (should (equal (octocat-vui-list--with-state "is:open label:x" "all")
                  "label:x")))
 
-(ert-deftest octocat-vui-test-with-stale ()
-  "Stale data stands in for a pending result and is marked as refreshing."
-  (let ((pending '(:status pending)))
-    (should (equal (octocat-vui-with-stale pending '(1 2))
-                   '(:status ready :data (1 2) :refreshing t)))
-    (should (eq (octocat-vui-with-stale pending nil) pending))
-    (let ((ready '(:status ready :data (3))))
-      (should (eq (octocat-vui-with-stale ready '(1 2)) ready)))))
-
 (ert-deftest octocat-vui-test-detail-skeleton ()
   "The skeleton names the item and keeps its grey bars within WIDTH."
   (let ((text (octocat-vui-detail-skeleton "o/r" 7 30)))

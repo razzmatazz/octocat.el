@@ -50,30 +50,20 @@ when the calls complete.  Do not erase or replace existing buffer content just t
 loading state — keep stale content visible and let `mode-line-process` signal
 that fresh data is on its way.
 
-### Refresh and disk cache
+### Refresh and the sync store
 
-This pattern applies to all octocat views — dashboard, PR detail, issue
-detail, and others as they grow.  Each view caches its last successful fetch
-to disk as a pretty-printed JSON file under `octocat-cache-directory`.  The
-refresh flow is the same everywhere:
+Every view paints from the local SQLite store and refetches behind it
+(`octocat-sync.el`): a page names the resources it shows and reads them
+with `octocat-vui-use-resource`, so it never fetches, caches or tracks
+loading itself.  Opening a page fetches each resource unless it was
+fetched just now; `g` always does.  A failed fetch keeps the stored
+data.  See "Reading the sync store" in
+[docs/using-vui.md](docs/using-vui.md).
 
-1. **Load cache** — if a file exists for the current key (repo, item number,
-   filter values, etc.), render it immediately so the buffer is never blank
-   on re-open.
-2. **Always fetch** — kick off background `gh` calls and show
-   `:loading` in `mode-line-process`.
-3. **On arrival** — render fresh data, write updated cache file, clear
-   `mode-line-process`.
-
-Cache is only written on a fully successful result — errors and
-disabled-feature responses are not persisted.
-
-Cache file naming: sanitize all key components (repo slug, PR/issue number,
-filter values) to filesystem-safe strings and join them.  Files are JSON so
-they can be inspected directly.  Do **not** hardcode
+`octocat-cache-directory` remains for the few small caches outside the
+store, such as completion candidates.  Do **not** hardcode
 `~/.config/emacs/.local/cache` — that is Doom-specific.  Use
-`(locate-user-emacs-file "octocat/cache/")` as the default, exposed via
-`defcustom octocat-cache-directory`.
+`locate-user-emacs-file` for defaults.
 
 ### UI framework: vui.el
 
@@ -91,12 +81,12 @@ pages and the Actions page (`octocat-pr-list-mode`,
 `octocat-vui-list-mode`).  The issue and PR views are GitHub-style
 timelines of the opening post, comments and events; what point is on is
 carried by a text property (e.g. `octocat-issue-target`).  The repo
-overview is a dashboard of independent async sections, each with its own
-fetch (`vui-use-async`), pagination counter (`:state`) and collapse state
-(`vui-collapsible`).
+overview is a dashboard of independent sections, each reading its own
+sync resource, with its own pagination counter (`:state`) and collapse
+state (`vui-collapsible`).
 
 Generic, repo-agnostic vui helpers (the RET-able `octocat-vui-row`,
-`octocat-vui-use-async-sticky`, `octocat-vui-load-more-button`) live in
+`octocat-vui-load-more-button`, folds) live in
 `octocat-vui.el`; buffer-specific vui code stays in that buffer's file.
 Put new reusable vui hooks/components there, and keep them free of GitHub
 knowledge.

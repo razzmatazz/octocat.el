@@ -96,11 +96,6 @@ Surrounding whitespace and a leading \"@\" are dropped."
     (while pairs (puthash (pop pairs) (pop pairs) h))
     h))
 
-(defun octocat-user--repo-entity (fields)
-  "Return the `repo' entity of FIELDS, a table in GraphQL's names."
-  (octocat-sync-entity 'repo (concat "repo:" (downcase (gethash "nameWithOwner" fields)))
-                       fields))
-
 (defun octocat-user--parse-profile (json-string)
   "Parse the `users/LOGIN' response JSON-STRING into the profile resource.
 The user is an entity; the counts belong to this resource."
@@ -124,18 +119,7 @@ The user is an entity; the counts belong to this resource."
 (defun octocat-user--parse-repos (json-string)
   "Parse the `users/LOGIN/repos' response JSON-STRING into a list resource."
   (octocat-user--table
-   "nodes" (cl-map 'vector
-                   (lambda (r)
-                     (let ((lang (gethash "language" r)))
-                       (octocat-user--repo-entity
-                        (octocat-user--table
-                         "nameWithOwner" (gethash "full_name" r)
-                         "description" (gethash "description" r)
-                         "stargazerCount" (gethash "stargazers_count" r)
-                         "primaryLanguage" (and lang (octocat-user--table "name" lang))
-                         "pushedAt" (gethash "pushed_at" r)
-                         "isFork" (gethash "fork" r)
-                         "isArchived" (gethash "archived" r)))))
+   "nodes" (cl-map 'vector #'octocat-sync-repo-rest
                    (json-parse-string json-string :null-object nil))))
 
 (defconst octocat-user--pinned-query
@@ -153,7 +137,7 @@ Pinned gists, which come back as empty nodes, are left out."
     (octocat-user--table
      "nodes" (vconcat (delq nil (mapcar (lambda (node)
                                           (and node (gethash "nameWithOwner" node)
-                                               (octocat-user--repo-entity node)))
+                                               (octocat-sync-repo node)))
                                         nodes))))))
 
 (octocat-sync-define-resource user-profile (login)

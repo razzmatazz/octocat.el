@@ -22,7 +22,7 @@
 
 ;; Small building blocks on top of vui.el: hooks, components and vnode
 ;; builders shared by the vui-based buffers.  The generic ones (rows,
-;; sticky async, load-more) know nothing about GitHub; the list-page
+;; load-more, folds) know nothing about GitHub; the list-page
 ;; section below is the exception and knows just enough about a repo to
 ;; share the keymap, the header counts and the search-query filter.
 ;; Everything buffer-specific stays in the buffer's own file (e.g.
@@ -31,9 +31,7 @@
 ;; Contents:
 ;;
 ;;   `octocat-vui-row'               RET-able, per-segment-styled line
-;;   `octocat-vui-use-async-sticky'  `vui-use-async' that keeps old data
-;;                                   visible while the next page loads
-;;   `octocat-vui-use-cached'        async fetch painted from a cache first
+;;   `octocat-vui-use-resource'      read a sync resource; re-render on change
 ;;   `octocat-vui-refresh-page'      mount a page, or refresh it in place
 ;;   `octocat-vui-load-more-button'  "[+] Load N more…" button
 ;;   `octocat-vui-reveal-list'       `vui-list' whose later-added rows
@@ -113,41 +111,6 @@ own, so a segment such as a relative date keeps its own hover text
           (put-text-property pos next 'help-echo help-echo s))
         (setq pos next)))
     s))
-
-(defun octocat-vui-use-async-sticky (key loader)
-  "Like `vui-use-async' for KEY and LOADER, but keep showing old data.
-Each section's async KEY includes its page limit, so bumping the limit
-starts a fresh load whose status is `pending'.  Rendering that as
-\"Loading…\" would collapse the whole section to one line while the next
-page is fetched.  Instead, while a load is pending and an earlier one
-succeeded, return that earlier data as `ready' with :refreshing t.
-Must be called during render, like any hook."
-  (let ((result (vui-use-async key loader))
-        (last   (vui-use-ref nil)))
-    (pcase (plist-get result :status)
-      ('ready (setcar last (plist-get result :data))
-              result)
-      ('pending (if (car last)
-                    (list :status 'ready :data (car last) :refreshing t)
-                  result))
-      (_ result))))
-
-(defun octocat-vui-use-cached (key load save loader)
-  "Return the async result of LOADER for KEY, painted from a cache first.
-LOAD returns the data last saved, or nil; it is called once per page
-mount.  SAVE is called with each fresh result.  KEY should include the
-page's refresh tick (see `octocat-vui-refresh-page'): a new tick
-refetches, and what is shown stays up, with :refreshing t, until the
-fresh data replaces it.  Must be called during render, like any hook."
-  (let* ((cached (vui-use-memo () (funcall load)))
-         (sticky (octocat-vui-use-async-sticky key loader))
-         (fresh  (and (eq (plist-get sticky :status) 'ready)
-                      (not (plist-get sticky :refreshing))
-                      (plist-get sticky :data))))
-    (vui-use-effect (fresh)
-      (when fresh (funcall save fresh))
-      nil)
-    (octocat-vui-with-stale sticky cached)))
 
 ;; Pages read the sync store through `octocat-vui-use-resource'.  Each
 ;; hook registers its buffer and version ref under its resource key; a
@@ -245,17 +208,6 @@ render, like any hook."
         (if data
             (plist-put (copy-sequence snap) :data (octocat-sync-detail-item data))
           snap)))))
-
-(defun octocat-vui-with-stale (result stale)
-  "Return RESULT, or STALE shown as `ready' while RESULT is still pending.
-RESULT is a `vui-use-async' (or `octocat-vui-use-async-sticky') result
-plist and STALE is data remembered from an earlier session, or nil.  The
-stale data comes back with :refreshing t, like the sticky hook's old
-data, so the view paints at once and is replaced in place when the
-fresh data arrives, instead of flashing a \"Loading…\" placeholder."
-  (if (and stale (eq (plist-get result :status) 'pending))
-      (list :status 'ready :data stale :refreshing t)
-    result))
 
 (defun octocat-vui-skeleton-bar (n)
   "Return a grey bar N columns wide (at least one) standing in for content."
@@ -774,7 +726,7 @@ ID names what the page shows.  When this buffer already shows COMPONENT
 for ID, it is re-rendered with new props instead of remounted, so it
 keeps its state, such as what is unfolded, and point.  PROPS get a
 :tick, new on each call, for the page's fetch keys (see
-`octocat-vui-use-cached').  Only the first call mounts, when the page is
+`octocat-vui-use-resource').  Only the first call mounts, when the page is
 opened: `vui-mount' also selects the buffer, which from an async refresh
 would pull the user back to it (see docs/using-vui.md)."
   (let ((props (append props (list :tick (cl-incf octocat-vui--tick)))))
