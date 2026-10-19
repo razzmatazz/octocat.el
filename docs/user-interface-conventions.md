@@ -302,6 +302,15 @@ Text a user may copy out verbatim (diff lines, code, job logs, a file such as
 the repo page's README) starts at column 0, so it pastes as-is.  A file shows
 as it would in its own buffer.  Decoration (headings, comment boxes) may indent.
 
+## Commit messages are plain text, not markdown
+
+Git has no markup: a commit message is plain text its author wrapped by
+hand, and `*`, `#` or `_` in it mean nothing special.  GitHub itself shows
+commit messages verbatim, so octocat does too: the commit page's Message
+section is the text below the subject, as written, never passed through
+`octocat--markdown-string`.  `C-c C-v` therefore leaves it alone; it only
+toggles the markdown in comments, which GitHub does render.
+
 ---
 
 ## Indicating the active (currently checked-out) branch

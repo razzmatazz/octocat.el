@@ -146,21 +146,19 @@ Shown when there is neither a cache nor a response yet: the subject,
 author and SHA rows, then a few changed files."
   (octocat-vui-skeleton '((48) (30) (44) nil ("  " 40) ("  " 28)) width))
 
-(defun octocat-commit--body (commit raw width)
+(defun octocat-commit--body (commit)
   "Return the Message section of COMMIT: the message below its subject.
-Nil when the message is the subject alone.  A long one is folded as an
-opening post is (see `octocat-timeline-body-lines').  RAW and WIDTH are
-as for `octocat--markdown-string'."
+Nil when the message is the subject alone.  Shown verbatim, not as
+markdown: git messages are plain text, wrapped by their author.  A long
+one is folded as an opening post is (see `octocat-timeline-body-lines')."
   (let* ((c    (gethash "commit" commit))
          (msg  (or (and c (gethash "message" c)) ""))
-         (body (string-trim (mapconcat #'identity (cdr (split-string msg "\n")) "\n"))))
-    (unless (string-empty-p body)
-      (let ((text (string-remove-suffix
-                   "\n" (octocat--markdown-string body nil raw width))))
-        (vui-vstack
-         (vui-text (propertize "Message" 'face 'octocat-section-heading))
-         (octocat-vui-fold-lines text (octocat-vui-line-ends text)
-                                      octocat-timeline-body-lines 'message-fold ""))))))
+         (text (string-trim (mapconcat #'identity (cdr (split-string msg "\n")) "\n"))))
+    (unless (string-empty-p text)
+      (vui-vstack
+       (vui-text (propertize "Message" 'face 'octocat-section-heading))
+       (octocat-vui-fold-lines text (octocat-vui-line-ends text)
+                               octocat-timeline-body-lines 'message-fold "")))))
 
 (defun octocat-commit--async-status (snap empty)
   "Return a dimmed vnode for the sync snapshot SNAP if failed or empty, else nil.
@@ -210,8 +208,8 @@ new TICK fetches them again."
          (md-width (progn width (octocat--markdown-width)))
          (by-path  (vui-use-memo ((plist-get comments :data))
                      (octocat-diff-by-path (plist-get comments :data))))
-         (body     (vui-use-memo (data raw width)
-                     (and data (octocat-commit--body data raw md-width)))))
+         (body     (vui-use-memo (data)
+                     (and data (octocat-commit--body data)))))
     (apply #'vui-vstack
            (append
             (octocat-commit--header repo sha data)
