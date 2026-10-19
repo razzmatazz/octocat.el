@@ -485,6 +485,22 @@ expects:
   it, as it is `octocat-dedicated`.  Otherwise another window is reused,
   so repeated opens keep one pane.
 
+- **`q` returns to where the user left the page.**  Point is back on the
+  row they opened, at the same height in the window, even though the
+  page re-rendered while hidden: opening a PR from the list refreshes
+  that PR in the sync store, which re-renders the list behind it.  A
+  window remembers the page's start and point in its previous buffers
+  and in its `quit-restore` parameters (which `quit-window` prefers),
+  with the point as a marker, and a re-render drops that marker at the
+  top of the rewritten text; vui keeps only the buffer's point and the
+  points of the windows that show the page.  So `octocat-quit-window`
+  first puts them back (`octocat--resync-prev-buffers`), from the
+  buffer's point and the lines above it the window had when
+  `octocat-display-buffer` left the page.  A background refresh must
+  therefore never move point itself.  This works around a vui.el bug
+  (see TODO.md and plans/vui-remembered-window-points.md); drop it once
+  vui keeps these places itself.
+
 `q` is not a history: it relies on the window's previous buffers, as in
 Magit.  A real back/forward (as `help-mode`'s `l`/`r`) could be added
 later, as an octocat history, if stacks get deep.

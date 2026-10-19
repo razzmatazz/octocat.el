@@ -25,6 +25,38 @@
           (should (equal (octocat--settings-load) '(((compact "o/r" "issue-list") . t)))))
       (delete-directory dir t))))
 
+(define-derived-mode octocat-core-test-page-mode special-mode "Test")
+
+(ert-deftest octocat-core-test-quit-window-returns-to-point ()
+  "`q' goes back to the row point was on, though the page re-rendered hidden.
+The re-render drops the window's markers for the page at the top, as a
+vui render does; the buffer's own point stays on its row."
+  (let ((list (generate-new-buffer "*octocat-test-list*"))
+        (page (generate-new-buffer "*octocat-test-page*")))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (with-current-buffer list
+            (octocat-core-test-page-mode)
+            (let ((inhibit-read-only t))
+              (dotimes (i 60) (insert (format "row %d\n" i)))))
+          (with-current-buffer page (octocat-core-test-page-mode))
+          (switch-to-buffer list)
+          (goto-char (point-min))
+          (forward-line 40)
+          (let ((row (point)))
+            (octocat-display-buffer page)
+            (with-current-buffer list
+              (let ((inhibit-read-only t))
+                (erase-buffer)
+                (dotimes (i 60) (insert (format "row %d\n" i)))
+                (goto-char row)))
+            (octocat-quit-window)
+            (should (eq (window-buffer) list))
+            (should (= (window-point) row))))
+      (kill-buffer list)
+      (kill-buffer page))))
+
 (ert-deftest octocat-core-test-format-label-colour ()
   (let* ((label (make-hash-table :test 'equal)))
     (puthash "name" "bug" label)
