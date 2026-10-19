@@ -103,7 +103,7 @@ C-c C-k   discard (confirms if modified, kills edit buffer)
 ```
 
 The header line shows the action and a keyboard hint.  The source buffer
-is refreshed automatically on success.
+is refreshed automatically on success.  Under Evil it opens in insert state.
 
 ### Single-line fields → `read-string` in the minibuffer
 

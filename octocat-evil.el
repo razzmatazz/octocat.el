@@ -32,6 +32,7 @@
 
 (declare-function evil-define-key*          "evil-core" (state keymap &rest bindings))
 (declare-function evil-normalize-keymaps    "evil-core" (&optional hook))
+(declare-function evil-set-initial-state    "evil-core" (mode state))
 (declare-function evil-insert-state         "evil-states" (&optional arg))
 (declare-function evil-normal-state         "evil-states" (&optional arg))
 (declare-function evil-local-set-key        "evil-core" (state key def))
@@ -360,6 +361,10 @@ Off an entry, such as on the header, move left."
     (kbd "gr")      #'octocat-file-log-refresh)
   (evil-define-key* 'motion octocat-file-log-mode-map
     (kbd "RET")     #'octocat-file-log-visit)
+
+  ;; ── octocat-edit-mode ─────────────────────────────────────────────────
+  ;; Comment, review and body editors open to be typed in.
+  (evil-set-initial-state 'octocat-edit-mode 'insert)
 
   ;; Refresh all octocat keymaps so the new bindings take effect in any
   ;; already-open buffers.
