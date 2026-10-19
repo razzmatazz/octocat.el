@@ -689,69 +689,6 @@ Without the counts (see `octocat--flatten-list-item') it is
 
 ;;;; Disk cache
 
-(defun octocat--cache-safe-repo (repo)
-  "Return a filesystem-safe version of REPO for use in cache file names.
-The owner/repo slash becomes \"--\" so the two components stay visually
-distinct; any remaining non-alphanumeric characters become \"-\"."
-  (replace-regexp-in-string
-   "[^A-Za-z0-9._-]" "-"
-   (replace-regexp-in-string "/" "--" repo)))
-
-(defun octocat--detail-cache-file (repo type number)
-  "Return the cache file path for a detail view.
-REPO is \"owner/repo\", TYPE is a string such as \"pr\", \"issue\", or
-\"commit\", and NUMBER is the item identifier — an integer for PRs and
-issues, or a SHA string for commits."
-  (expand-file-name (format "%s-%s.json" type number)
-                    (expand-file-name (octocat--cache-safe-repo repo)
-                                      (expand-file-name "repos" octocat-cache-directory))))
-
-(defun octocat--detail-cache-load (repo type number)
-  "Load cached detail data for TYPE item NUMBER in REPO.
-NUMBER is an integer for PRs/issues or a SHA string for commits.
-Returns the parsed hash-table, or nil when absent or unparseable."
-  (let ((file (octocat--detail-cache-file repo type number)))
-    (when (file-readable-p file)
-      (condition-case nil
-          (json-parse-string
-           (with-temp-buffer
-             (insert-file-contents file)
-             (buffer-string)))
-        (error nil)))))
-
-(defun octocat--detail-cache-save (repo type number data)
-  "Persist DATA (a hash-table) for TYPE item NUMBER in REPO to disk.
-NUMBER is an integer for PRs/issues or a SHA string for commits.
-Skips silently when DATA is an error cons."
-  (unless (eq (car-safe data) 'error)
-    (let* ((file (octocat--detail-cache-file repo type number))
-           (dir  (file-name-directory file)))
-      (make-directory dir t)
-      (condition-case nil
-          (with-temp-file file
-            (set-buffer-multibyte nil)
-            (insert (json-serialize data)))
-        (error nil)))))
-
-(defun octocat--items-cache-load (repo type id)
-  "Load the cached item list of TYPE and ID for REPO.
-Returns a plist (:items LIST :branch BRANCH-OR-NIL), or nil when absent.
-Used by the list views to paint the last known page while a fresh one is
-fetched."
-  (when-let* ((data  (octocat--detail-cache-load repo type id))
-              (items (cl-coerce (gethash "items" data) 'list)))
-    (list :items  items
-          :branch (let ((b (gethash "branch" data))) (and (stringp b) b)))))
-
-(defun octocat--items-cache-save (repo type id items &optional branch)
-  "Persist ITEMS (a list of hash-tables) of TYPE and ID for REPO.
-BRANCH, when a string, is stored beside them so a cache made for another
-branch can be told apart."
-  (let ((data (make-hash-table :test #'equal)))
-    (puthash "items" (vconcat items) data)
-    (puthash "branch" (or branch :null) data)
-    (octocat--detail-cache-save repo type id data)))
-
 (defun octocat--search-cache-file (query)
   "Return the cache file path for repo search results for QUERY."
   (expand-file-name
@@ -1499,59 +1436,6 @@ branch) when it was pushed, then the rest as given."
   "Return the picker annotation of BRANCH, given DEFAULT and LOCAL, or nil."
   (cond ((equal branch default) "  default")
         ((equal branch local)   "  checked out")))
-
-(defun octocat--async-branches (repo default local)
-  "Return a consult async stage listing the branches of REPO.
-The list cached on disk shows at once; the fetched one replaces it and
-is cached in turn.  DEFAULT and LOCAL order it (see
-`octocat--branch-candidates').  Input is not passed on: the completion
-style filters the list."
-  (lambda (sink)
-    (let (live)
-      (lambda (action)
-        (pcase action
-          ('setup
-           (setq live t)
-           (funcall sink 'setup)
-           (when-let* ((cached (plist-get (octocat--items-cache-load repo "branches" "all")
-                                          :items)))
-             (funcall sink (octocat--branch-candidates cached default local)))
-           (funcall sink [indicator running])
-           (octocat--list-branches
-            repo
-            (lambda (result)
-              (if (eq (car-safe result) 'error)
-                  (when live
-                    (funcall sink [indicator failed])
-                    (message "Octocat: %s" (cdr result)))
-                (octocat--items-cache-save repo "branches" "all" result)
-                (when live
-                  (funcall sink 'flush)
-                  (funcall sink (octocat--branch-candidates result default local))
-                  (funcall sink [indicator finished]))))))
-          ((or 'cancel 'destroy)
-           (setq live nil)
-           (funcall sink action))
-          ((pred stringp) nil)
-          (_ (funcall sink action)))))))
-
-(defun octocat--read-branch (repo default local shown)
-  "Prompt for a branch of REPO and return its name.
-DEFAULT and LOCAL are as in `octocat--branch-candidates'; SHOWN is the
-branch on screen, which an empty answer keeps."
-  (consult--read
-   (octocat--async-branches repo default local)
-   :prompt      (format "Branch (shown: %s): " shown)
-   :default     shown
-   :require-match t
-   :sort        nil
-   :category    'octocat-branch
-   :annotate    (lambda (b) (octocat--branch-note b default local))
-   ;; Without `consult--async-split', so the input filters the list.
-   :async-wrap  (lambda (async)
-                  (consult--async-pipeline async
-                                           (consult--async-indicator)
-                                           (consult--async-refresh)))))
 
 (provide 'octocat-core)
 ;;; octocat-core.el ends here

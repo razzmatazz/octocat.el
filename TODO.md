@@ -109,7 +109,11 @@ https://github.com/melpa/melpa/pull/10048
 
 ## ability to view PR reviews, i.e. view comments on code lines, etc.
 
-## Prune the disk cache
+## ~~Prune the disk cache~~
+
+(Superseded: pages and the branch picker keep their data in the sync
+store, which `octocat-sync-collect` prunes; only the repo and object
+searches still write files.)
 
 `octocat-cache-directory` only grows: every PR, issue, commit, run and
 checks view saves a `<type>-<id>.json` per repo (`octocat--detail-cache-save`)

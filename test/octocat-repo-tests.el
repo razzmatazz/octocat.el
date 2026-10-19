@@ -94,26 +94,31 @@
   (should-not (octocat--branch-note "a" "main" "feat")))
 
 (ert-deftest octocat-repo-test-async-branches ()
-  "The cached branches show first; the fetched ones replace and are cached."
-  (let ((octocat-cache-directory (make-temp-file "octocat-cache" t))
+  "The stored branches show first; the fetched ones replace them in the store."
+  (let ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
+        (octocat-sync--loading (make-hash-table :test #'equal))
+        (octocat-sync--queue nil)
+        (octocat-sync--prefetches nil)
+        (octocat-sync--prefetching nil)
+        (octocat-sync--running 0)
+        (octocat-sync--waiters nil)
         got deliver)
-    (unwind-protect
-        (cl-letf (((symbol-function 'octocat--list-branches)
-                   (lambda (_repo callback) (setq deliver callback))))
-          (octocat--items-cache-save "o/r" "branches" "all" '("old" "main"))
-          (let ((stage (funcall (octocat--async-branches "o/r" "main" nil)
-                                (lambda (action)
-                                  (pcase action
-                                    ('flush (setq got nil))
-                                    ((pred consp) (setq got (append got action))))))))
-            (funcall stage 'setup)
-            (should (equal got '("main" "old")))
-            (funcall deliver '("new" "main"))
-            (should (equal got '("main" "new")))
-            (should (equal (plist-get (octocat--items-cache-load "o/r" "branches" "all")
-                                      :items)
-                           '("new" "main")))))
-      (delete-directory octocat-cache-directory t))))
+    (cl-letf (((symbol-function 'octocat--list-branches)
+               (lambda (_repo callback) (setq deliver callback))))
+      ;; Stored long ago, so it is refetched.
+      (octocat-sync--write octocat-sync--db (octocat-sync-spec-key '(branches "o/r"))
+                           ["old" "main"] 0.0)
+      (let ((stage (funcall (octocat--async-branches "o/r" "main" nil)
+                            (lambda (action)
+                              (pcase action
+                                ('flush (setq got nil))
+                                ((pred consp) (setq got (append got action))))))))
+        (funcall stage 'setup)
+        (should (equal got '("main" "old")))
+        (funcall deliver '("new" "main"))
+        (should (equal got '("main" "new")))
+        (should (equal (plist-get (octocat-sync-read '(branches "o/r")) :data)
+                       ["new" "main"]))))))
 
 (ert-deftest octocat-repo-test-run-title-width ()
   "The run title column fits the longest title, within the width left."

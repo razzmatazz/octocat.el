@@ -91,27 +91,6 @@
                           "{\"data\":{\"search\":{\"nodes\":[],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}")
                          :cursor)))
 
-(defmacro octocat-core-tests--with-cache-dir (&rest body)
-  "Evaluate BODY with `octocat-cache-directory' pointing at a temp directory."
-  (declare (indent 0))
-  `(let ((octocat-cache-directory (make-temp-file "octocat-cache" t)))
-     (unwind-protect (progn ,@body)
-       (delete-directory octocat-cache-directory t))))
-
-(ert-deftest octocat-core-test-items-cache-roundtrip ()
-  "A saved item list loads back with its branch; a missing one is nil."
-  (octocat-core-tests--with-cache-dir
-    (should-not (octocat--items-cache-load "o/r" "commits" "default"))
-    (let ((item (make-hash-table :test #'equal)))
-      (puthash "sha" "abc" item)
-      (octocat--items-cache-save "o/r" "commits" "default" (list item) "main"))
-    (let ((loaded (octocat--items-cache-load "o/r" "commits" "default")))
-      (should (equal (plist-get loaded :branch) "main"))
-      (should (equal (gethash "sha" (car (plist-get loaded :items))) "abc")))
-    ;; Branch is optional.
-    (octocat--items-cache-save "o/r" "prs" "id" nil)
-    (should-not (octocat--items-cache-load "o/r" "prs" "id"))))
-
 (ert-deftest octocat-core-test-checks-ci-status ()
   "A check's outcome is its conclusion or state, in any case."
   (cl-flet ((status (&rest checks)
