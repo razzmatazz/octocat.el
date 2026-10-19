@@ -697,12 +697,6 @@ distinct; any remaining non-alphanumeric characters become \"-\"."
    "[^A-Za-z0-9._-]" "-"
    (replace-regexp-in-string "/" "--" repo)))
 
-(defun octocat--cache-file (repo)
-  "Return the cache file path for REPO's dashboard data."
-  (expand-file-name "dashboard.json"
-                    (expand-file-name (octocat--cache-safe-repo repo)
-                                      (expand-file-name "repos" octocat-cache-directory))))
-
 (defun octocat--detail-cache-file (repo type number)
   "Return the cache file path for a detail view.
 REPO is \"owner/repo\", TYPE is a string such as \"pr\", \"issue\", or
@@ -798,70 +792,6 @@ write errors so a full disk never breaks interactive search."
           (set-buffer-multibyte nil)
           (insert (json-serialize obj)))
       (error nil))))
-
-(defun octocat--cache-load (repo)
-  "Load cached dashboard data for REPO from disk.
-Returns a plist with keys :timestamp :prs :issues :workflows
-:recent-runs, or nil if the cache file is absent or cannot be
-parsed.  :recent-runs is a flat list of run hash-tables (each
-containing a workflowName key) representing the last 20 runs
-across all workflows."
-  (let ((file (octocat--cache-file repo)))
-    (when (file-readable-p file)
-      (condition-case nil
-          (let* ((json   (with-temp-buffer
-                           (insert-file-contents file)
-                           (buffer-string)))
-                 (data   (json-parse-string json))
-                 (ts      (gethash "timestamp"      data))
-                 (prs     (cl-coerce (gethash "prs"          data) 'list))
-                 (issues  (cl-coerce (gethash "issues"       data) 'list))
-                 (wflows  (cl-coerce (gethash "workflows"    data) 'list))
-                 (runs    (cl-coerce (gethash "recent-runs"  data) 'list))
-                 (commits (cl-coerce (gethash "commits"      data) 'list))
-                 (branch  (gethash "default-branch" data)))
-            (list :timestamp ts :prs prs :issues issues
-                  :workflows wflows :recent-runs runs
-                  :commits commits :default-branch branch))
-        (error nil)))))
-
-(defun octocat--cache-save (repo prs issues workflows recent-runs
-                            &optional commits default-branch)
-  "Write dashboard data for REPO to the disk cache.
-PRS, ISSUES, WORKFLOWS are lists of hash-tables.
-RECENT-RUNS is a flat list of run hash-tables.  COMMITS is a list of
-commit hash-tables from the REST API; when nil an empty vector is stored.
-DEFAULT-BRANCH is a string such as \"main\"; when nil it is not stored.
-Does nothing if any of the first three arguments is an error cons — only
-successful results are persisted."
-  (when (and (not (eq (car-safe prs)       'error))
-             (not (eq (car-safe issues)    'error))
-             (not (eq (car-safe workflows) 'error)))
-    (let* ((file (octocat--cache-file repo))
-           (dir  (file-name-directory file))
-           (obj  (let ((h (make-hash-table :test #'equal)))
-                   (puthash "timestamp"    (float-time)               h)
-                   (puthash "repo"         repo                        h)
-                   (puthash "prs"          (vconcat prs)               h)
-                   (puthash "issues"       (vconcat issues)             h)
-                   (puthash "workflows"    (vconcat workflows)          h)
-                   (puthash "recent-runs"  (if (listp recent-runs)
-                                               (vconcat recent-runs)
-                                             (vector))
-                            h)
-                   (puthash "commits"      (if (listp commits)
-                                               (vconcat commits)
-                                             (vector))
-                            h)
-                   (when (and default-branch
-                              (not (eq (car-safe default-branch) 'error))
-                              (stringp default-branch))
-                     (puthash "default-branch" default-branch h))
-                   h)))
-      (make-directory dir t)
-      (with-temp-file file
-        (set-buffer-multibyte nil)
-        (insert (json-serialize obj))))))
 
 ;;;; Timestamp formatting
 
