@@ -510,14 +510,12 @@ A page paints at once from the sync store and refetches behind it (see
 - **Data, refresh failed or offline**: the data stays, and the **header
   line** says it may be out of date: `Refresh failed: MSG; g to retry`
   or `Offline: showing data from 14:02; g to retry`.
-- **Data, outdated and refetching**: if the refetch takes longer than
-  `octocat-vui-notice-delay` (0.5 s), the header line adds `Outdated:
-  changed since 14:02, refreshing…`.  A fast network never shows it.
 
 Notices go in the header line, not the buffer, so the content doesn't
-shift when they clear.  `octocat-vui-resource-view` draws the skeleton,
-the error or the page from a snapshot, so a page gives only those
-pieces.
+shift when they clear.  Only lasting states go there, as showing one
+resizes the window; a refetch stays in the mode line.
+`octocat-vui-resource-view` draws the skeleton, the error or the page
+from a snapshot, so a page gives only those pieces.
 
 ---
 

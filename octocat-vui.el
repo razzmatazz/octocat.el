@@ -164,65 +164,32 @@ No re-render: a refetch shows only here until its data changes."
 (defvar-local octocat-vui--snapshots nil
   "Resource key to the snapshot this buffer's page reads, for its header line.")
 
-(defcustom octocat-vui-notice-delay 0.5
-  "Seconds a refetch of outdated data runs before the header line says so.
-A fast network then never shows it."
-  :type 'number
-  :group 'octocat)
-
-(defun octocat-vui--outdated-refetch (snapshots)
-  "Return the first of SNAPSHOTS whose outdated data is being refetched."
-  (seq-find (lambda (s) (and (plist-get s :data) (plist-get s :outdated)
-                             (plist-get s :loading)))
-            snapshots))
-
-(defun octocat-vui-header-notice (snapshots &optional late)
+(defun octocat-vui-header-notice (snapshots)
   "Return the header line notice for a page showing SNAPSHOTS, or nil.
 There is one when the page shows data whose refresh failed: the data
-stays, and the notice says it may be out of date; and, once LATE, when
-outdated data is being refetched.  It goes in the header line, not the
-page, so the page doesn't shift when it clears."
-  (if-let* ((snap (seq-find (lambda (s)
-                              (and (plist-get s :data) (plist-get s :error)
-                                   (not (plist-get s :loading))))
-                            snapshots)))
-      (if (eq (plist-get snap :kind) 'offline)
-          (format "Offline: showing data from %s; g to retry"
-                  (if-let* ((at (plist-get snap :fetched-at)))
-                      (format-time-string "%H:%M" at)
-                    "earlier"))
-        (format "Refresh failed: %s; g to retry"
-                (car (split-string (plist-get snap :error) "\n" t))))
-    (when-let* ((snap (and late (octocat-vui--outdated-refetch snapshots))))
-      (format "Outdated: changed since %s, refreshing…"
-              (format-time-string "%H:%M" (plist-get snap :outdated))))))
-
-(defvar-local octocat-vui--notice-timer nil
-  "Timer that shows a refetch of outdated data running late, or t once it has.")
+stays, and the notice says it may be out of date.  A refetch shows only
+in the mode line, as a passing notice would resize the window."
+  (when-let* ((snap (seq-find (lambda (s)
+                                (and (plist-get s :data) (plist-get s :error)
+                                     (not (plist-get s :loading))))
+                              snapshots)))
+    (if (eq (plist-get snap :kind) 'offline)
+        (format "Offline: showing data from %s; g to retry"
+                (if-let* ((at (plist-get snap :fetched-at)))
+                    (format-time-string "%H:%M" at)
+                  "earlier"))
+      (format "Refresh failed: %s; g to retry"
+              (car (split-string (plist-get snap :error) "\n" t))))))
 
 (defun octocat-vui--show-notice (buf)
-  "Put in BUF's header line the notice for the snapshots of its page.
-A refetch of outdated data is noted only after `octocat-vui-notice-delay'."
+  "Put in BUF's header line the notice for the snapshots of its page."
   (when (buffer-live-p buf)
     (with-current-buffer buf
-      (let ((snapshots (and octocat-vui--snapshots
-                            (hash-table-values octocat-vui--snapshots))))
-        (cond ((not (octocat-vui--outdated-refetch snapshots))
-               (when (timerp octocat-vui--notice-timer)
-                 (cancel-timer octocat-vui--notice-timer))
-               (setq octocat-vui--notice-timer nil))
-              ((null octocat-vui--notice-timer)
-               (setq octocat-vui--notice-timer
-                     (run-with-timer octocat-vui-notice-delay nil
-                                     (lambda ()
-                                       (when (buffer-live-p buf)
-                                         (with-current-buffer buf
-                                           (setq octocat-vui--notice-timer t))
-                                         (octocat-vui--show-notice buf)))))))
-        (let ((notice (octocat-vui-header-notice
-                       snapshots (eq octocat-vui--notice-timer t))))
-          (setq header-line-format
-                (and notice (propertize notice 'face 'octocat-dimmed))))))))
+      (let ((notice (octocat-vui-header-notice
+                     (and octocat-vui--snapshots
+                          (hash-table-values octocat-vui--snapshots)))))
+        (setq header-line-format
+              (and notice (propertize notice 'face 'octocat-dimmed)))))))
 
 (defvar-local octocat-vui--resource-ticks nil
   "Resource key to the page tick it was last requested with, in this buffer.
