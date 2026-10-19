@@ -1036,7 +1036,7 @@ are no commits to show."
      (octocat-repo-vui--commits-heading label current-branch (and branch t) default-branch)
      (pcase status
        ('pending (vui-text (octocat-vui-line-skeleton)))
-       ('error   (vui-text (format "%s" (plist-get snap :error)) :face 'octocat-dimmed))
+       ('error   (vui-text (octocat-vui-error-text snap) :face 'octocat-dimmed))
        ('ready
         (let ((shown (seq-take commits limit)))
           (vui-fragment
@@ -1132,7 +1132,7 @@ under its blob SHA, so while the branch stays put no request is made."
        (octocat-repo-vui--doc-tabs docs (car doc) width)
        (pcase (octocat-vui-snapshot-status blob)
          ('pending (vui-text (octocat-vui-line-skeleton)))
-         ('error   (vui-text (format "%s" (plist-get blob :error)) :face 'octocat-dimmed))
+         ('error   (vui-text (octocat-vui-error-text blob) :face 'octocat-dimmed))
          (_        (let ((text (or text "")))
                      (octocat-vui-fold-lines
                       text (octocat-vui-line-ends text) octocat-repo-doc-lines

@@ -127,8 +127,8 @@ stored, so no gh call is made."
                            (puthash "sha"  "def456"    h)
                            h))
              (entries    (vector dir-entry file-entry)))
-	(octocat-tree-tests--mount-tree entries)
-	(let ((text (buffer-string)))
+        (octocat-tree-tests--mount-tree entries)
+        (let ((text (buffer-string)))
           (should (string-match-p "src" text))
           (should (string-match-p "README.md" text))
           ;; Dir should appear before file in the buffer.
@@ -209,8 +209,8 @@ Its fetch gives the car of RESULT, or never returns when there is none."
                                   :null-object nil)
                nil))
       (let ((text (buffer-string)))
-	(should (string-match-p "owner/repo  src/foo.el  (2 commits)" text))
-	(should (< (string-search "Fix parser" text)
+        (should (string-match-p "owner/repo  src/foo.el  (2 commits)" text))
+        (should (< (string-search "Fix parser" text)
                    (string-search "Add tests" text))))
       (goto-char (point-min))
       (search-forward "Add tests")
@@ -227,7 +227,7 @@ Its fetch gives the car of RESULT, or never returns when there is none."
   (octocat-tree-tests--with-store
     (with-temp-buffer
       (octocat-tree-tests--mount-file-log '(error . "boom"))
-      (should (string-match-p "Error loading commits: boom" (buffer-string)))))
+      (should (string-match-p "Error: boom; g to retry" (buffer-string)))))
   (octocat-tree-tests--with-store
     (with-temp-buffer
       (octocat-tree-tests--mount-file-log nil)

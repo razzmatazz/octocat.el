@@ -241,21 +241,26 @@ data replaces it."
                                jobs))
                  tick))
          (arts  (octocat-vui-use-resource (list 'run-artifacts repo run-id) tick)))
-    (apply #'vui-vstack
-           (octocat-vui-actions-top-row repo)
-           (cond
-            ((and (null data) (eq (octocat-vui-snapshot-status run) 'error))
-             (list (vui-text (format "  Error: %s" (plist-get run :error)) :face 'error)))
-            ((null data)
-             (list (vui-text (format "run %s" run-id) :face 'octocat-dimmed)
-                   (vui-newline)
-                   (vui-text (octocat-vui-line-skeleton "  "))))
-            (t (append (octocat-run--header data local-branch)
+    (vui-vstack
+     (octocat-vui-actions-top-row repo)
+     (octocat-vui-resource-view
+      run
+      :skeleton
+      (lambda (partial)
+        (apply #'vui-vstack
+               (append
+                (if partial
+                    ;; A list's copy of the run: its header, but no jobs yet.
+                    (append (octocat-run--header partial local-branch) (list (vui-newline)))
+                  (list (vui-text (format "run %s" run-id) :face 'octocat-dimmed)
+                        (vui-newline)))
+                (list (vui-text (octocat-vui-line-skeleton "  "))))))
+      :render
+      (lambda (_)
+        (apply #'vui-vstack
+               (append (octocat-run--header data local-branch)
                        (list (vui-newline))
-                       ;; A list's copy of the run has no jobs yet.
-                       (if (plist-get run :data)
-                           (octocat-run--jobs-section repo run-id jobs)
-                         (list (vui-text (octocat-vui-line-skeleton "  "))))
+                       (octocat-run--jobs-section repo run-id jobs)
                        (when-let* ((section (octocat-job-artifacts
                                              repo run-id (or (plist-get arts :data) []))))
                          (cons (vui-newline) section))
@@ -263,7 +268,7 @@ data replaces it."
                                              (cl-loop for entry across (or (plist-get anns :data) [])
                                                       append (cl-loop for ann across (gethash "annotations" entry)
                                                                       collect (cons (gethash "job" entry) ann))))))
-                         (cons (vui-newline) section))))))))
+                         (cons (vui-newline) section)))))))))
 
 
 ;;;; Major mode

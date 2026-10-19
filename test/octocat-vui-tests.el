@@ -159,6 +159,17 @@
                              (octocat-vui-header-notice
                               (list (list :data h :error "x" :kind 'offline :fetched-at 0.0)))))))
 
+(ert-deftest octocat-vui-test-error-text ()
+  "A failure with no data reads by its kind."
+  (should (equal (octocat-vui-error-text '(:error "HTTP 404: Not Found" :kind permanent))
+                 "Not found; g to retry"))
+  (should (equal (octocat-vui-error-text '(:error "HTTP 403: Forbidden" :kind permanent))
+                 "No access; g to retry"))
+  (should (equal (octocat-vui-error-text '(:error "x" :kind offline))
+                 "Offline: GitHub can't be reached; g to retry"))
+  (should (equal (octocat-vui-error-text '(:error "HTTP 502\nmore" :kind transient))
+                 "Error: HTTP 502; g to retry")))
+
 (defvar octocat-vui-tests--renders 0
   "How many times `octocat-vui-tests--reader' rendered.")
 

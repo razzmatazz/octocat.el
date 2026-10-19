@@ -168,7 +168,7 @@ EMPTY is the text shown when it is ready but has no data.  Grey bars
 while it is pending."
   (pcase (octocat-vui-snapshot-status snap)
     ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28)))))
-    ('error   (vui-text (format "  %s" (plist-get snap :error)) :face 'octocat-dimmed))
+    ('error   (vui-text (concat "  " (octocat-vui-error-text snap)) :face 'octocat-dimmed))
     (_ (and (zerop (length (plist-get snap :data)))
             (vui-text (concat "  " empty) :face 'octocat-dimmed)))))
 
@@ -215,12 +215,15 @@ new TICK fetches them again."
     (apply #'vui-vstack
            (append
             (octocat-commit--header repo sha data)
-            (pcase (octocat-vui-snapshot-status commit)
-              ('error (list (vui-newline)
-                            (vui-text (format "Error: %s" (plist-get commit :error))
-                                      :face 'error)))
-              ('pending (list (vui-text (octocat-commit--skeleton width))))
-              (_ (delq nil
+            (list
+             (octocat-vui-resource-view
+              commit
+              :skeleton (lambda (_) (vui-text (octocat-commit--skeleton width)))
+              :render
+              (lambda (_)
+                (apply
+                 #'vui-vstack
+                 (delq nil
                        (list (and body (vui-newline))
                              body
                              (vui-newline)
@@ -235,7 +238,7 @@ new TICK fetches them again."
                                (vui-fragment
                                 (vui-newline)
                                 (octocat-diff-comments-section
-                                 "Comments" comments raw md-width)))))))))))
+                                 "Comments" comments raw md-width)))))))))))))
 
 
 ;;;; Major mode

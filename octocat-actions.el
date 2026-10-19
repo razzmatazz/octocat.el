@@ -161,7 +161,7 @@ tick."
     (when data (setcar shown (append (gethash "nodes" data) nil)))
     (pcase (if (car shown) 'ready (octocat-vui-snapshot-status snap))
        ('pending (vui-text (octocat-vui-line-skeleton)))
-       ('error   (vui-text (format "%s\n" (plist-get snap :error)) :face 'octocat-dimmed))
+       ('error   (vui-text (concat (octocat-vui-error-text snap) "\n") :face 'octocat-dimmed))
        ('ready
         (let* ((runs (car shown))
                (wf-w (if runs
@@ -203,7 +203,7 @@ SNAP is the sync snapshot of the workflows (no pagination: run history
 lives on the Runs tab)."
   (pcase (octocat-vui-snapshot-status snap)
     ('pending (vui-text (octocat-vui-line-skeleton)))
-    ('error   (vui-text (format "%s\n" (plist-get snap :error)) :face 'octocat-dimmed))
+    ('error   (vui-text (concat (octocat-vui-error-text snap) "\n") :face 'octocat-dimmed))
     ('ready
      (let ((workflows (append (plist-get snap :data) nil)))
        (if (null workflows)

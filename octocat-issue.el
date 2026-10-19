@@ -258,27 +258,26 @@ A new TICK fetches everything again."
                           (octocat-timeline-entries
                            (octocat-timeline-items issue "opened this issue" events bg)
                            raw (octocat--markdown-width))))))
-    (cond
-     (issue
-      (apply #'vui-vstack
-             (append
-              (delq nil (octocat-issue--header repo issue bg))
-              entries
-              (octocat-timeline-buttons-or-action
-               (list '("+ Add a comment" "RET: write a comment" octocat-issue-add-comment)
-                     (if (equal (gethash "state" issue) "OPEN")
-                         '("Close issue" "RET: close this issue" octocat-issue-close)
-                       '("Reopen issue" "RET: reopen this issue" octocat-issue-reopen)))
-               (alist-get 'action (plist-get snap :mutating))))))
-     ((and (plist-get snap :error) (not (plist-get snap :loading)))
-      (vui-text (format "  Error: %s" (plist-get snap :error)) :face 'error))
-     ;; The list fetched the issue: its header paints at once.
-     ((plist-get snap :partial)
-      (apply #'vui-vstack
-             (append
-              (delq nil (octocat-issue--header repo (plist-get snap :partial) bg))
-              (list (vui-text (octocat-vui-post-skeleton width))))))
-     (t (vui-text (octocat-vui-detail-skeleton repo number width))))))
+    (octocat-vui-resource-view
+     snap
+     :skeleton (lambda (partial)
+                 (if partial
+                     ;; The list fetched the issue: its header paints at once.
+                     (apply #'vui-vstack
+                            (append (delq nil (octocat-issue--header repo partial bg))
+                                    (list (vui-text (octocat-vui-post-skeleton width)))))
+                   (vui-text (octocat-vui-detail-skeleton repo number width))))
+     :render (lambda (_)
+               (apply #'vui-vstack
+                      (append
+                       (delq nil (octocat-issue--header repo issue bg))
+                       entries
+                       (octocat-timeline-buttons-or-action
+                        (list '("+ Add a comment" "RET: write a comment" octocat-issue-add-comment)
+                              (if (equal (gethash "state" issue) "OPEN")
+                                  '("Close issue" "RET: close this issue" octocat-issue-close)
+                                '("Reopen issue" "RET: reopen this issue" octocat-issue-reopen)))
+                        (alist-get 'action (plist-get snap :mutating)))))))))
 
 
 ;;;; Major mode

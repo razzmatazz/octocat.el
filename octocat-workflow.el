@@ -227,7 +227,7 @@ A new TICK fetches them again."
            (pcase (if (car shown) 'ready (octocat-vui-snapshot-status snap))
              ('pending (list (vui-text name) (vui-newline)
                              (vui-text (octocat-vui-line-skeleton))))
-             ('error   (list (vui-text (format "  Error: %s" (plist-get snap :error))
+             ('error   (list (vui-text (concat "  " (octocat-vui-error-text snap))
                                        :face 'error)))
              (_ (let ((runs (append (gethash "runs" (car shown)) nil)))
                   (append (octocat-workflow--header (gethash "workflow" (car shown)) runs)

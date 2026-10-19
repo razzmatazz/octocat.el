@@ -299,6 +299,29 @@ fetch failed, and `pending' while there is none yet."
         ((and (plist-get snap :error) (not (plist-get snap :loading))) 'error)
         (t 'pending)))
 
+(defun octocat-vui-error-text (snap)
+  "Return the error text for SNAP, a snapshot that failed with no data."
+  (let ((error (or (plist-get snap :error) "")))
+    (concat
+     (pcase (plist-get snap :kind)
+       ('offline "Offline: GitHub can't be reached")
+       ('permanent (if (string-match-p "HTTP 40[13]\\|not accessible\\|permission" error)
+                       "No access"
+                     "Not found"))
+       (_ (concat "Error: " (car (split-string error "\n" t)))))
+     "; g to retry")))
+
+(cl-defun octocat-vui-resource-view (snap &key skeleton render)
+  "Return the vnode of a page part showing SNAP, a sync snapshot.
+RENDER is called with the data when there is some.  Else SKELETON is
+called with the :partial data, or nil, for grey bars shaped like the
+part to come, unless the fetch failed: then the error shows, as
+`octocat-vui-error-text' words it."
+  (pcase (octocat-vui-snapshot-status snap)
+    ('ready (funcall render (plist-get snap :data)))
+    ('error (vui-text (concat "  " (octocat-vui-error-text snap)) :face 'error))
+    (_ (funcall skeleton (plist-get snap :partial)))))
+
 (defun octocat-vui-use-detail (spec tick)
   "Return the snapshot of SPEC, an issue's or PR's page resource.
 As `octocat-vui-use-resource', for TICK too, but :data is the item, its
