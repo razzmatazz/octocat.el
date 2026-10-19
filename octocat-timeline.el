@@ -539,22 +539,12 @@ entry in BUTTONS is skipped."
                          nodes))
                  (nreverse nodes))))))
 
-(defvar-local octocat-timeline--action nil
-  "What this page is doing to its issue or PR, such as \"Posting comment…\".
-Nil when idle.  The page shows it in place of its buttons, see
-`octocat-timeline-buttons-or-action'.")
-
-(defun octocat-timeline-set-action (buf label)
-  "Set BUF's action under way to LABEL, or nil, and show it in its page."
-  (when (buffer-live-p buf)
-    (with-current-buffer buf
-      (setq octocat-timeline--action label)
-      (octocat-vui-update-page :action label))))
-
-(defun octocat-timeline-ensure-idle ()
-  "Refuse with a `user-error' while the current page's action is under way."
-  (when octocat-timeline--action
-    (user-error "Octocat: Wait for \"%s\" to finish" octocat-timeline--action)))
+(defun octocat-timeline-ensure-idle (spec)
+  "Refuse with a `user-error' while a change to SPEC's page is under way.
+SPEC is the issue's or PR's page resource; the change is one shown under
+its timeline, such as posting a comment."
+  (when-let* ((label (alist-get 'action (plist-get (octocat-sync-read spec) :mutating))))
+    (user-error "Octocat: Wait for \"%s\" to finish" label)))
 
 (defun octocat-timeline-buttons-or-action (buttons action)
   "Return the timeline's closing row of BUTTONS, or ACTION under way instead.
@@ -565,32 +555,22 @@ rail as the buttons do, behind a spinner."
     (list (vui-text octocat-timeline--rail)
           (vui-text (concat (octocat-vui-spinner) " " action) :face 'bold))))
 
-(defun octocat-timeline--finish (buf)
-  "End BUF's action, then refresh BUF to show its result."
-  (when (buffer-live-p buf)
-    (with-current-buffer buf
-      (setq octocat-timeline--action nil)
-      (funcall octocat--refresh-fn))))
-
-(defun octocat-timeline-submit (label name args body source on-success)
-  "Run `gh' ARGS, logged as NAME, for edit dialog text BODY, in the background.
-Call it from the dialog's submit function.  The dialog closes at once
-through ON-SUCCESS and SOURCE shows LABEL as its action until `gh'
-returns, so a slow GitHub does not block.  On failure the dialog
-reopens with BODY, so nothing typed is lost."
+(defun octocat-timeline-submit (spec body source on-success)
+  "Send the mutation SPEC for edit dialog text BODY, in the background.
+Call it from the dialog's submit function, whose source buffer is
+SOURCE.  The dialog closes at once through ON-SUCCESS and the page shows
+the mutation under way until GitHub answers, so a slow GitHub does not
+block.  On failure the dialog reopens with BODY, so nothing typed is
+lost."
   (let ((title     octocat-edit--title)
         (submit-fn octocat-edit--submit-fn)
         (data      octocat-edit--user-data))
-    (octocat-timeline-set-action source label)
-    (octocat--run-gh name args #'string-trim
-      (lambda (result)
-        (if (not (eq (car-safe result) 'error))
-            (octocat-timeline--finish source)
-          (message "Octocat: Failed: %s" (cdr result))
-          (when (buffer-live-p source)
-            (octocat-timeline-set-action source nil)
-            (with-current-buffer source
-              (octocat--open-edit-buffer title submit-fn #'ignore body data))))))
+    (octocat-sync-submit
+     spec
+     (lambda (result)
+       (when (and (eq (car-safe result) 'error) (buffer-live-p source))
+         (with-current-buffer source
+           (octocat--open-edit-buffer title submit-fn #'ignore body data)))))
     (funcall on-success)))
 
 (defun octocat-timeline--detail-spec (kind repo number)
@@ -628,12 +608,45 @@ reopens with BODY, so nothing typed is lost."
   ;; It adds a "changed the title" event.
   :invalidates (lambda () `((timeline-events ,repo ,number))))
 
+(octocat-sync-define-mutation comment (kind repo number body)
+  :label "Posting comment…"
+  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
+  :send (lambda (done)
+          (octocat--run-gh "comment"
+                           (list kind "comment" (number-to-string number) "--repo" repo
+                                 "--body" body)
+                           #'ignore done))
+  :invalidates (lambda () (list (octocat-timeline--detail-spec kind repo number))))
+
+(octocat-sync-define-mutation edit-body (kind repo number body)
+  :label "Saving description…"
+  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
+  :optimistic (lambda ()
+                `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
+                   ("body" . ,body))))
+  :send (lambda (done)
+          (octocat--run-gh "edit-body"
+                           (list kind "edit" (number-to-string number) "--repo" repo
+                                 "--body" body)
+                           #'ignore done)))
+
+(octocat-sync-define-mutation edit-comment (kind repo number comment-id body)
+  :label "Saving comment…"
+  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
+  :send (lambda (done)
+          (octocat--run-gh "edit-comment"
+                           (list "api" (format "repos/%s/issues/comments/%s" repo comment-id)
+                                 "--method" "PATCH" "-f" (format "body=%s" body))
+                           #'ignore done))
+  ;; The comments are the page resource's, not an entity's.
+  :invalidates (lambda () (list (octocat-timeline--detail-spec kind repo number))))
+
 (defun octocat-timeline-state-change (kind verb repo number)
   "Close or reopen issue or PR NUMBER of REPO after asking.
 KIND is \"issue\" or \"pr\" (the `gh' subcommand) and VERB is \"close\" or
 \"reopen\".  Every page showing it changes at once; the page shows it
 under way until GitHub answers."
-  (octocat-timeline-ensure-idle)
+  (octocat-timeline-ensure-idle (octocat-timeline--detail-spec kind repo number))
   (let ((noun (if (equal kind "pr") "pull request" "issue")))
     (when (y-or-n-p (format "%s %s #%d? " (capitalize verb) noun number))
       (octocat-sync-submit `(set-state ,kind ,verb ,repo ,number)))))

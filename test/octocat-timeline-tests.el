@@ -192,45 +192,47 @@
                    "requested a review from core"))))
 
 (defun octocat-timeline-tests--submit (result)
-  "Submit text from an edit dialog with `gh' returning RESULT.
-Return (ACTION-WHILE-RUNNING ACTION-AFTER REFRESHED REOPENED CLOSED)."
-  (let ((source (generate-new-buffer " source"))
-        running refreshed reopened closed)
+  "Submit text from an edit dialog, the mutation answering RESULT.
+Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
+  (let* ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
+         (octocat-sync--pending nil)
+         (octocat-sync--mutations (make-hash-table :test #'eq))
+         (octocat-sync-change-functions nil)
+         (inhibit-message t)
+         (source (generate-new-buffer " source"))
+         running reopened closed)
+    (octocat-sync-define-mutation post ()
+      :label "Posting comment…"
+      :resources (lambda () '((issue "o/r" 1)))
+      :send (lambda (done)
+              (setq running (plist-get (octocat-sync-read '(issue "o/r" 1)) :mutating))
+              (funcall done result)))
     (unwind-protect
-        (cl-letf (((symbol-function 'octocat-vui-update-page) #'ignore)
-                  ((symbol-function 'octocat--run-gh)
-                   (lambda (_name _args _parse callback)
-                     (setq running (buffer-local-value 'octocat-timeline--action source))
-                     (funcall callback result)))
+        (cl-letf (((symbol-function 'octocat-sync--props) (lambda (_) nil))
                   ((symbol-function 'octocat--open-edit-buffer)
                    (lambda (&rest args) (setq reopened args))))
-          (with-current-buffer source
-            (setq-local octocat--refresh-fn (lambda () (setq refreshed t))))
           (with-temp-buffer
             (setq octocat-edit--title "New comment"
                   octocat-edit--submit-fn #'ignore)
-            (octocat-timeline-submit "Posting comment…" "comment" '("x")
-                                     "hello" source (lambda () (setq closed t))))
-          (list running (buffer-local-value 'octocat-timeline--action source)
-                refreshed reopened closed))
+            (octocat-timeline-submit '(post) "hello" source (lambda () (setq closed t))))
+          (list running (plist-get (octocat-sync-read '(issue "o/r" 1)) :mutating)
+                reopened closed))
       (kill-buffer source))))
 
 (ert-deftest octocat-timeline-test-submit-success ()
-  "A submitted dialog closes at once, shows its action, then refreshes."
-  (pcase-let ((`(,running ,after ,refreshed ,reopened ,closed)
-               (octocat-timeline-tests--submit "ok")))
-    (should (equal running "Posting comment…"))
+  "A submitted dialog closes at once and shows its change under way."
+  (pcase-let ((`(,running ,after ,reopened ,closed)
+               (octocat-timeline-tests--submit nil)))
+    (should (equal running '((action . "Posting comment…"))))
     (should-not after)
-    (should refreshed)
     (should-not reopened)
     (should closed)))
 
 (ert-deftest octocat-timeline-test-submit-failure-reopens ()
   "A failed submission reopens the dialog with the typed text."
-  (pcase-let ((`(,_running ,after ,refreshed ,reopened ,_closed)
+  (pcase-let ((`(,_running ,after ,reopened ,_closed)
                (octocat-timeline-tests--submit '(error . "boom"))))
     (should-not after)
-    (should-not refreshed)
     (should (equal (nth 0 reopened) "New comment"))
     (should (equal (nth 3 reopened) "hello"))))
 

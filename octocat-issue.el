@@ -56,35 +56,25 @@
   "Submit BODY as a new comment on the issue in SOURCE buffer.
 See `octocat-timeline-submit' for ON-SUCCESS."
   (octocat-timeline-submit
-   "Posting comment…" "comment"
-   (with-current-buffer source
-     (list "issue" "comment" (number-to-string octocat--issue-number)
-           "--repo" octocat--issue-repo "--body" body))
+   (with-current-buffer source `(comment "issue" ,octocat--issue-repo ,octocat--issue-number ,body))
    body source on-success))
 
 (defun octocat-issue--submit-edit-body (body source on-success _on-error)
   "Replace the body of the issue in SOURCE buffer with BODY.
 See `octocat-timeline-submit' for ON-SUCCESS."
   (octocat-timeline-submit
-   "Saving description…" "edit-body"
-   (with-current-buffer source
-     (list "issue" "edit" (number-to-string octocat--issue-number)
-           "--repo" octocat--issue-repo "--body" body))
+   (with-current-buffer source `(edit-body "issue" ,octocat--issue-repo ,octocat--issue-number ,body))
    body source on-success))
 
 (defun octocat-issue--submit-edit-comment (body source on-success _on-error)
   "Edit the comment identified in `octocat-edit--user-data' with BODY.
 The :comment-id plist key is read from the edit buffer (current-buffer at
-call time).  SOURCE supplies the repo string.
+call time).  SOURCE supplies the issue.
 See `octocat-timeline-submit' for ON-SUCCESS."
-  (let ((repo       (with-current-buffer source octocat--issue-repo))
-        (comment-id (plist-get octocat-edit--user-data :comment-id)))
+  (let ((comment-id (plist-get octocat-edit--user-data :comment-id)))
     (octocat-timeline-submit
-     "Saving comment…" "edit-comment"
-     (list "api"
-           (format "repos/%s/issues/comments/%s" repo comment-id)
-           "--method" "PATCH"
-           "-f" (format "body=%s" body))
+     (with-current-buffer source
+       `(edit-comment "issue" ,octocat--issue-repo ,octocat--issue-number ,comment-id ,body))
      body source on-success)))
 
 ;;;; Edit / comment commands
@@ -94,7 +84,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (interactive)
   (unless (and octocat--issue-repo octocat--issue-number)
     (user-error "Octocat: Buffer is not associated with an issue"))
-  (octocat-timeline-ensure-idle)
+  (octocat-timeline-ensure-idle (list 'issue octocat--issue-repo octocat--issue-number))
   (octocat--open-edit-buffer
    (format "New comment on issue #%d" octocat--issue-number)
    #'octocat-issue--submit-comment
@@ -105,7 +95,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (interactive)
   (unless (and octocat--issue-repo octocat--issue-number)
     (user-error "Octocat: Buffer is not associated with an issue"))
-  (octocat-timeline-ensure-idle)
+  (octocat-timeline-ensure-idle (list 'issue octocat--issue-repo octocat--issue-number))
   ;; Pre-populate with the current body so the user can edit in place
   ;; rather than retyping everything.
   (let* ((issue (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))
@@ -121,27 +111,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (interactive)
   (unless (and octocat--issue-repo octocat--issue-number)
     (user-error "Octocat: Buffer is not associated with an issue"))
-  (let* ((issue   (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))
-         (current (or (and issue (octocat--nonempty (gethash "title" issue))) ""))
-         (new     (string-trim (read-string "Issue title: " current))))
-    (when (string-empty-p new)
-      (user-error "Octocat: Title must not be empty"))
-    (unless (string-equal new current)
-      (let ((repo octocat--issue-repo)
-            (num  octocat--issue-number)
-            (buf  (current-buffer)))
-        ;; In the mode line: the page has no button for this to replace.
-        (octocat-vui-mode-line-action buf ":saving")
-        (octocat--run-gh
-         "edit-title"
-         (list "issue" "edit" (number-to-string num) "--repo" repo "--title" new)
-         #'identity
-         (lambda (result)
-           (octocat-vui-mode-line-action buf nil)
-           (if (eq (car-safe result) 'error)
-               (message "Octocat: failed to update title: %s" (cdr result))
-             (when (buffer-live-p buf)
-               (with-current-buffer buf (octocat-issue-refresh))))))))))
+  (octocat-timeline-rename "issue" octocat--issue-repo octocat--issue-number))
 
 (defun octocat-issue-edit ()
   "Edit the thing at point in the current issue buffer.
@@ -164,7 +134,7 @@ On someone else\\='s comment: signal an error."
           (user-error "Octocat: You can't edit someone else's comment"))
         (unless comment-id
           (user-error "Octocat: Could not determine comment ID from URL"))
-        (octocat-timeline-ensure-idle)
+        (octocat-timeline-ensure-idle (list 'issue octocat--issue-repo octocat--issue-number))
         (octocat--open-edit-buffer
          (format "Edit comment on issue #%d" octocat--issue-number)
          #'octocat-issue--submit-edit-comment
@@ -268,9 +238,9 @@ BG is as for `octocat--label-face'."
                                 #'octocat-pr-open))))
       (vui-newline)))))
 
-(vui-defcomponent octocat-issue--page (repo number raw action tick)
+(vui-defcomponent octocat-issue--page (repo number raw tick)
   "Issue NUMBER of REPO as a timeline; RAW shows markdown bodies verbatim.
-ACTION, a label or nil, shows a change under way under the timeline.
+A change under way, such as posting a comment, shows under the timeline.
 A new TICK fetches everything again."
   :render
   (let* ((width    (octocat-vui-window-width))
@@ -298,7 +268,7 @@ A new TICK fetches everything again."
                      (if (equal (gethash "state" issue) "OPEN")
                          '("Close issue" "RET: close this issue" octocat-issue-close)
                        '("Reopen issue" "RET: reopen this issue" octocat-issue-reopen)))
-               action))))
+               (alist-get 'action (plist-get snap :mutating))))))
      ((and (plist-get snap :error) (not (plist-get snap :loading)))
       (vui-text (format "  Error: %s" (plist-get snap :error)) :face 'error))
      ;; The list fetched the issue: its header paints at once.
@@ -352,8 +322,7 @@ the background, in place: what is unfolded stays so."
                             (cons octocat--issue-repo octocat--issue-number)
                             (list :repo octocat--issue-repo
                                   :number octocat--issue-number
-                                  :raw octocat--markdown-raw
-                                  :action octocat-timeline--action)))
+                                  :raw octocat--markdown-raw)))
 
 (defun octocat-issue-open (repo number)
   "Show issue NUMBER of REPO in its own buffer."

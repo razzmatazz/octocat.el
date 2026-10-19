@@ -218,7 +218,7 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
         (octocat-sync-submit '(rename "Boom"))
         (should (equal (title) "Boom"))
         (should (member "(list)" (car notified)))
-        (should (equal (plist-get (octocat-sync-read '(thing 1)) :mutating) "Renaming…"))
+        (should (equal (plist-get (octocat-sync-read '(thing 1)) :mutating) '((action . "Renaming…"))))
         (should (equal (gethash "title" (octocat-sync--stored-fields octocat-sync--db "issue:o/r#12"))
                        "Crash"))
         (funcall (car sent) nil)
