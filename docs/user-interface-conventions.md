@@ -490,18 +490,34 @@ config (octocat must not call Doom):
 
 ## Indicating that a page is loading or refreshing
 
-While fetching, only the mode line shows it: `(Octocat-PR:loading ▘)`,
-as in `(Compilation:run)`.  No loading text in the buffer.  Components
-call `octocat-vui-use-mode-line-loading`; other code sets
-`octocat-vui-mode-line-busy`.
+A page paints at once from the sync store and refetches behind it (see
+"Reading the sync store" in docs/using-vui.md).  What it shows meanwhile:
 
-Anything that may load slowly holds its place with a **skeleton**: grey
-bars (`octocat-vui-skeleton-bar`, face `octocat-skeleton`) shaped like
-the content to come, so the layout doesn't jump when it arrives.  A
-page with no cache shows one for its body (`octocat-vui-list-skeleton`,
-`octocat-vui-detail-skeleton`); a page of rows being fetched shows one
-under the list (see "Revealing more rows" below).  A cached paint needs
-none: stale content stands in until fresh data replaces it.
+- **Loading** shows only in the mode line: `(Octocat-PR:loading ▘)`, as
+  in `(Compilation:run)`.  No loading text in the buffer.  The vui layer
+  keeps it for every resource the page reads, so pages don't track it;
+  a component's own fetch, such as a "load more" page, calls
+  `octocat-vui-use-mode-line-loading`.
+- **No data yet**: a **skeleton**, grey bars (`octocat-vui-skeleton-bar`,
+  face `octocat-skeleton`) shaped like the content to come, so the
+  layout doesn't jump when it arrives (`octocat-vui-list-skeleton`,
+  `octocat-vui-detail-skeleton`).  When a list already fetched the item,
+  the page draws its real header from the list's copy and bars below
+  it (`octocat-vui-post-skeleton`).
+- **No data, failed**: one line saying why, then how to retry: "Not
+  found; g to retry", "No access", "Offline: GitHub can't be reached" or
+  the error (`octocat-vui-error-text`).
+- **Data, refresh failed or offline**: the data stays, and the **header
+  line** says it may be out of date: `Refresh failed: MSG; g to retry`
+  or `Offline: showing data from 14:02; g to retry`.
+- **Data, outdated and refetching**: if the refetch takes longer than
+  `octocat-vui-notice-delay` (0.5 s), the header line adds `Outdated:
+  changed since 14:02, refreshing…`.  A fast network never shows it.
+
+Notices go in the header line, not the buffer, so the content doesn't
+shift when they clear.  `octocat-vui-resource-view` draws the skeleton,
+the error or the page from a snapshot, so a page gives only those
+pieces.
 
 ---
 
@@ -510,47 +526,44 @@ none: stale content stands in until fresh data replaces it.
 A command that writes to GitHub (merge, comment, state change) must not
 leave the user waiting on `gh`: on a slow network or a slow GitHub that
 can take many seconds.  Validate what can be checked locally, then close
-any dialog at once and show the action as **in progress** on the page
-itself, as github.com does ("Merging pull request…" in place of the
-merge button).  When `gh` returns, refresh the page to show the result;
-on failure, clear the in-progress state and report the error in the
-echo area.
+any dialog at once and show the action on the page itself, as
+github.com does.
 
-The in-progress state lives in a buffer-local variable passed to the
-page as a prop, so a refresh (`g`) while the action runs still shows
-it.  Change it with `octocat-vui-update-page`, which re-renders the page
-in place, not with a remount (see docs/using-vui.md).  While it is set,
-hide the buttons that would start the action again, and make their
-commands refuse with a `user-error`.
+Every such action is a sync **mutation** (`octocat-sync-define-mutation`).
+One whose result is known, such as a rename, closing or marking a draft
+ready, is **optimistic**: the change shows at once on every page that
+shows the item, and is undone if GitHub refuses it.  Every mutation
+shows **in progress** where it acts until GitHub answers, then the pages
+refetch what it changed; on failure the error goes to the echo area.
+
+A mutation names its **slot**, where its page draws it.  The page reads
+it from its snapshot's `:mutating`, so a refresh (`g`) while it runs
+still shows it, and no buffer-local state is kept.  While it is set,
+hide the buttons that would start it again, and make their commands
+refuse with a `user-error`.
 
 Lead the in-progress line with the turning block spinner the mode line
 shows while loading, `octocat-vui-spinner`: `▘ Merging pull request…`.
-The mode line's `:loading` is for fetching the page; an action under way
-is shown where its button was, so the spinner says it is still running.
-The spinner animates through its `display` property, without
-re-rendering the page.
+The mode line's `:loading` is for fetching; an action under way is shown
+where its button was.  The spinner animates through its `display`
+property, without re-rendering the page.
 
 A dialog whose text the user typed (a comment, a description) must not
-lose it: if `gh` fails, reopen the dialog with the text.
+lose it: `octocat-timeline-submit` sends its mutation, closes the dialog
+at once and reopens it with the text if GitHub refuses.
 
-Where each action shows:
+Where each slot shows:
 
-- **Under the timeline**, in place of its `+ Add a comment` / Close row:
-  posting or editing a comment or description, closing, reopening
-  (`octocat-timeline--action`, drawn by
-  `octocat-timeline-buttons-or-action`).  A dialog's submit function
-  hands its `gh` call to `octocat-timeline-submit`, which closes the
-  dialog, shows the action, refreshes, and reopens the dialog on
-  failure.  `octocat-timeline-state-change` does the same for closing
-  and reopening.
-- **In the merge box**, in place of its buttons: merging, converting to
-  draft, marking ready for review (`octocat-pr--merging`).  Approving
-  the workflow runs of an outside contributor shows in place of its own
-  `[Approve workflows to run]` button, under the checks
-  (`octocat-pr--approving`), leaving the merge buttons alone.
-- **Under the review comments** on the PR's Files page: submitting a
-  review (`octocat-pr-diff--submit-review`).
-- **In the mode line**, for an action with no button on the page to
+- **`action`**, under the timeline, in place of its `+ Add a comment` /
+  Close row: posting or editing a comment or description, closing,
+  reopening (`octocat-timeline-buttons-or-action`).
+- **`merge`**, in the merge box, in place of its buttons: merging,
+  converting to draft, marking ready for review.
+- **`approve`**, in place of the `[Approve workflows to run]` button
+  under the checks, leaving the merge buttons alone.
+- **`review`**, under the review comments on the PR's Files page:
+  submitting a review.
+- **The mode line**, for an action with no button on the page to
   replace, such as renaming the title: `octocat-vui-mode-line-action`
   shows `(Octocat-PR:saving ▘)`, ahead of `:loading`.
 
@@ -588,7 +601,8 @@ page.
 
 - Draw a pageable list with `octocat-vui-reveal-list` (ITEMS, ROW-FN,
   KEY-FN) instead of `vui-list`.  It shows everything on the first render
-  -- cached paint, `gr` -- and only animates items that arrive afterwards.
+  -- a paint from the store, `gr` -- and only animates items that arrive
+  afterwards.
 - Compute shared column widths (author width, ...) from **all** the
   items *before* the call, so columns do not shift while rows appear.
 - Keep the load-more button below the list, with its `:key`, so point stays
