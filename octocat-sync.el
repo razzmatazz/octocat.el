@@ -72,6 +72,10 @@ The file is named after the host, such as \"sync-github.com.sqlite\"."
   "Functions called with the keys of resources whose snapshot changed.
 Called once per write, after it is committed.")
 
+(defvar octocat-sync-invalidate-functions nil
+  "Functions called with the keys of resources found outdated.
+Their data stays; a page showing one should refetch it.")
+
 (defconst octocat-sync--schema 4
   "Version of the store's tables, kept in SQLite's `user_version'.
 Bump it also when the shape of a resource's body changes: the store is
@@ -368,11 +372,12 @@ cycle ends in nil."
                             value)))
 
 (defun octocat-sync--read (db key &optional overlays)
-  "Return resource KEY of DB as (DATA FETCHED-AT ERROR KIND), or nil if absent.
-KIND is the error's, a symbol.
+  "Return resource KEY of DB as (DATA FETCHED-AT ERROR KIND OUTDATED), or nil.
+KIND is the error's, a symbol; OUTDATED is when it was marked outdated.
 OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read."
   (when-let* ((row (car (sqlite-select
-                         db "SELECT body, fetched_at, error, error_kind FROM resource WHERE key = ?"
+                         db "SELECT body, fetched_at, error, error_kind, invalidated_at
+                             FROM resource WHERE key = ?"
                          (list key)))))
     (let ((entities (make-hash-table :test #'equal)))
       (pcase-dolist (`(,k ,fields)
@@ -386,7 +391,8 @@ OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read."
                                         entities db nil overlays))
             (nth 1 row)
             (nth 2 row)
-            (and (nth 3 row) (intern (nth 3 row)))))))
+            (and (nth 3 row) (intern (nth 3 row)))
+            (nth 4 row)))))
 
 (defun octocat-sync--linked (db entities)
   "Return the keys of the resources in DB linked to any of ENTITIES."
@@ -396,6 +402,14 @@ OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read."
                 db (format "SELECT DISTINCT resource FROM link WHERE entity IN (%s)"
                            (mapconcat (lambda (_) "?") entities ", "))
                 entities))))
+
+(defun octocat-sync--invalidate (db patterns)
+  "Mark the resources of DB matching PATTERNS outdated, and say so.
+`octocat-sync-invalidate-functions' get their keys: a page showing one
+refetches it; the rest are refetched when next opened."
+  (when-let* ((keys (and patterns (octocat-sync--outdate db patterns (float-time)))))
+    (octocat-sync--notify keys)
+    (run-hook-with-args 'octocat-sync-invalidate-functions keys)))
 
 (defun octocat-sync--spec-match-p (pattern spec)
   "Return non-nil if SPEC matches PATTERN, where `_' matches anything."
@@ -428,7 +442,10 @@ fetches the resource and calls DONE with the parsed tree, its shared
 records wrapped in `octocat-sync-entity', or with (error . MESSAGE).
 :entity, optional, is the key of the resource's main entity: until the
 resource is first fetched, a snapshot carries that entity's fields, as
-another resource stored them, in :partial.  :max-age, optional, is how
+another resource stored them, in :partial.  :invalidates, optional, is
+a function returning the specs, `_' matching anything, of the lists
+that a change to that entity may move it in or out of: a fetch that
+changes it outdates them.  :max-age, optional, is how
 many seconds a fetch stays good for data that rarely changes, such as a
 commit's: within it, opening doesn't refetch, but `g' does."
   (declare (indent 2))
@@ -473,16 +490,18 @@ Kept in memory only, and cleared by the next success.")
 
 (defun octocat-sync-read (spec)
   "Return a snapshot of SPEC, a plist.
-Its keys are :data :partial :loading :error :kind :offline :fetched-at
-and :mutating.  :kind is that of :error, see `octocat-sync--error-kind';
-:offline is whether the last request found GitHub out of reach.
+Its keys are :data :partial :loading :error :kind :offline :outdated
+:fetched-at and :mutating.  :kind is that of :error, see
+`octocat-sync--error-kind'; :offline is whether the last request found
+GitHub out of reach; :outdated is when the data was found out of date,
+see `octocat-sync--invalidate'.
 It reads only the store, never the network, with the changes of pending
 mutations applied.  :partial is set only when :data is nil; see
 `octocat-sync-define-resource'.  :mutating is an alist (SLOT . LABEL)
 of the pending mutations of SPEC, see `octocat-sync-define-mutation'."
   (let ((key (octocat-sync-spec-key spec))
         (db  (octocat-sync--db)))
-    (pcase-let ((`(,data ,fetched-at ,error ,kind)
+    (pcase-let ((`(,data ,fetched-at ,error ,kind ,outdated)
                  (octocat-sync--read db key (octocat-sync--overlays))))
       (list :data data
             :partial (and (null data)
@@ -494,6 +513,7 @@ of the pending mutations of SPEC, see `octocat-sync-define-mutation'."
             :error error
             :kind kind
             :offline octocat-sync--offline
+            :outdated outdated
             :fetched-at fetched-at
             :mutating (octocat-sync--mutating key)))))
 
@@ -599,7 +619,16 @@ when no other prefetch runs."
   (when (equal key octocat-sync--prefetching)
     (setq octocat-sync--prefetching nil))
   (remhash key octocat-sync--loading)
-  (let ((db (octocat-sync--db)))
+  (let* ((db      (octocat-sync--db))
+         (spec    (car (read-from-string key)))
+         (props   (octocat-sync--props spec))
+         (entity  (plist-get props :entity))
+         (fields  (lambda ()
+                    (and entity (caar (sqlite-select db "SELECT fields FROM entity WHERE key = ?"
+                                                     (list entity))))))
+         (before  (funcall fields))
+         (fetched (caar (sqlite-select db "SELECT body IS NOT NULL FROM resource WHERE key = ?"
+                                       (list key)))))
     (octocat-sync--notify
      ;; KEY always changed, since it stopped loading.
      (cl-adjoin key
@@ -615,7 +644,13 @@ when no other prefetch runs."
              (error (octocat--debug-log (format "sync write %s failed" key)
                                         (error-message-string err))
                     nil))
-           :test #'equal)))
+           :test #'equal))
+    ;; The main entity changed, so the lists filtered on it may have
+    ;; gained or lost it.  A first fetch has nothing to compare.
+    (when (and entity (eql fetched 1) (not (eq (car-safe result) 'error))
+               (not (equal before (funcall fields))))
+      (octocat-sync--invalidate
+       db (and (plist-get props :invalidates) (funcall (plist-get props :invalidates))))))
   (let ((waiting (seq-filter (lambda (w) (equal (car w) key)) octocat-sync--waiters)))
     (when waiting
       (setq octocat-sync--waiters (seq-difference octocat-sync--waiters waiting #'eq))
@@ -630,10 +665,6 @@ when no other prefetch runs."
 ;; A mutation's optimistic change is an overlay in memory that reads
 ;; apply over the stored fields, so every page showing the entity shows
 ;; it at once.  It is never written to SQLite before GitHub accepts it.
-
-(defvar octocat-sync-invalidate-functions nil
-  "Functions called with the keys of resources a mutation made outdated.
-Their data stays; a page showing one should refetch it.")
 
 (defvar octocat-sync--mutations (make-hash-table :test #'eq)
   "Mutation name to a function of the spec's arguments returning its plist.")
@@ -726,8 +757,7 @@ them."
         (error (octocat--debug-log "sync mutation write failed" (error-message-string err)))))
     (octocat-sync--notify (octocat-sync--touched db mutation))
     (unless (eq (car-safe result) 'error)
-      (when-let* ((keys (and patterns (octocat-sync--outdate db patterns (float-time)))))
-        (run-hook-with-args 'octocat-sync-invalidate-functions keys)))))
+      (octocat-sync--invalidate db patterns))))
 
 
 ;;;; GitHub entities
@@ -757,6 +787,21 @@ Only the login is kept: the fields beside it vary with the source."
     (octocat-sync-entity 'label (format "label:%s/%s" (downcase repo) (gethash "name" label))
                          fields)))
 
+(defun octocat-sync--item-ref (ref)
+  "Return REF, an issue or PR another one refers to, as its number and repo."
+  (let* ((h     (make-hash-table :test #'equal))
+         (other (gethash "repository" ref))
+         (owner (and (hash-table-p other) (gethash "owner" other))))
+    (puthash "number" (gethash "number" ref) h)
+    (when (hash-table-p other)
+      (let ((r (make-hash-table :test #'equal))
+            (o (make-hash-table :test #'equal)))
+        (puthash "login" (and (hash-table-p owner) (gethash "login" owner)) o)
+        (puthash "name" (gethash "name" other) r)
+        (puthash "owner" o r)
+        (puthash "repository" r h)))
+    h))
+
 (defun octocat-sync-item (type repo item)
   "Return the entity of the issue or PR ITEM of REPO; TYPE is `issue' or `pr'.
 ITEM is a table of its fields.  Its author, assignees and labels become
@@ -771,6 +816,12 @@ are never a page of it."
       (when (sequencep labels)
         (puthash "labels" (cl-map 'vector (lambda (l) (octocat-sync-label repo l)) labels)
                  fields)))
+    ;; The lists and the page fetch these with different fields; keep
+    ;; those both have, so the entity reads the same from either.
+    (dolist (key '("closedByPullRequestsReferences" "closingIssuesReferences"))
+      (when-let* ((refs (gethash key item)))
+        (when (sequencep refs)
+          (puthash key (cl-map 'vector #'octocat-sync--item-ref refs) fields))))
     (octocat-sync-entity type (octocat-sync-item-key type repo (gethash "number" item))
                          fields)))
 

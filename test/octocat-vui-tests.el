@@ -151,6 +151,10 @@
     (should (equal (octocat-vui-header-notice
                     (list (list :data h) (list :data h :error "HTTP 502\nmore")))
                    "Refresh failed: HTTP 502; g to retry"))
+    (should-not (octocat-vui-header-notice (list (list :data h :outdated 0.0 :loading t))))
+    (should (string-prefix-p "Outdated: changed since "
+                             (octocat-vui-header-notice
+                              (list (list :data h :outdated 0.0 :loading t)) t)))
     (should (string-prefix-p "Offline: showing data from "
                              (octocat-vui-header-notice
                               (list (list :data h :error "x" :kind 'offline :fetched-at 0.0)))))))
