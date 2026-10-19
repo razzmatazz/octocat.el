@@ -205,7 +205,7 @@ its heading.  RAW and WIDTH are as for `octocat-diff--comment-lines'."
 (defun octocat-diff-by-path (comments)
   "Return an alist mapping a file path to the review COMMENTS made on it."
   (let (table)
-    (dolist (c comments)
+    (seq-doseq (c comments)
       (when-let* ((path (octocat--nonempty (gethash "path" c))))
         (push c (alist-get path table nil nil #'equal))))
     (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) table)))
@@ -248,23 +248,24 @@ comments are markdown, rendered unless RAW, to fit WIDTH columns."
 
 (defun octocat-diff-comments-section (label comments raw width)
   "Return the vnode of the comments section headed LABEL, e.g. \"Comments\".
-COMMENTS is the `vui-use-async' result for the comments.  Inline ones
-are in the diff, so only counted here; the others are boxed like them.
-RAW and WIDTH are as for `octocat-diff--comment-lines'."
-  (let* ((all     (plist-get comments :data))
+COMMENTS is the sync snapshot of the comments.  Inline ones are in the
+diff, so only counted here; the others are boxed like them.  RAW and
+WIDTH are as for `octocat-diff--comment-lines'."
+  (let* ((status  (octocat-vui-snapshot-status comments))
+         (all     (plist-get comments :data))
          (general (seq-remove (lambda (c) (octocat--nonempty (gethash "path" c))) all))
          (inline  (- (length all) (length general)))
          (noun    (downcase (string-remove-suffix "s" label))))
     (apply #'vui-vstack
-           (vui-text (propertize (if (eq (plist-get comments :status) 'ready)
+           (vui-text (propertize (if (eq status 'ready)
                                      (format "%s (%d)" label (length all))
                                    label)
                                  'face 'octocat-section-heading))
-           (pcase (plist-get comments :status)
+           (pcase status
              ('pending (list (vui-text (octocat-vui-skeleton '(("  " 36))))))
              ('error   (list (vui-text (format "  %s" (plist-get comments :error))
                                        :face 'octocat-dimmed)))
-             (_ (if (null all)
+             (_ (if (seq-empty-p all)
                     (list (vui-text (format "  (no %ss)" noun) :face 'octocat-dimmed))
                   (append
                    (and (> inline 0)

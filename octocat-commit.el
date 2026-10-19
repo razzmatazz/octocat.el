@@ -22,8 +22,8 @@
 
 ;; Commit data fetching and the `octocat-commit-mode' page, rendered with
 ;; vui.el like the issue and PR pages.  The commit, its check-runs and its
-;; comments are three independent `vui-use-async' fetches, each shown
-;; from the disk cache until it arrives.  The changed files are rendered
+;; comments are three sync resources, each painted from the store and
+;; refetched behind it; the commit itself never changes, so it is kept.  The changed files are rendered
 ;; by octocat-diff.el, like the PR diff page's.
 ;;
 ;; Depends on octocat-core.el; must not depend on octocat.el or
@@ -31,17 +31,17 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'seq)
 (require 'octocat-core)
 (require 'octocat-checks)
 (require 'octocat-diff)
+(require 'octocat-sync)
 (defvar octocat-timeline-body-lines) ; defcustom in octocat-timeline.el
 (require 'octocat-vui)
 (require 'vui)
 
 (declare-function octocat-search-repo "octocat-search" ())
-(declare-function octocat-repo-vui-use-cached "octocat-repo"
-                  (type repo number fetch &optional as-list tick))
 
 
 
@@ -87,6 +87,18 @@ general comments (\\='path\\=' is :null or nil) and inline comments
          (format "repos/%s/commits/%s/comments" repo sha))
    #'octocat--parse-json-list
    callback))
+
+
+(octocat-sync-define-resource commit (repo sha)
+  ;; What a SHA names never changes.
+  :max-age (* 30 24 60 60)
+  :fetch (lambda (done) (octocat--fetch-commit repo sha done)))
+
+(octocat-sync-define-resource commit-comments (repo sha)
+  :fetch (lambda (done)
+           (octocat--fetch-commit-comments
+            repo sha
+            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
 
 ;;;; Internal helpers
@@ -150,35 +162,35 @@ as for `octocat--markdown-string'."
          (octocat-vui-fold-lines text (octocat-vui-line-ends text)
                                       octocat-timeline-body-lines 'message-fold ""))))))
 
-(defun octocat-commit--async-status (result empty)
-  "Return a dimmed vnode for RESULT if it failed or is empty, else nil.
+(defun octocat-commit--async-status (snap empty)
+  "Return a dimmed vnode for the sync snapshot SNAP if failed or empty, else nil.
 EMPTY is the text shown when it is ready but has no data.  Grey bars
 while it is pending."
-  (pcase (plist-get result :status)
+  (pcase (octocat-vui-snapshot-status snap)
     ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28)))))
-    ('error   (vui-text (format "  %s" (plist-get result :error)) :face 'octocat-dimmed))
-    (_ (and (zerop (length (plist-get result :data)))
+    ('error   (vui-text (format "  %s" (plist-get snap :error)) :face 'octocat-dimmed))
+    (_ (and (zerop (length (plist-get snap :data)))
             (vui-text (concat "  " empty) :face 'octocat-dimmed)))))
 
-(defun octocat-commit--heading (label result)
-  "Return the section heading LABEL, with RESULT's count once it is ready."
-  (vui-text (propertize (if (eq (plist-get result :status) 'ready)
-                            (format "%s (%d)" label (length (plist-get result :data)))
+(defun octocat-commit--heading (label snap)
+  "Return the section heading LABEL, with the count of SNAP's data once known."
+  (vui-text (propertize (if (plist-get snap :data)
+                            (format "%s (%d)" label (length (plist-get snap :data)))
                           label)
                         'face 'octocat-section-heading)))
 
 (defun octocat-commit--checks (repo sha checks)
   "Return the CI section of commit SHA of REPO, or nil when it has none.
-Its check-runs are in CHECKS, a `vui-use-async' result."
-  (unless (and (eq (plist-get checks :status) 'ready)
+Its check-runs are in CHECKS, a sync snapshot."
+  (unless (and (plist-get checks :data)
                (zerop (length (plist-get checks :data))))
-    (or (and (eq (plist-get checks :status) 'pending)
+    (or (and (eq (octocat-vui-snapshot-status checks) 'pending)
              (octocat-commit--heading "Checks" checks))
         (when-let* ((status (octocat-commit--async-status checks "(no checks)")))
           (vui-vstack (octocat-commit--heading "Checks" checks) status))
         (apply #'vui-vstack
                (octocat-checks-block
-                (vconcat (mapcar #'octocat-checks-from-rest (plist-get checks :data)))
+                (cl-map 'vector #'octocat-checks-from-rest (plist-get checks :data))
                 (lambda () (octocat-checks-open repo sha nil)))))))
 
 
@@ -187,23 +199,17 @@ Its check-runs are in CHECKS, a `vui-use-async' result."
 (vui-defcomponent octocat-commit--page (repo sha raw tick)
   "Commit SHA of REPO: header, message, checks, files and comments.
 RAW shows markdown verbatim.  The commit, its checks and its comments
-are fetched independently; each shows its cached copy until then.  A
+are fetched independently; each shows what the store holds until then.  A
 new TICK fetches them again."
   :render
   (let* ((width    (octocat-vui-window-width))
-         (commit   (octocat-repo-vui-use-cached
-                    "commit" repo sha #'octocat--fetch-commit nil tick))
-         (checks   (octocat-repo-vui-use-cached
-                    "checks" repo sha #'octocat--fetch-checks t tick))
-         (comments (octocat-repo-vui-use-cached
-                    "commit-comments" repo sha #'octocat--fetch-commit-comments t tick))
-         (data     (and (eq (plist-get commit :status) 'ready) (plist-get commit :data)))
-         (loading  (and (or (memq 'pending (list (plist-get commit :status)
-                                                 (plist-get checks :status)
-                                                 (plist-get comments :status)))
-                            (plist-get commit :refreshing)
-                            (plist-get checks :refreshing)
-                            (plist-get comments :refreshing))
+         (commit   (octocat-vui-use-resource (list 'commit repo sha) tick))
+         (checks   (octocat-vui-use-resource (list 'checks repo sha) tick))
+         (comments (octocat-vui-use-resource (list 'commit-comments repo sha) tick))
+         (data     (plist-get commit :data))
+         (loading  (and (or (plist-get commit :loading)
+                            (plist-get checks :loading)
+                            (plist-get comments :loading))
                         t))
          (md-width (progn width (octocat--markdown-width)))
          (by-path  (vui-use-memo ((plist-get comments :data))
@@ -214,7 +220,7 @@ new TICK fetches them again."
     (apply #'vui-vstack
            (append
             (octocat-commit--header repo sha data)
-            (pcase (plist-get commit :status)
+            (pcase (octocat-vui-snapshot-status commit)
               ('error (list (vui-newline)
                             (vui-text (format "Error: %s" (plist-get commit :error))
                                       :face 'error)))
@@ -229,8 +235,8 @@ new TICK fetches them again."
                               (or (gethash "files" data) []) by-path raw md-width)
                              ;; Most commits have none, so the section is left
                              ;; out unless there are any, or they failed to load.
-                             (when (or (plist-get comments :data)
-                                       (eq (plist-get comments :status) 'error))
+                             (when (or (not (seq-empty-p (plist-get comments :data)))
+                                       (eq (octocat-vui-snapshot-status comments) 'error))
                                (vui-fragment
                                 (vui-newline)
                                 (octocat-diff-comments-section
@@ -279,8 +285,9 @@ new TICK fetches them again."
 
 (defun octocat-commit-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current commit buffer.
-The page paints the disk cache at once and fetches the commit, its
-checks and its comments in the background, in place."
+The page paints from the sync store at once and fetches the commit's
+checks and comments in the background, in place; the commit itself
+only on `g'."
   (interactive)
   (unless (and octocat--commit-repo octocat--commit-sha)
     (user-error "Octocat: Buffer is not associated with a commit"))

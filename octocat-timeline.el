@@ -593,27 +593,66 @@ reopens with BODY, so nothing typed is lost."
               (octocat--open-edit-buffer title submit-fn #'ignore body data))))))
     (funcall on-success)))
 
+(defun octocat-timeline--detail-spec (kind repo number)
+  "Return the spec of the page resource of issue or PR (KIND) NUMBER of REPO."
+  (list (if (equal kind "pr") 'pr 'issue) repo number))
+
+(octocat-sync-define-mutation set-state (kind verb repo number)
+  :label (format "%s %s…" (if (equal verb "close") "Closing" "Reopening")
+                 (if (equal kind "pr") "pull request" "issue"))
+  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
+  :optimistic (lambda ()
+                `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
+                   ("state" . ,(if (equal verb "close") "CLOSED" "OPEN")))))
+  :send (lambda (done)
+          (octocat--run-gh verb (list kind verb (number-to-string number) "--repo" repo)
+                           #'ignore done))
+  ;; The lists it moves in or out of, their counts, and the new event.
+  :invalidates (lambda ()
+                 (let ((kind (if (equal kind "pr") 'pulls 'issues)))
+                   `((timeline-events ,repo ,number)
+                     (list-items ,kind ,repo _ _)
+                     (counts ,kind ,repo)))))
+
+(octocat-sync-define-mutation set-title (kind repo number title)
+  :label "Renaming…"
+  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
+  :optimistic (lambda ()
+                `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
+                   ("title" . ,title))))
+  :send (lambda (done)
+          (octocat--run-gh "edit-title"
+                           (list kind "edit" (number-to-string number) "--repo" repo
+                                 "--title" title)
+                           #'ignore done))
+  ;; It adds a "changed the title" event.
+  :invalidates (lambda () `((timeline-events ,repo ,number))))
+
 (defun octocat-timeline-state-change (kind verb repo number)
   "Close or reopen issue or PR NUMBER of REPO after asking.
 KIND is \"issue\" or \"pr\" (the `gh' subcommand) and VERB is \"close\" or
-\"reopen\".  The current page shows it under way, then refreshes."
+\"reopen\".  Every page showing it changes at once; the page shows it
+under way until GitHub answers."
   (octocat-timeline-ensure-idle)
   (let ((noun (if (equal kind "pr") "pull request" "issue")))
     (when (y-or-n-p (format "%s %s #%d? " (capitalize verb) noun number))
-      (let ((buf (current-buffer)))
-        (octocat-timeline-set-action
-         buf (format "%s %s…" (if (equal verb "close") "Closing" "Reopening") noun))
-        (octocat--run-gh
-         verb
-         (list kind verb (number-to-string number) "--repo" repo)
-         #'identity
-         (lambda (result)
-           (if (eq (car-safe result) 'error)
-               (progn
-                 (message "Octocat: failed to %s #%d: %s" verb number (cdr result))
-                 (octocat-timeline-set-action buf nil))
-             (message "Octocat: #%d %s" number (if (equal verb "close") "closed" "reopened"))
-             (octocat-timeline--finish buf))))))))
+      (octocat-sync-submit `(set-state ,kind ,verb ,repo ,number)))))
+
+(defun octocat-timeline-rename (kind repo number)
+  "Prompt for a new title of issue or PR (KIND) NUMBER of REPO and apply it.
+Every page showing it changes at once; the mode line shows it under way."
+  (let* ((item    (octocat-sync-detail-read (octocat-timeline--detail-spec kind repo number)))
+         (current (or (and item (octocat--nonempty (gethash "title" item))) ""))
+         (new     (string-trim (read-string (if (equal kind "pr") "PR title: " "Issue title: ")
+                                            current)))
+         (buf     (current-buffer)))
+    (when (string-empty-p new)
+      (user-error "Octocat: Title must not be empty"))
+    (unless (string-equal new current)
+      ;; In the mode line: the page has no button for this to replace.
+      (octocat-vui-mode-line-action buf ":saving")
+      (octocat-sync-submit `(set-title ,kind ,repo ,number ,new)
+                           (lambda (_) (octocat-vui-mode-line-action buf nil))))))
 
 (defun octocat-timeline-target ()
   "Return what the timeline entry at point stands for, or nil.

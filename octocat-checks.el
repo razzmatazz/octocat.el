@@ -38,12 +38,11 @@
 (require 'cl-lib)
 (require 'seq)
 (require 'octocat-core)
+(require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)
 
 (declare-function octocat-run-open "octocat-run" (repo run-id))
-(declare-function octocat-repo-vui-use-cached "octocat-repo"
-                  (type repo number fetch &optional as-list tick))
 (declare-function octocat-search-repo "octocat-search" ())
 
 
@@ -80,6 +79,13 @@ Requests up to 100 check-runs; pagination is not yet supported."
         ((vectorp runs) (cl-coerce runs 'list))
         (t              '()))))
    callback))
+
+
+(octocat-sync-define-resource checks (repo sha)
+  :fetch (lambda (done)
+           (octocat--fetch-checks
+            repo sha
+            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
 
 ;;;; Rendering helpers
@@ -217,8 +223,9 @@ A check not created by GitHub Actions opens in the browser instead."
 
 (defun octocat-checks--list (repo checks)
   "Return the vnodes of the section of the CI results of REPO, one per row.
-CHECKS is a list of REST check-runs."
-  (let* ((entries (mapcar #'octocat-checks-from-rest checks))
+CHECKS is a sequence of REST check-runs."
+  (let* ((checks  (append checks nil))
+         (entries (mapcar #'octocat-checks-from-rest checks))
          (widths  (octocat-checks--widths entries)))
     (cons
      (vui-text (concat (propertize (format "Check runs (%d)" (length checks))
@@ -241,18 +248,14 @@ CHECKS is a list of REST check-runs."
   "The check-runs of commit SHA of REPO; REF is its branch, or nil.
 A new TICK fetches them again."
   :render
-  (let* ((checks  (octocat-repo-vui-use-cached
-                   "checks" repo sha #'octocat--fetch-checks t tick))
-         (loading (and (or (eq (plist-get checks :status) 'pending)
-                           (plist-get checks :refreshing))
-                       t)))
-    (octocat-vui-use-mode-line-loading loading)
+  (let ((checks (octocat-vui-use-resource (list 'checks repo sha) tick)))
+    (octocat-vui-use-mode-line-loading (plist-get checks :loading))
     (apply #'vui-vstack
            (octocat-vui-commit-top-row repo sha)
            (vui-text (concat "Checks"
                              (when ref (concat "  " (propertize ref 'face 'octocat-branch)))))
            (vui-newline)
-           (pcase (plist-get checks :status)
+           (pcase (octocat-vui-snapshot-status checks)
              ('pending (list (vui-text (octocat-vui-line-skeleton "  "))))
              ('error   (list (vui-text (format "  Error: %s" (plist-get checks :error))
                                        :face 'error)))
@@ -296,8 +299,8 @@ A new TICK fetches them again."
 
 (defun octocat-checks-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current check-runs buffer.
-The page paints the disk cache at once and fetches the check-runs in
-the background, in place."
+The page paints from the sync store at once and fetches the check-runs
+in the background, in place."
   (interactive)
   (unless (and octocat--checks-repo octocat--checks-sha)
     (user-error "Octocat: Buffer is not associated with a commit"))

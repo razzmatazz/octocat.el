@@ -210,25 +210,6 @@ rather than rejecting, so the section shows \"(no pull requests)\"."
    (t (funcall reject (cdr result)))))
 
 
-(defun octocat-repo-vui-use-cached (type repo number fetch &optional as-list tick)
-  "Return the `vui-use-async' result of FETCH for item NUMBER of REPO.
-NUMBER is what identifies the item, such as a PR number or a commit SHA.
-TYPE is the disk-cache type (see `octocat--detail-cache-file').  The last
-saved data shows at once with :refreshing t while FETCH, called with
-REPO, NUMBER and a callback, runs; fresh data replaces it in place and
-is saved.  A new TICK, the page's (see `octocat-vui-refresh-page'),
-fetches again.  AS-LIST says the data is a list, which the cache stores
-as a vector.  Must be called during render, like any hook."
-  (octocat-vui-use-cached
-   (list type repo number tick)
-   (lambda ()
-     (let ((raw (octocat--detail-cache-load repo type number)))
-       (and raw (if as-list (cl-coerce raw 'list) raw))))
-   (lambda (data)
-     (octocat--detail-cache-save repo type number (if as-list (vconcat data) data)))
-   (lambda (resolve reject)
-     (funcall fetch repo number
-              (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))
 (defun octocat-repo--list-workflows (repo callback)
   "Fetch workflows for REPO asynchronously and call CALLBACK with results.
 CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MSG)."
@@ -639,18 +620,22 @@ WIDTH, when non-nil, cuts the line to fit, shortening the title first."
     (if cap (truncate-string-to-width line cap nil nil "…") line)))
 
 (defun octocat-repo-vui--item-row (state cells width on-visit help
-                                         &optional compact number)
+                                         &optional compact number prefetch)
   "Return the row vnode for an item with STATE text.
 CELLS are as made by `octocat-repo-vui--cells'; each line is cut to
 WIDTH.  ON-VISIT and HELP are as for `octocat-vui-row'.  COMPACT draws
-the one line of `octocat-repo-vui--compact-line', with NUMBER."
+the one line of `octocat-repo-vui--compact-line', with NUMBER.
+PREFETCH is the sync specs ON-VISIT opens, fetched while point rests
+on the row (see `octocat-vui--prefetch-schedule')."
   (octocat-vui-row
-   (if compact
-       (octocat-repo-vui--compact-line state number cells width)
-     (mapconcat #'identity
-                (octocat-repo-vui--item-lines
-                 state cells '(:review :ci :prs :comments) width)
-                "\n"))
+   (propertize
+    (if compact
+        (octocat-repo-vui--compact-line state number cells width)
+      (mapconcat #'identity
+                 (octocat-repo-vui--item-lines
+                  state cells '(:review :ci :prs :comments) width)
+                 "\n"))
+    'octocat-sync-prefetch prefetch)
    on-visit help))
 
 (defun octocat-repo-vui--number (item)
@@ -668,7 +653,9 @@ without the state when NO-STATE is non-nil."
    width
    (lambda () (octocat-repo-vui--open-pr repo pr))
    "RET: view pull request"
-   compact (octocat-repo-vui--number pr)))
+   compact (octocat-repo-vui--number pr)
+   (let ((n (gethash "number" pr)))
+     `((pr ,repo ,n) (timeline-events ,repo ,n)))))
 
 (defun octocat-repo-vui--issue-row (repo issue width bg &optional compact no-state)
   "Return a row vnode for ISSUE in REPO, cut to WIDTH.
@@ -681,7 +668,9 @@ without the state when NO-STATE is non-nil."
    width
    (lambda () (octocat-repo-vui--open-issue repo issue))
    "RET: view issue"
-   compact (octocat-repo-vui--number issue)))
+   compact (octocat-repo-vui--number issue)
+   (let ((n (gethash "number" issue)))
+     `((issue ,repo ,n) (timeline-events ,repo ,n)))))
 
 ;; The header of an issue or PR page is drawn like a regular list row (see
 ;; above), so the page continues the list it was opened from: the state

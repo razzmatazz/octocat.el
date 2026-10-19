@@ -169,6 +169,14 @@ fresh data replaces it.  Must be called during render, like any hook."
 
 (add-hook 'octocat-sync-change-functions #'octocat-vui--on-sync-change)
 
+(defun octocat-vui--on-sync-invalidate (keys)
+  "Refetch the resources of KEYS that are on a page; the rest wait to be opened."
+  (dolist (key keys)
+    (when (gethash key octocat-vui--subscriptions)
+      (octocat-sync-request (car (read-from-string key)) t))))
+
+(add-hook 'octocat-sync-invalidate-functions #'octocat-vui--on-sync-invalidate)
+
 (defvar-local octocat-vui--resource-ticks nil
   "Resource key to the page tick it was last requested with, in this buffer.
 Kept per buffer, not per component, so a component remounted by a
@@ -202,6 +210,29 @@ be called during render, like any hook."
         (octocat-sync-request spec (and seen (not (equal seen tick)))))
       nil)
     (vui-use-memo (key v) (octocat-sync-read spec))))
+
+(defvar-local octocat-vui--prefetch-timer nil
+  "Timer that prefetches what the row at point opens, see below.")
+
+(defun octocat-vui--prefetch-schedule ()
+  "Prefetch the specs of the row at point once point rests there.
+For `post-command-hook'.  A row names them in its `octocat-sync-prefetch'
+text property.  Each command restarts the wait, so moving through rows
+prefetches nothing."
+  (when (timerp octocat-vui--prefetch-timer)
+    (cancel-timer octocat-vui--prefetch-timer))
+  (setq octocat-vui--prefetch-timer
+        (when-let* ((specs (and octocat-sync-prefetch
+                                (get-text-property (point) 'octocat-sync-prefetch))))
+          (run-with-timer octocat-sync-prefetch-delay nil #'octocat-sync-prefetch specs))))
+
+(defun octocat-vui-snapshot-status (snap)
+  "Return the state a page draws for the sync snapshot SNAP.
+That is `ready' when it has data, `error' when it has none and its last
+fetch failed, and `pending' while there is none yet."
+  (cond ((plist-get snap :data) 'ready)
+        ((and (plist-get snap :error) (not (plist-get snap :loading))) 'error)
+        (t 'pending)))
 
 (defun octocat-vui-use-detail (spec tick)
   "Return the snapshot of SPEC, an issue's or PR's page resource.
@@ -766,8 +797,6 @@ would pull the user back to it (see docs/using-vui.md)."
 ;; (octocat.el).
 
 (declare-function octocat--fetch-counts "octocat-core" (repo kind callback))
-(declare-function octocat--counts-cache-load "octocat-core" (repo kind))
-(declare-function octocat--counts-cache-save "octocat-core" (repo kind counts))
 (declare-function octocat--list-labels "octocat-core" (repo callback))
 (declare-function octocat--list-people "octocat-core" (repo callback))
 (declare-function octocat-switch-repo "octocat-core" ())
@@ -838,6 +867,7 @@ The choice is remembered for this page of this repository."
   (setq-local truncate-lines t)
   (add-hook 'completion-at-point-functions
             #'octocat-vui-list--qualifier-capf nil t)
+  (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup))
 
@@ -919,6 +949,20 @@ while they load)."
                      :on-click (lambda () (funcall fn repo))))))
    octocat--repo-tabs))
 
+(octocat-sync-define-resource counts (kind repo)
+  :fetch (lambda (done)
+           (let ((tree (make-hash-table :test #'equal)))
+             (if (null kind)
+                 (funcall done tree)
+               (octocat--fetch-counts
+                repo kind
+                (lambda (r)
+                  (if (eq (car-safe r) 'error)
+                      (funcall done r)
+                    (while r
+                      (puthash (substring (symbol-name (pop r)) 1) (pop r) tree))
+                    (funcall done tree))))))))
+
 (vui-defcomponent octocat-vui-list-header (repo tab kind tick)
   "Header for a list page: REPO, the tab strip and, for KIND, item counts.
 TAB is the symbol of the current tab (see `octocat-vui-repo-tabs').
@@ -926,24 +970,7 @@ KIND is `issues' or `pulls' to show \"N open · M closed\" (plus merged
 for pulls) from one API call, or nil for no counts.  A new TICK fetches
 them again."
   :render
-  (let* ((cached (vui-use-memo (repo kind)
-                   (and kind (octocat--counts-cache-load repo kind))))
-         (result (octocat-vui-use-async-sticky (list 'counts kind repo tick)
-                   (lambda (resolve _reject)
-                     (if (null kind)
-                         (funcall resolve nil)
-                       (octocat--fetch-counts
-                        repo kind
-                        (lambda (r)
-                          (funcall resolve (unless (eq (car-safe r) 'error) r))))))))
-         (fresh  (and (eq (plist-get result :status) 'ready)
-                      (plist-get result :data)))
-         ;; The cached counts show until the fresh ones arrive.
-         (counts (or fresh cached)))
-    (vui-use-effect (fresh)
-      (when (and kind fresh)
-        (octocat--counts-cache-save repo kind fresh))
-      nil)
+  (let ((counts (plist-get (octocat-vui-use-resource (list 'counts kind repo) tick) :data)))
     (vui-fragment
      (apply #'vui-hstack :spacing 2
             ;; A row, not a button: buttons draw their [brackets], and the
@@ -953,14 +980,14 @@ them again."
                              "RET: open repository page")
             (octocat-vui-repo-tabs repo tab))
      (vui-newline)
-     (when counts
+     (when (and counts (gethash "open" counts))
        (vui-fragment
         (vui-text (string-join
                    (delq nil
-                         (list (format "%d open" (plist-get counts :open))
-                               (format "%d closed" (plist-get counts :closed))
-                               (and (plist-get counts :merged)
-                                    (format "%d merged" (plist-get counts :merged)))))
+                         (list (format "%d open" (gethash "open" counts))
+                               (format "%d closed" (gethash "closed" counts))
+                               (and (gethash "merged" counts)
+                                    (format "%d merged" (gethash "merged" counts)))))
                    " · ")
                   :face 'octocat-dimmed)
         (vui-newline))))))
