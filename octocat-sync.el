@@ -72,6 +72,12 @@ The file is named after the host, such as \"sync-github.com.sqlite\"."
   "Functions called with the keys of resources whose snapshot changed.
 Called once per write, after it is committed.")
 
+(defvar octocat-sync-loading-functions nil
+  "Functions called with a resource's key and whether it is now loading.
+Starting or ending a fetch changes no snapshot a page draws from data,
+so it is reported here rather than as a change: a page keeps its
+spinner from it, and a refetch that finds nothing new renders nothing.")
+
 (defvar octocat-sync-invalidate-functions nil
   "Functions called with the keys of resources found outdated.
 Their data stays; a page showing one should refetch it.")
@@ -545,14 +551,29 @@ result."
      ((assoc key octocat-sync--prefetches)
       (setq octocat-sync--prefetches (assoc-delete-all key octocat-sync--prefetches))
       (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
-      (octocat-sync--notify (list key))
       (octocat-sync--pump))
      ((and (not (gethash key octocat-sync--loading))
            (octocat-sync--wanted-p spec force))
-      (puthash key t octocat-sync--loading)
+      (octocat-sync--set-loading key t)
       (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
-      (octocat-sync--notify (list key))
       (octocat-sync--pump)))))
+
+(defun octocat-sync--set-loading (key loading)
+  "Record whether resource KEY is LOADING, and report it.
+Starting to load a resource with no data yet, or with outdated data, is
+also notified as a change: its page draws grey bars, or says it is
+refreshing outdated data."
+  (if loading
+      (puthash key t octocat-sync--loading)
+    (remhash key octocat-sync--loading))
+  (run-hook-with-args 'octocat-sync-loading-functions key loading)
+  (when (and loading
+             (not (eql 1 (caar (sqlite-select
+                                (octocat-sync--db)
+                                "SELECT body IS NOT NULL AND invalidated_at IS NULL
+                                 FROM resource WHERE key = ?"
+                                (list key))))))
+    (octocat-sync--notify (list key))))
 
 (defun octocat-sync-get (spec callback)
   "Call CALLBACK with the data of SPEC, or (error . MESSAGE).
@@ -572,13 +593,13 @@ and is skipped if its resource was fetched just now, or while offline.
 It only writes the store."
   (when (and octocat-sync-prefetch (not octocat-sync--offline))
     (pcase-dolist (`(,key . ,_) octocat-sync--prefetches)
-      (remhash key octocat-sync--loading))
+      (octocat-sync--set-loading key nil))
     (setq octocat-sync--prefetches
           (delq nil (mapcar (lambda (spec)
                               (let ((key (octocat-sync-spec-key spec)))
                                 (unless (or (gethash key octocat-sync--loading)
                                             (not (octocat-sync--wanted-p spec nil)))
-                                  (puthash key t octocat-sync--loading)
+                                  (octocat-sync--set-loading key t)
                                   (cons key spec))))
                             specs)))
     (octocat-sync--pump)))
@@ -618,7 +639,6 @@ when no other prefetch runs."
   (cl-decf octocat-sync--running)
   (when (equal key octocat-sync--prefetching)
     (setq octocat-sync--prefetching nil))
-  (remhash key octocat-sync--loading)
   (let* ((db      (octocat-sync--db))
          (spec    (car (read-from-string key)))
          (props   (octocat-sync--props spec))
@@ -627,24 +647,29 @@ when no other prefetch runs."
                     (and entity (caar (sqlite-select db "SELECT fields FROM entity WHERE key = ?"
                                                      (list entity))))))
          (before  (funcall fields))
-         (fetched (caar (sqlite-select db "SELECT body IS NOT NULL FROM resource WHERE key = ?"
-                                       (list key)))))
-    (octocat-sync--notify
-     ;; KEY always changed, since it stopped loading.
-     (cl-adjoin key
-           (condition-case err
-               (if (eq (car-safe result) 'error)
-                   (let ((kind (octocat-sync--error-kind (cdr result))))
-                     (setq octocat-sync--offline (eq kind 'offline))
-                     (octocat-sync--write-error db key (cdr result) kind (float-time))
-                     nil)
-                 (setq octocat-sync--offline nil)
-                 (octocat-sync--write db key result (float-time)))
-             ;; Say a second Emacs held the lock past the timeout: drop the write.
-             (error (octocat--debug-log (format "sync write %s failed" key)
-                                        (error-message-string err))
-                    nil))
-           :test #'equal))
+         (status  (car (sqlite-select
+                        db "SELECT body IS NOT NULL, error IS NOT NULL, invalidated_at IS NOT NULL
+                            FROM resource WHERE key = ?"
+                        (list key))))
+         (fetched (car status))
+         ;; Its page draws no data, an error and an outdated mark, so
+         ;; a change to any of them changes the snapshot.
+         (shown   (or (not (eql fetched 1)) (eql (nth 1 status) 1) (eql (nth 2 status) 1)
+                      (eq (car-safe result) 'error)))
+         (touched (condition-case err
+                      (if (eq (car-safe result) 'error)
+                          (let ((kind (octocat-sync--error-kind (cdr result))))
+                            (setq octocat-sync--offline (eq kind 'offline))
+                            (octocat-sync--write-error db key (cdr result) kind (float-time))
+                            nil)
+                        (setq octocat-sync--offline nil)
+                        (octocat-sync--write db key result (float-time)))
+                    ;; Say a second Emacs held the lock past the timeout: drop the write.
+                    (error (octocat--debug-log (format "sync write %s failed" key)
+                                               (error-message-string err))
+                           nil))))
+    (octocat-sync--set-loading key nil)
+    (octocat-sync--notify (if shown (cl-adjoin key touched :test #'equal) touched))
     ;; The main entity changed, so the lists filtered on it may have
     ;; gained or lost it.  A first fetch has nothing to compare.
     (when (and entity (eql fetched 1) (not (eq (car-safe result) 'error))

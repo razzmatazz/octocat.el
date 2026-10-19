@@ -228,13 +228,8 @@ everything again."
          (tab-w    (octocat--markdown-width))
          (files    (octocat-vui-use-resource (list 'pr-files repo number) tick))
          (comments (octocat-vui-use-resource (list 'pr-review-comments repo number) tick))
-         (loading  (and (or (plist-get pr :loading)
-                            (plist-get files :loading)
-                            (plist-get comments :loading))
-                        t))
          (by-path  (vui-use-memo ((plist-get comments :data))
                      (octocat-diff-by-path (plist-get comments :data)))))
-    (octocat-vui-use-mode-line-loading loading)
     (vui-vstack
      ;; The same header as the conversation, so the pages read as tabs.
      (cond

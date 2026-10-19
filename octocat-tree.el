@@ -423,9 +423,7 @@ BRANCH is a picker button, as GitHub's branch dropdown."
 PATH is this directory's full repository path (\"\" for the root)."
   :render
   (let* ((indent  (make-string (* depth 2) ?\s))
-         (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
-         (loading (plist-get result :loading)))
-    (octocat-vui-use-mode-line-loading loading)
+         (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil)))
     (pcase (octocat-vui-snapshot-status result)
       ('error
        (vui-text (propertize (format "%s  Error: %s" indent (plist-get result :error))
@@ -495,7 +493,6 @@ new TICK refetches it again."
   (let* ((buf    (current-buffer))
          (result (octocat-vui-use-resource (list 'tree-root repo branch) tick))
          (sha    (let ((d (plist-get result :data))) (and d (gethash "sha" d)))))
-    (octocat-vui-use-mode-line-loading (plist-get result :loading))
     (vui-use-effect (sha)
       (when (and sha (buffer-live-p buf))
         (with-current-buffer buf
@@ -958,7 +955,6 @@ TICK fetches them again."
   (let* ((result  (octocat-vui-use-resource (list 'file-log repo path) tick))
          (status  (octocat-vui-snapshot-status result))
          (commits (append (plist-get result :data) nil)))
-    (octocat-vui-use-mode-line-loading (plist-get result :loading))
     (vui-vstack
      (vui-text (concat
                 (propertize (or repo "") 'face 'octocat-repo)

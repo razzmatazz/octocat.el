@@ -387,12 +387,10 @@ store until the fresh data arrives; a new TICK fetches both again."
   :render
   (let* ((repos   (octocat-vui-use-resource '(dashboard-repos) tick))
          (feed    (octocat-vui-use-resource (list 'dashboard-feed feed-limit) tick))
-         (shown   (vui-use-ref nil))
-         (loading (and (or (plist-get repos :loading) (plist-get feed :loading)) t)))
+         (shown   (vui-use-ref nil)))
     ;; Each limit is its own resource: keep the shorter feed while the
     ;; longer one loads.
     (when (plist-get feed :data) (setcar shown (append (plist-get feed :data) nil)))
-    (octocat-vui-use-mode-line-loading loading)
     (vui-vstack
      (vui-text "GitHub Dashboard" :face 'octocat-repo)
      (octocat--dashboard-section

@@ -240,9 +240,7 @@ data replaces it."
                        (mapcar (lambda (j) (cons (gethash "databaseId" j) (or (gethash "name" j) "")))
                                jobs))
                  tick))
-         (arts  (octocat-vui-use-resource (list 'run-artifacts repo run-id) tick))
-         (loading (and (cl-some (lambda (r) (plist-get r :loading)) (list run anns arts)) t)))
-    (octocat-vui-use-mode-line-loading loading)
+         (arts  (octocat-vui-use-resource (list 'run-artifacts repo run-id) tick)))
     (apply #'vui-vstack
            (octocat-vui-actions-top-row repo)
            (cond

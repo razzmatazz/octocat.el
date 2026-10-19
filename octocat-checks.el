@@ -249,7 +249,6 @@ CHECKS is a sequence of REST check-runs."
 A new TICK fetches them again."
   :render
   (let ((checks (octocat-vui-use-resource (list 'checks repo sha) tick)))
-    (octocat-vui-use-mode-line-loading (plist-get checks :loading))
     (apply #'vui-vstack
            (octocat-vui-commit-top-row repo sha)
            (vui-text (concat "Checks"

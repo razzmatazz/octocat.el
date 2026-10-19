@@ -253,7 +253,6 @@ A new TICK fetches them again."
     ;; Each limit is its own resource: keep the shorter list while the
     ;; longer one loads.
     (when data (setcar shown (append (gethash "nodes" data) nil)))
-    (octocat-vui-use-mode-line-loading loading)
     (let ((repos (car shown)))
       (vui-vstack
        (vui-text "Repositories" :face 'octocat-section-heading)
@@ -288,7 +287,6 @@ or when the fetch fails.  A new TICK fetches them again."
   (let* ((snap  (octocat-vui-use-resource (list 'user-pinned login) tick))
          (data  (plist-get snap :data))
          (repos (and data (append (gethash "nodes" data) nil))))
-    (octocat-vui-use-mode-line-loading (plist-get snap :loading))
     (if (null repos)
         (vui-fragment)
       (vui-vstack
@@ -337,7 +335,6 @@ A new TICK fetches everything again."
   (let* ((snap    (octocat-vui-use-resource (list 'user-profile login) tick))
          (profile (plist-get snap :data))
          (handle  (vui-text (propertize (concat "@" login) 'face 'octocat-repo))))
-    (octocat-vui-use-mode-line-loading (plist-get snap :loading))
     (vui-vstack
      (cond
       (profile (vui-component 'octocat-user--header :profile profile))

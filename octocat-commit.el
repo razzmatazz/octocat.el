@@ -207,16 +207,11 @@ new TICK fetches them again."
          (checks   (octocat-vui-use-resource (list 'checks repo sha) tick))
          (comments (octocat-vui-use-resource (list 'commit-comments repo sha) tick))
          (data     (plist-get commit :data))
-         (loading  (and (or (plist-get commit :loading)
-                            (plist-get checks :loading)
-                            (plist-get comments :loading))
-                        t))
          (md-width (progn width (octocat--markdown-width)))
          (by-path  (vui-use-memo ((plist-get comments :data))
                      (octocat-diff-by-path (plist-get comments :data))))
          (body     (vui-use-memo (data raw width)
                      (and data (octocat-commit--body data raw md-width)))))
-    (octocat-vui-use-mode-line-loading loading)
     (apply #'vui-vstack
            (append
             (octocat-commit--header repo sha data)

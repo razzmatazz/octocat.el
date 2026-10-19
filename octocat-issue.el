@@ -258,8 +258,6 @@ A new TICK fetches everything again."
                           (octocat-timeline-entries
                            (octocat-timeline-items issue "opened this issue" events bg)
                            raw (octocat--markdown-width))))))
-    (octocat-vui-use-mode-line-loading
-     (and (or (plist-get snap :loading) (plist-get (cdr timeline) :loading)) t))
     (cond
      (issue
       (apply #'vui-vstack

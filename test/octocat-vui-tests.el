@@ -180,6 +180,7 @@ unsubscribes it."
          (octocat-sync--running 0)
          (octocat-sync--resources (make-hash-table :test #'eq))
          (octocat-sync-change-functions (list #'octocat-vui--on-sync-change))
+         (octocat-sync-loading-functions (list #'octocat-vui--on-sync-loading))
          (octocat-vui--subscriptions (make-hash-table :test #'equal))
          (octocat-vui-tests--renders 0)
          (vui-render-delay nil)
@@ -209,6 +210,13 @@ unsubscribes it."
             ;; Fresh, but a new tick is `g'.
             (vui-update-props root (list :spec '(thing 1) :tick 2))
             (should (equal (mapcar #'car pending) '(1 2 1)))
+            ;; A refetch shows only in the mode line, and finding the
+            ;; same data renders nothing.
+            (should (buffer-local-value 'mode-line-process buf))
+            (let ((renders octocat-vui-tests--renders))
+              (answer 1)
+              (should (= octocat-vui-tests--renders renders)))
+            (should-not (buffer-local-value 'mode-line-process buf))
             (kill-buffer buf)
             (should (= (hash-table-count octocat-vui--subscriptions) 0)))
         (when (buffer-live-p buf) (kill-buffer buf))))))
