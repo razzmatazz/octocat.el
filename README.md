@@ -105,9 +105,9 @@ line and the README are of, highlighted in the tree.  The path line
 back to the root's entries; `^` does so one directory at a time.  Under
 Evil, as in treemacs-evil, `l` opens the entry at point and `h` goes up
 a directory.  The entries are not buttons, so `TAB` does not step from
-file to file.  A directory shows its first `octocat-tree-entries` (15)
-entries and folds the rest behind a "more entries" row that `RET`
-expands.  `C-c C-f` picks any file of the commit by path, with
+file to file.  The root's listing shows its first
+`octocat-tree-entries` (15) entries and folds the rest behind a "more
+entries" row that `RET` expands; the tree does not fold.  `C-c C-f` picks any file of the commit by path, with
 `completing-read`, and opens it; its list is fetched once per commit.
 `C-c C-o` opens the file or directory at point on GitHub, and elsewhere
 the directory shown.

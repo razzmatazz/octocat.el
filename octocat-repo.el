@@ -1211,7 +1211,7 @@ path; the repository's name leads back to the root, \"\"."
 (vui-defcomponent octocat-repo-vui--root
     (repo ref path reveal focus local-dir unpushed raw tick)
   "Root component for the repo buffer, as GitHub's Code tab: header,
-local-head/fork-parent info, the UNPUSHED section, then the picker of
+with the repo tabs at the root only, local-head/fork-parent info, the UNPUSHED section, then the picker of
 REF and the last commit of PATH, the files and PATH's README.  REF is a
 branch, tag or SHA, nil for the default branch.  At the root, PATH nil,
 the files are the root's entries; below it they are the whole tree,
@@ -1233,16 +1233,19 @@ header comes from one summary resource and the rest from the
                                     :data))
          (dir-p          (and head (equal (gethash "kind" head) "tree")))
          (tree           (and dir-p (gethash "tree" head)))
-         (branch         (or ref default-branch "HEAD")))
+         (branch         (or ref default-branch "HEAD"))
+         ;; A hook, so read on every render, shown or not.
+         (tabs           (octocat-vui-repo-tabs repo 'code tick)))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
         (with-current-buffer buf
           (setq octocat-repo--default-branch default-branch)))
       nil)
     (vui-vstack
+     ;; The tree view leaves out the tabs, so the files start sooner.
      (apply #'vui-hstack :spacing 2
             (vui-text repo :face 'octocat-repo)
-            (octocat-vui-repo-tabs repo 'code tick))
+            (unless path tabs))
      (when local-dir
        (vui-text
         (concat (propertize "Local clone:" 'face 'octocat-dimmed)
@@ -1314,7 +1317,11 @@ non-nil, keeps the commits that touched it, as GitHub's History."
           (setq octocat-repo--default-branch default-branch)))
       nil)
     (vui-vstack
-     (vui-component 'octocat-vui-list-header :repo repo :tab 'code :kind nil :tick tick)
+     ;; No tabs: only the repo root and the list pages show them.
+     (octocat-vui-row (propertize repo 'face 'octocat-repo)
+                      (lambda () (octocat-visit-repo repo))
+                      "RET: open repository page")
+     (vui-newline)
      (vui-component 'octocat-repo-vui--commits-section
                     :key (list ref path)
                     :repo repo :ref ref :path path :default-branch default-branch

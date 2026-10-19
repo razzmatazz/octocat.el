@@ -159,9 +159,11 @@ CURRENT is the page's directory and FOCUS where point goes, as for
       (should (equal (octocat-tree--path-at-point) "a.el")))))
 
 (ert-deftest octocat-tree-test-full-tree ()
-  "In a directory the whole tree shows, opened down to it, which RET toggles."
+  "In a directory the whole tree shows, opened down to it, which RET toggles.
+It does not fold, however long."
   (with-temp-buffer
     (octocat-tree-tests--with-store
+     (let ((octocat-tree-entries 1))
       (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
                                  (vector (octocat-tree-tests--entry "doc" "tree" "docsha")
                                          (octocat-tree-tests--entry "src" "tree" "srcsha")
@@ -176,7 +178,8 @@ CURRENT is the page's directory and FOCUS where point goes, as for
       (vui-flush-sync)
       (should (equal octocat-tree-tests--visited '("src")))
       (should (string-match-p "▸ src/" (buffer-string)))
-      (should-not (string-match-p "x\\.el" (buffer-string))))))
+      (should-not (string-match-p "x\\.el" (buffer-string)))
+      (should-not (string-match-p "more entries" (buffer-string)))))))
 
 (ert-deftest octocat-tree-test-folds-long-directories ()
   "Past `octocat-tree-entries' a directory folds behind a marker that RET unfolds."

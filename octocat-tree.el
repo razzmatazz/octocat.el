@@ -68,7 +68,8 @@
 ;;;; User options
 
 (defcustom octocat-tree-entries 15
-  "Entries of a directory the repo page lists before the rest is folded away.
+  "Entries of the root the repo page lists before the rest is folded away.
+The whole tree, shown once a directory is opened, does not fold.
 The rest expands on RET.  Nil never folds."
   :type '(choice (const :tag "Never fold" nil) integer)
   :group 'octocat)
@@ -369,65 +370,51 @@ keymaps."
   "Return non-nil when PATH is REVEAL or a directory on the way to it."
   (and reveal (string-prefix-p (concat path "/") (concat reveal "/"))))
 
-(defun octocat-tree--use-listing (repo sha dir focus)
-  "Read the entries of directory DIR, tree SHA of REPO, for a render.
-Return (STATUS ENTRIES PATHS): the snapshot status, the entries sorted
-and their full paths.  Once they are listed point moves to FOCUS, the
-path of one of them.  A hook: call it during render."
-  (let* ((buf     (current-buffer))
-         (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
-         (status  (octocat-vui-snapshot-status result))
-         (entries (and (eq status 'ready)
-                       (octocat-tree--sorted-entries (plist-get result :data))))
-         (paths   (mapcar (lambda (e) (octocat-tree--join dir (gethash "path" e)))
-                          entries)))
-    (vui-use-effect (focus status)
+(defun octocat-tree--use-focus (focus paths)
+  "Move point to FOCUS once it is among PATHS, the entries listed.
+A hook: call it during render."
+  (let ((buf (current-buffer)))
+    (vui-use-effect (focus paths)
       ;; After the render: a first mount ends at `point-min'.
       (when (and focus (member focus paths))
         (run-at-time 0 nil #'octocat-tree--jump-to buf focus))
-      nil)
-    (list (if (eq status 'error) result status) entries paths)))
-
-(defun octocat-tree--listing (status entries indent key limit row)
-  "Return the vnode of a directory's ENTRIES as STATUS has them.
-STATUS is from `octocat-tree--use-listing', the snapshot itself on an
-error.  ROW draws an entry.  Past LIMIT entries the rest fold behind a
-marker after INDENT, named KEY."
-  (pcase status
-    ('ready
-     (if (null entries)
-         (vui-text (propertize (concat indent "(empty)") 'face 'octocat-dimmed))
-       (vui-component
-        'octocat-vui-fold-rest
-        :total (length entries) :limit limit :noun "entries"
-        :prefix indent :key key
-        :render (lambda (n)
-                  (vui-list (seq-take entries n) row
-                            (lambda (entry)
-                              (concat (gethash "type" entry) ":" (gethash "path" entry))))))))
-    ('pending (vui-text (octocat-tree--skeleton indent)))
-    (snap (vui-text (propertize (concat indent (octocat-vui-error-text snap)) 'face 'error)))))
+      nil)))
 
 (vui-defcomponent octocat-tree--dir (repo branch sha focus on-dir)
   "The root's entries, its tree SHA of REPO at BRANCH, as GitHub lists them.
 RET on a directory calls ON-DIR with its path; on a file it opens it.
 Point moves to FOCUS, an entry's path, once it is listed.  Past
 `octocat-tree-entries' the entries are folded, unless FOCUS is among
-them."
+them, so the README below is near."
   :render
-  (pcase-let ((`(,status ,entries ,paths) (octocat-tree--use-listing repo sha "" focus)))
-    (octocat-tree--listing
-     status entries "" 'tree-fold (unless (member focus paths) octocat-tree-entries)
-     (lambda (entry)
-       (let* ((name (or (gethash "path" entry) ""))
-              (sha  (or (gethash "sha" entry) "")))
-         (if (equal (gethash "type" entry) "tree")
-             (octocat-tree--entry-line "" (concat name "/") 'octocat-branch 'dir entry name
-                                       (lambda () (funcall on-dir name)))
-           (octocat-tree--entry-line "" name 'default 'file entry name
-                                     (lambda ()
-                                       (octocat-tree--open-file-by-path
-                                        repo branch name sha)))))))))
+  (let* ((result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
+         (entries (octocat-tree--sorted-entries (plist-get result :data)))
+         (paths   (mapcar (lambda (e) (gethash "path" e)) entries)))
+    (octocat-tree--use-focus focus paths)
+    (pcase (octocat-vui-snapshot-status result)
+      ('pending (vui-text (octocat-tree--skeleton)))
+      ('error   (vui-text (propertize (octocat-vui-error-text result) 'face 'error)))
+      ((guard (null entries)) (vui-text (propertize "(empty)" 'face 'octocat-dimmed)))
+      (_
+       (vui-component
+        'octocat-vui-fold-rest
+        :total (length entries) :noun "entries" :prefix "" :key 'tree-fold
+        :limit (unless (member focus paths) octocat-tree-entries)
+        :render
+        (lambda (n)
+          (vui-list
+           (seq-take entries n)
+           (lambda (entry)
+             (let ((name (gethash "path" entry))
+                   (sha  (gethash "sha" entry)))
+               (if (equal (gethash "type" entry) "tree")
+                   (octocat-tree--entry-line "" (concat name "/") 'octocat-branch 'dir entry name
+                                             (lambda () (funcall on-dir name)))
+                 (octocat-tree--entry-line "" name 'default 'file entry name
+                                           (lambda ()
+                                             (octocat-tree--open-file-by-path
+                                              repo branch name sha))))))
+           (lambda (entry) (gethash "path" entry)))))))))
 
 (vui-defcomponent octocat-tree--subtree
     (repo branch sha depth path reveal current focus on-dir)
@@ -435,27 +422,27 @@ them."
 They are of REPO at BRANCH.  Directories on the way to REVEAL start
 expanded, and CURRENT, the page's directory, is highlighted.  RET on a
 directory toggles it and calls ON-DIR with its path; on a file it opens
-it.  Point moves to FOCUS, an entry's path, once it is listed.  Past
-`octocat-tree-entries' the entries fold, unless the way to REVEAL or
-FOCUS is among the folded ones."
+it.  Point moves to FOCUS, an entry's path, once it is listed.  Unlike
+the root's listing it does not fold: it is for browsing."
   :render
-  (pcase-let* ((`(,status ,entries ,paths)
-                (octocat-tree--use-listing repo sha path focus))
-               (indent (make-string (* depth 2) ?\s))
-               (needed (cl-position-if (lambda (p)
-                                         (or (equal p focus)
-                                             (octocat-tree--reveals-p p reveal)))
-                                       paths)))
-    (octocat-tree--listing
-     status entries indent (intern (concat "tree-fold:" path))
-     (and octocat-tree-entries
-          (not (and needed (>= needed octocat-tree-entries)))
-          octocat-tree-entries)
-     (lambda (entry)
-       (vui-component 'octocat-tree--node
-                      :repo repo :branch branch :entry entry :depth depth
-                      :parent path :reveal reveal :current current
-                      :focus focus :on-dir on-dir)))))
+  (let* ((indent  (make-string (* depth 2) ?\s))
+         (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
+         (entries (octocat-tree--sorted-entries (plist-get result :data))))
+    (octocat-tree--use-focus
+     focus (mapcar (lambda (e) (octocat-tree--join path (gethash "path" e))) entries))
+    (pcase (octocat-vui-snapshot-status result)
+      ('pending (vui-text (octocat-tree--skeleton indent)))
+      ('error   (vui-text (propertize (concat indent (octocat-vui-error-text result))
+                                      'face 'error)))
+      (_ (if (null entries)
+             (vui-text (propertize (concat indent "(empty)") 'face 'octocat-dimmed))
+           (vui-list entries
+                     (lambda (entry)
+                       (vui-component 'octocat-tree--node
+                                      :repo repo :branch branch :entry entry :depth depth
+                                      :parent path :reveal reveal :current current
+                                      :focus focus :on-dir on-dir))
+                     (lambda (entry) (gethash "path" entry))))))))
 
 (vui-defcomponent octocat-tree--node
     (repo branch entry depth parent reveal current focus on-dir)

@@ -654,8 +654,8 @@ repository page".
 
 ### The tab strip
 
-The repo page, its commits page and the issue / PR / Actions list pages
-share one strip, `octocat-vui-repo-tabs`, imitating GitHub's repository
+The repo page at its root and the issue / PR / Actions list pages share
+one strip, `octocat-vui-repo-tabs`, imitating GitHub's repository
 tabs:
 
 ```
@@ -665,10 +665,10 @@ owner/repo  [Code]  [Issues (N)]  [Pull requests (N)]  [Actions]
 - Tabs are buttons (bracketed), so they follow the rule above.
 - The tab of the page being shown is drawn as an un-bracketed
   `octocat-section-heading` and is not clickable.
-- Code is the repo page itself, as on GitHub, so it is current there and
-  on the commits page, which GitHub keeps under Code too.  The repo
-  page lists the root's files, and once a directory is opened the whole
-  tree, as GitHub's sidebar.
+- Code is the repo page itself, as on GitHub, so it is current there.
+  The repo page lists the root's files, and once a directory is opened
+  the whole tree, as GitHub's sidebar; that view, and the commits page,
+  leave the strip out, so the files and commits start sooner.
 - The strip is underlined, gaps included, so it reads as a tab bar
   rather than a row of buttons.  Unlike `octocat-vui-tab-row` it stops at
   the last tab: it shares its line with the repo name.
