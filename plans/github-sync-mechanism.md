@@ -649,10 +649,20 @@ The pilot is done when:
 - Reading a 100-row list (about 250 entities with authors and labels)
   takes under 5 ms.  If not, keep parsed entities in memory, updated on
   each write in this process.
+  (Measured, 230 entities, byte-compiled, Emacs 31.1: a read takes
+  1.9 ms, an unchanged write 3.8 ms.  Loaded from source, as with
+  `eval-buffer`, they take 15 and 19 ms.)
 - Re-rendering the longest PR timeline doesn't lag.  If it does, add
   `:memo` to the timeline and the markdown bodies.
+  (Measured on short pages only: a PR or issue page re-renders in about
+  15 ms, loaded from source.  The timeline's entries are memoized on the
+  data, so a re-render that changes nothing in them redoes no markdown.
+  Still to time on a long PR.)
 - The prefetch hook adds no lag to `j`/`k`, and a minute of normal
   browsing stays well within the rate limit.
+  (Measured: the hook costs 1.3 µs a command.  The rate limit is
+  unmeasured: a prefetch needs point to rest 0.3 s, so it is bounded by
+  how often one pauses on a row, at most one request each.)
 
 ## Deferred (behind the resource API, so pages won't change)
 
