@@ -643,6 +643,9 @@ The pilot is done when:
 
 - `gh api -i` gives a parseable HTTP status for REST and GraphQL
   failures, and network failures can be told apart from them.
+  (Implemented instead: the kind is read from `gh`'s error text, since
+  most fetches use `gh issue view`, `gh run list` and the like, which
+  report no status; see `octocat-sync--error-kind`.)
 - Reading a 100-row list (about 250 entities with authors and labels)
   takes under 5 ms.  If not, keep parsed entities in memory, updated on
   each write in this process.

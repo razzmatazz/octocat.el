@@ -142,6 +142,19 @@
       (should-not (octocat-vui--turn-page-spinners buf))
       (should-not octocat-vui--page-spinner))))
 
+(ert-deftest octocat-vui-test-header-notice ()
+  "Only a failed refresh over shown data gets a notice; offline names the time."
+  (let ((h (make-hash-table)))
+    (should-not (octocat-vui-header-notice (list (list :data h))))
+    (should-not (octocat-vui-header-notice (list (list :error "boom"))))
+    (should-not (octocat-vui-header-notice (list (list :data h :error "boom" :loading t))))
+    (should (equal (octocat-vui-header-notice
+                    (list (list :data h) (list :data h :error "HTTP 502\nmore")))
+                   "Refresh failed: HTTP 502; g to retry"))
+    (should (string-prefix-p "Offline: showing data from "
+                             (octocat-vui-header-notice
+                              (list (list :data h :error "x" :kind 'offline :fetched-at 0.0)))))))
+
 (defvar octocat-vui-tests--renders 0
   "How many times `octocat-vui-tests--reader' rendered.")
 
