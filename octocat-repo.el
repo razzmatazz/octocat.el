@@ -1024,9 +1024,8 @@ are no commits to show."
          (status  (octocat-vui-snapshot-status snap))
          (done    (or (and (plist-get more :done) (eq commits more-items))
                       (/= 0 (% (length commits) size))))
-         (loading (and (or (plist-get snap :loading) fetching) t))
          (label   (or branch default-branch)))
-    (octocat-vui-use-mode-line-loading loading)
+    (octocat-vui-use-mode-line-loading fetching)
     (let ((head (pcase status
                   ('ready (if commits (gethash "sha" (car commits)) 'none))
                   ('error 'none))))
@@ -1126,8 +1125,6 @@ under its blob SHA, so while the branch stays put no request is made."
                                                (octocat-tree--blob-content
                                                 (plist-get blob :data))
                                                raw width)))))
-    (octocat-vui-use-mode-line-loading
-     (and (or (plist-get root :loading) (plist-get blob :loading)) t))
     (cond
      (docs
       (vui-vstack
@@ -1174,14 +1171,12 @@ Everything but the commits and docs comes from one summary resource."
          (snap           (octocat-vui-use-resource (list 'repo-summary repo) tick))
          (summary        (plist-get snap :data))
          (default-branch (and summary (gethash "default-branch" summary)))
-         (fork-parent    (and summary (gethash "fork-parent" summary)))
-         (loading        (plist-get snap :loading)))
+         (fork-parent    (and summary (gethash "fork-parent" summary))))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
         (with-current-buffer buf
           (setq octocat-repo--default-branch default-branch)))
       nil)
-    (octocat-vui-use-mode-line-loading loading)
     (vui-vstack
      (apply #'vui-hstack :spacing 2
             (vui-text repo :face 'octocat-repo)

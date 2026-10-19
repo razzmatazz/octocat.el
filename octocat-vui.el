@@ -132,6 +132,27 @@ own, so a segment such as a relative date keeps its own hover text
 
 (add-hook 'octocat-sync-change-functions #'octocat-vui--on-sync-change)
 
+(defvar-local octocat-vui--loading-keys nil
+  "Keys of the resources this buffer's page reads that are being fetched.")
+
+(defun octocat-vui--set-key-loading (buf key loading)
+  "Record in BUF that resource KEY is LOADING, and show it in its mode line."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (setq octocat-vui--loading-keys
+            (if loading
+                (cl-adjoin key octocat-vui--loading-keys :test #'equal)
+              (delete key octocat-vui--loading-keys)))
+      (octocat-vui--show-busy))))
+
+(defun octocat-vui--on-sync-loading (key loading)
+  "Show in the mode line of each page reading KEY whether it is LOADING.
+No re-render: a refetch shows only here until its data changes."
+  (pcase-dolist (`(,buf . ,_) (gethash key octocat-vui--subscriptions))
+    (octocat-vui--set-key-loading buf key loading)))
+
+(add-hook 'octocat-sync-loading-functions #'octocat-vui--on-sync-loading)
+
 (defun octocat-vui--on-sync-invalidate (keys)
   "Refetch the resources of KEYS that are on a page; the rest wait to be opened."
   (dolist (key keys)
@@ -209,9 +230,11 @@ Kept per buffer, not per component, so a component remounted by a
 refresh still sees that the tick is new.")
 
 (defun octocat-vui-use-resource (spec tick)
-  "Return the sync snapshot of SPEC, a plist (:data :loading :error ...).
-The page re-renders when the snapshot changes.  Opening fetches SPEC
-unless it was fetched just now; a new TICK (see
+  "Return the sync snapshot of SPEC, a plist (:data :loading :error …).
+The page re-renders when the snapshot changes, and its mode line shows
+when SPEC is being fetched; a refetch of shown data that changes nothing
+renders nothing, so its :loading is only current while it has no data.
+Opening fetches SPEC unless it was fetched just now; a new TICK (see
 `octocat-vui-refresh-page') always does.  A component that reads it must
 not be `:memo', since the change re-renders from the page's root.  When
 a refresh fails over shown data, the header line says so, see
@@ -224,7 +247,10 @@ hook."
     (vui-use-effect (key)
       (let ((entry (cons buf version)))
         (push entry (gethash key octocat-vui--subscriptions))
+        (when (gethash key octocat-sync--loading)
+          (octocat-vui--set-key-loading buf key t))
         (lambda ()
+          (octocat-vui--set-key-loading buf key nil)
           (let ((rest (delq entry (gethash key octocat-vui--subscriptions))))
             (if rest
                 (puthash key rest octocat-vui--subscriptions)
@@ -734,7 +760,8 @@ no longer shows it."
   "Show the current buffer's action, else whether it is loading, in its mode line."
   (setq mode-line-process
         (cond (octocat-vui--action (octocat-vui-mode-line-busy octocat-vui--action))
-              ((> octocat-vui--loading 0) (octocat-vui-mode-line-busy ":loading"))))
+              ((or (> octocat-vui--loading 0) octocat-vui--loading-keys)
+               (octocat-vui-mode-line-busy ":loading"))))
   (force-mode-line-update))
 
 (defun octocat-vui--add-loading (buf n)
@@ -1073,9 +1100,8 @@ cursor.  A new TICK refetches the first page."
          (snap   (octocat-vui-use-resource (list 'list-items kind repo query limit) tick))
          (first  (plist-get snap :data))
          (items  (append (and first (gethash "nodes" first)) (plist-get more :items)))
-         (cursor (if more (plist-get more :cursor) (and first (gethash "cursor" first))))
-         (loading (and (or (plist-get snap :loading) fetching) t)))
-    (octocat-vui-use-mode-line-loading loading)
+         (cursor (if more (plist-get more :cursor) (and first (gethash "cursor" first)))))
+    (octocat-vui-use-mode-line-loading fetching)
     (cond
      ((and (null first) (plist-get snap :error) (not (plist-get snap :loading)))
       (vui-text (format "%s\n" (plist-get snap :error)) :face 'octocat-dimmed))

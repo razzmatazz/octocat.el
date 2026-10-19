@@ -968,8 +968,6 @@ again."
                           (octocat-timeline-entries
                            (octocat-pr--items repo pr events bg)
                            raw (octocat--markdown-width))))))
-    (octocat-vui-use-mode-line-loading
-     (and (or (plist-get snap :loading) (plist-get (cdr timeline) :loading)) t))
     (cond
      (pr
       (let ((on-visit-check
@@ -1018,7 +1016,6 @@ A new TICK fetches them again."
          (snap  (octocat-pr--use-data repo number tick))
          (pr    (plist-get snap :data))
          (days  (vui-use-memo (pr) (and pr (octocat-pr--commit-days pr)))))
-    (octocat-vui-use-mode-line-loading (plist-get snap :loading))
     (cond
      (pr
       (let* ((commits   (apply #'append (mapcar #'cdr days)))

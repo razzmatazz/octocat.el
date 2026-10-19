@@ -540,9 +540,7 @@ unfolded, until the fresh data replaces it."
          (log     (vui-use-memo (raw)
                     (if raw
                         (octocat--job-parse-log raw)
-                      (cons 'error (or (and data (gethash "log_error" data)) "")))))
-         (loading (plist-get result :loading)))
-    (octocat-vui-use-mode-line-loading loading)
+                      (cons 'error (or (and data (gethash "log_error" data)) ""))))))
     (apply #'vui-vstack
            (octocat-vui-actions-top-row repo)
            (pcase (octocat-vui-snapshot-status result)

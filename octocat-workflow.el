@@ -222,7 +222,6 @@ A new TICK fetches them again."
     ;; Each limit is its own resource: keep the shorter list while the
     ;; longer one loads.
     (when (plist-get snap :data) (setcar shown (plist-get snap :data)))
-    (octocat-vui-use-mode-line-loading loading)
     (apply #'vui-vstack
            (octocat-vui-actions-top-row repo)
            (pcase (if (car shown) 'ready (octocat-vui-snapshot-status snap))

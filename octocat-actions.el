@@ -159,7 +159,6 @@ tick."
     ;; Each limit is its own resource: keep the shorter list while the
     ;; longer one loads.
     (when data (setcar shown (append (gethash "nodes" data) nil)))
-    (octocat-vui-use-mode-line-loading loading)
     (pcase (if (car shown) 'ready (octocat-vui-snapshot-status snap))
        ('pending (vui-text (octocat-vui-line-skeleton)))
        ('error   (vui-text (format "%s\n" (plist-get snap :error)) :face 'octocat-dimmed))
@@ -232,8 +231,6 @@ shown up until the fresh data replaces it."
          (tab-of    (lambda (sym label help)
                       (list label help
                             (unless (eq tab sym) (lambda () (vui-set-state :tab sym)))))))
-    (octocat-vui-use-mode-line-loading
-     (and (eq tab 'workflows) (plist-get workflows :loading)))
     (vui-vstack
      (vui-component 'octocat-vui-list-header :repo repo :tab 'actions)
      (octocat-vui-tab-row
