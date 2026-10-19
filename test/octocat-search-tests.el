@@ -64,5 +64,38 @@ Each `gh' call is pushed to `calls' as (ARGS . CALLBACK), not run."
       (funcall (cdr (pop calls)) "[{\"login\":\"alice\"}]")
       (should (equal (car log) '("@alice"))))))
 
+(ert-deftest octocat-search-test-repo-objects ()
+  "Each type's stored result shows at once; its fetched one replaces it."
+  (octocat-search-tests--with-store
+    (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
+               (lambda (_repo _sha callback) (funcall callback '(error . "no files")))))
+      (octocat-sync--write octocat-sync--db
+                           (octocat-sync-spec-key '(object-search "o/r" "issues" "crash"))
+                           (vector (let ((h (make-hash-table :test #'equal)))
+                                     (puthash "number" 1 h)
+                                     (puthash "title" "Old crash" h)
+                                     h))
+                           0.0)
+      (let* ((log (list nil))
+             (stage (funcall (octocat--async-search-repo-objects "o/r")
+                             (octocat-search-tests--sink log)))
+             (titles (lambda ()
+                       (mapcar (lambda (c) (plist-get (get-text-property
+                                                       0 'octocat-search-item c)
+                                                      :title))
+                               (car log)))))
+        (funcall stage " Crash ")
+        (should (equal (funcall titles) '("Old crash")))
+        (should (equal (cdr log) [indicator running]))
+        (should (= (length calls) 3))
+        (dolist (call calls)
+          (should (equal (car (last (car call))) "crash")))
+        (pcase-dolist (`(,args . ,deliver) calls)
+          (funcall deliver (if (member "issues" args)
+                               "[{\"number\":2,\"title\":\"New crash\"}]"
+                             "[]")))
+        (should (equal (funcall titles) '("New crash")))
+        (should (equal (cdr log) [indicator finished]))))))
+
 (provide 'octocat-search-tests)
 ;;; octocat-search-tests.el ends here

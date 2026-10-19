@@ -69,12 +69,6 @@
   :type 'boolean
   :group 'octocat)
 
-(defcustom octocat-cache-directory
-  (locate-user-emacs-file "octocat/cache-v3/")
-  "Directory for storing octocat cache files."
-  :type 'directory
-  :group 'octocat)
-
 (defcustom octocat-list-page-size 15
   "Number of items the PR and issue list pages show, and load, at a time.
 See `octocat-list-compact-page-size' for their compact view."

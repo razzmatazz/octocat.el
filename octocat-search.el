@@ -26,8 +26,8 @@
 ;; of the repository's default branch are matched too, locally, against a
 ;; file list fetched once and kept in memory.
 ;;
-;; Results are cached on disk per (repo, type, query).  A cached result is
-;; painted at once and refreshed in the background, the list being rebuilt
+;; Results are kept in the sync store per (repo, type, query).  A stored
+;; result shows at once and is refreshed behind it, the list being rebuilt
 ;; when the response arrives.
 ;;
 ;; It also holds the stage of `octocat-switch-repo', which searches all
@@ -152,53 +152,34 @@ FILE is a (PATH . BLOB-SHA) cons."
        (octocat-commit-open repo (plist-get item :sha))))))
 
 
-;;;; Disk cache
+;;;; Stored results
 
 (defcustom octocat-search-cache-ttl 60
-  "Seconds before a cached object-search result is considered fresh.
-`octocat-search-repo' always paints a cached result for a query at once.
-An entry younger than this is trusted and no `gh search' is run; an older
-one is shown immediately and refreshed in the background, the list being
-updated when the response arrives.  Set to 0 to always refresh."
+  "Seconds an object-search result is reused by `octocat-search-repo'.
+A stored result for a query always shows at once.  Within this it is
+not refetched; older, it is, and the list is updated when the response
+arrives.  It is at least `octocat-sync-fresh-for'."
   :type 'integer
   :group 'octocat)
 
-(defun octocat--search-objects-cache-file (repo type query)
-  "Return the cache file for the TYPE search of QUERY in REPO."
-  (expand-file-name
-   (concat (secure-hash 'sha256 (mapconcat #'identity (list repo type query) "\0"))
-           ".json")
-   (expand-file-name "search-objects" octocat-cache-directory)))
+(defconst octocat--search-types
+  '(("prs"     "number,title,state,author" octocat--search-make-pr-candidate)
+    ("issues"  "number,title,state,author" octocat--search-make-issue-candidate)
+    ("commits" "sha,commit,author"         octocat--search-make-commit-candidate))
+  "The `gh search' types searched: (TYPE JSON-FIELDS MAKE-CANDIDATE).")
 
-(defun octocat--search-objects-cache-load (repo type query)
-  "Load the cached TYPE search of QUERY in REPO.
-Returns (TIMESTAMP . ITEMS) with ITEMS the raw `gh' hash-tables, or nil
-when the entry is absent or unreadable."
-  (let ((file (octocat--search-objects-cache-file repo type query)))
-    (when (file-readable-p file)
-      (condition-case nil
-          (let ((data (json-parse-string
-                       (with-temp-buffer
-                         (insert-file-contents file)
-                         (buffer-string)))))
-            (cons (gethash "timestamp" data)
-                  (cl-coerce (gethash "items" data) 'list)))
-        (error nil)))))
-
-(defun octocat--search-objects-cache-save (repo type query items)
-  "Persist ITEMS, the TYPE search of QUERY in REPO, to disk.
-Write errors are ignored so a full disk never breaks interactive search."
-  (let* ((file (octocat--search-objects-cache-file repo type query))
-         (obj  (make-hash-table :test #'equal)))
-    (puthash "timestamp" (float-time) obj)
-    (puthash "items"     (vconcat items) obj)
-    (condition-case nil
-        (progn
-          (make-directory (file-name-directory file) t)
-          (with-temp-file file
-            (set-buffer-multibyte nil)
-            (insert (json-serialize obj))))
-      (error nil))))
+;; Plain results, not entities: `gh search' gives fewer fields than the
+;; pages' issues and PRs, and their state in lower case.
+(octocat-sync-define-resource object-search (repo type query)
+  :max-age octocat-search-cache-ttl
+  :fetch (lambda (done)
+           (octocat--run-gh
+            "search-objects"
+            (list "search" type (format "--repo=%s" repo)
+                  "--json" (nth 1 (assoc type octocat--search-types))
+                  "--limit" "30" query)
+            (lambda (output) (vconcat (octocat--parse-json-list output)))
+            done)))
 
 
 ;;;; Repository file list
@@ -236,44 +217,37 @@ Matching is case-insensitive; shorter paths sort first."
 
 (defun octocat--async-search-repo-objects (repo)
   "Build a consult async pipeline stage for live object search in REPO.
-On each input string (minimum 2 chars) three `gh search' queries run in
-parallel: pull requests, issues and commits.
-
-Results are cached on disk per (REPO, type, query).  A cached result is
-painted immediately; unless it is younger than `octocat-search-cache-ttl'
-the query is also re-run, and the list is rebuilt as each response lands
-\(fresh types replace their cached ones, pending types keep theirs).
-Queries superseded by further typing are left to finish so that they
-populate the cache.  The indicator shows `running' while any query for
-the current input is in flight."
+On each input string (minimum 2 chars) it searches the pull requests,
+issues and commits of REPO, each an `object-search' resource of the
+lower-cased input.  Stored results show at once, and each fetched one
+replaces its type's as it lands.  New input cancels the fetches of the
+last still queued.  The indicator shows `running' while any type of the
+current input is awaited."
   (lambda (sink)
     (let ((current  nil)                              ; normalized current input
-          (results nil)                               ; alist TYPE -> candidates
-          (inflight (make-hash-table :test #'equal))  ; (TYPE . QUERY) -> process
-          (files-loading nil)                         ; file list fetch in flight
-          (specs (list (list "prs"     "number,title,state,author"
-                             #'octocat--search-make-pr-candidate)
-                       (list "issues"  "number,title,state,author"
-                             #'octocat--search-make-issue-candidate)
-                       (list "commits" "sha,commit,author"
-                             #'octocat--search-make-commit-candidate))))
+          (results  nil)                              ; alist TYPE -> candidates
+          (waiting  nil)                              ; types awaited for current
+          (files-loading nil))                        ; file list fetch in flight
       (cl-labels
-          ((candidates (spec items)
-             (mapcar (lambda (item) (funcall (nth 2 spec) item repo)) items))
+          ((spec (type query) (list 'object-search repo type query))
+           (candidates (type items)
+             (let ((make (nth 2 (assoc type octocat--search-types))))
+               (mapcar (lambda (item) (funcall make item repo)) items)))
            ;; Replace the displayed list with RESULTS and update the indicator.
            (publish ()
              (funcall sink 'flush)
              (when-let* ((all (apply #'append
                                      (mapcar (lambda (type) (cdr (assoc type results)))
-                                             (append (mapcar #'car specs)
+                                             (append (mapcar #'car octocat--search-types)
                                                      (list "files"))))))
                (funcall sink all))
-             (funcall sink
-                      (if (or files-loading
-                              (cl-some (lambda (s) (gethash (cons (car s) current) inflight))
-                                       specs))
-                          [indicator running]
-                        [indicator finished])))
+             (funcall sink (if (or files-loading waiting)
+                               [indicator running]
+                             [indicator finished])))
+           (cancel ()
+             (when current
+               (dolist (entry octocat--search-types)
+                 (octocat-sync-cancel (spec (car entry) current)))))
            ;; Show the files of the cached list matching the current input.
            (match-files ()
              (when-let* ((files (octocat--search-files-cached repo)))
@@ -294,69 +268,36 @@ the current input is in flight."
                     (when current
                       (match-files)))
                   (when current
-                    (publish))))))
-           ;; Run one gh search for SPEC; QUERY is the normalized cache key.
-           (spawn (spec input query)
-             (let* ((type (car spec))
-                    (key  (cons type query))
-                    (buf  (generate-new-buffer " *octocat-search-objects*")))
-               (puthash
-                key
-                (make-process
-                 :name            "octocat-search-objects"
-                 :buffer          buf
-                 :command         (list "gh" "search" type
-                                        (format "--repo=%s" repo)
-                                        "--json" (nth 1 spec)
-                                        "--limit" "30"
-                                        input)
-                 :connection-type 'pipe
-                 :noquery         t
-                 :sentinel
-                 (lambda (p event)
-                   (unless (process-live-p p)
-                     (remhash key inflight)
-                     (let ((items
-                            (and (string-prefix-p "finished" event)
-                                 (condition-case nil
-                                     (with-current-buffer buf
-                                       (or (octocat--parse-json-list (buffer-string))
-                                           'empty))
-                                   (error nil)))))
-                       (when (buffer-live-p buf)
-                         (kill-buffer buf))
-                       (when items
-                         (let ((items (if (eq items 'empty) nil items)))
-                           (octocat--search-objects-cache-save repo type query items)
-                           (when (equal query current)
-                             (setf (alist-get type results nil nil #'equal)
-                                   (candidates spec items))))))
-                     (when (equal query current)
-                       (publish)))))
-                inflight))))
+                    (publish)))))))
         (lambda (action)
           (pcase action
-            ;; New input: paint what the cache has, then refresh what is stale.
+            ;; New input: show what is stored, then what is fetched.
             ((pred stringp)
              (let ((query (downcase (string-trim action))))
+               (cancel)
                (setq current query
-                     results nil)
-               (dolist (spec specs)
-                 (let* ((type   (car spec))
-                        (cached (octocat--search-objects-cache-load repo type query))
-                        (fresh  (and cached
-                                     (> octocat-search-cache-ttl 0)
-                                     (< (- (float-time) (car cached))
-                                        octocat-search-cache-ttl))))
-                   (when cached
-                     (push (cons type (candidates spec (cdr cached))) results))
-                   (unless (or fresh (gethash (cons type query) inflight))
-                     (spawn spec action query))))
+                     results nil
+                     waiting (mapcar #'car octocat--search-types))
+               (dolist (type (mapcar #'car octocat--search-types))
+                 (when-let* ((stored (plist-get (octocat-sync-read (spec type query)) :data)))
+                   (push (cons type (candidates type stored)) results)))
+               ;; Not over `waiting': a stored result calls back at once,
+               ;; deleting from it.
+               (dolist (type (mapcar #'car octocat--search-types))
+                 (octocat-sync-get
+                  (spec type query)
+                  (lambda (result)
+                    (when (equal query current)
+                      (setq waiting (delete type waiting))
+                      (unless (eq (car-safe result) 'error)
+                        (setf (alist-get type results nil nil #'equal)
+                              (candidates type result)))
+                      (publish)))))
                (match-files)
                (load-files)
                (publish)))
-            ;; Session ending: stop publishing but let searches fill the cache.
             ((or 'cancel 'destroy)
+             (cancel)
              (setq current nil)
              (funcall sink action))
             ;; All other consult actions: pass through unchanged.

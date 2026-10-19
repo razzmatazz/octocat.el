@@ -60,8 +60,9 @@ fetched just now; `g` always does.  A failed fetch keeps the stored
 data.  See "Reading the sync store" in
 [docs/using-vui.md](docs/using-vui.md).
 
-`octocat-cache-directory` remains for the few small caches outside the
-store, such as completion candidates.  Do **not** hardcode
+Completion candidates and search results are resources too, read with
+`octocat-sync-get`; the only other file octocat writes is
+`octocat-settings-file`.  Do **not** hardcode
 `~/.config/emacs/.local/cache` — that is Doom-specific.  Use
 `locate-user-emacs-file` for defaults.
 
