@@ -95,15 +95,6 @@ tokens of QUERY that are no qualifier of `octocat-actions--run-qualifiers'."
   "Return a fetch function of `octocat-vui-list--edit-facet' giving VALUES."
   (lambda (_repo callback) (funcall callback values)))
 
-(defun octocat-actions--workflow-names (repo callback)
-  "Call CALLBACK with the workflow names of REPO, or (error . MSG)."
-  (octocat-repo--list-workflows
-   repo (lambda (r)
-          (funcall callback
-                   (if (eq (car-safe r) 'error)
-                       r
-                     (mapcar (lambda (wf) (gethash "name" wf)) r))))))
-
 (defun octocat-actions-filter-branch ()
   "Filter by the branch of a run."
   (interactive)
@@ -120,7 +111,9 @@ tokens of QUERY that are no qualifier of `octocat-actions--run-qualifiers'."
   "Filter by the workflow of a run."
   (interactive)
   (octocat-vui-list--edit-facet "workflow:" "Workflow" nil
-                                #'octocat-actions--workflow-names nil))
+                                (octocat-vui-list--stored
+                                 'workflows (lambda (wf) (gethash "name" wf)))
+                                nil))
 
 (defun octocat-actions-filter-actor ()
   "Filter by who triggered a run."
