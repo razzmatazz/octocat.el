@@ -48,6 +48,7 @@
 (defvar octocat-actions-mode-map)
 (defvar octocat-pr-mode-map)
 (defvar octocat-commit-mode-map)
+(defvar octocat-compare-mode-map)
 (defvar octocat-checks-mode-map)
 (defvar octocat-pr-diff-mode-map)
 (defvar octocat-pr-commits-mode-map)
@@ -85,6 +86,8 @@
 (declare-function octocat-pr-commits-browse "octocat-pr"        ())
 (declare-function octocat-pr-diff-review    "octocat-pr-diff"   ())
 (declare-function octocat-commit-browse     "octocat-commit"    ())
+(declare-function octocat-compare-browse    "octocat-compare"   ())
+(declare-function octocat-compare-refresh   "octocat-compare"   (&optional _ignore-auto _noconfirm))
 (declare-function octocat-checks-browse     "octocat-checks"    ())
 (declare-function octocat-checks-refresh    "octocat-checks"    (&optional _ignore-auto _noconfirm))
 (declare-function octocat-issue-refresh      "octocat-issue"     (&optional _ignore-auto _noconfirm))
@@ -246,6 +249,16 @@ Off an entry, such as on the header, move left."
     (kbd "C-c C-s") #'octocat-search-repo
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-commit-refresh
+    (kbd "q")       #'octocat-quit-window)
+
+  ;; ── octocat-compare-mode ──────────────────────────────────────────────
+  (evil-define-key* 'normal octocat-compare-mode-map
+    (kbd "C-c C-o") #'octocat-compare-browse
+    (kbd "C-c C-v") #'octocat-toggle-markdown
+    (kbd "C-c C-j") #'octocat-switch-repo
+    (kbd "C-c C-s") #'octocat-search-repo
+    (kbd "gs")      #'octocat-search-repo
+    (kbd "gr")      #'octocat-compare-refresh
     (kbd "q")       #'octocat-quit-window)
 
   ;; ── octocat-checks-mode ───────────────────────────────────────────────

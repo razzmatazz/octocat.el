@@ -153,7 +153,7 @@ string rather than `ok` is an error — fix it before proceeding):
                    "octocat-core.el" "octocat-sync.el" "octocat-vui.el"
                    "octocat-diff.el"
                    "octocat-edit.el"
-                   "octocat-commit.el" "octocat-job.el" "octocat-run.el"
+                   "octocat-commit.el" "octocat-compare.el" "octocat-job.el" "octocat-run.el"
                    "octocat-workflow.el" "octocat-pr-diff.el"
                    "octocat-timeline.el" "octocat-pr.el" "octocat-issue.el"
                    "octocat-checks.el" "octocat-tree.el" "octocat-repo.el"

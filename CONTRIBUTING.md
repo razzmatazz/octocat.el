@@ -72,9 +72,9 @@ Every buffer is rendered with vui.el: the dashboard (`octocat-mode`), the
 repo overview (`octocat-repo.el`, `octocat-repo-mode`), the user page
 (`octocat-user-mode`), the PR, issue, PR diff, commit, checks, workflow,
 run and job detail views (`octocat-pr-mode`, `octocat-issue-mode`,
-`octocat-pr-diff-mode`, `octocat-commit-mode`, `octocat-checks-mode`,
-`octocat-workflow-mode`, `octocat-run-mode`, `octocat-job-mode`; PR diff
-and commit share `octocat-diff.el`), the file tree and file log
+`octocat-pr-diff-mode`, `octocat-commit-mode`, `octocat-compare-mode`,
+`octocat-checks-mode`, `octocat-workflow-mode`, `octocat-run-mode`,
+`octocat-job-mode`; PR diff, commit and compare share `octocat-diff.el`), the file tree and file log
 (`octocat-tree-mode`, `octocat-file-log-mode`) and the PR and issue list
 pages and the Actions page (`octocat-pr-list-mode`,
 `octocat-issue-list-mode`, defined next to the matching detail views, and

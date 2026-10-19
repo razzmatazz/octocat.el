@@ -170,6 +170,12 @@
                    (commit "octo/cat" "abc1234"))
                   ("https://github.com/octo/cat/issues/7"          (issue "octo/cat" 7))
                   ("https://github.com/octo/cat/commit/deadbeef1"  (commit "octo/cat" "deadbeef1"))
+                  ("https://github.com/octo/cat/compare/abc1234..def5678"
+                   (compare "octo/cat" "abc1234" ".." "def5678"))
+                  ("https://github.com/octo/cat/compare/main...feature/x?expand=1"
+                   (compare "octo/cat" "main" "..." "feature/x"))
+                  ("https://github.com/octo/cat/compare/v1.0...octo:cat:main#diff-1"
+                   (compare "octo/cat" "v1.0" "..." "octo:cat:main"))
                   ("https://github.com/octo/cat/pulls"             (pr-list "octo/cat"))
                   ("https://github.com/octo/cat/issues"            (issue-list "octo/cat"))
                   ("https://github.com/octo/cat/actions"           (actions "octo/cat"))
@@ -187,6 +193,8 @@
                   ;; No octocat view: left to the browser.
                   ("https://github.com/octo/cat/blob/main/x.el"    nil)
                   ("https://github.com/octo/cat/wiki"              nil)
+                  ("https://github.com/octo/cat/compare/feature"   nil)
+                  ("https://github.com/octo/cat/compare"           nil)
                   ("https://github.com/octo/cat/pull/abc"          nil)
                   ("https://github.com/orgs/octo/teams/t"          nil)
                   ("https://github.com/settings"                   nil)
@@ -206,6 +214,7 @@
               ((symbol-function 'octocat-pr-commits-open) (lambda (&rest a) (push (cons 'pr-commits a) opened)))
               ((symbol-function 'octocat--markdown-open-ref) (lambda (&rest a) (push (cons 'ref a) opened)))
               ((symbol-function 'octocat-commit-open)   (lambda (&rest a) (push (cons 'commit a) opened)))
+              ((symbol-function 'octocat-compare-open)  (lambda (&rest a) (push (cons 'compare a) opened)))
               ((symbol-function 'octocat-run-open)      (lambda (&rest a) (push (cons 'run a) opened)))
               ((symbol-function 'octocat-job-open)      (lambda (&rest a) (push (cons 'job a) opened)))
               ((symbol-function 'octocat-workflow-open) (lambda (&rest a) (push (cons 'workflow a) opened)))
@@ -214,13 +223,14 @@
               ((symbol-function 'octocat-actions)       (lambda (&rest a) (push (cons 'actions a) opened)))
               ((symbol-function 'octocat-tree-open)     (lambda (&rest a) (push (cons 'tree a) opened))))
       (dolist (path '("octocat" "o/r" "o/r/pull/1" "o/r/pull/1/files" "o/r/pull/1/commits" "o/r/issues/2"
-                      "o/r/commit/abc1234" "o/r/actions/runs/3" "o/r/actions/runs/3/job/4"
+                      "o/r/commit/abc1234" "o/r/compare/a...b" "o/r/actions/runs/3" "o/r/actions/runs/3/job/4"
                       "o/r/actions/workflows/ci.yml"
                       "o/r/pulls" "o/r/issues" "o/r/actions" "o/r/tree/main"))
         (octocat-browse-url (concat "https://github.com/" path))))
     (should (equal (nreverse opened)
                    '((user "octocat") (repo "o/r") (pr "o/r" 1) (pr-diff "o/r" 1) (pr-commits "o/r" 1)
-                     (ref issue "o/r" 2) (commit "o/r" "abc1234") (run "o/r" 3)
+                     (ref issue "o/r" 2) (commit "o/r" "abc1234")
+                     (compare "o/r" "a" "..." "b") (run "o/r" 3)
                      (job "o/r" 3 4 nil)
                      (workflow "o/r" "ci.yml" "ci.yml" ".github/workflows/ci.yml")
                      (pr-list "o/r") (issue-list "o/r")

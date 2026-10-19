@@ -860,6 +860,7 @@ is asked first and the matching view opened."
 
 (declare-function octocat-pr-diff-open  "octocat-pr-diff"  (repo number))
 (declare-function octocat-pr-commits-open "octocat-pr"    (repo number))
+(declare-function octocat-compare-open  "octocat-compare"  (repo base dots head))
 (declare-function octocat-run-open      "octocat-run"      (repo run-id))
 (declare-function octocat-job-open      "octocat-job"      (repo run-id job-id name))
 (declare-function octocat-workflow-open "octocat-workflow" (repo id name path))
@@ -880,9 +881,10 @@ is asked first and the matching view opened."
 (defun octocat--github-url-target (url)
   "Return the octocat view of github.com URL as (KIND ARGS...), or nil.
 KIND is `user', `repo', `pr', `pr-diff', `pr-commits', `issue', `commit',
-`run', `job', `workflow', `pr-list', `issue-list', `actions' or `tree';
-nil means octocat has no view for URL.  A `tree' URL's branch is taken
-to be its next segment: a branch with a slash is cut short."
+`compare', `run', `job', `workflow', `pr-list', `issue-list', `actions'
+or `tree'; nil means octocat has no view for URL.  A `tree' URL's branch
+is taken to be its next segment: a branch with a slash is cut short.  A
+`compare' URL needs both refs: with one, GitHub picks the base."
   (when (string-match "\\`https?://\\(?:www\\.\\)?github\\.com\\(/[^?#]*\\)?\\(?:[?#].*\\)?\\'"
                       url)
     (let* ((parts (split-string (or (match-string 1 url) "") "/" t))
@@ -910,6 +912,11 @@ to be its next segment: a branch with a slash is cut short."
              (`("pull" ,n . ,_) (and (funcall num n) (list 'pr repo (funcall num n))))
              (`("issues" ,n . ,_) (and (funcall num n) (list 'issue repo (funcall num n))))
              (`("commit" ,s . ,_) (and (funcall sha s) (list 'commit repo s)))
+             (`("compare" . ,refs)
+              (let ((range (string-join refs "/")))
+                (and (string-match "\\`\\(.+?\\)\\(\\.\\.\\.?\\)\\(.+\\)\\'" range)
+                     (list 'compare repo (match-string 1 range)
+                           (match-string 2 range) (match-string 3 range)))))
              (`("actions" "runs" ,r "job" ,j . ,_)
               (and (funcall num r) (funcall num j)
                    (list 'job repo (funcall num r) (funcall num j))))
@@ -928,6 +935,7 @@ The handler `octocat-open-github-urls' adds to `browse-url-handlers'."
     ;; github.com redirects /issues/N of a PR to it, so ask which it is.
     (`(issue ,repo ,n)     (octocat--markdown-open-ref 'issue repo n))
     (`(commit ,repo ,sha)  (octocat-commit-open repo sha))
+    (`(compare ,repo ,base ,dots ,head) (octocat-compare-open repo base dots head))
     (`(run ,repo ,id)      (octocat-run-open repo id))
     (`(job ,repo ,run ,id) (octocat-job-open repo run id nil))
     (`(workflow ,repo ,file)

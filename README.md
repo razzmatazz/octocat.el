@@ -185,6 +185,39 @@ check opens the commit's checks.
 
 ---
 
+### Compare view (`octocat-compare-mode`)
+
+Following a github.com compare link, such as
+`https://github.com/owner/repo/compare/v1.0...main`, opens what GitHub's
+compare page shows: the commits HEAD has that BASE lacks, grouped by day
+as on a PR's Commits tab, then the changed files, folded as on the
+commit and PR diff pages.
+
+```
+owner/repo  v1.0...main
+3 commits · 5 files changed
+
+Commits on Oct 17, 2026
+a1b2c3d  Fix the parser          Jane Doe  2 days ago
+…
+
+Files (5)  [Expand all]
+  M src/foo.el  +12 -3
+```
+
+`RET` on a commit opens it, `C-c C-o` opens the comparison in a browser.
+GitHub's API only compares from the merge base (`...`), so a two-dot
+link (`BASE..HEAD`) is shown as its three-dot comparison.  The two are
+the same when BASE is an ancestor of HEAD, as with two commits of one
+branch; when the refs have diverged, a note under the summary says so.
+GitHub's API returns at most 250 commits and 300 files, and the summary
+says when a comparison is cut short.  A comparison of two commits never
+changes, so it is kept like a commit is; one of branches or tags is
+refetched behind the stored copy each time it is opened.  A compare
+link with one ref, where github.com picks the base, opens in the browser.
+
+---
+
 ### File tree browser (`octocat-tree-mode`)
 
 From any per-repository buffer, press `C-c C-t` to open an interactive file
@@ -286,8 +319,8 @@ On Doom Emacs, let `q` reach octocat pages with
 Following a github.com link anywhere in Emacs (`RET` on a link in a
 comment, `browse-url`, Org links, …) opens it in octocat when there is a
 view for it: users, repositories, PRs and their diffs, issues, commits,
-workflows, runs, jobs, and a repository's PR, issue, Actions and file
-tree pages.  Other links still open in the browser, and `C-c C-o` always
+comparisons (`/compare/BASE...HEAD`), workflows, runs, jobs, and a
+repository's PR, issue, Actions and file tree pages.  Other links still open in the browser, and `C-c C-o` always
 does.  Set `octocat-open-github-urls` to nil to turn this off.
 
 ## Contributing

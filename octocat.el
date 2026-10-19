@@ -39,6 +39,7 @@
 (require 'octocat-sync)
 (require 'octocat-pr)
 (require 'octocat-commit)
+(require 'octocat-compare)
 (require 'octocat-pr-diff)
 (require 'octocat-issue)
 (require 'octocat-timeline)
