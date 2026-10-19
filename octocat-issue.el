@@ -31,6 +31,7 @@
 
 (require 'octocat-core)
 (require 'octocat-edit)
+(require 'octocat-sync)
 (require 'octocat-timeline)
 (require 'octocat-vui)
 (require 'vui)
@@ -47,8 +48,6 @@
 (declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
 (declare-function octocat-pr-open "octocat-pr" (repo number))
 (declare-function octocat-repo-vui--milestone "octocat-repo" (item))
-(declare-function octocat-repo-vui-use-cached "octocat-repo"
-                  (type repo number fetch &optional as-list tick))
 
 
 ;;;; Edit / comment commands — submit helpers
@@ -107,10 +106,10 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (unless (and octocat--issue-repo octocat--issue-number)
     (user-error "Octocat: Buffer is not associated with an issue"))
   (octocat-timeline-ensure-idle)
-  ;; Pre-populate with the current body from the cache so the user can
-  ;; edit in-place rather than retyping everything.
-  (let* ((cache (octocat--detail-cache-load octocat--issue-repo "issue" octocat--issue-number))
-         (body  (and cache (octocat--nonempty (gethash "body" cache)))))
+  ;; Pre-populate with the current body so the user can edit in place
+  ;; rather than retyping everything.
+  (let* ((issue (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))
+         (body  (and issue (octocat--nonempty (gethash "body" issue)))))
     (octocat--open-edit-buffer
      (format "Edit body of issue #%d" octocat--issue-number)
      #'octocat-issue--submit-edit-body
@@ -122,8 +121,8 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (interactive)
   (unless (and octocat--issue-repo octocat--issue-number)
     (user-error "Octocat: Buffer is not associated with an issue"))
-  (let* ((cache   (octocat--detail-cache-load octocat--issue-repo "issue" octocat--issue-number))
-         (current (or (and cache (octocat--nonempty (gethash "title" cache))) ""))
+  (let* ((issue   (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))
+         (current (or (and issue (octocat--nonempty (gethash "title" issue))) ""))
          (new     (string-trim (read-string "Issue title: " current))))
     (when (string-empty-p new)
       (user-error "Octocat: Title must not be empty"))
@@ -238,6 +237,16 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
                    (lambda (output) (json-parse-string (string-trim output)))
                    callback))
 
+(octocat-sync-define-resource issue (repo number)
+  :entity (octocat-sync-item-key 'issue repo number)
+  :fetch (lambda (done)
+           (octocat--fetch-issue
+            repo number
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error)
+                                r
+                              (octocat-sync-detail 'issue repo r '("comments"))))))))
+
 ;;;; Rendering
 ;;
 ;; The timeline itself (items, entries, rail) is in octocat-timeline.el.
@@ -264,38 +273,41 @@ BG is as for `octocat--label-face'."
 ACTION, a label or nil, shows a change under way under the timeline.
 A new TICK fetches everything again."
   :render
-  (let* ((width  (octocat-vui-window-width))
-         (bg     (octocat--label-background))
-         (result (octocat-repo-vui-use-cached
-                  "issue" repo number #'octocat--fetch-issue nil tick))
+  (let* ((width    (octocat-vui-window-width))
+         (bg       (octocat--label-background))
+         (snap     (octocat-vui-use-detail (list 'issue repo number) tick))
          (timeline (octocat-timeline-use-events repo number tick))
+         (issue    (plist-get snap :data))
          (events   (car timeline))
-         (loading  (or (eq (plist-get result :status) 'pending)
-                       (plist-get result :refreshing)
-                       (cdr timeline)))
          ;; WIDTH is a dependency: tables are laid out for the window.
-         (entries  (vui-use-memo (result events raw width bg)
-                     (and (eq (plist-get result :status) 'ready)
+         (entries  (vui-use-memo (issue events raw width bg)
+                     (and issue
                           (octocat-timeline-entries
-                           (octocat-timeline-items (plist-get result :data)
-                                                   "opened this issue" events bg)
+                           (octocat-timeline-items issue "opened this issue" events bg)
                            raw (octocat--markdown-width))))))
-    (octocat-vui-use-mode-line-loading loading)
-    (pcase (plist-get result :status)
-      ('pending (vui-text (octocat-vui-detail-skeleton repo number width)))
-      ('error   (vui-text (format "  Error: %s" (plist-get result :error)) :face 'error))
-      ('ready
-       (let ((issue (plist-get result :data)))
-         (apply #'vui-vstack
-                (append
-                 (delq nil (octocat-issue--header repo issue bg))
-                 entries
-                 (octocat-timeline-buttons-or-action
-                  (list '("+ Add a comment" "RET: write a comment" octocat-issue-add-comment)
-                        (if (equal (gethash "state" issue) "OPEN")
-                            '("Close issue" "RET: close this issue" octocat-issue-close)
-                          '("Reopen issue" "RET: reopen this issue" octocat-issue-reopen)))
-                  action))))))))
+    (octocat-vui-use-mode-line-loading
+     (and (or (plist-get snap :loading) (plist-get (cdr timeline) :loading)) t))
+    (cond
+     (issue
+      (apply #'vui-vstack
+             (append
+              (delq nil (octocat-issue--header repo issue bg))
+              entries
+              (octocat-timeline-buttons-or-action
+               (list '("+ Add a comment" "RET: write a comment" octocat-issue-add-comment)
+                     (if (equal (gethash "state" issue) "OPEN")
+                         '("Close issue" "RET: close this issue" octocat-issue-close)
+                       '("Reopen issue" "RET: reopen this issue" octocat-issue-reopen)))
+               action))))
+     ((and (plist-get snap :error) (not (plist-get snap :loading)))
+      (vui-text (format "  Error: %s" (plist-get snap :error)) :face 'error))
+     ;; The list fetched the issue: its header paints at once.
+     ((plist-get snap :partial)
+      (apply #'vui-vstack
+             (append
+              (delq nil (octocat-issue--header repo (plist-get snap :partial) bg))
+              (list (vui-text (octocat-vui-post-skeleton width))))))
+     (t (vui-text (octocat-vui-detail-skeleton repo number width))))))
 
 
 ;;;; Major mode
@@ -331,8 +343,8 @@ A new TICK fetches everything again."
 
 (defun octocat-issue-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current issue buffer.
-The page paints the disk cache at once and fetches fresh data in the
-background, in place: what is unfolded stays so."
+The page paints from the sync store at once and fetches fresh data in
+the background, in place: what is unfolded stays so."
   (interactive)
   (unless (and octocat--issue-repo octocat--issue-number)
     (user-error "Octocat: Buffer is not associated with an issue"))

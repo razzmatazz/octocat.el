@@ -51,26 +51,31 @@ defers it, e.g. `(run-at-time 0 nil ...)`.
 
 ## Reading the sync store
 
-A page on the sync layer (`octocat-sync.el`; so far the user page) does
-not fetch.  It names what it shows as a resource spec, such as
-`(user-profile "octocat")`, and reads it with `octocat-vui-use-resource`,
-which returns a snapshot: `:data` from the SQLite store, `:loading` while
-a fetch runs, and `:error` from the last failed one.  The page paints at
-once from whatever the store holds, and a fetch runs behind it.
+Pages on the sync layer (`octocat-sync.el`: so far the user page, the
+issue and PR lists, and the issue and PR pages) don't fetch.  They name
+a resource, such as `(user-profile "octocat")`, and read it with
+`octocat-vui-use-resource`.  It returns a snapshot: `:data` from the
+SQLite store, `:loading` while a fetch runs, and `:error` from the last
+failed one.  So a page paints at once, and a fetch runs behind it.
 
-The hook takes the page's `:tick`.  Opening a page fetches each resource
-unless it was fetched within `octocat-sync-fresh-for`; a new tick (`g`)
-always fetches.  Fetches write the store and never hand data to the
-page.  After each write, sync reports which resources changed, including
-every resource that shows an entity (a user, a repo) whose fields
-changed.  Each page reading one of them re-renders once, from its root.
-So a component that reads a resource must not be `:memo`: a memoized
-component with unchanged props would skip the re-render and keep the
-old snapshot.
+Opening a page fetches each resource unless it was fetched within
+`octocat-sync-fresh-for`; a new `:tick` (`g`) always fetches.  After
+each write, sync reports the resources that changed, including those
+showing an entity (a user, an issue) whose fields changed, and each
+page reading one re-renders once from its root.  So a component that
+reads a resource must not be `:memo`, or it would keep the old snapshot.
+
+Issues and PRs are entities, and so are their authors, assignees and
+labels.  A list row and the issue's page store the same entity, so the
+list shows what the page last fetched.  The page's resource keeps what
+the list doesn't share, such as comments, beside the entity
+(`octocat-sync-detail`), and `octocat-vui-use-detail` reads both back
+as one table, as `gh issue view` gives it.  Before the page's first
+fetch lands, `:partial` holds the list's copy, so the page paints its
+real header with grey bars below.
 
 To add a resource, define it beside its page with
 `octocat-sync-define-resource`.  Its `:fetch` calls `DONE` with the
-parsed tree, wrapping each shared record in `octocat-sync-entity` with
-GraphQL's field names, or with `(error . MESSAGE)`.  See
-`plans/github-sync-mechanism.md` for the full design and what is still
-to come.
+parsed tree, each shared record wrapped in `octocat-sync-entity` with
+GraphQL's field names, or with `(error . MESSAGE)`.  The design, and
+what is still to come, is in `plans/github-sync-mechanism.md`.

@@ -35,6 +35,7 @@
 (require 'octocat-checks)
 (require 'octocat-commit)
 (require 'octocat-edit)
+(require 'octocat-sync)
 (require 'octocat-timeline)
 (require 'octocat-vui)
 (require 'vui)
@@ -55,8 +56,6 @@
 (declare-function octocat-issue-open "octocat-issue" (repo number))
 (declare-function octocat-repo-vui--milestone "octocat-repo" (item))
 (declare-function octocat-repo-vui--resolve-or-reject "octocat-repo" (result resolve reject))
-(declare-function octocat-repo-vui-use-cached "octocat-repo"
-                  (type repo number fetch &optional as-list tick))
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
                   (repo commit head-info author-w &optional subject-w))
 (declare-function octocat-repo-vui--subject-width "octocat-repo" (commits width author-w))
@@ -153,10 +152,10 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (unless (and octocat--pr-repo octocat--pr-number)
     (user-error "Octocat: Buffer is not associated with a pull request"))
   (octocat-timeline-ensure-idle)
-  ;; Pre-populate with the current body from the cache so the user can
-  ;; edit in-place rather than retyping everything.
-  (let* ((cache (octocat--detail-cache-load octocat--pr-repo "pr" octocat--pr-number))
-         (body  (and cache (octocat--nonempty (gethash "body" cache)))))
+  ;; Pre-populate with the current body so the user can edit in place
+  ;; rather than retyping everything.
+  (let* ((pr   (octocat-sync-detail-read (list 'pr octocat--pr-repo octocat--pr-number)))
+         (body (and pr (octocat--nonempty (gethash "body" pr)))))
     (octocat--open-edit-buffer
      (format "Edit body of PR #%d" octocat--pr-number)
      #'octocat-pr--submit-edit-body
@@ -167,8 +166,8 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   "Prompt for a new title of pull request NUM of REPO and apply it.
 REFRESH is the function that re-renders the current buffer afterwards;
 it runs in that buffer, so the PR and PR diff pages can share this."
-  (let* ((cache   (octocat--detail-cache-load repo "pr" num))
-         (current (or (and cache (octocat--nonempty (gethash "title" cache))) ""))
+  (let* ((pr      (octocat-sync-detail-read (list 'pr repo num)))
+         (current (or (and pr (octocat--nonempty (gethash "title" pr))) ""))
          (new     (string-trim (read-string "PR title: " current)))
          (buf     (current-buffer)))
     (when (string-empty-p new)
@@ -631,7 +630,7 @@ is the confirmation."
   (pcase-let* ((`(,repo . ,number)
                 (or (octocat-pr--current)
                     (user-error "Octocat: Buffer is not associated with a pull request")))
-               (pr      (octocat--detail-cache-load repo "pr" number))
+               (pr      (octocat-sync-detail-read (list 'pr repo number)))
                (refusal (and pr (octocat-pr--merge-refusal pr)))
                (source  (current-buffer)))
     (cond
@@ -761,6 +760,23 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                                           "reviewRequests,closingIssuesReferences"))
                    (lambda (output) (json-parse-string (string-trim output)))
                    callback))
+
+
+(defconst octocat-pr--parts
+  '("comments" "reviews" "latestReviews" "reviewRequests" "commits" "statusCheckRollup")
+  "The fields of a PR page's data kept with its resource, not its entity.
+Pages of connections, and what belongs to the head commit, which the
+lists do not share.")
+
+(octocat-sync-define-resource pr (repo number)
+  :entity (octocat-sync-item-key 'pr repo number)
+  :fetch (lambda (done)
+           (octocat--fetch-pr
+            repo number
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error)
+                                r
+                              (octocat-sync-detail 'pr repo r octocat-pr--parts)))))))
 
 
 ;;;; Rendering
@@ -930,12 +946,14 @@ TAB is the page showing it, `conversation' (the default), `commits' or
                               ('commits #'octocat-pr-commits-refresh)
                               (_        #'octocat-pr-refresh))))
       bg
-      ;; The list leaves the branch out; the page shows it and its base.
-      (concat (propertize head 'face (if (equal head local)
-                                         'octocat-branch-current
-                                       'octocat-branch))
-              (propertize " → " 'face 'octocat-dimmed)
-              (propertize base 'face 'octocat-branch))
+      ;; The list leaves the branch out; the page shows it and its base,
+      ;; once known: a header painted from a list's copy lacks them.
+      (unless (string-empty-p head)
+        (concat (propertize head 'face (if (equal head local)
+                                           'octocat-branch-current
+                                         'octocat-branch))
+                (propertize " → " 'face 'octocat-dimmed)
+                (propertize base 'face 'octocat-branch)))
       ;; The checks and comments are further down the page; the review
       ;; leads the line below, with the reviewers.
       '(:review :ci :comments))
@@ -951,13 +969,16 @@ TAB is the page showing it, `conversation' (the default), `commits' or
       (vui-newline)
       (octocat-pr--tabs (or tab 'conversation) repo number width
                         (gethash "changedFiles" pr)
-                        (length (or (octocat--get pr "commits") [])))))))
+                        ;; Absent from a header painted from a list's copy.
+                        (let ((commits (octocat--get pr "commits")))
+                          (and commits (length commits))))))))
 
 (defun octocat-pr--use-data (repo number tick)
-  "Return the `vui-use-async' result for the pull request NUMBER of REPO.
-See `octocat-repo-vui-use-cached', for TICK too.  Must be called during
-render, like any hook; shared by the conversation and the diff page."
-  (octocat-repo-vui-use-cached "pr" repo number #'octocat--fetch-pr nil tick))
+  "Return the snapshot of the pull request NUMBER of REPO.
+See `octocat-vui-use-detail', for TICK too.  Must be called during
+render, like any hook; the conversation, commits and diff pages share
+it, so they share its fetch."
+  (octocat-vui-use-detail (list 'pr repo number) tick))
 
 (defun octocat-pr--reviewers (pr)
   "Return the reviewers of PR as a list of vnodes, or nil when there are none.
@@ -994,94 +1015,96 @@ MERGING and ACTION, labels or nil, show a change under way in the merge
 box and under the timeline; APPROVING, the approval of its workflow
 runs.  A new TICK fetches everything again."
   :render
-  (let* ((width  (octocat-vui-window-width))
-         (bg     (octocat--label-background))
-         (result (octocat-pr--use-data repo number tick))
+  (let* ((width    (octocat-vui-window-width))
+         (bg       (octocat--label-background))
+         (snap     (octocat-pr--use-data repo number tick))
          (timeline (octocat-timeline-use-events repo number tick))
-         (data     (and (eq (plist-get result :status) 'ready) (plist-get result :data)))
+         (pr       (plist-get snap :data))
          ;; Only an open PR's runs can be approved.
          (awaiting (octocat-pr--use-awaiting-runs
-                    repo (and data (equal (gethash "state" data) "OPEN")
-                              (octocat-pr--head-sha data))
+                    repo (and pr (equal (gethash "state" pr) "OPEN")
+                              (octocat-pr--head-sha pr))
                     tick))
          (events   (car timeline))
-         (loading  (or (eq (plist-get result :status) 'pending)
-                       (plist-get result :refreshing)
-                       (cdr timeline)))
          ;; WIDTH is a dependency: tables are laid out for the window.
-         (entries  (vui-use-memo (result events raw width bg)
-                     (and (eq (plist-get result :status) 'ready)
+         (entries  (vui-use-memo (pr events raw width bg)
+                     (and pr
                           (octocat-timeline-entries
-                           (octocat-pr--items repo (plist-get result :data) events bg)
+                           (octocat-pr--items repo pr events bg)
                            raw (octocat--markdown-width))))))
-    (octocat-vui-use-mode-line-loading loading)
-    (pcase (plist-get result :status)
-      ('pending (vui-text (octocat-vui-detail-skeleton repo number width
-                                                        octocat-pr--tab-labels)))
-      ('error   (vui-text (format "  Error: %s" (plist-get result :error)) :face 'error))
-      ('ready
-       (let* ((pr (plist-get result :data))
-              (on-visit-check
-               (lambda ()
-                 (octocat-checks-open repo (or (octocat-pr--head-sha pr) "")
-                                      (octocat--nonempty (gethash "headRefName" pr))))))
-         (apply #'vui-vstack
-                (append
-                 (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width)))
-                 entries
-                 ;; Under the timeline, as they add to it; the checks and
-                 ;; merge are about the PR as a whole.
-                 (octocat-timeline-buttons-or-action
-                  (list '("+ Add a comment" "RET: write a comment" octocat-pr-add-comment)
-                        (pcase (gethash "state" pr)
-                          ("OPEN"   '("Close pull request" "RET: close this pull request"
-                                      octocat-pr-close))
-                          ("CLOSED" '("Reopen pull request" "RET: reopen this pull request"
-                                      octocat-pr-reopen))))
-                  action)
-                 (list (vui-newline))
-                 ;; An open PR's checks are in its merge box, as on GitHub.
-                 (or (octocat-pr--merge-section pr on-visit-check merging
-                                                awaiting approving)
-                     (octocat-checks-block
-                      (or (octocat--get pr "statusCheckRollup") [])
-                      on-visit-check)))))))))
+    (octocat-vui-use-mode-line-loading
+     (and (or (plist-get snap :loading) (plist-get (cdr timeline) :loading)) t))
+    (cond
+     (pr
+      (let ((on-visit-check
+             (lambda ()
+               (octocat-checks-open repo (or (octocat-pr--head-sha pr) "")
+                                    (octocat--nonempty (gethash "headRefName" pr))))))
+        (apply #'vui-vstack
+               (append
+                (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width)))
+                entries
+                ;; Under the timeline, as they add to it; the checks and
+                ;; merge are about the PR as a whole.
+                (octocat-timeline-buttons-or-action
+                 (list '("+ Add a comment" "RET: write a comment" octocat-pr-add-comment)
+                       (pcase (gethash "state" pr)
+                         ("OPEN"   '("Close pull request" "RET: close this pull request"
+                                     octocat-pr-close))
+                         ("CLOSED" '("Reopen pull request" "RET: reopen this pull request"
+                                     octocat-pr-reopen))))
+                 action)
+                (list (vui-newline))
+                ;; An open PR's checks are in its merge box, as on GitHub.
+                (or (octocat-pr--merge-section pr on-visit-check merging
+                                               awaiting approving)
+                    (octocat-checks-block
+                     (or (octocat--get pr "statusCheckRollup") [])
+                     on-visit-check))))))
+     ((and (plist-get snap :error) (not (plist-get snap :loading)))
+      (vui-text (format "  Error: %s" (plist-get snap :error)) :face 'error))
+     ;; The list fetched the PR: its header paints at once.
+     ((plist-get snap :partial)
+      (apply #'vui-vstack
+             (append
+              (delq nil (octocat-pr--header repo (plist-get snap :partial) bg
+                                            (octocat--markdown-width)))
+              (list (vui-text (octocat-vui-post-skeleton width))))))
+     (t (vui-text (octocat-vui-detail-skeleton repo number width octocat-pr--tab-labels))))))
 
 
 (vui-defcomponent octocat-pr-commits--page (repo number tick)
   "The commits of pull request NUMBER of REPO, under the PR page's header.
 A new TICK fetches them again."
   :render
-  (let* ((width  (octocat--markdown-width))
-         (result (octocat-pr--use-data repo number tick))
-         (days   (vui-use-memo ((plist-get result :data))
-                   (octocat-pr--commit-days (plist-get result :data)))))
-    (octocat-vui-use-mode-line-loading
-     (or (eq (plist-get result :status) 'pending)
-         (plist-get result :refreshing)))
-    (pcase (plist-get result :status)
-      ('pending (vui-text (octocat-vui-detail-skeleton repo number (octocat-vui-window-width)
-                                                        octocat-pr--tab-labels)))
-      ('error   (vui-vstack
-                 (vui-text (format "Error: %s" (plist-get result :error)) :face 'error)
-                 (octocat-pr--tabs 'commits repo number width)))
-      ('ready
-       (let* ((commits   (apply #'append (mapcar #'cdr days)))
-              (author-w  (octocat-repo-vui--author-width commits))
-              (subject-w (octocat-repo-vui--subject-width commits width author-w)))
-         (apply #'vui-vstack
-                (append
-                 (delq nil (octocat-pr--header repo (plist-get result :data)
-                                               (octocat--label-background) width 'commits))
-                 (mapcan (lambda (day)
-                           (cons (vui-text (car day) :face 'octocat-section-heading)
-                                 (append
-                                  (mapcar (lambda (c)
-                                            (octocat-repo-vui--commit-row
-                                             repo c nil author-w subject-w))
-                                          (cdr day))
-                                  (list (vui-newline)))))
-                         days))))))))
+  (let* ((width (octocat--markdown-width))
+         (snap  (octocat-pr--use-data repo number tick))
+         (pr    (plist-get snap :data))
+         (days  (vui-use-memo (pr) (and pr (octocat-pr--commit-days pr)))))
+    (octocat-vui-use-mode-line-loading (plist-get snap :loading))
+    (cond
+     (pr
+      (let* ((commits   (apply #'append (mapcar #'cdr days)))
+             (author-w  (octocat-repo-vui--author-width commits))
+             (subject-w (octocat-repo-vui--subject-width commits width author-w)))
+        (apply #'vui-vstack
+               (append
+                (delq nil (octocat-pr--header repo pr (octocat--label-background) width 'commits))
+                (mapcan (lambda (day)
+                          (cons (vui-text (car day) :face 'octocat-section-heading)
+                                (append
+                                 (mapcar (lambda (c)
+                                           (octocat-repo-vui--commit-row
+                                            repo c nil author-w subject-w))
+                                         (cdr day))
+                                 (list (vui-newline)))))
+                        days)))))
+     ((and (plist-get snap :error) (not (plist-get snap :loading)))
+      (vui-vstack
+       (vui-text (format "Error: %s" (plist-get snap :error)) :face 'error)
+       (octocat-pr--tabs 'commits repo number width)))
+     (t (vui-text (octocat-vui-detail-skeleton repo number (octocat-vui-window-width)
+                                               octocat-pr--tab-labels))))))
 
 
 ;;;; Major mode
@@ -1125,8 +1148,8 @@ A new TICK fetches them again."
 
 (defun octocat-pr-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current PR buffer.
-The page paints the disk cache at once and fetches fresh data in the
-background, in place: what is unfolded stays so."
+The page paints from the sync store at once and fetches fresh data in
+the background, in place: what is unfolded stays so."
   (interactive)
   (unless (and octocat--pr-repo octocat--pr-number)
     (user-error "Octocat: Buffer is not associated with a pull request"))

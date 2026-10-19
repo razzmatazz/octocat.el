@@ -234,10 +234,9 @@ TICK fetches everything again."
          (comments (octocat-repo-vui-use-cached
                     "pr-review-comments" repo number
                     #'octocat--fetch-pr-review-comments t tick))
-         (loading  (and (or (memq 'pending (list (plist-get pr :status)
-                                                 (plist-get files :status)
+         (loading  (and (or (plist-get pr :loading)
+                            (memq 'pending (list (plist-get files :status)
                                                  (plist-get comments :status)))
-                            (plist-get pr :refreshing)
                             (plist-get files :refreshing)
                             (plist-get comments :refreshing))
                         t))
@@ -246,18 +245,20 @@ TICK fetches everything again."
     (octocat-vui-use-mode-line-loading loading)
     (vui-vstack
      ;; The same header as the conversation, so the pages read as tabs.
-     (pcase (plist-get pr :status)
-       ('ready (apply #'vui-vstack
-                      (delq nil (octocat-pr--header
-                                 repo (plist-get pr :data)
-                                 (octocat--label-background) tab-w 'files))))
-       ('error (vui-vstack
-                (vui-text (format "Error: %s" (plist-get pr :error)) :face 'error)
-                (octocat-pr--tabs 'files repo number tab-w)))
-       (_      (vui-vstack
-                (vui-text (format "%s#%d  diff" repo number)
-                          :face 'octocat-dimmed)
-                (octocat-pr--tabs 'files repo number tab-w))))
+     (cond
+      ((or (plist-get pr :data) (plist-get pr :partial))
+       (apply #'vui-vstack
+              (delq nil (octocat-pr--header
+                         repo (or (plist-get pr :data) (plist-get pr :partial))
+                         (octocat--label-background) tab-w 'files))))
+      ((and (plist-get pr :error) (not (plist-get pr :loading)))
+       (vui-vstack
+        (vui-text (format "Error: %s" (plist-get pr :error)) :face 'error)
+        (octocat-pr--tabs 'files repo number tab-w)))
+      (t (vui-vstack
+          (vui-text (format "%s#%d  diff" repo number)
+                    :face 'octocat-dimmed)
+          (octocat-pr--tabs 'files repo number tab-w))))
      (pcase (plist-get files :status)
        ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
        ('error   (vui-text (format "  Error: %s" (plist-get files :error)) :face 'error))

@@ -102,6 +102,39 @@
     (sqlite-execute db "PRAGMA user_version = 99")
     (should-error (octocat-sync--create db) :type 'user-error)))
 
+(ert-deftest octocat-sync-test-null-becomes-nil ()
+  "A `:null' from `json-parse-string' is stored and read back as nil."
+  (let ((db (octocat-sync-tests--db)))
+    (octocat-sync--write db "r" (json-parse-string "{\"a\":null,\"b\":[null]}") 1.0)
+    (let ((data (car (octocat-sync--read db "r"))))
+      (should (eq (gethash "a" data 'absent) nil))
+      (should (equal (gethash "b" data) [nil])))))
+
+(ert-deftest octocat-sync-test-partial ()
+  "An unfetched resource whose entity a list stored reads as :partial."
+  (let* ((octocat-sync--db (octocat-sync-tests--db))
+         (octocat-sync--resources (make-hash-table :test #'eq))
+         (octocat-sync--loading (make-hash-table :test #'equal)))
+    (octocat-sync-define-resource issue (repo number)
+      :entity (octocat-sync-item-key 'issue repo number))
+    (octocat-sync--write octocat-sync--db "list"
+                         (octocat-sync-tests--table
+                          "nodes" (vector (octocat-sync-item
+                                           'issue "O/R"
+                                           (json-parse-string
+                                            "{\"number\":12,\"title\":\"Crash\",\"author\":{\"login\":\"Alice\"},\"labels\":[{\"name\":\"bug\",\"color\":\"f00\"}]}"))))
+                         1.0)
+    (should (equal (sort (mapcar #'car (sqlite-select octocat-sync--db "SELECT key FROM entity"))
+                         #'string<)
+                   '("issue:o/r#12" "label:o/r/bug" "user:alice")))
+    (let ((snap (octocat-sync-read '(issue "o/r" 12))))
+      (should-not (plist-get snap :data))
+      (should (equal (gethash "title" (plist-get snap :partial)) "Crash"))
+      (should (equal (gethash "login" (gethash "author" (plist-get snap :partial))) "Alice"))
+      (should (equal (gethash "color" (aref (gethash "labels" (plist-get snap :partial)) 0))
+                     "f00")))
+    (should-not (plist-get (octocat-sync-read '(issue "o/r" 13)) :partial))))
+
 (ert-deftest octocat-sync-test-queue ()
   "One fetch runs per key, at most the cap at once, and each result notifies."
   (let* ((octocat-sync--db (octocat-sync-tests--db))

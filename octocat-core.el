@@ -749,10 +749,6 @@ fetched."
     (list :items  items
           :branch (let ((b (gethash "branch" data))) (and (stringp b) b)))))
 
-(defun octocat--query-cache-id (query)
-  "Return a cache id for the list search QUERY (nil means the default)."
-  (secure-hash 'md5 (string-trim (or query octocat--default-list-query))))
-
 (defun octocat--items-cache-save (repo type id items &optional branch)
   "Persist ITEMS (a list of hash-tables) of TYPE and ID for REPO.
 BRANCH, when a string, is stored beside them so a cache made for another
@@ -1416,11 +1412,13 @@ OR in it cannot escape the repo scope."
       (format "( %s ) %s" query scope))))
 
 (defconst octocat--list-item-fields
-  '((pulls  . "...on PullRequest{number title state isDraft reviewDecision createdAt author{login} labels(first:20){nodes{name color}} comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{state contexts{checkRunCountsByState{state count} statusContextCountsByState{state count}}}}}}}")
-    (issues . "...on Issue{number title state createdAt author{login} labels(first:20){nodes{name color}} comments{totalCount} closedByPullRequestsReferences(first:5){nodes{number}}}"))
+  '((pulls  . "...on PullRequest{number title state isDraft reviewDecision createdAt author{login} labels(first:100){nodes{name color}} comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{state contexts{checkRunCountsByState{state count} statusContextCountsByState{state count}}}}}}}")
+    (issues . "...on Issue{number title state createdAt author{login} labels(first:100){nodes{name color}} comments{totalCount} closedByPullRequestsReferences(first:5){nodes{number}}}"))
   "The GraphQL fields of a list row, by KIND.
 Only what the row shows: `gh pr/issue list --json' would fetch every
-comment's body and every check run, many times the size and the API cost.")
+comment's body and every check run, many times the size and the API cost.
+Labels are all fetched, since the sync store keeps them on the item's
+entity, which must hold the whole set.")
 
 (defun octocat--list-items-query (kind)
   "Return the GraphQL search query for a page of KIND list items."
