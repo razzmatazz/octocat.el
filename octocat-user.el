@@ -26,8 +26,9 @@
 ;; `users/LOGIN' endpoints serve both.  RET on a repository opens its
 ;; octocat-repo page.
 ;;
-;; Rendered with vui.el like the repo page: the profile and the repository
-;; list are independent async sections.  The `M-x octocat-user' entry
+;; The first page on the sync layer (octocat-sync.el): the profile, the
+;; pinned and the full repository list are sync resources, painted from
+;; the store at once and refetched behind.  The `M-x octocat-user' entry
 ;; point is defined in octocat.el (see CONTRIBUTING.md, "Entry points");
 ;; this file defines `octocat-user-mode' and everything it needs.
 
@@ -36,6 +37,7 @@
 (require 'octocat-avatar)
 (require 'octocat-core)
 (require 'octocat-repo)
+(require 'octocat-sync)
 (require 'octocat-vui)
 (require 'subr-x)
 (require 'vui)
@@ -75,6 +77,11 @@ Enough for `octocat-user-avatar-max-columns' at the default of 40.")
 
 
 ;;;; Fetching
+;;
+;; The page reads three sync resources.  The profile is a `user' entity;
+;; repositories are `repo' entities, shared by the pinned and the full
+;; list.  Entities use GraphQL's field names, so the REST responses are
+;; mapped to them.
 
 (defun octocat-user--normalize (input)
   "Return INPUT as a bare GitHub login, or nil when it is not one.
@@ -83,70 +90,92 @@ Surrounding whitespace and a leading \"@\" are dropped."
     (and (string-match-p "\\`[A-Za-z0-9][A-Za-z0-9-]*\\'" login)
          login)))
 
+(defun octocat-user--table (&rest pairs)
+  "Return a hash table of PAIRS, alternating keys and values."
+  (let ((h (make-hash-table :test #'equal)))
+    (while pairs (puthash (pop pairs) (pop pairs) h))
+    h))
+
+(defun octocat-user--repo-entity (fields)
+  "Return the `repo' entity of FIELDS, a table in GraphQL's names."
+  (octocat-sync-entity 'repo (concat "repo:" (downcase (gethash "nameWithOwner" fields)))
+                       fields))
+
 (defun octocat-user--parse-profile (json-string)
-  "Parse the `users/LOGIN' response JSON-STRING into a hash-table."
-  (json-parse-string json-string :null-object nil))
+  "Parse the `users/LOGIN' response JSON-STRING into the profile resource.
+The user is an entity; the counts belong to this resource."
+  (let ((p (json-parse-string json-string :null-object nil)))
+    (octocat-user--table
+     "user" (octocat-sync-entity
+             'user (concat "user:" (downcase (gethash "login" p)))
+             (octocat-user--table
+              "login" (gethash "login" p)
+              "__typename" (gethash "type" p)
+              "name" (gethash "name" p)
+              "bio" (gethash "bio" p)
+              "company" (gethash "company" p)
+              "location" (gethash "location" p)
+              "websiteUrl" (gethash "blog" p)
+              "avatarUrl" (gethash "avatar_url" p)))
+     "followers" (gethash "followers" p)
+     "following" (gethash "following" p)
+     "publicRepos" (gethash "public_repos" p))))
 
-(defun octocat-user--fetch-profile (login callback)
-  "Fetch the profile of LOGIN and call CALLBACK with a hash-table.
-CALLBACK receives a cons (error . MSG) on failure."
-  (octocat--run-gh "user-profile"
-                   (list "api" (format "users/%s" login))
-                   #'octocat-user--parse-profile
-                   callback))
-
-(defun octocat-user--fetch-repos (login limit callback)
-  "Fetch the LIMIT most recently pushed repositories of LOGIN.
-CALLBACK receives a list of hash-tables, or a cons (error . MSG).  The
-limit is part of the URL so that `gh api' issues a GET."
-  (octocat--run-gh "user-repos"
-                   (list "api"
-                         (format "users/%s/repos?sort=pushed&per_page=%d"
-                                 login limit))
-                   #'octocat--parse-json-list
-                   callback))
-
+(defun octocat-user--parse-repos (json-string)
+  "Parse the `users/LOGIN/repos' response JSON-STRING into a list resource."
+  (octocat-user--table
+   "nodes" (cl-map 'vector
+                   (lambda (r)
+                     (let ((lang (gethash "language" r)))
+                       (octocat-user--repo-entity
+                        (octocat-user--table
+                         "nameWithOwner" (gethash "full_name" r)
+                         "description" (gethash "description" r)
+                         "stargazerCount" (gethash "stargazers_count" r)
+                         "primaryLanguage" (and lang (octocat-user--table "name" lang))
+                         "pushedAt" (gethash "pushed_at" r)
+                         "isFork" (gethash "fork" r)
+                         "isArchived" (gethash "archived" r)))))
+                   (json-parse-string json-string :null-object nil))))
 
 (defconst octocat-user--pinned-query
   "query($login:String!){repositoryOwner(login:$login){... on ProfileOwner{pinnedItems(first:6,types:REPOSITORY){nodes{... on Repository{nameWithOwner description stargazerCount primaryLanguage{name} pushedAt isFork isArchived}}}}}}"
-  "GraphQL query behind `octocat-user--fetch-pinned'.
+  "GraphQL query behind the `user-pinned' resource.
 The REST API does not expose pinned repositories.")
 
 (defun octocat-user--parse-pinned (json-string)
-  "Parse the GraphQL response JSON-STRING into a list of repository tables.
-Each table carries the REST API's keys (`full_name', `description',
-`language', `stargazers_count', `pushed_at', `fork', `archived'), so the
-rows of the repository list render it as they do.  Pinned gists, which
-come back as empty nodes, are left out."
+  "Parse the GraphQL response JSON-STRING into a list resource.
+Pinned gists, which come back as empty nodes, are left out."
   (let* ((data  (gethash "data" (json-parse-string json-string :null-object nil)))
          (owner (and data (gethash "repositoryOwner" data)))
          (items (and owner (gethash "pinnedItems" owner)))
-         (nodes (and items (gethash "nodes" items)))
-         repos)
-    (seq-doseq (node nodes)
-      (when-let* ((name (and node (gethash "nameWithOwner" node)))
-                  (repo (make-hash-table :test #'equal)))
-        (puthash "full_name" name repo)
-        (puthash "description" (gethash "description" node) repo)
-        (puthash "language" (let ((l (gethash "primaryLanguage" node)))
-                              (and l (gethash "name" l)))
-                 repo)
-        (puthash "stargazers_count" (gethash "stargazerCount" node) repo)
-        (puthash "pushed_at" (gethash "pushedAt" node) repo)
-        (puthash "fork" (gethash "isFork" node) repo)
-        (puthash "archived" (gethash "isArchived" node) repo)
-        (push repo repos)))
-    (nreverse repos)))
+         (nodes (and items (gethash "nodes" items))))
+    (octocat-user--table
+     "nodes" (vconcat (delq nil (mapcar (lambda (node)
+                                          (and node (gethash "nameWithOwner" node)
+                                               (octocat-user--repo-entity node)))
+                                        nodes))))))
 
-(defun octocat-user--fetch-pinned (login callback)
-  "Fetch the repositories LOGIN has pinned and call CALLBACK with a list.
-CALLBACK receives a cons (error . MSG) on failure."
-  (octocat--run-gh "user-pinned"
-                   (list "api" "graphql"
-                         "-f" (concat "query=" octocat-user--pinned-query)
-                         "-F" (concat "login=" login))
-                   #'octocat-user--parse-pinned
-                   callback))
+(octocat-sync-define-resource user-profile (login)
+  :fetch (lambda (done)
+           (octocat--run-gh "user-profile" (list "api" (format "users/%s" login))
+                            #'octocat-user--parse-profile done)))
+
+(octocat-sync-define-resource user-repos (login limit)
+  ;; The limit is in the URL so that `gh api' issues a GET.
+  :fetch (lambda (done)
+           (octocat--run-gh "user-repos"
+                            (list "api" (format "users/%s/repos?sort=pushed&per_page=%d"
+                                                login limit))
+                            #'octocat-user--parse-repos done)))
+
+(octocat-sync-define-resource user-pinned (login)
+  :fetch (lambda (done)
+           (octocat--run-gh "user-pinned"
+                            (list "api" "graphql"
+                                  "-f" (concat "query=" octocat-user--pinned-query)
+                                  "-F" (concat "login=" login))
+                            #'octocat-user--parse-pinned done)))
 
 
 ;;;; Rendering
@@ -157,20 +186,23 @@ CALLBACK receives a cons (error . MSG) on failure."
        (concat (number-to-string n) " " (propertize label 'face 'octocat-dimmed))))
 
 (defun octocat-user--profile-lines (profile)
-  "Return the list of header strings describing PROFILE (a hash-table)."
-  (let* ((login   (gethash "login" profile))
-         (name    (octocat--nonempty (gethash "name" profile)))
-         (bio     (octocat--nonempty (gethash "bio" profile)))
-         (type    (gethash "type" profile))
+  "Return the list of header strings describing PROFILE.
+PROFILE is the data of the `user-profile' resource: the user's fields
+under \"user\", and the counts."
+  (let* ((user    (gethash "user" profile))
+         (login   (gethash "login" user))
+         (name    (octocat--nonempty (gethash "name" user)))
+         (bio     (octocat--nonempty (gethash "bio" user)))
+         (type    (gethash "__typename" user))
          (details (delq nil
                         (mapcar #'octocat--nonempty
-                                (list (gethash "company" profile)
-                                      (gethash "location" profile)
-                                      (gethash "blog" profile)))))
+                                (list (gethash "company" user)
+                                      (gethash "location" user)
+                                      (gethash "websiteUrl" user)))))
          (counts  (delq nil
                         (list (octocat-user--count (gethash "followers" profile) "followers")
                               (octocat-user--count (gethash "following" profile) "following")
-                              (octocat-user--count (gethash "public_repos" profile)
+                              (octocat-user--count (gethash "publicRepos" profile)
                                                    "public repos")))))
     (delq nil
           (list
@@ -196,14 +228,15 @@ AVATAR is a list of equally wide strings; the shorter list is padded."
              collect (concat (or (nth i avatar) pad) "  " (or (nth i lines) "")))))
 
 (defun octocat-user--repo-row (repo)
-  "Return a RET-able row vnode for REPO, a repository hash-table."
-  (let* ((full  (gethash "full_name" repo))
+  "Return a RET-able row vnode for REPO, the fields of a `repo' entity."
+  (let* ((full  (gethash "nameWithOwner" repo))
          (desc  (octocat--nonempty (gethash "description" repo)))
-         (lang  (octocat--nonempty (gethash "language" repo)))
-         (stars (gethash "stargazers_count" repo))
-         (pushed (octocat--format-ts-relative (or (gethash "pushed_at" repo) "")))
-         (flags (concat (and (eq (gethash "fork" repo) t) " fork")
-                        (and (eq (gethash "archived" repo) t) " archived"))))
+         (lang  (let ((l (gethash "primaryLanguage" repo)))
+                  (and l (octocat--nonempty (gethash "name" l)))))
+         (stars (gethash "stargazerCount" repo))
+         (pushed (octocat--format-ts-relative (or (gethash "pushedAt" repo) "")))
+         (flags (concat (and (eq (gethash "isFork" repo) t) " fork")
+                        (and (eq (gethash "isArchived" repo) t) " archived"))))
     (octocat-vui-row
      (concat "  "
              (propertize (or full "") 'face 'octocat-repo)
@@ -220,63 +253,63 @@ AVATAR is a list of equally wide strings; the shorter list is padded."
 
 ;;;; Components
 
+(defun octocat-user--repo-key (repo)
+  "Return the `vui-list' key of REPO."
+  (gethash "nameWithOwner" repo))
+
 (vui-defcomponent octocat-user--repos-section (login tick)
   "Repositories of LOGIN, with its own \"load more\" limit.
 A new TICK fetches them again."
   :state ((limit octocat-section-limit))
   :render
-  (let* ((sticky (octocat-vui-use-async-sticky (list 'user-repos login limit tick)
-                   (lambda (resolve reject)
-                     (octocat-user--fetch-repos
-                      login limit
-                      (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))
-         (loading (and (or (eq (plist-get sticky :status) 'pending)
-                           (plist-get sticky :refreshing))
-                       t)))
+  (let* ((snap    (octocat-vui-use-resource (list 'user-repos login limit) tick))
+         (shown   (vui-use-ref nil))
+         (data    (plist-get snap :data))
+         (loading (plist-get snap :loading)))
+    ;; Each limit is its own resource: keep the shorter list while the
+    ;; longer one loads.
+    (when data (setcar shown (append (gethash "nodes" data) nil)))
     (octocat-vui-use-mode-line-loading loading)
-    (vui-vstack
-     (vui-text "Repositories" :face 'octocat-section-heading)
-     (pcase (plist-get sticky :status)
-       ('pending (vui-text (octocat-vui-line-skeleton "  ")))
-       ('error   (vui-text (format "%s" (plist-get sticky :error)) :face 'octocat-dimmed))
-       ('ready
-        (let ((repos (plist-get sticky :data)))
-          (vui-fragment
-           (if (null repos)
-               (vui-text "(no public repositories)" :face 'octocat-dimmed)
-             (octocat-vui-reveal-list repos #'octocat-user--repo-row
-                                      (lambda (r) (gethash "full_name" r))))
-           (when (and repos
-                      (or (>= (length repos) limit)
-                          ;; Keep the button in place while a further page
-                          ;; loads, but not for the first paint.
-                          (and (plist-get sticky :refreshing)
-                               (> limit octocat-section-limit))))
-             (octocat-vui-load-more-button
-              'load-more-user-repos octocat-section-limit
-              "RET: load more repositories"
-              (lambda () (vui-set-state :limit (+ limit octocat-section-limit)))
-              (and (plist-get sticky :refreshing) (< (length repos) limit)) 2
-              (octocat-vui-line-skeleton))))))))))
+    (let ((repos (car shown)))
+      (vui-vstack
+       (vui-text "Repositories" :face 'octocat-section-heading)
+       (cond
+        ((and (null data) (plist-get snap :error) (not loading))
+         (vui-text (plist-get snap :error) :face 'octocat-dimmed))
+        ((and (null data) (null repos))
+         (vui-text (octocat-vui-line-skeleton "  ")))
+        (t
+         (vui-fragment
+          (if (null repos)
+              (vui-text "(no public repositories)" :face 'octocat-dimmed)
+            (octocat-vui-reveal-list repos #'octocat-user--repo-row
+                                     #'octocat-user--repo-key))
+          (when (and repos
+                     (or (>= (length repos) limit)
+                         ;; Keep the button in place while a further page
+                         ;; loads, but not for the first paint.
+                         (and loading (> limit octocat-section-limit))))
+            (octocat-vui-load-more-button
+             'load-more-user-repos octocat-section-limit
+             "RET: load more repositories"
+             (lambda () (vui-set-state :limit (+ limit octocat-section-limit)))
+             (and loading (< (length repos) limit)) 2
+             (octocat-vui-line-skeleton))))))))))
 
 (vui-defcomponent octocat-user--pinned-section (login tick)
   "Pinned repositories of LOGIN, shown only when there are any.
 Pinned repositories are decoration, so nothing is drawn while they load
 or when the fetch fails.  A new TICK fetches them again."
   :render
-  (let* ((result (octocat-vui-use-async-sticky (list 'user-pinned login tick)
-                   (lambda (resolve reject)
-                     (octocat-user--fetch-pinned
-                      login
-                      (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))
-         (repos  (and (eq (plist-get result :status) 'ready)
-                      (plist-get result :data))))
+  (let* ((snap  (octocat-vui-use-resource (list 'user-pinned login) tick))
+         (data  (plist-get snap :data))
+         (repos (and data (append (gethash "nodes" data) nil))))
+    (octocat-vui-use-mode-line-loading (plist-get snap :loading))
     (if (null repos)
         (vui-fragment)
       (vui-vstack
        (vui-text "Pinned" :face 'octocat-section-heading)
-       (vui-list repos #'octocat-user--repo-row
-                 (lambda (r) (gethash "full_name" r)))
+       (vui-list repos #'octocat-user--repo-row #'octocat-user--repo-key)
        (vui-newline)))))
 
 (vui-defcomponent octocat-user--header (profile)
@@ -286,7 +319,7 @@ time the window's width changes."
   :render
   (let* ((width  (octocat-vui-window-width))
          (url    (and octocat-user-show-avatar
-                      (octocat--nonempty (gethash "avatar_url" profile))))
+                      (octocat--nonempty (gethash "avatarUrl" (gethash "user" profile)))))
          (result (vui-use-async (list 'user-avatar url)
                    (lambda (resolve reject)
                      (if (null url)
@@ -317,28 +350,16 @@ time the window's width changes."
   "Root component of the user page: profile header, then repositories.
 A new TICK fetches everything again."
   :render
-  (let* ((result (octocat-vui-use-async-sticky (list 'user-profile login tick)
-                   (lambda (resolve reject)
-                     (octocat-user--fetch-profile
-                      login
-                      (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))
-         (loading (or (eq (plist-get result :status) 'pending)
-                      (plist-get result :refreshing))))
-    (octocat-vui-use-mode-line-loading loading)
+  (let* ((snap    (octocat-vui-use-resource (list 'user-profile login) tick))
+         (profile (plist-get snap :data))
+         (handle  (vui-text (propertize (concat "@" login) 'face 'octocat-repo))))
+    (octocat-vui-use-mode-line-loading (plist-get snap :loading))
     (vui-vstack
-     (pcase (plist-get result :status)
-       ('ready
-        (let ((profile (plist-get result :data)))
-          (if profile
-              (vui-component 'octocat-user--header :profile profile)
-            (vui-text (propertize (concat "@" login) 'face 'octocat-repo)))))
-       ('error
-        (vui-vstack
-         (vui-text (propertize (concat "@" login) 'face 'octocat-repo))
-         (vui-text (format "%s" (plist-get result :error)) :face 'octocat-dimmed)))
-       (_ (vui-vstack
-           (vui-text (propertize (concat "@" login) 'face 'octocat-repo))
-           (vui-text (octocat-vui-skeleton '((24) (40) (18)))))))
+     (cond
+      (profile (vui-component 'octocat-user--header :profile profile))
+      ((and (plist-get snap :error) (not (plist-get snap :loading)))
+       (vui-vstack handle (vui-text (plist-get snap :error) :face 'octocat-dimmed)))
+      (t (vui-vstack handle (vui-text (octocat-vui-skeleton '((24) (40) (18)))))))
      (vui-newline)
      (vui-component 'octocat-user--pinned-section :login login :tick tick)
      (vui-component 'octocat-user--repos-section :login login :tick tick))))

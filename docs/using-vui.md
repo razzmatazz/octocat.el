@@ -48,3 +48,29 @@ takes the tick into its key (`octocat-vui-use-cached`,
 `octocat-vui-use-async-sticky`), so it refetches and keeps showing the
 old data until the new data arrives.  A handler that must remount
 defers it, e.g. `(run-at-time 0 nil ...)`.
+
+## Reading the sync store
+
+A page on the sync layer (`octocat-sync.el`; so far the user page) does
+not fetch.  It names what it shows as a resource spec, such as
+`(user-profile "octocat")`, and reads it with `octocat-vui-use-resource`,
+which returns a snapshot: `:data` from the SQLite store, `:loading` while
+a fetch runs, and `:error` from the last failed one.  The page paints at
+once from whatever the store holds, and a fetch runs behind it.
+
+The hook takes the page's `:tick`.  Opening a page fetches each resource
+unless it was fetched within `octocat-sync-fresh-for`; a new tick (`g`)
+always fetches.  Fetches write the store and never hand data to the
+page.  After each write, sync reports which resources changed, including
+every resource that shows an entity (a user, a repo) whose fields
+changed.  Each page reading one of them re-renders once, from its root.
+So a component that reads a resource must not be `:memo`: a memoized
+component with unchanged props would skip the re-render and keep the
+old snapshot.
+
+To add a resource, define it beside its page with
+`octocat-sync-define-resource`.  Its `:fetch` calls `DONE` with the
+parsed tree, wrapping each shared record in `octocat-sync-entity` with
+GraphQL's field names, or with `(error . MESSAGE)`.  See
+`plans/github-sync-mechanism.md` for the full design and what is still
+to come.

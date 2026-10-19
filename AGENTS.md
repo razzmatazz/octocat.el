@@ -102,7 +102,8 @@ succeeded or crashed; splitting makes failures attributable.
 
 Load order: `octocat-mermaid.el` first (standalone), then
 `octocat-markdown.el` (requires it; `octocat-core.el` requires that), then
-`octocat-core.el` (everything else depends on it), then `octocat-vui.el`
+`octocat-core.el` (everything else depends on it), then `octocat-sync.el`
+(`octocat-vui.el` requires it), then `octocat-vui.el`
 and `octocat-diff.el` (which the commit and PR diff pages require);
 `octocat-evil.el` before `octocat.el` (the last lines of `octocat.el` call
 `octocat-evil-setup`, and `require` is a no-op on an already-provided
@@ -149,7 +150,8 @@ string rather than `ok` is an error — fix it before proceeding):
 ```elisp
 (let (results)
   (dolist (f (list "octocat-mermaid.el" "octocat-markdown.el"
-                   "octocat-core.el" "octocat-vui.el" "octocat-diff.el"
+                   "octocat-core.el" "octocat-sync.el" "octocat-vui.el"
+                   "octocat-diff.el"
                    "octocat-edit.el"
                    "octocat-commit.el" "octocat-job.el" "octocat-run.el"
                    "octocat-workflow.el" "octocat-pr-diff.el"
