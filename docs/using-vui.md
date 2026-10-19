@@ -74,11 +74,12 @@ as one table, as `gh issue view` gives it.  Before the page's first
 fetch lands, `:partial` holds the list's copy, so the page paints its
 real header with grey bars below.
 
-An action that changes an issue or PR, such as renaming or closing it,
-is a mutation (`octocat-sync-define-mutation`).  Its optimistic change
-applies in memory at once, so every page showing the item shows it
-before GitHub answers; the page draws its `:mutating` label in place of
-its buttons.  On success the change is stored and the resources it made
+Every action that changes an issue or PR, from a comment to a merge, is
+a mutation (`octocat-sync-define-mutation`).  An optimistic one, such as
+a rename, applies in memory at once, so every page showing the item
+shows it before GitHub answers.  While it runs, the snapshot's
+`:mutating` holds its label under its slot, such as `merge`, and the
+page draws it there: in the merge box, or in place of the buttons.  On success the change is stored and the resources it made
 outdated (its timeline, the lists it may leave) are refetched if on
 screen; on failure it is dropped.
 

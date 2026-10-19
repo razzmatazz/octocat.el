@@ -48,7 +48,7 @@
 (declare-function octocat-pr--use-data "octocat-pr" (repo number tick))
 (declare-function octocat-pr--header "octocat-pr" (repo pr bg width &optional tab))
 (declare-function octocat-pr--current "octocat-pr" ())
-(declare-function octocat-pr--refresh-pages "octocat-pr" (repo number))
+(declare-function octocat-pr--busy "octocat-pr" (repo number slot))
 (declare-function octocat-pr-merge "octocat-pr" ())
 (declare-function octocat-pr--tabs "octocat-pr" (current repo number width &optional files commits))
 (declare-function octocat-switch-repo "octocat-core" ())
@@ -141,46 +141,33 @@ Only an approval may be submitted without text."
           (propertize "C-c C-c" 'face 'help-key-binding) " submit   "
           (propertize "C-c C-k" 'face 'help-key-binding) " discard"))
 
-(defvar-local octocat-pr-diff--reviewing nil
-  "Non-nil while the review started from this PR page is being submitted.")
-
-(defun octocat-pr-diff--set-reviewing (buf reviewing)
-  "Set BUF's review submission under way to REVIEWING and show it in its page."
-  (when (buffer-live-p buf)
-    (with-current-buffer buf
-      (setq octocat-pr-diff--reviewing reviewing)
-      ;; Only the files changed page has the submit button to show it in.
-      (when (derived-mode-p 'octocat-pr-diff-mode)
-        (octocat-vui-update-page :reviewing reviewing)))))
+(octocat-sync-define-mutation review-pr (repo number flag body)
+  :label "Submitting review…"
+  :slot 'review
+  :resources (lambda () `((pr ,repo ,number)))
+  :send (lambda (done)
+          (octocat--run-gh "review" (octocat-pr-diff--review-args repo number flag body)
+                           #'ignore done))
+  ;; The review joins the timeline, may add review comments and may
+  ;; change the merge box.
+  :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number)
+                            (pr-review-comments ,repo ,number))))
 
 (defun octocat-pr-diff--submit-review (body source on-success on-error)
   "Submit BODY as a review of the PR in SOURCE buffer.
 The review flag is read from the edit buffer's :flag user data; there
 is none until the user picks a decision.  The dialog closes at once,
-through ON-SUCCESS, and SOURCE shows the review under way until it is
-sent, so a slow GitHub does not block; ON-ERROR is called only for a
-missing decision."
+through ON-SUCCESS, and the PR's pages show the review under way until
+it is sent, so a slow GitHub does not block; ON-ERROR is called only
+for a missing decision."
   (let ((flag (plist-get octocat-edit--user-data :flag)))
     (if (not flag)
         (funcall on-error "Pick a decision with C-c C-t first")
-      (with-current-buffer source
-        (pcase-let ((`(,repo . ,number) (octocat-pr--current)))
-          (setq octocat-pr-diff--reviewing t)
-          (octocat--run-gh "review"
-            (octocat-pr-diff--review-args repo number flag body)
-            #'string-trim
-            (lambda (result)
-              (if (eq (car-safe result) 'error)
-                  (progn
-                    (message "Octocat: Failed to review PR #%d: %s" number (cdr result))
-                    (octocat-pr-diff--set-reviewing source nil))
-                (message "Octocat: Reviewed PR #%d" number)
-                (when (buffer-live-p source)
-                  (with-current-buffer source
-                    (setq octocat-pr-diff--reviewing nil)))
-                ;; The review joins the conversation's timeline and may
-                ;; change its merge box.
-                (octocat-pr--refresh-pages repo number))))))
+      (pcase-let ((`(,repo . ,number) (with-current-buffer source (octocat-pr--current))))
+        (octocat-sync-submit `(review-pr ,repo ,number ,flag ,body)
+                             (lambda (result)
+                               (unless (eq (car-safe result) 'error)
+                                 (message "Octocat: Reviewed PR #%d" number)))))
       (funcall on-success))))
 
 (defun octocat-pr-diff-review-cycle ()
@@ -211,15 +198,16 @@ missing decision."
 Write the review text, pick Comment, Approve or Request changes with
 \\<octocat-pr-diff-review-mode-map>\\[octocat-pr-diff-review-cycle], then submit."
   (interactive)
-  (let* ((number (cdr (or (octocat-pr--current)
-                          (user-error "Octocat: Buffer is not associated with a pull request"))))
-         (_     (when octocat-pr-diff--reviewing
-                  (user-error "Octocat: A review of PR #%d is being submitted" number)))
+  (let* ((current (or (octocat-pr--current)
+                      (user-error "Octocat: Buffer is not associated with a pull request")))
+         (number  (cdr current))
+         (_       (when (octocat-pr--busy (car current) number 'review)
+                    (user-error "Octocat: A review of PR #%d is being submitted" number)))
          (title (format "Review PR #%d" number))
          (win   (octocat--open-edit-buffer
                  title
                  #'octocat-pr-diff--submit-review
-                 (lambda (source) (octocat-pr-diff--set-reviewing source t))
+                 #'ignore
                  nil
                  ;; No default decision: it must be a deliberate choice.
                  (octocat-pr-diff--review-data nil))))
@@ -230,11 +218,11 @@ Write the review text, pick Comment, Approve or Request changes with
 
 ;;;; Components
 
-(vui-defcomponent octocat-pr-diff--page (repo number raw reviewing tick)
+(vui-defcomponent octocat-pr-diff--page (repo number raw tick)
   "The diff of pull request NUMBER of REPO, under the PR page's header.
-RAW shows the review comments' markdown verbatim.  REVIEWING non-nil
-shows a review being submitted in place of the submit button.  A new
-TICK fetches everything again."
+RAW shows the review comments' markdown verbatim.  A review being
+submitted shows in place of the submit button.  A new TICK fetches
+everything again."
   :render
   (let* ((pr       (octocat-pr--use-data repo number tick))
          (tab-w    (octocat--markdown-width))
@@ -271,9 +259,8 @@ TICK fetches everything again."
      (vui-newline)
      (octocat-diff-comments-section "Review Comments" comments
                                     raw (octocat--markdown-width))
-     (if reviewing
-         (vui-text (concat "  " (octocat-vui-spinner) " Submitting review…")
-                   :face 'bold)
+     (if-let* ((reviewing (alist-get 'review (plist-get pr :mutating))))
+         (vui-text (concat "  " (octocat-vui-spinner) " " reviewing) :face 'bold)
        (apply #'vui-vstack
               (octocat-timeline-buttons
                (list (list "Submit review" "RET: comment on, approve or request changes"
@@ -332,8 +319,7 @@ independently, in place."
                             (cons octocat--pr-diff-repo octocat--pr-diff-number)
                             (list :repo octocat--pr-diff-repo
                                   :number octocat--pr-diff-number
-                                  :raw octocat--markdown-raw
-                                  :reviewing octocat-pr-diff--reviewing)))
+                                  :raw octocat--markdown-raw)))
 
 (defun octocat-pr-diff-open (repo number)
   "Show the diff of pull request NUMBER of REPO in its own buffer."

@@ -400,8 +400,8 @@ commit's: within it, opening doesn't refetch, but `g' does."
 Its keys are :data :partial :loading :error :fetched-at and :mutating.
 It reads only the store, never the network, with the changes of pending
 mutations applied.  :partial is set only when :data is nil; see
-`octocat-sync-define-resource'.  :mutating is the label of a pending
-mutation of SPEC, see `octocat-sync-define-mutation'."
+`octocat-sync-define-resource'.  :mutating is an alist (SLOT . LABEL)
+of the pending mutations of SPEC, see `octocat-sync-define-mutation'."
   (let ((key (octocat-sync-spec-key spec))
         (db  (octocat-sync--db)))
     (pcase-let ((`(,data ,fetched-at ,error)
@@ -523,15 +523,18 @@ Their data stays; a page showing one should refetch it.")
 
 (defvar octocat-sync--pending nil
   "Mutations sent and not yet answered, oldest first.
-Each is a plist (:changes ALIST :resources KEYS :label LABEL), where
-ALIST holds (ENTITY-KEY . FIELDS).")
+Each is a plist (:changes ALIST :resources KEYS :label LABEL :slot SLOT),
+where ALIST holds (ENTITY-KEY . FIELDS).")
 
 (defmacro octocat-sync-define-mutation (name args &rest props)
   "Define the mutation NAME, whose spec is (NAME . ARGS).
 PROPS are evaluated with ARGS bound:
 :label        what it is doing, such as \"Closing issue…\";
+:slot         where a page shows that, such as `action' (the default)
+              for under a timeline or `merge' for the merge box;
 :resources    a function returning the specs of the resources it acts
-              on: their snapshots carry :mutating LABEL while it runs;
+              on: their snapshots' :mutating has (SLOT . LABEL) while
+              it runs;
 :optimistic   optional, a function returning a list of (ENTITY-KEY .
               FIELDS), FIELDS an alist of the values it will set;
 :send         a function of DONE that sends it and calls DONE with nil,
@@ -546,10 +549,11 @@ PROPS are evaluated with ARGS bound:
   (mapcan (lambda (m) (copy-sequence (plist-get m :changes))) octocat-sync--pending))
 
 (defun octocat-sync--mutating (key)
-  "Return the label of the newest pending mutation of resource KEY, or nil."
-  (plist-get (seq-find (lambda (m) (member key (plist-get m :resources)))
-                       (reverse octocat-sync--pending))
-             :label))
+  "Return the pending mutations of resource KEY as an alist (SLOT . LABEL).
+The newest of a slot comes first."
+  (mapcar (lambda (m) (cons (plist-get m :slot) (plist-get m :label)))
+          (seq-filter (lambda (m) (member key (plist-get m :resources)))
+                      (reverse octocat-sync--pending))))
 
 (defun octocat-sync--touched (db mutation)
   "Return the keys of the resources in DB that MUTATION is visible on."
@@ -575,7 +579,8 @@ On failure the change is dropped and the error shown in the echo area."
                 :resources (mapcar #'octocat-sync-spec-key
                                    (and (plist-get props :resources)
                                         (funcall (plist-get props :resources))))
-                :label (plist-get props :label))))
+                :label (plist-get props :label)
+                :slot (or (plist-get props :slot) 'action))))
     (setq octocat-sync--pending (append octocat-sync--pending (list mutation)))
     (octocat-sync--notify (octocat-sync--touched db mutation))
     (funcall (plist-get props :send)
