@@ -189,27 +189,6 @@ last fetch; non-zero means the branches diverged.  Reads git synchronously."
 
 ;;;; gh integration
 
-(defun octocat-repo--disabled-feature-p (result)
-  "Return non-nil when RESULT signals a disabled-feature error from gh.
-Matches messages like \"X has disabled issues\" / \"disabled pull requests\" /
-\"disabled Actions\" that the gh CLI emits for repos where the feature is
-turned off, so callers can treat them as empty lists rather than real errors."
-  (and (eq (car-safe result) 'error)
-       (string-match-p "disabled" (cdr result))))
-
-(defun octocat-repo-vui--resolve-or-reject (result resolve reject)
-  "Route RESULT from an octocat gh-fetch callback to RESOLVE or REJECT.
-RESULT is whatever an octocat `octocat--run-gh'-based fetch function
-passes to its callback: either the parsed data, or a cons
-\\=(error . MSG).  A disabled-feature error (see
-`octocat-repo--disabled-feature-p') resolves to nil (an empty list)
-rather than rejecting, so the section shows \"(no pull requests)\"."
-  (cond
-   ((not (eq (car-safe result) 'error)) (funcall resolve result))
-   ((octocat-repo--disabled-feature-p result) (funcall resolve nil))
-   (t (funcall reject (cdr result)))))
-
-
 (defun octocat-repo--list-workflows (repo callback)
   "Fetch workflows for REPO asynchronously and call CALLBACK with results.
 CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MSG)."
@@ -330,19 +309,15 @@ a cons \\=(error . MSG)."
                      (and obj (gethash "entries" obj)))))
      callback)))
 
-(defun octocat-repo--load-root (repo sha callback)
-  "Call CALLBACK with the root files of REPO at commit SHA, or (error . MSG).
-They are as from `octocat-repo--list-root'.  A commit's files never
-change, so they are served from the disk cache when there, at once;
-else fetched and cached."
-  (if-let* ((cached (octocat--detail-cache-load repo "root-at" sha)))
-      (funcall callback (cl-coerce cached 'list))
-    (octocat-repo--list-root
-     repo sha
-     (lambda (result)
-       (unless (eq (car-safe result) 'error)
-         (octocat--detail-cache-save repo "root-at" sha (vconcat result)))
-       (funcall callback result)))))
+(octocat-sync-define-resource repo-root (repo sha)
+  ;; A commit's files never change.
+  :max-age (* 30 24 60 60)
+  :fetch (lambda (done)
+           (if (null sha)
+               (funcall done [])
+             (octocat-repo--list-root
+              repo sha
+              (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r))))))))
 
 (defconst octocat-repo--doc-kinds
   '((readme   "README"          "readme")
@@ -428,24 +403,17 @@ issue/PR-count lookups."
      callback)))
 
 
-(defun octocat-repo--summary-cache-load (repo)
-  "Load the cached summary plist of REPO (see `octocat-repo--parse-summary')."
-  (when-let* ((data (octocat--detail-cache-load repo "summary" "repo")))
-    (let ((str (lambda (k) (let ((v (gethash k data))) (and (stringp v) v))))
-          (num (lambda (k) (let ((v (gethash k data))) (and (integerp v) v)))))
-      (list :default-branch (funcall str "default-branch")
-            :fork-parent    (funcall str "fork-parent")
-            :open-issues    (funcall num "open-issues")
-            :open-prs       (funcall num "open-prs")))))
-
-(defun octocat-repo--summary-cache-save (repo summary)
-  "Persist the SUMMARY plist of REPO (see `octocat-repo--parse-summary')."
-  (let ((data (make-hash-table :test #'equal)))
-    (puthash "default-branch" (or (plist-get summary :default-branch) :null) data)
-    (puthash "fork-parent"    (or (plist-get summary :fork-parent) :null) data)
-    (puthash "open-issues"    (or (plist-get summary :open-issues) :null) data)
-    (puthash "open-prs"       (or (plist-get summary :open-prs) :null) data)
-    (octocat--detail-cache-save repo "summary" "repo" data)))
+(octocat-sync-define-resource repo-summary (repo)
+  :fetch (lambda (done)
+           (octocat-repo--fetch-summary
+            repo
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error)
+                                r
+                              (let ((h (make-hash-table :test #'equal)))
+                                (while r
+                                  (puthash (substring (symbol-name (pop r)) 1) (pop r) h))
+                                h)))))))
 
 
 ;;;; Row rendering
@@ -981,8 +949,8 @@ Not RET-able: the commit page reads from GitHub, which lacks it."
 
 ;;;; Sections
 ;;
-;; Each section owns its async fetch (`vui-use-async') and, for the
-;; pageable ones, its "load more" limit (`:state').
+;; Each section reads its sync resource and, for the pageable ones,
+;; keeps its "load more" limit (`:state').
 
 (defun octocat-repo-vui--unpushed-section (unpushed)
   "Return the section listing UNPUSHED, from `octocat-repo--unpushed'.
@@ -1026,9 +994,11 @@ the DEFAULT branch.  Without LABEL the heading is plain \"Commits\"."
                                  :on-click #'octocat-repo-reset-branch))))
     (vui-text "Commits" :face 'octocat-section-heading)))
 
-(defun octocat-repo--commits-cache-id (branch)
-  "Return the cache id of BRANCH's commits; nil means the default branch."
-  (if branch (concat "branch-" (octocat--cache-safe-repo branch)) "default"))
+(octocat-sync-define-resource commits (repo branch)
+  :fetch (lambda (done)
+           (octocat-repo--list-commits
+            repo branch
+            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
 (vui-defcomponent octocat-repo-vui--commits-section
     (repo branch default-branch current-branch head-info on-head tick)
@@ -1038,45 +1008,26 @@ the branch appears once in the title instead of on every row, with
 a button back to DEFAULT-BRANCH when it is another.  It is highlighted
 when it is also the local CURRENT-BRANCH.  HEAD-INFO is the
 plist from `octocat--head-info', used to highlight the local HEAD commit.
-Every commit loaded is cached on disk under its branch head, so while the
-head stays put, reopening and \"load more\" reuse them; only commits
-beyond the cache are fetched, a page at a time, pinned to that head.
-ON-HEAD is called with the SHA of the head shown, cached or fresh,
-whenever it changes, or with nil when there are no commits to show."
+The first page is a sync resource; \"load more\" fetches a page at a
+time, pinned to the head shown.  ON-HEAD is called with the SHA of the
+head shown, stored or fresh, whenever it changes, or with nil when there
+are no commits to show."
   ;; MORE is (:items LIST :done BOOL): the commits after the last load
   ;; more, DONE when that page came back short (end of history).
   :state ((limit octocat-repo-commits-page-size) (more nil) (fetching nil))
   :render
-  (let* ((size   octocat-repo-commits-page-size)
-         (cache-id (octocat-repo--commits-cache-id branch))
-         ;; "history", not the REST-era "commits", whose entries lack
-         ;; the cursors that load more pages after.
-         (cached (vui-use-memo (repo cache-id)
-                   (octocat--items-cache-load repo "history" cache-id)))
-         (first  (octocat-vui-use-async-sticky (list 'commits repo branch tick)
-                   (lambda (resolve reject)
-                     (octocat-repo--list-commits
-                      repo branch
-                      (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))
-         (fresh  (and (eq (plist-get first :status) 'ready)
-                      (plist-get first :data)))
+  (let* ((size    octocat-repo-commits-page-size)
+         (snap    (octocat-vui-use-resource (list 'commits repo branch) tick))
+         (first   (append (plist-get snap :data) nil))
          (more-items (plist-get more :items))
-         (commits (if fresh
-                      (octocat-repo--commits-merge fresh (plist-get cached :items) more-items)
-                    (octocat-repo--commits-merge (plist-get cached :items) more-items)))
-         (result (octocat-vui-with-stale first commits))
-         (done   (or (and (plist-get more :done) (eq commits more-items))
-                     (/= 0 (% (length commits) size))))
-         (loading (and (or (plist-get result :refreshing) fetching) t))
-         ;; The cached default-branch list is labelled with the branch it
-         ;; was fetched for.
-         (label  (or branch (if fresh default-branch (plist-get cached :branch)))))
+         (commits (octocat-repo--commits-merge first more-items))
+         (status  (octocat-vui-snapshot-status snap))
+         (done    (or (and (plist-get more :done) (eq commits more-items))
+                      (/= 0 (% (length commits) size))))
+         (loading (and (or (plist-get snap :loading) fetching) t))
+         (label   (or branch default-branch)))
     (octocat-vui-use-mode-line-loading loading)
-    (vui-use-effect (fresh commits label)
-      (when (and fresh label)
-        (octocat--items-cache-save repo "history" cache-id commits label))
-      nil)
-    (let ((head (pcase (plist-get result :status)
+    (let ((head (pcase status
                   ('ready (if commits (gethash "sha" (car commits)) 'none))
                   ('error 'none))))
       (vui-use-effect (head)
@@ -1084,9 +1035,9 @@ whenever it changes, or with nil when there are no commits to show."
         nil))
     (vui-vstack
      (octocat-repo-vui--commits-heading label current-branch (and branch t) default-branch)
-     (pcase (plist-get result :status)
+     (pcase status
        ('pending (vui-text (octocat-vui-line-skeleton)))
-       ('error   (vui-text (format "%s" (plist-get result :error)) :face 'octocat-dimmed))
+       ('error   (vui-text (format "%s" (plist-get snap :error)) :face 'octocat-dimmed))
        ('ready
         (let ((shown (seq-take commits limit)))
           (vui-fragment
@@ -1157,44 +1108,32 @@ They are those of `octocat-repo--doc-kinds' at the root of HEAD, the
 head of the branch shown.  WAITING is non-nil until the commits section
 knows it; till then, and while the listing loads, grey bars stand in
 for the section.  RAW shows markdown verbatim.  A long document is folded after
-`octocat-repo-doc-lines'.  The listing is cached under HEAD and a file
+`octocat-repo-doc-lines'.  The listing is stored under HEAD and a file
 under its blob SHA, so while the branch stays put no request is made."
   :state ((kind nil))
   :render
-  (let* ((root  (vui-use-async (list 'root repo head)
-                  (lambda (resolve reject)
-                    (if (null head)
-                        (funcall resolve nil)
-                      (octocat-repo--load-root
-                       repo head
-                       (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject)))))))
-         (docs  (and (eq (plist-get root :status) 'ready)
-                     (octocat-repo--docs (plist-get root :data))))
+  (let* ((root  (octocat-vui-use-resource (list 'repo-root repo head) nil))
+         (docs  (and (plist-get root :data)
+                     (octocat-repo--docs (append (plist-get root :data) nil))))
          (doc   (or (assq kind docs) (car docs)))
          (entry (nth 2 doc))
          (oid   (and entry (gethash "oid" entry)))
-         (blob  (vui-use-async (list 'doc repo oid)
-                  (lambda (resolve reject)
-                    (if (null oid)
-                        (funcall resolve nil)
-                      (octocat-tree--load-blob
-                       repo oid
-                       (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject)))))))
+         (blob  (octocat-vui-use-resource (list 'blob repo oid) nil))
          (width (octocat--markdown-width))
          (text  (vui-use-memo ((plist-get blob :data) raw width)
                   (and entry (plist-get blob :data)
                        (octocat-repo--doc-text (gethash "name" entry)
-                                               (plist-get blob :data) raw width)))))
+                                               (octocat-tree--blob-content
+                                                (plist-get blob :data))
+                                               raw width)))))
     (octocat-vui-use-mode-line-loading
-     (and (or (eq (plist-get root :status) 'pending)
-              (eq (plist-get blob :status) 'pending))
-          t))
+     (and (or (plist-get root :loading) (plist-get blob :loading)) t))
     (cond
      (docs
       (vui-vstack
        (vui-newline)
        (octocat-repo-vui--doc-tabs docs (car doc) width)
-       (pcase (plist-get blob :status)
+       (pcase (octocat-vui-snapshot-status blob)
          ('pending (vui-text (octocat-vui-line-skeleton)))
          ('error   (vui-text (format "%s" (plist-get blob :error)) :face 'octocat-dimmed))
          (_        (let ((text (or text "")))
@@ -1202,7 +1141,7 @@ under its blob SHA, so while the branch stays put no request is made."
                       text (octocat-vui-line-ends text) octocat-repo-doc-lines
                       ;; One per document, so switching starts folded.
                       (intern (format "doc-fold-%s" (car doc))) ""))))))
-     ((or waiting (eq (plist-get root :status) 'pending))
+     ((or waiting (eq (octocat-vui-snapshot-status root) 'pending))
       (vui-vstack
        (vui-newline)
        (vui-text (concat (octocat-vui-skeleton '((6 "  " 12 "  " 7)))
@@ -1212,18 +1151,18 @@ under its blob SHA, so while the branch stays put no request is made."
 
 (defun octocat-repo-vui--nav-buttons (repo summary)
   "Return the tab strip of REPO's pages, as GitHub's tabs.
-The issue and PR tabs show their open counts from SUMMARY, the plist
-from `octocat-repo--fetch-summary', or an ellipsis while it loads."
+The issue and PR tabs show their open counts from SUMMARY, the data of
+the `repo-summary' resource, or an ellipsis while it loads."
   (octocat-vui-repo-tabs repo 'code
-                         (or (plist-get summary :open-issues) "…")
-                         (or (plist-get summary :open-prs) "…")))
+                         (or (and summary (gethash "open-issues" summary)) "…")
+                         (or (and summary (gethash "open-prs" summary)) "…")))
 
 (vui-defcomponent octocat-repo-vui--root (repo branch local-dir unpushed raw tick)
   "Root component for the repo buffer: header, local-head/fork-parent
 info, issue/PR summary line, then the UNPUSHED, the commits and the
 docs sections.  BRANCH is the branch whose commits and docs to show, nil
 for the default.  RAW shows markdown verbatim.
-Everything but the commits comes from a single summary API call."
+Everything but the commits and docs comes from one summary resource."
   ;; HEAD is (BRANCH . SHA), the head the commits section shows (nil SHA
   ;; when none), for the docs at that commit; BRANCH tells a switched-from
   ;; branch's apart.
@@ -1232,24 +1171,11 @@ Everything but the commits comes from a single summary API call."
   (let* ((buf            (current-buffer))
          (head-info      (octocat--head-info))
          (current-branch (plist-get head-info :branch))
-         (cached         (vui-use-memo (repo) (octocat-repo--summary-cache-load repo)))
-         (summary-result (octocat-vui-use-async-sticky (list 'summary repo tick)
-                           (lambda (resolve reject)
-                             (octocat-repo--fetch-summary
-                              repo
-                              (lambda (r) (octocat-repo-vui--resolve-or-reject r resolve reject))))))
-         (fresh          (and (eq (plist-get summary-result :status) 'ready)
-                              (plist-get summary-result :data)))
-         ;; The cached summary shows until the fresh one arrives, so the
-         ;; counts and the branch don't pop in.
-         (summary        (or fresh cached))
-         (default-branch (plist-get summary :default-branch))
-         (fork-parent    (plist-get summary :fork-parent))
-         (loading        (or (eq (plist-get summary-result :status) 'pending)
-                             (plist-get summary-result :refreshing))))
-    (vui-use-effect (fresh)
-      (when fresh (octocat-repo--summary-cache-save repo fresh))
-      nil)
+         (snap           (octocat-vui-use-resource (list 'repo-summary repo) tick))
+         (summary        (plist-get snap :data))
+         (default-branch (and summary (gethash "default-branch" summary)))
+         (fork-parent    (and summary (gethash "fork-parent" summary)))
+         (loading        (plist-get snap :loading)))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
         (with-current-buffer buf

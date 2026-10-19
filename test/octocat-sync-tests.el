@@ -178,6 +178,17 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
       (should (= octocat-sync--running 2))
       (should (equal octocat-sync--queue '(("(thing 1)" thing 1)))))))
 
+(ert-deftest octocat-sync-test-fetch-signals ()
+  "A fetch that signals as it starts fails like any other, freeing its slot."
+  (octocat-sync-tests--with-sync
+    (octocat-sync-define-resource broken ()
+      :fetch (lambda (_done) (error "Boom")))
+    (octocat-sync-request '(broken))
+    (should (= octocat-sync--running 0))
+    (let ((snap (octocat-sync-read '(broken))))
+      (should-not (plist-get snap :loading))
+      (should (equal (plist-get snap :error) "Boom")))))
+
 (ert-deftest octocat-sync-test-prefetch ()
   "Prefetches wait for page requests, run one at a time, and replace queued ones."
   (octocat-sync-tests--with-sync

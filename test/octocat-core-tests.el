@@ -112,14 +112,6 @@
     (octocat--items-cache-save "o/r" "prs" "id" nil)
     (should-not (octocat--items-cache-load "o/r" "prs" "id"))))
 
-(ert-deftest octocat-core-test-summary-cache-roundtrip ()
-  "The repo summary survives a save/load, nils included."
-  (octocat-core-tests--with-cache-dir
-    (octocat-repo--summary-cache-save
-     "o/r" '(:default-branch "main" :fork-parent nil :open-issues 2 :open-prs 1))
-    (should (equal (octocat-repo--summary-cache-load "o/r")
-                   '(:default-branch "main" :fork-parent nil :open-issues 2 :open-prs 1)))))
-
 (ert-deftest octocat-core-test-checks-ci-status ()
   "A check's outcome is its conclusion or state, in any case."
   (cl-flet ((status (&rest checks)

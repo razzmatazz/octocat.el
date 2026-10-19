@@ -43,20 +43,20 @@ the query).
 
 A page mounts once, when it is opened, through
 `octocat-vui-refresh-page`.  Its refresh (`g`, or after an action) calls
-that again, which re-renders in place with a new `:tick`.  Each fetch
-takes the tick into its key (`octocat-vui-use-cached`,
-`octocat-vui-use-async-sticky`), so it refetches and keeps showing the
-old data until the new data arrives.  A handler that must remount
+that again, which re-renders in place with a new `:tick`.  Each
+resource the page reads takes the tick (`octocat-vui-use-resource`), so
+it refetches and keeps showing the old data until the new data arrives.  A handler that must remount
 defers it, e.g. `(run-at-time 0 nil ...)`.
 
 ## Reading the sync store
 
-Pages on the sync layer (`octocat-sync.el`: so far the user, issue, PR,
-commit, checks and Actions pages and lists) don't fetch.  They name
-a resource, such as `(user-profile "octocat")`, and read it with
-`octocat-vui-use-resource`.  It returns a snapshot: `:data` from the
-SQLite store, `:loading` while a fetch runs, and `:error` from the last
-failed one.  So a page paints at once, and a fetch runs behind it.
+Pages don't fetch their data: they read it from the sync layer
+(`octocat-sync.el`).  Only avatars and completion candidates are fetched
+directly.  A page names a resource, such as `(user-profile "octocat")`,
+and reads it with `octocat-vui-use-resource`.  It returns a snapshot:
+`:data` from the SQLite store, `:loading` while a fetch runs, and
+`:error` from the last failed one.  So a page paints at once, and a
+fetch runs behind it.
 
 Opening a page fetches each resource unless it was fetched within
 `octocat-sync-fresh-for`; a new `:tick` (`g`) always fetches.  After

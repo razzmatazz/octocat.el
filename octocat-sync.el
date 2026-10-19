@@ -384,6 +384,9 @@ commit's: within it, opening doesn't refetch, but `g' does."
 (defvar octocat-sync--running 0
   "How many fetches are running.")
 
+(defvar octocat-sync--waiters nil
+  "Callbacks of `octocat-sync-get' awaiting a fetch, as (KEY . FUNCTION).")
+
 (defvar octocat-sync--prefetches nil
   "Queued prefetches, as (KEY . SPEC), run after the page requests.")
 
@@ -448,6 +451,17 @@ result."
       (octocat-sync--notify (list key))
       (octocat-sync--pump)))))
 
+(defun octocat-sync-get (spec callback)
+  "Call CALLBACK with the data of SPEC, or (error . MESSAGE).
+For code outside a vui page.  It is called at once when the store holds
+data fetched just now, or within the resource's :max-age; else once
+a fetch lands."
+  (let ((data (plist-get (octocat-sync-read spec) :data)))
+    (if (and data (not (octocat-sync--wanted-p spec nil)))
+        (funcall callback data)
+      (push (cons (octocat-sync-spec-key spec) callback) octocat-sync--waiters)
+      (octocat-sync-request spec (null data)))))
+
 (defun octocat-sync-prefetch (specs)
   "Fetch SPECS at low priority, in place of the prefetches still queued.
 A prefetch runs only while no page request is queued, one at a time,
@@ -467,10 +481,19 @@ the store."
     (octocat-sync--pump)))
 
 (defun octocat-sync--start (key spec)
-  "Start fetching SPEC, whose key is KEY."
+  "Start fetching SPEC, whose key is KEY.
+A fetch that signals as it starts fails like any other, so it can't
+leave KEY loading for good."
   (cl-incf octocat-sync--running)
-  (funcall (plist-get (octocat-sync--props spec) :fetch)
-           (lambda (result) (octocat-sync--done key result))))
+  (let ((answered nil))
+    (condition-case err
+        (funcall (plist-get (octocat-sync--props spec) :fetch)
+                 (lambda (result)
+                   (setq answered t)
+                   (octocat-sync--done key result)))
+      (error (if answered
+                 (signal (car err) (cdr err))
+               (octocat-sync--done key (cons 'error (error-message-string err))))))))
 
 (defun octocat-sync--pump ()
   "Start queued fetches while fewer than `octocat-sync-max-requests' run.
@@ -506,6 +529,13 @@ when no other prefetch runs."
                                         (error-message-string err))
                     nil))
            :test #'equal)))
+  (let ((waiting (seq-filter (lambda (w) (equal (car w) key)) octocat-sync--waiters)))
+    (when waiting
+      (setq octocat-sync--waiters (seq-difference octocat-sync--waiters waiting #'eq))
+      (let ((data (if (eq (car-safe result) 'error)
+                      result
+                    (plist-get (octocat-sync-read (car (read-from-string key))) :data))))
+        (dolist (w waiting) (funcall (cdr w) data)))))
   (octocat-sync--pump))
 
 ;;;; Mutations
@@ -656,6 +686,28 @@ are never a page of it."
                  fields)))
     (octocat-sync-entity type (octocat-sync-item-key type repo (gethash "number" item))
                          fields)))
+
+(defun octocat-sync-repo (fields)
+  "Return the `repo' entity of FIELDS, a table in GraphQL's names."
+  (octocat-sync-entity 'repo (concat "repo:" (downcase (gethash "nameWithOwner" fields)))
+                       fields))
+
+(defun octocat-sync-repo-rest (repo)
+  "Return the `repo' entity of REPO, a repository from GitHub's REST API.
+Its fields are mapped to GraphQL's names, as every repo entity has them."
+  (let ((fields (make-hash-table :test #'equal))
+        (lang   (gethash "language" repo)))
+    (puthash "nameWithOwner" (gethash "full_name" repo) fields)
+    (puthash "description" (gethash "description" repo) fields)
+    (puthash "stargazerCount" (gethash "stargazers_count" repo) fields)
+    (puthash "primaryLanguage"
+             (and (stringp lang)
+                  (let ((l (make-hash-table :test #'equal))) (puthash "name" lang l) l))
+             fields)
+    (puthash "pushedAt" (gethash "pushed_at" repo) fields)
+    (puthash "isFork" (gethash "fork" repo) fields)
+    (puthash "isArchived" (gethash "archived" repo) fields)
+    (octocat-sync-repo fields)))
 
 (defun octocat-sync-run (repo run)
   "Return the `run' entity of RUN, a workflow run of REPO, by `gh run' names."

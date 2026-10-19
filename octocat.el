@@ -64,7 +64,6 @@
 
 ;; Repo-mode entry point (defined in octocat-repo.el, already required).
 (declare-function octocat-repo-refresh      "octocat-repo" (&optional _ignore-auto _noconfirm))
-(declare-function octocat-repo-vui--resolve-or-reject "octocat-repo" (result resolve reject))
 (declare-function octocat-repo--local-dir-for "octocat-repo" (repo))
 
 
@@ -111,52 +110,6 @@ Falls back to the user's GitHub page when point is not on a row."
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-refresh)
   (octocat--ts-eldoc-setup))
-
-
-;;;; Dashboard cache
-
-(defun octocat--dashboard-cache-file ()
-  "Return the path to the dashboard-level cache file."
-  (expand-file-name "dashboard.json" octocat-cache-directory))
-
-(defun octocat--dashboard-cache-load ()
-  "Load cached dashboard data from disk.
-Returns a plist with keys :repos and :feed, or nil when the cache is
-absent or cannot be parsed.  :repos is a list of hash-tables from the
-GitHub REST user/repos endpoint.  :feed is a list of hash-tables from
-the received_events endpoint."
-  (let ((file (octocat--dashboard-cache-file)))
-    (when (file-readable-p file)
-      (condition-case nil
-          (let* ((json (with-temp-buffer
-                         (insert-file-contents file)
-                         (buffer-string)))
-                 (data  (json-parse-string json))
-                 (repos (cl-coerce (or (gethash "repos" data) []) 'list))
-                 (feed  (cl-coerce (or (gethash "feed"  data) []) 'list)))
-            (list :repos repos :feed feed))
-        (error nil)))))
-
-(defun octocat--dashboard-cache-save (repos feed)
-  "Persist REPOS and FEED lists to the dashboard cache file.
-REPOS is a list of hash-tables from the user/repos API endpoint.
-FEED is a list of hash-tables from the received_events API endpoint.
-Skips silently when either argument is an error cons."
-  (unless (or (eq (car-safe repos) 'error)
-              (eq (car-safe feed)  'error))
-    (let* ((file (octocat--dashboard-cache-file))
-           (dir  (file-name-directory file))
-           (obj  (let ((h (make-hash-table :test #'equal)))
-                   (puthash "timestamp" (float-time)      h)
-                   (puthash "repos"     (vconcat repos)   h)
-                   (puthash "feed"      (vconcat feed)    h)
-                   h)))
-      (make-directory dir t)
-      (condition-case nil
-          (with-temp-file file
-            (set-buffer-multibyte nil)
-            (insert (json-serialize obj)))
-        (error nil)))))
 
 
 ;;;; Dashboard fetch helpers
@@ -353,11 +306,13 @@ Dispatches on the event type:
      (t (octocat-visit-repo full-name)))))
 
 (defun octocat--dashboard-repo-row (r)
-  "Return the RET-able row vnode for repo hash-table R."
-  (let* ((full-name (or (gethash "full_name" r) ""))
+  "Return the RET-able row vnode for R, the fields of a `repo' entity."
+  (let* ((full-name (or (gethash "nameWithOwner" r) ""))
          (desc      (octocat--nonempty (gethash "description" r)))
-         (lang      (or (octocat--nonempty (gethash "language" r)) ""))
-         (date      (octocat--format-ts-relative (or (gethash "pushed_at" r) ""))))
+         (lang      (or (let ((l (gethash "primaryLanguage" r)))
+                          (and l (octocat--nonempty (gethash "name" l))))
+                        ""))
+         (date      (octocat--format-ts-relative (or (gethash "pushedAt" r) ""))))
     (octocat-vui-row
      (propertize
       (concat (propertize (format "  %-35s" full-name) 'face 'octocat-repo)
@@ -393,87 +348,82 @@ Dispatches on the event type:
      (lambda () (octocat--dashboard-visit-event ev))
      "RET: open commit or repo  C-c C-o: browse repo on GitHub")))
 
-(defun octocat--dashboard-section (title result empty rows)
-  "Return a section vnode: heading TITLE, then the body for async RESULT.
-EMPTY is the text shown when there is nothing to list, and ROWS a
-function turning the loaded data into the vnode of its rows."
+(defun octocat--dashboard-section (title items error empty rows)
+  "Return a section vnode: heading TITLE, then the rows of ITEMS.
+ITEMS is a list, or the symbol `pending' while there are none yet;
+ERROR, a message, shows when they failed to load.  EMPTY is the text
+shown when there is nothing to list, and ROWS a function turning ITEMS
+into the vnode of their rows."
   (vui-vstack
    (vui-text title :face 'octocat-section-heading)
-   (pcase (plist-get result :status)
-     ('pending (vui-text (octocat-vui-line-skeleton "  ")))
-     ('ready (let ((data (plist-get result :data)))
-               (if (null data)
-                   (vui-text (concat "  " empty) :face 'octocat-dimmed)
-                 (funcall rows data))))
-     ('error (vui-text (format "  %s" (plist-get result :error))
-                       :face 'octocat-dimmed)))))
+   (cond
+    (error (vui-text (format "  %s" error) :face 'octocat-dimmed))
+    ((eq items 'pending) (vui-text (octocat-vui-line-skeleton "  ")))
+    ((null items) (vui-text (concat "  " empty) :face 'octocat-dimmed))
+    (t (funcall rows items)))))
+
+(octocat-sync-define-resource dashboard-repos ()
+  :fetch (lambda (done)
+           (octocat--fetch-recent-repos
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error)
+                                r
+                              (cl-map 'vector #'octocat-sync-repo-rest r)))))))
+
+(octocat-sync-define-resource dashboard-feed (limit)
+  :fetch (lambda (done)
+           (octocat--fetch-viewer-login
+            (lambda (login)
+              (if (eq (car-safe login) 'error)
+                  (funcall done login)
+                (octocat--fetch-received-events
+                 login limit
+                 (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r))))))))))
 
 (vui-defcomponent octocat-dashboard--root (feed-limit tick)
   "Root component of the dashboard: recent repositories, then the feed.
-FEED-LIMIT is how many feed events to fetch.  The disk cache shows until
-the fresh data arrives (stale-while-revalidate); a new TICK fetches both
-again."
+FEED-LIMIT is how many feed events to fetch.  Both paint from the sync
+store until the fresh data arrives; a new TICK fetches both again."
   :render
-  (let* ((cached (vui-use-memo () (octocat--dashboard-cache-load)))
-         (repos  (octocat-vui-use-async-sticky (list 'dashboard-repos tick)
-                   (lambda (resolve reject)
-                     (octocat--fetch-recent-repos
-                      (lambda (r) (octocat-repo-vui--resolve-or-reject
-                                   r resolve reject))))))
-         (feed   (octocat-vui-use-async-sticky (list 'dashboard-feed feed-limit tick)
-                   (lambda (resolve reject)
-                     (octocat--fetch-viewer-login
-                      (lambda (login)
-                        (if (eq (car-safe login) 'error)
-                            (funcall reject (cdr login))
-                          (octocat--fetch-received-events
-                           login feed-limit
-                           (lambda (r) (octocat-repo-vui--resolve-or-reject
-                                        r resolve reject)))))))))
-         (fresh-repos (and (eq (plist-get repos :status) 'ready)
-                           (not (plist-get repos :refreshing))
-                           (plist-get repos :data)))
-         (fresh-feed  (and (eq (plist-get feed :status) 'ready)
-                           (not (plist-get feed :refreshing))
-                           (plist-get feed :data)))
-         (repos  (octocat-vui-with-stale repos (plist-get cached :repos)))
-         (feed   (octocat-vui-with-stale feed  (plist-get cached :feed)))
-         (loading (and (or (memq 'pending (list (plist-get repos :status)
-                                                (plist-get feed :status)))
-                           (plist-get repos :refreshing)
-                           (plist-get feed :refreshing))
-                       t)))
-    ;; Write the cache only once both calls have succeeded.
-    (vui-use-effect (fresh-repos fresh-feed)
-      (when (and fresh-repos fresh-feed)
-        (octocat--dashboard-cache-save fresh-repos fresh-feed))
-      nil)
+  (let* ((repos   (octocat-vui-use-resource '(dashboard-repos) tick))
+         (feed    (octocat-vui-use-resource (list 'dashboard-feed feed-limit) tick))
+         (shown   (vui-use-ref nil))
+         (loading (and (or (plist-get repos :loading) (plist-get feed :loading)) t)))
+    ;; Each limit is its own resource: keep the shorter feed while the
+    ;; longer one loads.
+    (when (plist-get feed :data) (setcar shown (append (plist-get feed :data) nil)))
     (octocat-vui-use-mode-line-loading loading)
     (vui-vstack
      (vui-text "GitHub Dashboard" :face 'octocat-repo)
      (octocat--dashboard-section
-      "Recent Repositories" repos "(no repositories)"
+      "Recent Repositories"
+      (if (plist-get repos :data) (append (plist-get repos :data) nil) 'pending)
+      (and (eq (octocat-vui-snapshot-status repos) 'error) (plist-get repos :error))
+      "(no repositories)"
       (lambda (data)
         (vui-list data #'octocat--dashboard-repo-row
-                  (lambda (r) (gethash "full_name" r)))))
+                  (lambda (r) (gethash "nameWithOwner" r)))))
      (vui-newline)
      (octocat--dashboard-section
-      "Feed" feed "(no recent activity)"
+      "Feed"
+      (if (or (car shown) (plist-get feed :data)) (car shown) 'pending)
+      (and (null (car shown)) (eq (octocat-vui-snapshot-status feed) 'error)
+           (plist-get feed :error))
+      "(no recent activity)"
       (lambda (data)
         (vui-fragment
          (octocat-vui-reveal-list data #'octocat--dashboard-feed-row
                                   (lambda (ev) (gethash "id" ev)))
          (when (or (>= (length data) feed-limit)
                    ;; Keep the button in place while a further page
-                   ;; loads (the limit has already grown), but not for
-                   ;; the first, cached paint.
-                   (and (plist-get feed :refreshing)
+                   ;; loads (the limit has already grown).
+                   (and (plist-get feed :loading)
                         (> feed-limit octocat-feed-limit)))
            (octocat-vui-load-more-button
             'load-more-feed octocat-feed-limit
             "RET / +: load more feed events"
             #'octocat-feed-load-more
-            (and (plist-get feed :refreshing) (< (length data) feed-limit))
+            (and (plist-get feed :loading) (< (length data) feed-limit))
             nil (octocat-vui-line-skeleton)))))))))
 
 
@@ -481,8 +431,8 @@ again."
 
 (defun octocat-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the octocat dashboard buffer.
-The dashboard paints the disk cache at once and fetches the repositories
-and the feed in the background, in place."
+The dashboard paints from the sync store at once and fetches the
+repositories and the feed in the background, in place."
   (interactive)
   (octocat-vui-refresh-page 'octocat-dashboard--root nil
                             (list :feed-limit (or octocat--feed-limit
