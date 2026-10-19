@@ -57,9 +57,6 @@
 ;; Buffer-locals of other files, used below.
 (defvar octocat-repo--repo)           ; defined as buffer-local in octocat-repo.el
 (defvar octocat-repo--ref)            ; likewise
-(defvar octocat-repo--path)           ; likewise
-(defvar octocat-repo--reveal)         ; likewise
-(defvar octocat-repo--focus)          ; likewise
 
 ;; Evil integration is optional; declare its entry point to silence the
 ;; byte-compiler when `octocat-evil' has not been loaded yet.
@@ -497,10 +494,7 @@ mode with no local directory bound."
     (setq octocat-repo--repo      repo
           octocat-repo--local-dir (and local-dir
                                        (expand-file-name local-dir))
-          octocat-repo--ref       nil
-          octocat-repo--path      nil
-          octocat-repo--reveal    nil
-          octocat-repo--focus     nil)
+          octocat-repo--ref       nil)
     (octocat-repo-refresh)))
 
 ;;;###autoload

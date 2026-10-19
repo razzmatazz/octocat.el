@@ -226,6 +226,7 @@
               ((symbol-function 'octocat-issue-list)    (lambda (&rest a) (push (cons 'issue-list a) opened)))
               ((symbol-function 'octocat-actions)       (lambda (&rest a) (push (cons 'actions a) opened)))
               ((symbol-function 'octocat-commits-open)  (lambda (&rest a) (push (cons 'commits a) opened)))
+              ((symbol-function 'octocat-tree-open)     (lambda (&rest a) (push (cons 'tree a) opened)))
               ((symbol-function 'octocat-tree--open-file-by-path)
                (lambda (&rest a) (push (cons 'file a) opened)))
               ;; Of feat/x/src/a.el, GitHub has feat and feat/x.
@@ -246,8 +247,8 @@
                      (job "o/r" 3 4 nil)
                      (workflow "o/r" "ci.yml" "ci.yml" ".github/workflows/ci.yml")
                      (pr-list "o/r") (issue-list "o/r")
-                     (actions "o/r") (repo "o/r" "main" nil) (repo "o/r" nil nil)
-                     (repo "o/r" "feat/x" "src/a.el") (commits "o/r" "main" nil)
+                     (actions "o/r") (repo "o/r" "main") (repo "o/r" nil)
+                     (tree "o/r" "feat/x" "src/a.el") (commits "o/r" "main" nil)
                      (commits "o/r" "feat/x" "src/a.el") (file "o/r" "feat/x" "src/a.el" nil))))))
 
 (ert-deftest octocat-core-test-split-ref-path ()

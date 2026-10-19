@@ -866,6 +866,7 @@ is asked first and the matching view opened."
 (declare-function octocat-workflow-open "octocat-workflow" (repo id name path))
 (declare-function octocat-user-open     "octocat-user"     (login))
 (declare-function octocat-commits-open  "octocat-repo"     (repo &optional ref path))
+(declare-function octocat-tree-open     "octocat-repo"     (repo &optional ref path))
 (declare-function octocat-tree--open-file-by-path "octocat-tree" (repo branch path sha))
 (declare-function octocat-issue-list    "octocat"          (&optional repo))
 (declare-function octocat-pr-list       "octocat"          (&optional repo))
@@ -1000,7 +1001,11 @@ The handler `octocat-open-github-urls' adds to `browse-url-handlers'."
     (`(issue-list ,repo)   (octocat-issue-list repo))
     (`(actions ,repo)      (octocat-actions repo))
     (`(tree ,repo . ,segs)
-     (octocat--open-ref-path repo segs (lambda (ref path) (octocat-visit-repo repo ref path))))
+     (octocat--open-ref-path repo segs
+                             (lambda (ref path)
+                               (if path
+                                   (octocat-tree-open repo ref path)
+                                 (octocat-visit-repo repo ref)))))
     (`(commits ,repo . ,segs)
      (octocat--open-ref-path repo segs (lambda (ref path) (octocat-commits-open repo ref path))))
     (`(blob ,repo . ,segs)
@@ -1046,9 +1051,6 @@ After toggling, the buffer is refreshed via `octocat--refresh-fn'."
 (defvar octocat-repo--repo)
 (defvar octocat-repo--local-dir)
 (defvar octocat-repo--ref)
-(defvar octocat-repo--path)
-(defvar octocat-repo--reveal)
-(defvar octocat-repo--focus)
 
 (declare-function octocat--async-search-repos "octocat-search" ())
 (declare-function octocat-user-open "octocat-user" (login))
@@ -1151,12 +1153,11 @@ left."
       (when (window-live-p window)
         (delete-window window)))))
 
-(defun octocat-visit-repo (repo &optional ref path)
+(defun octocat-visit-repo (repo &optional ref)
   "Open (or switch to) the *REPO* buffer.
 REPO is an \"owner/name\" string.  This is the shared implementation used
 by the repo-nav section in every detail view.  REF, a branch, tag or
-SHA, is the one to show instead of the default branch; PATH, a
-directory or file to open the tree down to, with point on it."
+SHA, is the one to show instead of the default branch."
   (let* ((buf-name (format "*%s*" repo))
          (buf      (get-buffer-create buf-name)))
     (octocat-display-buffer buf)
@@ -1164,10 +1165,7 @@ directory or file to open the tree down to, with point on it."
       (octocat-repo-mode))
     (setq octocat-repo--repo      repo
           octocat-repo--local-dir (octocat-repo--local-dir-for repo)
-          octocat-repo--ref       ref
-          octocat-repo--path      path
-          octocat-repo--reveal    path
-          octocat-repo--focus     path)
+          octocat-repo--ref       ref)
     (octocat-repo-refresh)))
 
 ;;;; Current repo detection

@@ -28,7 +28,8 @@
 ;;   octocat-file-log-mode — commit log for a single file (git log -- <path>)
 ;;
 ;; Entry points:
-;;   the repo page (`octocat-visit-repo'), which lists a directory
+;;   the repo page (`octocat-visit-repo'), which lists the root's first
+;;   entries, and the tree browser (`octocat-tree-open'), the whole tree
 ;;   `octocat-tree-find-file' — pick any file of the ref shown (C-c C-f)
 ;;   `octocat-file-log-open'  — open the file commit log (C-c C-l in file mode)
 ;;
@@ -37,9 +38,10 @@
 ;; `octocat-file-log--page': one line per commit, carrying the commit's
 ;; SHA in the `octocat-file-log--sha' text property, which RET
 ;; (`octocat-file-log-visit') and o (`octocat-file-log-browse') read.
-;; The root's entries are listed flat, as GitHub's repo page has them;
-;; RET on a directory moves the page into it, which shows the whole tree
-;; opened down to it, as GitHub's sidebar does (see "Rendering — tree").
+;; The repo page lists the root's first entries flat, as GitHub's does;
+;; RET on a directory opens the tree browser, `octocat-tree-mode', the
+;; whole tree opened down to it, as GitHub's sidebar (see "Rendering —
+;; tree").  Both pages are in octocat-repo.el.
 ;; Each line carries text properties so commands work regardless of
 ;; keymap precedence (e.g. under Evil):
 ;;
@@ -63,13 +65,15 @@
 (defvar octocat-repo--default-branch)
 
 (declare-function octocat-commit-open "octocat-commit" (repo sha))
+(declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
 
 
 ;;;; User options
 
 (defcustom octocat-tree-entries 15
-  "Entries of the root the repo page lists before the rest is folded away.
-The whole tree, shown once a directory is opened, does not fold.
+  "Entries of the root the repo page lists before its Browse code button.
+The rest are in the whole tree, which that button and opening a
+directory show.
 The rest expands on RET.  Nil never folds."
   :type '(choice (const :tag "Never fold" nil) integer)
   :group 'octocat)
@@ -338,11 +342,11 @@ keymaps."
 
 ;;;; Rendering — tree
 ;;
-;; Two views of a ref's files, as GitHub has them.  At the root the page
-;; lists the root's entries, `octocat-tree--dir'.  In a directory it
-;; shows the whole tree, GitHub's sidebar, opened down to it: a
-;; recursion of `octocat-tree--subtree', the entries of one directory,
-;; and `octocat-tree--node', one entry, a directory owning whether it is
+;; Two views of a ref's files, as GitHub has them.  The repo page lists
+;; the root's first entries, `octocat-tree--dir'.  The tree browser shows
+;; the whole tree, GitHub's sidebar: a recursion of
+;; `octocat-tree--subtree', the entries of one directory, and
+;; `octocat-tree--node', one entry, a directory owning whether it is
 ;; expanded.  Nodes are keyed by path, so a refetch keeps what is open.
 
 (defun octocat-tree--sorted-entries (entries)
@@ -380,41 +384,43 @@ A hook: call it during render."
         (run-at-time 0 nil #'octocat-tree--jump-to buf focus))
       nil)))
 
-(vui-defcomponent octocat-tree--dir (repo branch sha focus on-dir)
+(vui-defcomponent octocat-tree--dir (repo branch sha on-dir on-browse)
   "The root's entries, its tree SHA of REPO at BRANCH, as GitHub lists them.
 RET on a directory calls ON-DIR with its path; on a file it opens it.
-Point moves to FOCUS, an entry's path, once it is listed.  Past
-`octocat-tree-entries' the entries are folded, unless FOCUS is among
-them, so the README below is near."
+Only the first `octocat-tree-entries' show, so the README below is near;
+a Browse code button after them, saying how many more there are, calls
+ON-BROWSE, for the whole tree."
   :render
   (let* ((result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
          (entries (octocat-tree--sorted-entries (plist-get result :data)))
-         (paths   (mapcar (lambda (e) (gethash "path" e)) entries)))
-    (octocat-tree--use-focus focus paths)
+         (shown   (if octocat-tree-entries (seq-take entries octocat-tree-entries) entries))
+         (more    (- (length entries) (length shown))))
     (pcase (octocat-vui-snapshot-status result)
       ('pending (vui-text (octocat-tree--skeleton)))
       ('error   (vui-text (propertize (octocat-vui-error-text result) 'face 'error)))
       ((guard (null entries)) (vui-text (propertize "(empty)" 'face 'octocat-dimmed)))
       (_
-       (vui-component
-        'octocat-vui-fold-rest
-        :total (length entries) :noun "entries" :prefix "" :key 'tree-fold
-        :limit (unless (member focus paths) octocat-tree-entries)
-        :render
-        (lambda (n)
-          (vui-list
-           (seq-take entries n)
-           (lambda (entry)
-             (let ((name (gethash "path" entry))
-                   (sha  (gethash "sha" entry)))
-               (if (equal (gethash "type" entry) "tree")
-                   (octocat-tree--entry-line "" (concat name "/") 'octocat-branch 'dir entry name
-                                             (lambda () (funcall on-dir name)))
-                 (octocat-tree--entry-line "" name 'default 'file entry name
-                                           (lambda ()
-                                             (octocat-tree--open-file-by-path
-                                              repo branch name sha))))))
-           (lambda (entry) (gethash "path" entry)))))))))
+       (vui-vstack
+        (vui-list
+         shown
+         (lambda (entry)
+           (let ((name (gethash "path" entry))
+                 (sha  (gethash "sha" entry)))
+             (if (equal (gethash "type" entry) "tree")
+                 (octocat-tree--entry-line "" (concat name "/") 'octocat-branch 'dir entry name
+                                           (lambda () (funcall on-dir name)))
+               (octocat-tree--entry-line "" name 'default 'file entry name
+                                         (lambda ()
+                                           (octocat-tree--open-file-by-path
+                                            repo branch name sha))))))
+         (lambda (entry) (gethash "path" entry)))
+        (vui-button (if (> more 0)
+                        (format "[Browse code (%d more %s)]" more (if (= more 1) "entry" "entries"))
+                      "[Browse code]")
+                    :no-decoration t
+                    :face 'octocat-dimmed
+                    :help-echo "RET: browse the whole tree"
+                    :on-click on-browse))))))
 
 (vui-defcomponent octocat-tree--subtree
     (repo branch sha depth path reveal current focus on-dir)
@@ -485,34 +491,40 @@ The other arguments are as for `octocat-tree--subtree'."
 
 ;;;; Rendering — file mode
 
+(defun octocat-tree--insert-file-header (path)
+  "Insert the top of the viewer of file PATH, a rule under it.
+Its line ends in a button to the repo page's tree, opened down to PATH."
+  (let ((repo   octocat-tree--file-repo)
+        (branch octocat-tree--file-branch))
+    (insert (propertize (or repo "") 'face 'octocat-repo)
+            "  "
+            (propertize (or branch "") 'face 'octocat-branch)
+            "  "
+            (or path "")
+            "  ")
+    (insert-text-button "[Browse tree]"
+                        'face 'octocat-dimmed
+                        'help-echo "RET: browse the repository's tree at this file"
+                        'follow-link t
+                        'action (lambda (_)
+                                  (octocat-tree-open
+                                   repo (unless (equal branch "HEAD") branch) path)))
+    (insert "\n" (propertize (make-string 60 ?━) 'face 'octocat-dimmed) "\n")))
+
 (defun octocat-tree--render-file-loading (path)
   "Render a loading skeleton for file PATH in the current file buffer."
   (let ((inhibit-read-only t))
     (erase-buffer)
-    (insert (propertize (or octocat-tree--file-repo "") 'face 'octocat-repo)
-            "  "
-            (propertize (or octocat-tree--file-branch "") 'face 'octocat-branch)
-            "  "
-            (or path "")
-            "\n"
-            (propertize (make-string 60 ?━) 'face 'octocat-dimmed)
-            "\n"
-            (octocat-vui-skeleton '((30) (46) ("  " 38) ("  " 24) (12))))))
+    (octocat-tree--insert-file-header path)
+    (insert (octocat-vui-skeleton '((30) (46) ("  " 38) ("  " 24) (12))))))
 
 (defun octocat-tree--render-file (path content)
   "Render file PATH with fontified CONTENT in the current file buffer."
   (let* ((inhibit-read-only t)
          (fontified (octocat-tree--fontify path content)))
     (erase-buffer)
-    (insert (propertize (or octocat-tree--file-repo "") 'face 'octocat-repo)
-            "  "
-            (propertize (or octocat-tree--file-branch "") 'face 'octocat-branch)
-            "  "
-            (or path "")
-            "\n"
-            (propertize (make-string 60 ?━) 'face 'octocat-dimmed)
-            "\n"
-            fontified)
+    (octocat-tree--insert-file-header path)
+    (insert fontified)
     (goto-char (point-min))))
 
 

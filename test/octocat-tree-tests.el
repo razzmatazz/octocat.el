@@ -44,10 +44,9 @@
 (defvar octocat-tree-tests--visited nil
   "The directories the mounted files asked the page to show, latest first.")
 
-(defun octocat-tree-tests--mount-tree (&optional focus)
+(defun octocat-tree-tests--mount-tree ()
   "List the root, tree \"rootsha\", of owner/repo here, as the repo page does.
-Point goes to FOCUS; moving into a directory is recorded in
-`octocat-tree-tests--visited'.  A listing not in the store is an error,
+Moving into a directory is recorded in `octocat-tree-tests--visited'.  A listing not in the store is an error,
 so no gh call is made."
   (unless (derived-mode-p 'octocat-repo-mode)
     (octocat-repo-mode))
@@ -56,7 +55,6 @@ so no gh call is made."
              (lambda (&rest _) (error "Unexpected directory fetch"))))
     (octocat-vui-refresh-page 'octocat-tree--dir "tree"
                               (list :repo "owner/repo" :branch "main" :sha "rootsha"
-                                    :focus focus
                                     :on-dir (lambda (dir)
                                               (push dir octocat-tree-tests--visited))))))
 
@@ -150,8 +148,8 @@ CURRENT is the page's directory and FOCUS where point goes, as for
                                          (octocat-tree-tests--entry "src" "tree" "srcsha")))
       (octocat-tree-tests--mount-tree)
       (goto-char (point-min))
-      (should-not (next-button (point-min)))
       (should (equal (octocat-tree--path-at-point) "src"))
+      (should-not (or (button-at (point)) (widget-at (point))))
       (should-not (eq (key-binding (kbd "TAB")) (key-binding (kbd "RET"))))
       (octocat-tree-visit)
       (should (equal octocat-tree-tests--visited '("src")))
@@ -182,7 +180,7 @@ It does not fold, however long."
       (should-not (string-match-p "more entries" (buffer-string)))))))
 
 (ert-deftest octocat-tree-test-folds-long-directories ()
-  "Past `octocat-tree-entries' a directory folds behind a marker that RET unfolds."
+  "Past `octocat-tree-entries' the root's entries give way to Browse code."
   (octocat-tree-tests--with-store
     (octocat-tree-tests--store
      '(tree-dir "owner/repo" "rootsha")
@@ -193,25 +191,24 @@ It does not fold, however long."
         (octocat-tree-tests--mount-tree)
         (should (string-match-p "f03" (buffer-string)))
         (should-not (string-match-p "f04" (buffer-string)))
-        (should (string-match-p "2 more entries" (buffer-string)))
+        (should (string-match-p "\\[Browse code (2 more entries)\\]" (buffer-string)))
         (let ((octocat-tree-entries nil))
           (with-temp-buffer
             (octocat-tree-tests--mount-tree)
-            (should (string-match-p "f05" (buffer-string)))))))))
+            (should (string-match-p "f05" (buffer-string)))
+            (should (string-match-p "\\[Browse code\\]" (buffer-string)))))))))
 
 (ert-deftest octocat-tree-test-focus ()
-  "Point moves to the focused entry once listed, unfolded when it was folded."
+  "Point moves to the focused entry of the tree once it is listed."
   (octocat-tree-tests--with-store
     (octocat-tree-tests--store
      '(tree-dir "owner/repo" "rootsha")
      (vconcat (mapcar (lambda (i) (octocat-tree-tests--entry (format "f%02d" i) "blob" "b"))
                       (number-sequence 1 5))))
     (with-temp-buffer
-      (let ((octocat-tree-entries 1))
-        (octocat-tree-tests--mount-tree "f05")
-        (accept-process-output nil 0.01)
-        (should (string-match-p "f04" (buffer-string)))
-        (should (equal (octocat-tree--path-at-point) "f05"))))))
+      (octocat-tree-tests--mount-full-tree nil nil "f04")
+      (accept-process-output nil 0.01)
+      (should (equal (octocat-tree--path-at-point) "f04")))))
 
 (defconst octocat-tree-tests--file-log-commits-json
   (concat "[{\"sha\":\"a1b2c3d4e5f6\",\"author\":{\"login\":\"ann\"},"

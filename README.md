@@ -77,16 +77,39 @@ README  License
 
 The `[main ▾]` picker (or `C-c C-b`) shows another branch, and
 `[reset to main]` goes back to the default branch.  Beside it is the
-last commit of the directory shown, `RET` opening it; `[N commits]`
-opens the directory's history on its own commits page (see below).
+branch's last commit, `RET` opening it; `[N commits]` opens its history
+on its own commits page (see below).
 
-At first the page lists the root's entries, directories first, as
-GitHub's repository page does.  `RET` on a file opens it in the file
-viewer, and `RET` on a directory opens it: from then on the page shows
-the whole tree, as GitHub's sidebar, opened down to that directory with
-point on it:
+The page lists the root's entries, directories first, as GitHub's
+repository page does: the first `octocat-tree-entries` (15) of them,
+then a `[Browse code]` button, which says how many more there are and
+opens the tree browser (below).  `RET` on a file opens it in the file
+viewer, and `RET` on a directory opens the tree browser at it.
+
+Below the files the page shows the repository's README, as GitHub does.
+A selector above it offers the other documents found at the root — Code
+of conduct, Contributing, License and Security — and `RET` on one shows
+it in place of the README.  Only the first `octocat-repo-doc-lines` (20)
+lines show, the rest folded behind a "more lines" row that `RET`
+expands.  Markdown files are rendered; `C-c C-v` shows them raw.  Other
+files, such as a plain-text LICENSE, are shown as they are.
+
+The page can show any ref, not only a branch: a github.com link to a tag
+or a commit (`/tree/v1.0`, `/tree/a1b2c3d`) opens the page at it.
+
+`C-c C-f` picks any file of the commit by path, with `completing-read`,
+and opens it; its list is fetched once per commit.  `C-c C-o` opens the
+entry at point on GitHub, and elsewhere the page itself.
+
+#### Tree browser (`octocat-tree-mode`)
+
+The `*owner/repo tree*` buffer shows the whole tree of the branch, as
+GitHub's sidebar, opened down to the directory or file it was opened
+at, with point on it:
 
 ```
+owner/repo
+
 [main ▾]  a9fc167  Show open issue and PR counts …  [62 commits]
 octocat.el / docs
 ▸ .github/
@@ -98,32 +121,15 @@ octocat.el / docs
   …
 ```
 
-In the tree `RET` on a directory expands or collapses it and makes it
-the page's directory: the one the last commit, `[N commits]`, the path
-line and the README are of, highlighted in the tree.  The path line
-(`octocat.el / docs`) moves to each directory above, and its first part
-back to the root's entries; `^` does so one directory at a time.  Under
-Evil, as in treemacs-evil, `l` opens the entry at point and `h` goes up
-a directory.  The entries are not buttons, so `TAB` does not step from
-file to file.  The root's listing shows its first
-`octocat-tree-entries` (15) entries and folds the rest behind a "more
-entries" row that `RET` expands; the tree does not fold.  `C-c C-f` picks any file of the commit by path, with
-`completing-read`, and opens it; its list is fetched once per commit.
-`C-c C-o` opens the file or directory at point on GitHub, and elsewhere
-the directory shown.
-
-Below the files the page shows the directory's README, as GitHub does.
-A selector above it offers the other documents found in the directory — Code of conduct, Contributing, License and Security — and
-`RET` on one shows it in place of the README.  Only the first
-`octocat-repo-doc-lines` (20) lines show, the rest folded behind a "more
-lines" row that `RET` expands.  Markdown files are rendered; `C-c C-v`
-shows them raw.  Other files, such as a plain-text LICENSE, are shown as
-they are.
-
-The page can show any ref, not only a branch: a github.com link to a tag
-or a commit (`/tree/v1.0`, `/tree/a1b2c3d`) opens the page at it, and a
-link to a path (`/tree/main/src/parser`) opens the tree down to it, with
-point on it.
+`RET` on a directory expands or collapses it and makes it the browser's
+directory: the one the last commit, `[N commits]` and the path line are
+of, highlighted in the tree.  `RET` on a file opens it in the file
+viewer.  The path line (`octocat.el / docs`) moves to each directory
+above, and `^` up one at a time.  Under Evil, as in treemacs-evil, `l`
+opens the entry at point and `h` goes up a directory.  The entries are
+not buttons, so `TAB` does not step from file to file.  The repo name
+on the top line leads back to the repo page.  A github.com link to a
+path (`/tree/main/src/parser`) opens the browser at it.
 
 #### Commits page (`octocat-commits-mode`)
 
@@ -287,7 +293,8 @@ link with one ref, where github.com picks the base, opens in the browser.
 link, opens a read-only buffer showing the raw file content
 with syntax highlighting inferred from the file extension.  Press `o` (or
 `C-c C-o`) to open the file on GitHub, `C-c C-l` to open the file's commit
-history, and `gr` to reload.
+history, and `gr` to reload.  `[Browse tree]` on its top line opens the tree
+browser at the file's branch, opened down to the file.
 
 #### File commit log (`octocat-file-log-mode`)
 
