@@ -170,6 +170,23 @@
   (should (equal (octocat-vui-error-text '(:error "HTTP 502\nmore" :kind transient))
                  "Error: HTTP 502; g to retry")))
 
+(ert-deftest octocat-vui-test-prefetch-waits-for-rest ()
+  "Point resting on a row prefetches its specs; moving on cancels it."
+  (with-temp-buffer
+    (insert (propertize "row" 'octocat-sync-prefetch '((issue "o/r" 1))) "\nplain")
+    (let ((octocat-sync-prefetch t)
+          (octocat-sync-prefetch-delay 10))
+      (goto-char (point-min))
+      (octocat-vui--prefetch-schedule)
+      (let ((timer octocat-vui--prefetch-timer))
+        (should (timerp timer))
+        (should (equal (timer--args timer) '(((issue "o/r" 1)))))
+        ;; The next command moves off the row before the timer fires.
+        (goto-char (point-max))
+        (octocat-vui--prefetch-schedule)
+        (should-not octocat-vui--prefetch-timer)
+        (should-not (memq timer timer-list))))))
+
 (defvar octocat-vui-tests--renders 0
   "How many times `octocat-vui-tests--reader' rendered.")
 

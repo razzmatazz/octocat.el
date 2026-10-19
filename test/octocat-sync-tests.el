@@ -272,6 +272,23 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
                          (lambda (r) (setq result r)))
       (should (eq (car-safe result) 'error)))))
 
+(ert-deftest octocat-sync-test-locked-write-dropped ()
+  "A write blocked by a second connection is dropped quietly."
+  (let ((file (make-temp-file "octocat-sync" nil ".sqlite")))
+    (unwind-protect
+        (octocat-sync-tests--with-sync
+          (let ((octocat-sync--db (octocat-sync--create (sqlite-open file)))
+                (other (sqlite-open file))
+                (inhibit-message t))
+            (sqlite-execute other "BEGIN EXCLUSIVE")
+            (octocat-sync-request '(thing 1))
+            (funcall (cdr (pop pending)) (octocat-sync-tests--table "n" 1))
+            (should (= octocat-sync--running 0))
+            (should-not (gethash "(thing 1)" octocat-sync--loading))
+            (sqlite-execute other "ROLLBACK")
+            (should-not (plist-get (octocat-sync-read '(thing 1)) :data))))
+      (delete-file file))))
+
 (ert-deftest octocat-sync-test-fetch-signals ()
   "A fetch that signals as it starts fails like any other, freeing its slot."
   (octocat-sync-tests--with-sync
