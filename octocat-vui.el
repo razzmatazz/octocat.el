@@ -169,6 +169,11 @@ fresh data replaces it.  Must be called during render, like any hook."
 
 (add-hook 'octocat-sync-change-functions #'octocat-vui--on-sync-change)
 
+(defvar-local octocat-vui--resource-ticks nil
+  "Resource key to the page tick it was last requested with, in this buffer.
+Kept per buffer, not per component, so a component remounted by a
+refresh still sees that the tick is new.")
+
 (defun octocat-vui-use-resource (spec tick)
   "Return the sync snapshot of SPEC, a plist (:data :loading :error ...).
 The page re-renders when the snapshot changes.  Opening fetches SPEC
@@ -179,7 +184,6 @@ be called during render, like any hook."
   (let* ((key      (octocat-sync-spec-key spec))
          (buf      (current-buffer))
          (version  (vui-use-ref 0))
-         (last     (vui-use-ref nil))
          (v        (car version)))
     (vui-use-effect (key)
       (let ((entry (cons buf version)))
@@ -190,13 +194,26 @@ be called during render, like any hook."
                 (puthash key rest octocat-vui--subscriptions)
               (remhash key octocat-vui--subscriptions))))))
     (vui-use-effect (key tick)
-      ;; Only a new tick for the same key is a refresh.
-      (let ((force (and (equal (car-safe (car last)) key)
-                        (not (equal (cdr (car last)) tick)))))
-        (setcar last (cons key tick))
-        (octocat-sync-request spec force))
+      ;; Only a new tick for a key this buffer asked for before is a refresh.
+      (let* ((ticks (or octocat-vui--resource-ticks
+                        (setq octocat-vui--resource-ticks (make-hash-table :test #'equal))))
+             (seen  (gethash key ticks)))
+        (puthash key tick ticks)
+        (octocat-sync-request spec (and seen (not (equal seen tick)))))
       nil)
     (vui-use-memo (key v) (octocat-sync-read spec))))
+
+(defun octocat-vui-use-detail (spec tick)
+  "Return the snapshot of SPEC, an issue's or PR's page resource.
+As `octocat-vui-use-resource', for TICK too, but :data is the item, its
+parts put back (see `octocat-sync-detail-item').  Must be called during
+render, like any hook."
+  (let ((snap (octocat-vui-use-resource spec tick)))
+    (vui-use-memo (snap)
+      (let ((data (plist-get snap :data)))
+        (if data
+            (plist-put (copy-sequence snap) :data (octocat-sync-detail-item data))
+          snap)))))
 
 (defun octocat-vui-with-stale (result stale)
   "Return RESULT, or STALE shown as `ready' while RESULT is still pending.
@@ -232,7 +249,6 @@ TABS, a list of tab labels, adds the line of reviewers and the tab strip
 of a PR page (see `octocat-vui-tab-row')."
   (let* ((state  octocat-repo-vui--state-width)
          (indent (make-string (+ octocat-repo-vui--state-width 2) ?\s))
-         (rail   (concat (propertize "│" 'face 'octocat-dimmed) " "))
          (strip  (and tabs (string-join tabs "  "))))
     (octocat-vui-skeleton
      `((,state "  " 44 "  " 16)
@@ -245,11 +261,22 @@ of a PR page (see `octocat-vui-tab-row')."
               `((,(propertize strip 'face '(octocat-dimmed underline))
                  ,(propertize (make-string (max 0 (- width (string-width strip))) ?\s)
                               'face 'underline))))
-       (,(propertize "●" 'face 'octocat-dimmed) " " 36)
-       (,rail 64) (,rail 58) (,rail 62) (,rail 44) (,rail)
-       (,rail 60) (,rail 52) (,rail 30)
-       nil)
+       ,@(octocat-vui--post-skeleton-rows))
      width)))
+
+(defun octocat-vui--post-skeleton-rows ()
+  "Return the skeleton rows of an opening timeline post.
+They are rows as `octocat-vui-skeleton' takes."
+  (let ((rail (concat (propertize "│" 'face 'octocat-dimmed) " ")))
+    `((,(propertize "●" 'face 'octocat-dimmed) " " 36)
+      (,rail 64) (,rail 58) (,rail 62) (,rail 44) (,rail)
+      (,rail 60) (,rail 52) (,rail 30)
+      nil)))
+
+(defun octocat-vui-post-skeleton (width)
+  "Return grey bars shaped like an opening timeline post, cut to WIDTH.
+Shown under a header painted from data another page fetched."
+  (octocat-vui-skeleton (octocat-vui--post-skeleton-rows) width))
 
 (defun octocat-vui-list-skeleton (width &optional compact no-state)
   "Return grey bars shaped like a page of two-line list rows, cut to WIDTH.
@@ -953,12 +980,32 @@ and starts the results afresh."
    (vui-component 'octocat-vui--search-results
                   :key (list query (and compact t) tick)
                   :repo repo :kind kind :query query :row-fn row-fn
-                  :compact compact)))
+                  :compact compact :tick tick)))
 
-(vui-defcomponent octocat-vui--search-results (repo kind query row-fn compact)
+(defun octocat-vui--list-tree (kind repo page)
+  "Return PAGE, a page of KIND items of REPO, as a list resource's tree.
+PAGE is as `octocat--parse-list-items' returns; each item is an entity."
+  (let ((tree (make-hash-table :test #'equal))
+        (type (if (eq kind 'pulls) 'pr 'issue)))
+    (puthash "nodes" (vconcat (mapcar (lambda (item) (octocat-sync-item type repo item))
+                                      (plist-get page :items)))
+             tree)
+    (puthash "cursor" (plist-get page :cursor) tree)
+    tree))
+
+(octocat-sync-define-resource list-items (kind repo query limit)
+  :fetch (lambda (done)
+           (octocat--list-items
+            kind repo
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error) r (octocat-vui--list-tree kind repo r))))
+            query nil limit)))
+
+(vui-defcomponent octocat-vui--search-results (repo kind query row-fn compact tick)
   "The KIND items of REPO matching QUERY, as for `octocat-vui-search-list'.
-The first page is cached on disk and painted while it is refetched;
-\"load more\" fetches only the page after the last, by its cursor."
+The first page is a sync resource, painted from the store while it is
+refetched; \"load more\" fetches only the page after the last, by its
+cursor.  A new TICK refetches the first page."
   ;; MORE is (:items LIST :cursor C): the items of the pages after the
   ;; first, and the cursor after the last of them.
   :state ((more nil) (fetching nil))
@@ -968,40 +1015,18 @@ The first page is cached on disk and painted while it is refetched;
          (noun   (if (eq kind 'pulls) "pull requests" "issues"))
          (limit  (if compact octocat-list-compact-page-size octocat-list-page-size))
          (no-state (and compact (not (octocat-vui-list-filter-active-p query))))
-         (id     (octocat--query-cache-id query))
-         (cached (vui-use-memo (repo id) (octocat--items-cache-load repo type id)))
-         (first  (vui-use-async (list kind repo query limit)
-                   (lambda (resolve reject)
-                     (octocat--list-items
-                      kind repo
-                      (lambda (r)
-                        (if (eq (car-safe r) 'error)
-                            (funcall reject (cdr r))
-                          (funcall resolve r)))
-                      query nil limit))))
-         (fresh  (and (eq (plist-get first :status) 'ready)
-                      (plist-get first :data)))
-         ;; The cache may hold the other view's page, longer than this one's.
-         (page   (octocat-vui-with-stale
-                  first (and cached (list :items (seq-take (plist-get cached :items)
-                                                           limit)))))
-         (items  (append (plist-get (plist-get page :data) :items)
-                         (plist-get more :items)))
-         (cursor (if more (plist-get more :cursor) (plist-get fresh :cursor)))
-         (loading (and (or (eq (plist-get page :status) 'pending)
-                           (plist-get page :refreshing)
-                           fetching)
-                       t)))
-    (vui-use-effect (fresh)
-      (when fresh
-        (octocat--items-cache-save repo type id (plist-get fresh :items)))
-      nil)
+         (snap   (octocat-vui-use-resource (list 'list-items kind repo query limit) tick))
+         (first  (plist-get snap :data))
+         (items  (append (and first (gethash "nodes" first)) (plist-get more :items)))
+         (cursor (if more (plist-get more :cursor) (and first (gethash "cursor" first))))
+         (loading (and (or (plist-get snap :loading) fetching) t)))
     (octocat-vui-use-mode-line-loading loading)
-    (pcase (plist-get page :status)
-      ('pending (vui-text (octocat-vui-list-skeleton width compact no-state)))
-      ('error   (vui-text (format "%s\n" (plist-get page :error)) :face 'octocat-dimmed))
-      ('ready
-       (vui-fragment
+    (cond
+     ((and (null first) (plist-get snap :error) (not (plist-get snap :loading)))
+      (vui-text (format "%s\n" (plist-get snap :error)) :face 'octocat-dimmed))
+     ((null first) (vui-text (octocat-vui-list-skeleton width compact no-state)))
+     (t
+      (vui-fragment
         (if (null items)
             (vui-text (format (if (octocat-vui-list-filter-active-p query)
                                   "(no %s match the filters)\n"
@@ -1012,31 +1037,24 @@ The first page is cached on disk and painted while it is refetched;
            items
            (lambda (item) (funcall row-fn item width compact no-state))
            (lambda (item) (gethash "number" item))))
-        ;; The cached first page has no cursor: its button waits for
-        ;; the fresh one.
-        (when (and items
-                   (or cursor
-                       (and (plist-get page :refreshing)
-                            (>= (length items) limit))))
+        (when (and items cursor)
           (octocat-vui-load-more-button
            (intern (format "load-more-%s" type)) limit
            (format "RET: load more %s" noun)
            (lambda ()
-             (if (not cursor)
-                 (message "Octocat: Still loading the first page")
-               (vui-set-state :fetching t)
-               (octocat--list-items
-                kind repo
-                (vui-async-callback (r)
-                  (vui-set-state :fetching nil)
-                  (if (eq (car-safe r) 'error)
-                      (message "Octocat: %s" (cdr r))
-                    (vui-set-state
-                     :more (lambda (m)
-                             (list :items  (append (plist-get m :items)
-                                                   (plist-get r :items))
-                                   :cursor (plist-get r :cursor))))))
-                query cursor limit)))
+             (vui-set-state :fetching t)
+             (octocat--list-items
+              kind repo
+              (vui-async-callback (r)
+                (vui-set-state :fetching nil)
+                (if (eq (car-safe r) 'error)
+                    (message "Octocat: %s" (cdr r))
+                  (vui-set-state
+                   :more (lambda (m)
+                           (list :items  (append (plist-get m :items)
+                                                 (plist-get r :items))
+                                 :cursor (plist-get r :cursor))))))
+              query cursor limit))
            fetching 0
            (octocat-vui-list-skeleton width compact no-state))))))))
 

@@ -60,8 +60,10 @@ The file is named after the host, such as \"sync-github.com.sqlite\"."
   "Functions called with the keys of resources whose snapshot changed.
 Called once per write, after it is committed.")
 
-(defconst octocat-sync--schema 1
-  "Version of the store's tables, kept in SQLite's `user_version'.")
+(defconst octocat-sync--schema 2
+  "Version of the store's tables, kept in SQLite's `user_version'.
+Bump it also when the shape of a resource's body changes: the store is
+then recreated, rather than read in the old shape.")
 
 
 ;;;; Store
@@ -155,16 +157,19 @@ Signal a `user-error' when DB was made by a newer octocat."
   "Return VALUE with each entity in it replaced by a ref.
 Each entity's fields, themselves split, are merged into ENTITIES, a hash
 table of key to (TYPE . FIELDS); a later copy of one entity wins field
-by field."
-  (if (octocat-sync--entity-p value)
+by field.  A `:null', as `json-parse-string' gives by default, becomes
+nil, so the store has one null."
+  (cond
+   ((eq value :null) nil)
+   ((octocat-sync--entity-p value)
       (let* ((key    (octocat-sync--entity-key value))
              (fields (octocat-sync--split (octocat-sync--entity-fields value) entities))
              (seen   (gethash key entities)))
         (if seen
             (maphash (lambda (k v) (puthash k v (cdr seen))) fields)
           (puthash key (cons (octocat-sync--entity-type value) fields) entities))
-        (octocat-sync--ref key))
-    (octocat-sync--map-tree (lambda (v) (octocat-sync--split v entities)) value)))
+        (octocat-sync--ref key)))
+   (t (octocat-sync--map-tree (lambda (v) (octocat-sync--split v entities)) value))))
 
 (defun octocat-sync--refs (value)
   "Return the entity keys VALUE refers to directly."
@@ -304,9 +309,18 @@ DB.  SEEN lists the entities being resolved, so a cycle ends in nil."
   "Define the resource NAME, whose spec is (NAME . ARGS).
 PROPS are evaluated with ARGS bound.  :fetch is a function of DONE that
 fetches the resource and calls DONE with the parsed tree, its shared
-records wrapped in `octocat-sync-entity', or with (error . MESSAGE)."
+records wrapped in `octocat-sync-entity', or with (error . MESSAGE).
+:entity, optional, is the key of the resource's main entity: until the
+resource is first fetched, a snapshot carries that entity's fields, as
+another resource stored them, in :partial."
   (declare (indent 2))
   `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--resources))
+
+(defun octocat-sync--props (spec)
+  "Return the plist of resource SPEC, as `octocat-sync-define-resource' gave."
+  (apply (or (gethash (car spec) octocat-sync--resources)
+             (error "Octocat: Unknown resource `%s'" (car spec)))
+         (cdr spec)))
 
 (defun octocat-sync-spec-key (spec)
   "Return the store key of SPEC, such as \"(user-profile \\\"octocat\\\")\"."
@@ -327,11 +341,17 @@ records wrapped in `octocat-sync-entity', or with (error . MESSAGE)."
     (run-hook-with-args 'octocat-sync-change-functions keys)))
 
 (defun octocat-sync-read (spec)
-  "Return a snapshot of SPEC: (:data :loading :error :fetched-at).
-It reads only the store, never the network."
-  (let ((key (octocat-sync-spec-key spec)))
-    (pcase-let ((`(,data ,fetched-at ,error) (octocat-sync--read (octocat-sync--db) key)))
+  "Return a snapshot of SPEC: (:data :partial :loading :error :fetched-at).
+It reads only the store, never the network.  :partial is set only when
+:data is nil; see `octocat-sync-define-resource'."
+  (let ((key (octocat-sync-spec-key spec))
+        (db  (octocat-sync--db)))
+    (pcase-let ((`(,data ,fetched-at ,error) (octocat-sync--read db key)))
       (list :data data
+            :partial (and (null data)
+                          (when-let* ((entity (plist-get (octocat-sync--props spec) :entity)))
+                            (octocat-sync--resolve (octocat-sync--ref entity)
+                                                   (make-hash-table :test #'equal) db nil)))
             :loading (gethash key octocat-sync--loading)
             :error error
             :fetched-at fetched-at))))
@@ -357,9 +377,7 @@ unless FORCE.  Return immediately; the store reports the result."
   (while (and octocat-sync--queue
               (< octocat-sync--running octocat-sync-max-requests))
     (pcase-let* ((`(,key . ,spec) (pop octocat-sync--queue))
-                 (make (or (gethash (car spec) octocat-sync--resources)
-                           (error "Octocat: Unknown resource `%s'" (car spec))))
-                 (fetch (plist-get (apply make (cdr spec)) :fetch)))
+                 (fetch (plist-get (octocat-sync--props spec) :fetch)))
       (cl-incf octocat-sync--running)
       (funcall fetch (lambda (result) (octocat-sync--done key result))))))
 
@@ -381,6 +399,79 @@ unless FORCE.  Return immediately; the store reports the result."
                     nil))
            :test #'equal)))
   (octocat-sync--pump))
+
+;;;; GitHub entities
+;;
+;; Builders for the entities several pages share.  Fields keep the names
+;; of GitHub's GraphQL API, which `gh ... --json' also uses.
+
+(defun octocat-sync-item-key (type repo number)
+  "Return the key of issue or PR (TYPE `issue' or `pr') NUMBER of REPO."
+  (format "%s:%s#%d" type (downcase repo) number))
+
+(defun octocat-sync-user (user)
+  "Return the `user' entity of USER, a table with a \"login\", or USER.
+Only the login is kept: the fields beside it vary with the source."
+  (let ((login (and (hash-table-p user) (gethash "login" user))))
+    (if (not (stringp login))
+        user
+      (let ((fields (make-hash-table :test #'equal)))
+        (puthash "login" login fields)
+        (octocat-sync-entity 'user (concat "user:" (downcase login)) fields)))))
+
+(defun octocat-sync-label (repo label)
+  "Return the `label' entity of LABEL of REPO, a table with name and colour."
+  (let ((fields (make-hash-table :test #'equal)))
+    (puthash "name" (gethash "name" label) fields)
+    (puthash "color" (gethash "color" label) fields)
+    (octocat-sync-entity 'label (format "label:%s/%s" (downcase repo) (gethash "name" label))
+                         fields)))
+
+(defun octocat-sync-item (type repo item)
+  "Return the entity of the issue or PR ITEM of REPO; TYPE is `issue' or `pr'.
+ITEM is a table of its fields.  Its author, assignees and labels become
+entities too.  Labels must be the whole set: an entity's list fields
+are never a page of it."
+  (let ((fields (copy-hash-table item)))
+    (when-let* ((author (gethash "author" item)))
+      (puthash "author" (octocat-sync-user author) fields))
+    (when-let* ((assignees (gethash "assignees" item)))
+      (puthash "assignees" (cl-map 'vector #'octocat-sync-user assignees) fields))
+    (when-let* ((labels (gethash "labels" item)))
+      (when (sequencep labels)
+        (puthash "labels" (cl-map 'vector (lambda (l) (octocat-sync-label repo l)) labels)
+                 fields)))
+    (octocat-sync-entity type (octocat-sync-item-key type repo (gethash "number" item))
+                         fields)))
+
+(defun octocat-sync-detail (type repo item parts)
+  "Return ITEM, an issue or PR of REPO, as the tree of its page's resource.
+TYPE is `issue' or `pr'.  The item is an entity, under \"item\", shared
+with the lists that show it.  PARTS are the keys of ITEM that are pages
+of a connection, such as \"comments\": an entity holds no such field,
+so they stay with the resource.  The comments are counted on the
+entity, as the lists count them."
+  (let ((fields (copy-hash-table item))
+        (tree   (make-hash-table :test #'equal)))
+    (dolist (part parts)
+      (puthash part (gethash part item) tree)
+      (remhash part fields))
+    (when (member "comments" parts)
+      (puthash "commentCount" (length (gethash "comments" item)) fields))
+    (puthash "item" (octocat-sync-item type repo fields) tree)
+    tree))
+
+(defun octocat-sync-detail-item (data)
+  "Return the item of DATA, read from an `octocat-sync-detail' tree.
+Its parts are put back in it, so it has the shape `gh ... view' gives."
+  (let ((item (copy-hash-table (gethash "item" data))))
+    (maphash (lambda (k v) (unless (equal k "item") (puthash k v item))) data)
+    item))
+
+(defun octocat-sync-detail-read (spec)
+  "Return the item of the detail resource SPEC as the store has it, or nil."
+  (let ((data (plist-get (octocat-sync-read spec) :data)))
+    (and data (octocat-sync-detail-item data))))
 
 (provide 'octocat-sync)
 ;;; octocat-sync.el ends here

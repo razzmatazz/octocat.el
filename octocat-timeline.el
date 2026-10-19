@@ -57,13 +57,12 @@
 
 (require 'octocat-core)
 (require 'octocat-edit)
+(require 'octocat-sync)
 (require 'octocat-vui)
 (require 'time-date) ; date-to-time
 (require 'vui)
 (require 'vui-components) ; vui-vstack, etc.
 
-(declare-function octocat-repo-vui-use-cached "octocat-repo"
-                  (type repo number fetch &optional as-list tick))
 
 
 ;;;; Data
@@ -82,17 +81,17 @@ timeline events of all pages, or a cons \\=(error . MSG)."
                        result))
                    callback))
 
+(octocat-sync-define-resource timeline-events (repo number)
+  :fetch (lambda (done) (octocat--fetch-issue-events repo number done)))
+
 (defun octocat-timeline-use-events (repo number tick)
-  "Hook: load the timeline events of NUMBER in REPO, cached on disk.
-Return (EVENTS . LOADING): EVENTS is a vector of timeline events, or nil
-while neither a cache nor a fetch has produced any; LOADING is non-nil
-while a fetch is outstanding.  A new TICK fetches again.  Must be called
-during render."
-  (let ((result (octocat-repo-vui-use-cached
-                 "timeline" repo number #'octocat--fetch-issue-events nil tick)))
-    (cons (gethash "events" (or (plist-get result :data) (make-hash-table)))
-          (or (eq (plist-get result :status) 'pending)
-              (plist-get result :refreshing)))))
+  "Return the timeline events of issue or PR NUMBER in REPO, and the snapshot.
+That is (EVENTS . SNAPSHOT): EVENTS is a vector, or nil while they are
+not known; SNAPSHOT is the `timeline-events' resource's, as from
+`octocat-vui-use-resource', for TICK too.  Must be called during render."
+  (let ((snap (octocat-vui-use-resource (list 'timeline-events repo number) tick)))
+    (cons (let ((data (plist-get snap :data))) (and data (gethash "events" data)))
+          snap)))
 
 
 ;;;; Model
