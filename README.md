@@ -48,8 +48,16 @@ Clone the repository and add it to your Emacs load path:
 ### GitHub account dashboard (`M-x octocat`)
 
 Run `M-x octocat` to open the GitHub account dashboard in a global
-`*octocat*` buffer.  The dashboard shows two sections:
+`*octocat*` buffer.  Like github.com's own dashboard, it starts with
+the open pull requests and issues that involve you, then shows your
+repositories and recent activity:
 
+- **Pull Requests** and **Issues** — the `octocat-dashboard-item-limit`
+  (5) most recently updated open items, across every repository, that
+  you opened, are assigned to, were asked to review, are mentioned in or
+  commented on (GitHub's `involves:@me` search).  Each row reads as on
+  the list pages, with `owner/repo#N` on its second line.  `RET` opens
+  the pull request or issue, and `C-c C-o` opens it on GitHub.
 - **Recent Repositories** — your most-recently-pushed repos; press `RET`
   on a row to open its per-repository buffer, or `C-c C-o` to open
   it on GitHub.

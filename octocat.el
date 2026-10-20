@@ -29,7 +29,8 @@
 ;; Emacs client for GitHub, powered by the gh CLI.
 ;;
 ;; Entry points:
-;;   M-x octocat      — GitHub account dashboard (recent repos, activity feed)
+;;   M-x octocat      — GitHub account dashboard (your open PRs and issues,
+;;                      recent repos, activity feed)
 ;;   M-x octocat-repo — Per-repository view (summary, Commits)
 ;;   M-x octocat-pr-list / octocat-issue-list / octocat-actions — list pages
 
@@ -75,20 +76,30 @@ Each `octocat-feed-load-more' call fetches this many additional events."
   :type 'integer
   :group 'octocat)
 
+(defcustom octocat-dashboard-item-limit 5
+  "Number of open pull requests, and of issues, the dashboard lists."
+  :type 'integer
+  :group 'octocat)
+
 (defvar-local octocat--feed-limit nil
   "Per-buffer feed event fetch limit.
 Starts at `octocat-feed-limit' and grows with `octocat-feed-load-more'.")
 
 (defun octocat-dashboard-browse ()
-  "Open the repository on the dashboard row at point in a browser.
+  "Open the pull request, issue or repository at point in a browser.
 Falls back to the user's GitHub page when point is not on a row."
   (interactive)
-  (let ((repo (get-text-property (point) 'octocat-dashboard-repo)))
-    (if repo
-        (progn (message "Octocat: Opening %s in browser…" repo)
-               (octocat-browse-external (format "https://github.com/%s" repo)))
-      (message "Octocat: Opening GitHub in browser…")
-      (octocat-browse-external "https://github.com"))))
+  (let ((url  (get-text-property (point) 'octocat-dashboard-url))
+        (repo (get-text-property (point) 'octocat-dashboard-repo)))
+    (cond (url
+           (message "Octocat: Opening %s in browser…" url)
+           (octocat-browse-external url))
+          (repo
+           (message "Octocat: Opening %s in browser…" repo)
+           (octocat-browse-external (format "https://github.com/%s" repo)))
+          (t
+           (message "Octocat: Opening GitHub in browser…")
+           (octocat-browse-external "https://github.com")))))
 
 (defvar octocat-mode-map
   (let ((map (make-sparse-keymap)))
@@ -109,6 +120,7 @@ Falls back to the user's GitHub page when point is not on a row."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-refresh)
+  (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
   (octocat--ts-eldoc-setup))
 
 
@@ -132,6 +144,50 @@ Calls CALLBACK with the login string, or an (error . MSG) cons."
    (list "api" "user" "--jq" ".login")
    (lambda (output) (string-trim output))
    callback))
+
+;; As github.com's dashboard: the open items the user opened, is assigned
+;; to, was asked to review, is mentioned in or commented on, across
+;; every repository.  The rows are the list pages', so the fields are
+;; theirs, with the repository each item is in.
+
+(defun octocat--dashboard-search-query (kind)
+  "Return the GitHub search string for the dashboard's KIND items.
+KIND is `issues' or `pulls'."
+  (format "is:open archived:false involves:@me sort:updated-desc type:%s"
+          (if (eq kind 'pulls) "pr" "issue")))
+
+(defun octocat--dashboard-items-query (kind)
+  "Return the GraphQL search query for the dashboard's KIND items."
+  (format "query($q:String!,$limit:Int!){search(query:$q,type:ISSUE_ADVANCED,first:$limit){nodes{...on Issue{repository{nameWithOwner}} ...on PullRequest{repository{nameWithOwner}} %s}pageInfo{hasNextPage endCursor}}}"
+          (alist-get kind octocat--list-item-fields)))
+
+(defun octocat--fetch-dashboard-items (kind limit callback)
+  "Fetch the first LIMIT of the dashboard's KIND items via gh.
+KIND is `issues' or `pulls'.  CALLBACK is called with the plist from
+`octocat--parse-list-items', or an (error . MSG) cons."
+  (octocat--run-gh
+   (format "dashboard-%s" kind)
+   (list "api" "graphql"
+         "-f" (concat "query=" (octocat--dashboard-items-query kind))
+         "-f" (concat "q=" (octocat--dashboard-search-query kind))
+         "-F" (format "limit=%d" limit))
+   #'octocat--parse-list-items
+   callback))
+
+(defun octocat--dashboard-items-tree (kind page)
+  "Return PAGE, the dashboard's KIND items, as its resource's tree.
+PAGE is as `octocat--parse-list-items' returns.  Each item becomes a
+table of its \"repo\" and its entity, \"item\", shared with the lists."
+  (let ((type (if (eq kind 'pulls) 'pr 'issue)))
+    (vconcat
+     (mapcar (lambda (item)
+               (let ((node (make-hash-table :test #'equal))
+                     (repo (gethash "nameWithOwner" (gethash "repository" item))))
+                 (remhash "repository" item)
+                 (puthash "repo" repo node)
+                 (puthash "item" (octocat-sync-item type repo item) node)
+                 node))
+             (plist-get page :items)))))
 
 (defun octocat--fetch-received-events (login limit callback)
   "Fetch the received events feed for the user with LOGIN via gh.
@@ -323,6 +379,30 @@ Dispatches on the event type:
      (lambda () (octocat-visit-repo full-name))
      "RET: open repo  C-c C-o: browse on GitHub")))
 
+(defun octocat--dashboard-item-row (kind node width bg)
+  "Return the RET-able row vnode for NODE, one of the dashboard's KIND items.
+NODE is as `octocat--dashboard-items-tree' makes it.  The row is the list
+pages' two lines, cut to WIDTH; BG is as for `octocat--label-face'."
+  (let* ((repo   (gethash "repo" node))
+         (item   (gethash "item" node))
+         (number (gethash "number" item))
+         (pr     (eq kind 'pulls)))
+    (octocat-vui-row
+     (propertize
+      (mapconcat #'identity
+                 (octocat-repo-vui--item-lines
+                  (octocat-repo-vui--state-label (gethash "state" item)
+                                                 (gethash "isDraft" item))
+                  (octocat-repo-vui--cells repo item bg)
+                  '(:review :ci :prs :comments) width)
+                 "\n")
+      'octocat-dashboard-url (format "https://github.com/%s/%s/%d"
+                                     repo (if pr "pull" "issues") number)
+      'octocat-sync-prefetch `((,(if pr 'pr 'issue) ,repo ,number)
+                               (timeline-events ,repo ,number)))
+     (lambda () (if pr (octocat-pr-open repo number) (octocat-issue-open repo number)))
+     (format "RET: view %s  C-c C-o: browse on GitHub" (if pr "pull request" "issue")))))
+
 (defun octocat--dashboard-feed-row (ev)
   "Return the RET-able row vnode for feed event hash-table EV."
   (let* ((type   (or (gethash "type" ev) ""))
@@ -370,6 +450,15 @@ into the vnode of their rows."
                                 r
                               (cl-map 'vector #'octocat-sync-repo-rest r)))))))
 
+(octocat-sync-define-resource dashboard-items (kind limit)
+  :fetch (lambda (done)
+           (octocat--fetch-dashboard-items
+            kind limit
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error)
+                                r
+                              (octocat--dashboard-items-tree kind r)))))))
+
 (octocat-sync-define-resource dashboard-feed (limit)
   :fetch (lambda (done)
            (octocat--fetch-viewer-login
@@ -380,12 +469,35 @@ into the vnode of their rows."
                  login limit
                  (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r))))))))))
 
+(defun octocat--dashboard-items-section (title kind snap width bg)
+  "Return the section vnode TITLE listing the dashboard's KIND items.
+SNAP is the snapshot of their resource; the rows are cut to WIDTH, and
+BG is as for `octocat--label-face'."
+  (octocat--dashboard-section
+   title
+   (if (plist-get snap :data) (append (plist-get snap :data) nil) 'pending)
+   (and (eq (octocat-vui-snapshot-status snap) 'error) (octocat-vui-error-text snap))
+   (format "(no open %s involving you)" (if (eq kind 'pulls) "pull requests" "issues"))
+   (lambda (data)
+     (vui-list data
+               (lambda (node) (octocat--dashboard-item-row kind node width bg))
+               (lambda (node) (format "%s#%d" (gethash "repo" node)
+                                      (gethash "number" (gethash "item" node))))))))
+
 (vui-defcomponent octocat-dashboard--root (feed-limit tick)
-  "Root component of the dashboard: recent repositories, then the feed.
-FEED-LIMIT is how many feed events to fetch.  Both paint from the sync
-store until the fresh data arrives; a new TICK fetches both again."
+  "Root component of the dashboard.
+It lists your open pull requests and issues, as github.com's dashboard
+does, then your recent repositories and the feed.  FEED-LIMIT is how
+many feed events to fetch.  Each section paints from the sync store
+until the fresh data arrives; a new TICK fetches them all again."
   :render
-  (let* ((repos   (octocat-vui-use-resource '(dashboard-repos) tick))
+  (let* ((width   (octocat-vui-window-width))
+         (bg      (octocat--label-background))
+         (prs     (octocat-vui-use-resource
+                   (list 'dashboard-items 'pulls octocat-dashboard-item-limit) tick))
+         (issues  (octocat-vui-use-resource
+                   (list 'dashboard-items 'issues octocat-dashboard-item-limit) tick))
+         (repos   (octocat-vui-use-resource '(dashboard-repos) tick))
          (feed    (octocat-vui-use-resource (list 'dashboard-feed feed-limit) tick))
          (shown   (vui-use-ref nil)))
     ;; Each limit is its own resource: keep the shorter feed while the
@@ -393,6 +505,10 @@ store until the fresh data arrives; a new TICK fetches both again."
     (when (plist-get feed :data) (setcar shown (append (plist-get feed :data) nil)))
     (vui-vstack
      (vui-text "GitHub Dashboard" :face 'octocat-repo)
+     (octocat--dashboard-items-section "Pull Requests" 'pulls prs width bg)
+     (vui-newline)
+     (octocat--dashboard-items-section "Issues" 'issues issues width bg)
+     (vui-newline)
      (octocat--dashboard-section
       "Recent Repositories"
       (if (plist-get repos :data) (append (plist-get repos :data) nil) 'pending)
@@ -429,8 +545,8 @@ store until the fresh data arrives; a new TICK fetches both again."
 
 (defun octocat-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the octocat dashboard buffer.
-The dashboard paints from the sync store at once and fetches the
-repositories and the feed in the background, in place."
+The dashboard paints from the sync store at once and fetches each
+section in the background, in place."
   (interactive)
   (octocat-vui-refresh-page 'octocat-dashboard--root nil
                             (list :feed-limit (or octocat--feed-limit
