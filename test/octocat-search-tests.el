@@ -95,7 +95,7 @@ GitHub's results lead once in, the stored ones it lacks after them."
                            ["c/octo" "A/Octocat.el" "@octo-org"] (- now 3))
       ;; Too old to lend its names.
       (octocat-sync--write octocat-sync--db "(repo-search \"o\")"
-                           ["e/octo-old"] (- now octocat-repo-search-reuse-for 1))
+                           ["e/octo-old"] (- now octocat-search-reuse-for 1))
       (octocat-sync--write octocat-sync--db "(user-profile \"octavia\")"
                            (octocat-sync-user (let ((h (make-hash-table :test #'equal)))
                                                 (puthash "login" "octavia" h)
@@ -126,7 +126,7 @@ GitHub's results lead once in, the stored ones it lacks after them."
                                      h))
                            0.0)
       (let* ((log (list nil))
-             (stage (funcall (octocat--async-search-repo-objects "o/r")
+             (stage (funcall (octocat--async-search-repo-objects "o/r" nil #'identity)
                              (octocat-search-tests--sink log)))
              (titles (lambda ()
                        (mapcar (lambda (c) (plist-get (get-text-property
@@ -145,6 +145,102 @@ GitHub's results lead once in, the stored ones it lacks after them."
                              "[]")))
         (should (equal (funcall titles) '("New crash")))
         (should (equal (cdr log) [indicator finished]))))))
+
+;; Commits as the REST API gives them, no more than the search reads.
+(defun octocat-search-tests--commit (sha message)
+  "Return a commit of SHA and MESSAGE."
+  (let ((commit (make-hash-table :test #'equal))
+        (c      (make-hash-table :test #'equal)))
+    (puthash "message" message c)
+    (puthash "sha" sha commit)
+    (puthash "commit" c commit)
+    commit))
+
+(ert-deftest octocat-search-test-repo-objects-stored ()
+  "Stored PRs and commits matching the input show at once, and the commits
+of the local clone once git is done; GitHub's results lead once in, each
+item once."
+  (octocat-search-tests--with-store
+    (let ((now (float-time))
+          (git-calls nil))
+      (octocat-sync--write octocat-sync--db "(pr \"o/r\" 7)"
+                           (octocat-sync-item 'pr "O/R"
+                                              (let ((h (make-hash-table :test #'equal)))
+                                                (puthash "number" 7 h)
+                                                (puthash "title" "Fix the crash" h)
+                                                (puthash "state" "OPEN" h)
+                                                h))
+                           (- now 1))
+      (octocat-sync--write octocat-sync--db "(pr \"x/y\" 8)"
+                           (octocat-sync-item 'pr "x/y"
+                                              (let ((h (make-hash-table :test #'equal)))
+                                                (puthash "number" 8 h)
+                                                (puthash "title" "Another crash" h)
+                                                h))
+                           (- now 1))
+      (octocat-sync--write octocat-sync--db "(commits \"o/r\" nil nil)"
+                           (vector (octocat-search-tests--commit "aaa111" "Crash on start")
+                                   (octocat-search-tests--commit "bbb222" "Unrelated"))
+                           (- now 2))
+      (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
+                 (lambda (_repo _sha callback) (funcall callback '(error . "no files"))))
+                ((symbol-function 'octocat--search-git)
+                 (lambda (_dir args callback) (push (cons args callback) git-calls) #'ignore)))
+        (let* ((log (list nil))
+               (stage (funcall (octocat--async-search-repo-objects "o/r" "/clone/" #'identity)
+                               (octocat-search-tests--sink log)))
+               (items (lambda ()
+                        (mapcar (lambda (c)
+                                  (let ((item (get-text-property 0 'octocat-search-item c)))
+                                    (or (plist-get item :number) (plist-get item :sha))))
+                                (car log)))))
+          (funcall stage "crash")
+          (should (equal (funcall items) '(7 "aaa111")))
+          (should (equal (cdr log) [indicator running]))
+          (funcall (cdr (pop git-calls))
+                   (list "ccc333\0Ann\0Another crash" "aaa111\0Ann\0Crash on start"))
+          (should (equal (funcall items) '(7 "aaa111" "ccc333")))
+          (pcase-dolist (`(,args . ,deliver) calls)
+            (funcall deliver (cond ((member "prs" args)
+                                    "[{\"number\":9,\"title\":\"Crash\"},{\"number\":7,\"title\":\"Fix the crash\"}]")
+                                   ((member "commits" args)
+                                    "[{\"sha\":\"ccc333\",\"commit\":{\"message\":\"Another crash\"}}]")
+                                   (t "[]"))))
+          (should (equal (funcall items) '(9 7 "ccc333" "aaa111")))
+          (should (equal (cdr log) [indicator finished])))))))
+
+(ert-deftest octocat-search-test-git-args ()
+  "Commit messages are searched for every word; a SHA-like query names one."
+  (should (equal (octocat--search-git-args "fix crash")
+                 (list (list "log" "--remotes=origin" "-n" "30" "-i" "-F" "--all-match"
+                             octocat--search-git-format "--grep=fix" "--grep=crash"))))
+  (should (equal (cadr (octocat--search-git-args "a1b2c3"))
+                 (list "log" "-n" "1" octocat--search-git-format "a1b2c3" "--")))
+  (should (= (length (octocat--search-git-args "fix")) 1)))
+
+(ert-deftest octocat-search-test-git ()
+  "`git log' of a clone finds the commits on origin's branches only."
+  (skip-unless (executable-find "git"))
+  (let* ((dir (make-temp-file "octocat-git" t))
+         (default-directory (file-name-as-directory dir))
+         (git (lambda (&rest args) (apply #'process-file "git" nil nil nil args)))
+         result)
+    (unwind-protect
+        (progn
+          (funcall git "init" "-q")
+          (funcall git "-c" "user.name=Ann" "-c" "user.email=a@b" "commit" "-q"
+                   "--allow-empty" "-m" "Fix the crash")
+          (funcall git "update-ref" "refs/remotes/origin/main" "HEAD")
+          (funcall git "-c" "user.name=Ann" "-c" "user.email=a@b" "commit" "-q"
+                   "--allow-empty" "-m" "Crash, not pushed")
+          (octocat--search-git default-directory (octocat--search-git-args "crash")
+                               (lambda (lines) (setq result (list lines))))
+          (with-timeout (10 (error "Git timed out"))
+            (while (null result) (accept-process-output nil 0.05)))
+          (let ((commits (octocat--search-git-parse (car result))))
+            (should (equal (mapcar (lambda (c) (gethash "message" (gethash "commit" c))) commits)
+                           '("Fix the crash")))))
+      (delete-directory dir t))))
 
 (provide 'octocat-search-tests)
 ;;; octocat-search-tests.el ends here

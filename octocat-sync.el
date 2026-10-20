@@ -525,19 +525,26 @@ of the pending mutations of SPEC, see `octocat-sync-define-mutation'."
 
 (defun octocat-sync-entities (type)
   "Return the stored entities of TYPE, a symbol, as (KEY FIELDS FETCHED-AT).
-FIELDS are as stored: refs to other entities are left unresolved."
-  (mapcar (pcase-lambda (`(,key ,fields ,at)) (list key (octocat-sync--parse fields) at))
-          (sqlite-select (octocat-sync--db)
-                         "SELECT key, fields, fetched_at FROM entity WHERE type = ?"
-                         (list (symbol-name type)))))
+FIELDS have their refs resolved, as `octocat-sync-read' gives them."
+  (let ((db       (octocat-sync--db))
+        (entities (make-hash-table :test #'equal))
+        (overlays (octocat-sync--overlays)))
+    (mapcar (pcase-lambda (`(,key ,fields ,at))
+              (list key
+                    (octocat-sync--resolve
+                     (octocat-sync--overlay (octocat-sync--parse fields) key overlays)
+                     entities db (list key) overlays)
+                    at))
+            (sqlite-select db "SELECT key, fields, fetched_at FROM entity WHERE type = ?"
+                           (list (symbol-name type))))))
 
 (defun octocat-sync-stored (name)
-  "Return the stored data of every resource NAME, as (DATA . FETCHED-AT).
+  "Return the stored data of every resource NAME, as (SPEC DATA FETCHED-AT).
 Only for resources whose data holds no entities: refs are left unresolved."
   (let ((prefix (format "(%s " name)))
-    (mapcar (pcase-lambda (`(,body ,at)) (cons (octocat-sync--parse body) at))
+    (mapcar (pcase-lambda (`(,key ,body ,at)) (list (read key) (octocat-sync--parse body) at))
             (sqlite-select (octocat-sync--db)
-                           "SELECT body, fetched_at FROM resource
+                           "SELECT key, body, fetched_at FROM resource
                             WHERE substr(key, 1, ?1) = ?2 AND body IS NOT NULL"
                            (list (length prefix) prefix)))))
 

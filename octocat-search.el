@@ -24,11 +24,13 @@
 ;; the pull requests, issues and commits of the current repository with
 ;; live `gh search' queries, through a consult async pipeline.  File paths
 ;; of the repository's default branch are matched too, locally, against a
-;; file list fetched once and kept in memory.
+;; file list kept in the sync store.
 ;;
-;; Results are kept in the sync store per (repo, type, query).  A stored
-;; result shows at once and is refreshed behind it, the list being rebuilt
-;; when the response arrives.
+;; GitHub is slow to answer, so what octocat has stored of the repo, and
+;; the commits `git log' finds in its local clone when there is one, are
+;; matched as you type and show first.  They are only a faster source:
+;; GitHub's results lead the list as they arrive, each item listed once.
+;; Results are kept in the sync store per (repo, type, query).
 ;;
 ;; It also holds the stage of `octocat-switch-repo', which searches all
 ;; of GitHub's repos, and the branch picker, `octocat--read-branch'; both
@@ -47,6 +49,8 @@
 (declare-function octocat-commit-open            "octocat-commit" (repo sha))
 (declare-function octocat-tree--fetch-all-files  "octocat-tree"   (repo sha callback))
 (declare-function octocat-tree--open-file-by-path "octocat-tree"  (repo branch path sha))
+(declare-function octocat-repo--local-dir-for    "octocat-repo"   (repo))
+(defvar octocat-repo--local-dir)
 
 
 
@@ -162,6 +166,15 @@ arrives.  It is at least `octocat-sync-fresh-for'."
   :type 'integer
   :group 'octocat)
 
+(defcustom octocat-search-reuse-for (* 7 24 60 60)
+  "Seconds a past search result lends its items to other input.
+`octocat-search-repo' and `octocat-switch-repo' match what the results
+of past input hold, not only the items octocat stored otherwise, against
+what is typed; older results are left out.  Items stored otherwise are
+always matched: octocat showed them."
+  :type 'integer
+  :group 'octocat)
+
 (defconst octocat--search-types
   '(("prs"     "number,title,state,author" octocat--search-make-pr-candidate)
     ("issues"  "number,title,state,author" octocat--search-make-issue-candidate)
@@ -182,22 +195,190 @@ arrives.  It is at least `octocat-sync-fresh-for'."
             done)))
 
 
+;;;; Stored and local matches
+;;
+;; What octocat has stored of the repo, and its local clone when there is
+;; one, are matched as you type, before GitHub answers: most of the time
+;; the item wanted was seen before.  They are only a faster source;
+;; GitHub's answer leads the list once in, see `octocat--search-merge'.
+
+(defconst octocat--search-local-limit 10
+  "Maximum number of stored or local matches shown per type.")
+
+(defun octocat--search-normalize (input)
+  "Return INPUT as the query of an `object-search' resource."
+  (downcase (string-trim (substring-no-properties input))))
+
+(defun octocat--search-item-id (type item)
+  "Return what names ITEM of TYPE in every source: its number or SHA."
+  (if (equal type "commits")
+      (or (gethash "sha" item) (gethash "oid" item))
+    (gethash "number" item)))
+
+(defun octocat--search-item-text (type item)
+  "Return the text of ITEM of TYPE that input is matched against."
+  (if (equal type "commits")
+      (let ((c (gethash "commit" item)))
+        (concat (octocat--search-item-id type item) " "
+                (or (and (hash-table-p c) (octocat--nonempty (gethash "message" c))) "")))
+    (format "#%s %s" (gethash "number" item) (or (gethash "title" item) ""))))
+
+(defun octocat--search-match (type items query)
+  "Return the ITEMS of TYPE holding every word of QUERY, ignoring case.
+At most `octocat--search-local-limit' of them."
+  (let ((words (split-string (downcase query) "[ \t]+" t)))
+    (when words
+      (seq-take (seq-filter
+                 (lambda (item)
+                   (let ((text (downcase (octocat--search-item-text type item))))
+                     (cl-every (lambda (w) (string-search w text)) words)))
+                 items)
+                octocat--search-local-limit))))
+
+(defun octocat--search-merge (type &rest sources)
+  "Return the items of SOURCES, lists of items of TYPE, each once.
+An item is kept from the first source that has it: GitHub's answer goes
+first, as it is authoritative."
+  (let ((seen (make-hash-table :test #'equal))
+        items)
+    (dolist (source sources)
+      (dolist (item source)
+        (let ((id (octocat--search-item-id type item)))
+          (unless (gethash id seen)
+            (puthash id t seen)
+            (push item items)))))
+    (nreverse items)))
+
+(defun octocat--search-stored-items (repo now)
+  "Return an alist TYPE -> items octocat stored of REPO, newest first.
+They are the PR and issue entities, the commits of the commit lists and
+pages, and the items of the `object-search' results fetched within
+`octocat-search-reuse-for' of NOW."
+  (let ((repo (downcase repo))
+        (dated nil))
+    (cl-flet ((add (type item at)
+                (push (cons item (or at 0)) (alist-get type dated nil nil #'equal))))
+      (pcase-dolist (`(,type . ,entity) '(("prs" . pr) ("issues" . issue)))
+        (let ((prefix (format "%s:%s#" entity repo)))
+          (pcase-dolist (`(,key ,fields ,at) (octocat-sync-entities entity))
+            (when (string-prefix-p prefix key)
+              (add type fields at)))))
+      (pcase-dolist (`(,spec ,data ,at) (octocat-sync-stored 'object-search))
+        (when (and (equal (downcase (nth 1 spec)) repo)
+                   (< (- now (or at 0)) octocat-search-reuse-for))
+          (seq-doseq (item data) (add (nth 2 spec) item at))))
+      (pcase-dolist (`(,spec ,data ,at) (octocat-sync-stored 'commits))
+        (when (equal (downcase (nth 1 spec)) repo)
+          (seq-doseq (item data) (add "commits" item at))))
+      (pcase-dolist (`(,spec ,data ,at) (octocat-sync-stored 'commit))
+        (when (and (equal (downcase (nth 1 spec)) repo) (hash-table-p data))
+          (add "commits" data at))))
+    (mapcar (pcase-lambda (`(,type . ,entries))
+              (cons type
+                    (octocat--search-merge
+                     type (mapcar #'car (sort entries (lambda (a b) (> (cdr a) (cdr b))))))))
+            dated)))
+
+(defconst octocat--search-git-format "--format=%H%x00%an%x00%s"
+  "The `git log' format `octocat--search-git-parse' reads.")
+
+(defun octocat--search-git-args (query)
+  "Return the argument lists of the git commands finding the commits of QUERY.
+The commits on origin's branches, which GitHub can show, whose message
+holds every word; and when QUERY looks like a SHA, the commit it names."
+  (let ((words (split-string query "[ \t]+" t)))
+    (append
+     (when words
+       (list (append (list "log" "--remotes=origin" "-n" "30" "-i" "-F" "--all-match"
+                           octocat--search-git-format)
+                     (mapcar (lambda (w) (concat "--grep=" w)) words))))
+     (when (string-match-p "\\`[0-9a-f]\\{4,40\\}\\'" query)
+       (list (list "log" "-n" "1" octocat--search-git-format query "--"))))))
+
+(defun octocat--search-git-parse (lines)
+  "Return the commits of LINES, `git log' output, as GitHub's REST gives them.
+That is, only the fields `octocat--search-make-commit-candidate' reads."
+  (delq nil
+        (mapcar (lambda (line)
+                  (pcase (split-string line "\0")
+                    (`(,sha ,name ,subject)
+                     (let ((commit (make-hash-table :test #'equal))
+                           (c      (make-hash-table :test #'equal))
+                           (author (make-hash-table :test #'equal)))
+                       (puthash "name" name author)
+                       (puthash "message" subject c)
+                       (puthash "author" author c)
+                       (puthash "sha" sha commit)
+                       (puthash "commit" c commit)
+                       commit))))
+                lines)))
+
+(defun octocat--search-git (dir arg-lists callback)
+  "Run git in DIR with each of ARG-LISTS in turn, then CALLBACK.
+CALLBACK gets the output lines of all of them; a command that fails
+adds none.  Return a function that stops it, after which CALLBACK is
+never called."
+  (let (proc lines stopped)
+    (cl-labels
+        ((next (lists)
+           (if (or (null lists) (not (executable-find "git")))
+               (funcall callback lines)
+             (let ((default-directory dir)
+                   (buf (generate-new-buffer " *octocat-git*"))
+                   (err (generate-new-buffer " *octocat-git-stderr*")))
+               (setq proc
+                     (make-process
+                      :name "octocat-git" :buffer buf :stderr err :noquery t
+                      :connection-type 'pipe :command (cons "git" (car lists))
+                      :sentinel
+                      (lambda (p _event)
+                        (unless (process-live-p p)
+                          (let ((out (and (eq (process-status p) 'exit)
+                                          (eq 0 (process-exit-status p))
+                                          (with-current-buffer buf (buffer-string)))))
+                            (kill-buffer buf)
+                            ;; As `octocat--run-gh': the stderr pipe may outlive it.
+                            (when-let* ((pipe (get-buffer-process err)))
+                              (delete-process pipe))
+                            (kill-buffer err)
+                            (unless stopped
+                              (setq lines (append lines (split-string (or out "") "\n" t)))
+                              (next (cdr lists))))))))))))
+      (next arg-lists)
+      (lambda ()
+        (setq stopped t)
+        (when (process-live-p proc) (delete-process proc))))))
+
+
 ;;;; Repository file list
 
 (defconst octocat--search-files-ttl 600
-  "Seconds an in-memory repository file list is reused by the search.")
+  "Seconds a stored repository file list is reused without a refetch.")
 
 (defconst octocat--search-files-limit 30
   "Maximum number of file candidates shown for one query.")
 
-(defvar octocat--search-files-cache (make-hash-table :test #'equal)
-  "Map from \"owner/name\" to (TIMESTAMP . ((PATH . BLOB-SHA) ...)).")
+;; As `tree-files', by the default branch rather than a tree SHA.
+(octocat-sync-define-resource search-files (repo)
+  :max-age octocat--search-files-ttl
+  :fetch (lambda (done)
+           (octocat-tree--fetch-all-files
+            repo "HEAD"
+            (lambda (r)
+              (funcall done
+                       (if (eq (car-safe r) 'error)
+                           r
+                         (let ((h (make-hash-table :test #'equal :size (length r))))
+                           (pcase-dolist (`(,path . ,blob) r)
+                             (puthash path blob h))
+                           h)))))))
 
-(defun octocat--search-files-cached (repo)
-  "Return the fresh cached file list of REPO, or nil."
-  (when-let* ((entry (gethash repo octocat--search-files-cache)))
-    (when (< (- (float-time) (car entry)) octocat--search-files-ttl)
-      (cdr entry))))
+(defun octocat--search-files-alist (data)
+  "Return the (PATH . BLOB-SHA) entries of DATA, a `search-files' table."
+  (when (hash-table-p data)
+    (let (files)
+      (maphash (lambda (path blob) (push (cons path blob) files)) data)
+      (nreverse files))))
 
 (defun octocat--search-files-match (files query)
   "Return the entries of FILES with every word of QUERY in their path.
@@ -215,102 +396,149 @@ Matching is case-insensitive; shorter paths sort first."
 
 ;;;; Async pipeline and command
 
-(defun octocat--async-search-repo-objects (repo)
+(defun octocat--async-search-repo-objects (repo &optional dir gate)
   "Build a consult async pipeline stage for live object search in REPO.
-On each input string (minimum 2 chars) it searches the pull requests,
-issues and commits of REPO, each an `object-search' resource of the
-lower-cased input.  Stored results show at once, and each fetched one
-replaces its type's as it lands.  New input cancels the fetches of the
-last still queued.  The indicator shows `running' while any type of the
-current input is awaited."
+On each input it lists the pull requests, issues and commits of REPO,
+and its files.  What octocat stored that matches shows at once, and the
+commits of the local clone in DIR, when non-nil, once `git log' is done.
+GitHub's results, each type an `object-search' resource of the
+normalized input, lead as they arrive: first the stored result of the
+input, then the fetched one.  New input cancels the fetches of the last
+still queued.  The indicator shows `running' while any is awaited.
+GitHub and git are asked through GATE, a consult async stage, by
+default `consult--async-throttle'.  Enforce a minimum input upstream
+with `consult--async-min-input'."
   (lambda (sink)
-    (let ((current  nil)                              ; normalized current input
-          (results  nil)                              ; alist TYPE -> candidates
-          (waiting  nil)                              ; types awaited for current
-          (files-loading nil))                        ; file list fetch in flight
+    (let ((types    (mapcar #'car octocat--search-types))
+          (current  nil)                ; query being fetched
+          (input    nil)                ; normalized current input
+          (stored   'unread)            ; alist TYPE -> stored items
+          (local    nil)                ; alist TYPE -> stored matches
+          (remote   nil)                ; alist TYPE -> GitHub's items
+          (git      nil)                ; commits git found
+          (stop-git nil)
+          (waiting  nil)                ; types, or `git', awaited
+          (files    'unread)            ; (PATH . BLOB-SHA) list
+          (files-loading nil)
+          fetch-gate)
       (cl-labels
           ((spec (type query) (list 'object-search repo type query))
            (candidates (type items)
              (let ((make (nth 2 (assoc type octocat--search-types))))
                (mapcar (lambda (item) (funcall make item repo)) items)))
-           ;; Replace the displayed list with RESULTS and update the indicator.
            (publish ()
              (funcall sink 'flush)
-             (when-let* ((all (apply #'append
-                                     (mapcar (lambda (type) (cdr (assoc type results)))
-                                             (append (mapcar #'car octocat--search-types)
-                                                     (list "files"))))))
+             (when-let* ((all
+                          (append
+                           (mapcan (lambda (type)
+                                     (candidates
+                                      type
+                                      (octocat--search-merge
+                                       type
+                                       (alist-get type remote nil nil #'equal)
+                                       (alist-get type local nil nil #'equal)
+                                       (and (equal type "commits") git))))
+                                   types)
+                           (and (listp files)
+                                (mapcar (lambda (f) (octocat--search-make-file-candidate f repo))
+                                        (octocat--search-files-match files input))))))
                (funcall sink all))
              (funcall sink (if (or files-loading waiting)
                                [indicator running]
                              [indicator finished])))
            (cancel ()
              (when current
-               (dolist (entry octocat--search-types)
-                 (octocat-sync-cancel (spec (car entry) current)))))
-           ;; Show the files of the cached list matching the current input.
-           (match-files ()
-             (when-let* ((files (octocat--search-files-cached repo)))
-               (setf (alist-get "files" results nil nil #'equal)
-                     (mapcar (lambda (f) (octocat--search-make-file-candidate f repo))
-                             (octocat--search-files-match files current)))))
-           ;; Fetch the repository file list once; it is matched locally.
+               (dolist (type types)
+                 (octocat-sync-cancel (spec type current))))
+             (when stop-git
+               (funcall stop-git))
+             (setq current nil stop-git nil))
+           ;; The file list is stored, and refetched once a session when stale.
            (load-files ()
-             (unless (or files-loading (octocat--search-files-cached repo))
-               (setq files-loading t)
-               (octocat-tree--fetch-all-files
-                repo "HEAD"
+             (when (eq files 'unread)
+               (setq files (octocat--search-files-alist
+                            (plist-get (octocat-sync-read (list 'search-files repo)) :data))
+                     files-loading t)
+               (octocat-sync-get
+                (list 'search-files repo)
                 (lambda (result)
                   (setq files-loading nil)
                   (unless (eq (car-safe result) 'error)
-                    (puthash repo (cons (float-time) result)
-                             octocat--search-files-cache)
-                    (when current
-                      (match-files)))
-                  (when current
-                    (publish)))))))
+                    (setq files (octocat--search-files-alist result)))
+                  (when input (publish))))))
+           (fetch (action)
+             (pcase action
+               ((pred stringp)
+                (cancel)
+                (let ((query action))
+                  (setq current query)
+                  (when dir
+                    (setq stop-git
+                          (octocat--search-git
+                           dir (octocat--search-git-args query)
+                           (lambda (lines)
+                             (when (equal query current)
+                               (setq stop-git nil
+                                     git (octocat--search-git-parse lines)
+                                     waiting (delq 'git waiting))
+                               (publish))))))
+                  (dolist (type types)
+                    (octocat-sync-get
+                     (spec type query)
+                     (lambda (result)
+                       (when (equal query current)
+                         (setq waiting (delete type waiting))
+                         (unless (eq (car-safe result) 'error)
+                           (setf (alist-get type remote nil nil #'equal)
+                                 (append result nil)))
+                         (publish)))))))
+               ('cancel (cancel)))))
+        (setq fetch-gate (funcall (or gate (consult--async-throttle)) #'fetch))
         (lambda (action)
           (pcase action
-            ;; New input: show what is stored, then what is fetched.
+            ;; New input: show what is stored and still matches, then
+            ;; what git and GitHub find.
             ((pred stringp)
-             (let ((query (downcase (string-trim action))))
-               (cancel)
-               (setq current query
-                     results nil
-                     waiting (mapcar #'car octocat--search-types))
-               (dolist (type (mapcar #'car octocat--search-types))
-                 (when-let* ((stored (plist-get (octocat-sync-read (spec type query)) :data)))
-                   (push (cons type (candidates type stored)) results)))
-               ;; Not over `waiting': a stored result calls back at once,
-               ;; deleting from it.
-               (dolist (type (mapcar #'car octocat--search-types))
-                 (octocat-sync-get
-                  (spec type query)
-                  (lambda (result)
-                    (when (equal query current)
-                      (setq waiting (delete type waiting))
-                      (unless (eq (car-safe result) 'error)
-                        (setf (alist-get type results nil nil #'equal)
-                              (candidates type result)))
-                      (publish)))))
-               (match-files)
+             (let ((query (octocat--search-normalize action)))
+               (when (eq stored 'unread)
+                 (setq stored (octocat--search-stored-items repo (float-time))))
+               (setq input   query
+                     local   (mapcar (lambda (type)
+                                       (cons type (octocat--search-match
+                                                   type (alist-get type stored nil nil #'equal)
+                                                   query)))
+                                     types)
+                     remote  (mapcar (lambda (type)
+                                       (cons type (append (plist-get (octocat-sync-read
+                                                                      (spec type query))
+                                                                     :data)
+                                                          nil)))
+                                     types)
+                     ;; Commits git found for earlier input that still match.
+                     git     (octocat--search-match "commits" git query)
+                     waiting (append types (and dir (list 'git))))
                (load-files)
-               (publish)))
+               (publish)
+               (funcall fetch-gate query)))
             ((or 'cancel 'destroy)
+             (funcall fetch-gate action)
              (cancel)
-             (setq current nil)
+             (setq input nil)
              (funcall sink action))
-            ;; All other consult actions: pass through unchanged.
-            (_ (funcall sink action))))))))
+            (_
+             (funcall fetch-gate action)
+             (funcall sink action))))))))
 
 (defun octocat-search-repo ()
   "Search for a PR, issue, commit, or file in the current repository.
 
-Fires live `gh search' queries (PRs, issues, and commits in parallel)
-against the repository associated with the current buffer.  Results
-update as each query completes.  File paths containing every word of
-the query are listed too.  Selecting a candidate opens the
-corresponding detail view.
+The PRs, issues and commits octocat has stored that match show at once,
+with the commits of the local clone, when there is one, found by `git
+log'.  Live `gh search' queries (PRs, issues, and commits in parallel)
+against the repository associated with the current buffer then lead
+the list as each completes.  File paths containing every word of the
+query are listed too.  Selecting a candidate opens the corresponding
+detail view.
 
 The query is matched against titles, commit messages, and bodies.
 Prefix a hash (e.g. \"a1b2c3\") to narrow to a specific commit."
@@ -318,11 +546,13 @@ Prefix a hash (e.g. \"a1b2c3\") to narrow to a specific commit."
   (let ((repo (octocat--search-repo--current-repo)))
     (unless repo
       (user-error "Octocat: Cannot determine current repository"))
-    (let* ((chosen (consult--read
+    (let* ((dir    (or (and (boundp 'octocat-repo--local-dir)
+                            (ignore-errors octocat-repo--local-dir))
+                       (octocat-repo--local-dir-for repo)))
+           (chosen (consult--read
                     (consult--async-pipeline
                      (consult--async-min-input 2)
-                     (consult--async-throttle)
-                     (octocat--async-search-repo-objects repo))
+                     (octocat--async-search-repo-objects repo dir))
                     :prompt        (format "Search %s: " repo)
                     :category      'octocat-object
                     :sort          nil
@@ -389,15 +619,6 @@ there."
 (defconst octocat--repo-search-local-limit 15
   "Maximum number of stored repos or users shown for one input.")
 
-(defcustom octocat-repo-search-reuse-for (* 7 24 60 60)
-  "Seconds a past repo search result lends its names to other input.
-`octocat-switch-repo' matches the names of the results of past input,
-not only of the repos and users octocat stored, against what is typed;
-older results are left out.  Repos and users stored otherwise are always
-matched: octocat showed them."
-  :type 'integer
-  :group 'octocat)
-
 (defun octocat--repo-search-names (entries)
   "Return the names of ENTRIES, (NAME . FETCHED-AT), newest first.
 A name seen more than once, in any case, keeps its newest entry."
@@ -414,7 +635,7 @@ A name seen more than once, in any case, keeps its newest entry."
 (defun octocat--repo-search-stored (now)
   "Return the repos and \"@login\" users in the sync store, newest first.
 They are the repo and user entities, and the `repo-search' results
-fetched within `octocat-repo-search-reuse-for' of NOW."
+fetched within `octocat-search-reuse-for' of NOW."
   (octocat--repo-search-names
    (append
     (delq nil (mapcar (pcase-lambda (`(,_ ,fields ,at))
@@ -425,8 +646,8 @@ fetched within `octocat-repo-search-reuse-for' of NOW."
                         (when-let* ((login (gethash "login" fields)))
                           (cons (concat "@" login) at)))
                       (octocat-sync-entities 'user)))
-    (mapcan (pcase-lambda (`(,data . ,at))
-              (when (< (- now (or at 0)) octocat-repo-search-reuse-for)
+    (mapcan (pcase-lambda (`(,_ ,data ,at))
+              (when (< (- now (or at 0)) octocat-search-reuse-for)
                 (mapcar (lambda (name) (cons name at)) data)))
             (octocat-sync-stored 'repo-search)))))
 
