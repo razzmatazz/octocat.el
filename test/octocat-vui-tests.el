@@ -10,6 +10,20 @@
 (require 'ert)
 (require 'octocat)
 
+(defun octocat-vui-tests--parts (vnode)
+  "Return VNODE's text as a list: a link's as (link TEXT), else a string."
+  (cond ((vui-vnode-fragment-p vnode)
+         (mapcan #'octocat-vui-tests--parts (vui-vnode-fragment-children vnode)))
+        ((vui-vnode-button-p vnode) (list (list 'link (vui-vnode-button-label vnode))))
+        ((vui-vnode-text-p vnode) (list (vui-vnode-text-content vnode)))))
+
+(ert-deftest octocat-vui-test-repo-heading-links-owner-and-repo ()
+  "The owner and repo link to their pages; on the repo page its name is plain."
+  (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r"))
+                 '((link "o") "/" (link "r"))))
+  (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r" nil t))
+                 '((link "o") "/" "r"))))
+
 (ert-deftest octocat-vui-test-filter-active-p ()
   "Only a query other than the default counts as an active filter."
   (should-not (octocat-vui-list-filter-active-p nil))

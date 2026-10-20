@@ -691,12 +691,29 @@ Brackets therefore signal an *action*: `[State]`, `[Author]`, `[Load more]`,
 the `[Code]` / `[Issues (N)]` tabs.  Plain, un-bracketed text is content or
 a heading.
 
-The **repo name is not an action**; it is the page's identity.  Render it
-as plain text in the `octocat-repo` face, never as a `vui-button` -- so the
-top line reads `owner/repo` (or `owner/repo#N`) on every page, with no
-brackets.  It is RET-able to the repo page through `octocat-vui-row`, which makes the
-whole text RET-able without brackets, with `help-echo` "RET: open
-repository page".
+The **repo name is not an action**; it is where the page sits.  It is
+never bracketed, so the top line reads `owner/repo` (or `owner/repo#N`,
+`owner/repo@sha`) on every page.
+
+### Walk up with the breadcrumb
+
+The repo name on a page's top line is a breadcrumb: each part links to
+the page it names, so one can walk up without `C-c C-j`.  The owner opens
+the owner's user or organization page; the name opens the repository
+page (at the ref shown, on the tree and file log pages).  On the
+repository page itself the name is plain: a page's own name is never a
+link.  Build it with `octocat-vui-repo-heading`; the file viewer, which
+is not a vui page, inserts the same with `octocat-tree--insert-repo-heading`.
+
+```
+octocat/hello  [Code]  [Issues (N)]  …     ← on the repo page: only "octocat" links
+octocat/hello@abc1234                       ← elsewhere: "octocat" and "hello" both link
+```
+
+The parts are unbracketed buttons in `link` over `octocat-repo`, so
+they are TAB stops and look like links.  What follows the name (`#N`,
+`@sha`, a branch pair) is plain text; deeper levels may be added to the
+breadcrumb later.
 
 ### The tab strip
 

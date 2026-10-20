@@ -66,6 +66,8 @@
 
 (declare-function octocat-commit-open "octocat-commit" (repo sha))
 (declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
+(declare-function octocat-user-open "octocat-user" (login))
+(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional ref here))
 
 
 ;;;; User options
@@ -490,13 +492,25 @@ The other arguments are as for `octocat-tree--subtree'."
 
 ;;;; Rendering — file mode
 
+(defun octocat-tree--insert-repo-heading (repo)
+  "Insert REPO as `octocat-vui-repo-heading' draws it, in a plain buffer."
+  (pcase-let ((`(,owner ,name) (split-string repo "/"))
+              (link (lambda (label help action)
+                      (insert-text-button label 'face '(link octocat-repo)
+                                          'help-echo help 'follow-link t
+                                          'action (lambda (_) (funcall action))))))
+    (funcall link owner "RET: open owner page" (lambda () (octocat-user-open owner)))
+    (insert (propertize "/" 'face 'octocat-repo))
+    (funcall link name "RET: open repository page" (lambda () (octocat-visit-repo repo)))))
+
 (defun octocat-tree--insert-file-header (path)
   "Insert the top of the viewer of file PATH, a rule under it.
 Its line ends in a button to the repo page's tree, opened down to PATH."
   (let ((repo   octocat-tree--file-repo)
         (branch octocat-tree--file-branch))
-    (insert (propertize (or repo "") 'face 'octocat-repo)
-            "  "
+    (when repo
+      (octocat-tree--insert-repo-heading repo))
+    (insert "  "
             (propertize (or branch "") 'face 'octocat-branch)
             "  "
             (or path "")
@@ -772,14 +786,15 @@ them again."
          (status  (octocat-vui-snapshot-status result))
          (commits (append (plist-get result :data) nil)))
     (vui-vstack
-     (vui-text (concat
-                (propertize (or repo "") 'face 'octocat-repo)
-                "  "
-                (propertize (or path "") 'face 'octocat-branch)
-                (when (eq status 'ready)
-                  (concat "  "
-                          (propertize (format "(%d commits)" (length commits))
-                                      'face 'octocat-dimmed)))))
+     (vui-hstack :spacing 0
+       (and repo (octocat-vui-repo-heading repo ref))
+       (vui-text (concat
+                  "  "
+                  (propertize (or path "") 'face 'octocat-branch)
+                  (when (eq status 'ready)
+                    (concat "  "
+                            (propertize (format "(%d commits)" (length commits))
+                                        'face 'octocat-dimmed))))))
      (pcase status
        ('pending (vui-text (octocat-vui-line-skeleton "  ")))
        ('error

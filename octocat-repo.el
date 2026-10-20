@@ -46,6 +46,8 @@
 (require 'octocat-tree)
 (require 'octocat-search) ; `octocat--read-branch'
 (require 'octocat-vui)
+
+(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional ref here))
 (require 'vui)
 (require 'vui-components) ; vui-collapsible, vui-heading-*, etc.
 
@@ -653,12 +655,13 @@ after the review.  OMIT is a list of cell keys (see
       (propertize (car lines) 'octocat-timeline-target 'title)
       on-edit-title
       "RET: edit title")
-     (octocat-repo-vui--detail-who cells omit on-edit-title))))
+     (octocat-repo-vui--detail-who repo item cells omit on-edit-title))))
 
-(defun octocat-repo-vui--detail-who (cells omit on-edit-title)
+(defun octocat-repo-vui--detail-who (repo item cells omit on-edit-title)
   "Return the header row under the title: number, author, date and cells.
-As the second of `octocat-repo-vui--item-lines', but the author is a
-TAB-able link.  CELLS, OMIT and ON-EDIT-TITLE are as for
+As the second of `octocat-repo-vui--item-lines', but REPO is a
+breadcrumb (`octocat-vui-repo-heading') and the author a TAB-able link.
+ITEM, CELLS, OMIT and ON-EDIT-TITLE are as for
 `octocat-repo-vui--detail-header'."
   (let* ((author (plist-get cells :author))
          (rest   (octocat-repo-vui--join-cells
@@ -666,7 +669,8 @@ TAB-able link.  CELLS, OMIT and ON-EDIT-TITLE are as for
                                                     omit)))))
     (octocat-vui-row
      (list (make-string (+ octocat-repo-vui--state-width 2) ?\s)
-           (plist-get cells :number)
+           (octocat-vui-repo-heading repo)
+           (propertize (format "#%d" (gethash "number" item)) 'face 'octocat-pr-number)
            (propertize " by " 'face 'octocat-dimmed)
            (if (string-empty-p author)
                ""
@@ -1256,7 +1260,7 @@ the root's `repo-head' at REF."
       nil)
     (vui-vstack
      (apply #'vui-hstack :spacing 2
-            (vui-text repo :face 'octocat-repo)
+            (octocat-vui-repo-heading repo nil t)
             (octocat-vui-repo-tabs repo 'code tick))
      (when local-dir
        (vui-text
@@ -1311,9 +1315,7 @@ branch."
           (setq octocat-repo--default-branch default-branch)))
       nil)
     (vui-vstack
-     (octocat-vui-row (propertize repo 'face 'octocat-repo)
-                      (lambda () (octocat-visit-repo repo ref))
-                      "RET: open repository page")
+     (octocat-vui-repo-heading repo ref)
      (vui-newline)
      (octocat-repo-vui--head-line repo ref path head-snap default-branch current-branch)
      (when path
@@ -1349,9 +1351,7 @@ non-nil, keeps the commits that touched it, as GitHub's History."
       nil)
     (vui-vstack
      ;; No tabs: only the repo root and the list pages show them.
-     (octocat-vui-row (propertize repo 'face 'octocat-repo)
-                      (lambda () (octocat-visit-repo repo))
-                      "RET: open repository page")
+     (octocat-vui-repo-heading repo)
      (vui-newline)
      (vui-component 'octocat-repo-vui--commits-section
                     :key (list ref path)

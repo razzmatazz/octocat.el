@@ -855,7 +855,8 @@ would pull the user back to it (see docs/using-vui.md)."
 (declare-function octocat-switch-repo "octocat-core" ())
 (declare-function octocat--setting "octocat-core" (key))
 (declare-function octocat--setting-put "octocat-core" (key value))
-(declare-function octocat-visit-repo "octocat-core" (repo))
+(declare-function octocat-visit-repo "octocat-core" (repo &optional ref))
+(declare-function octocat-user-open "octocat-user" (login))
 (declare-function octocat-issue-list "octocat" ())
 (declare-function octocat-pr-list "octocat" ())
 (declare-function octocat-actions "octocat" ())
@@ -923,23 +924,35 @@ The choice is remembered for this page of this repository."
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup))
 
+(defun octocat-vui-repo-heading (repo &optional ref here)
+  "Return REPO, \"owner/name\", as a breadcrumb vnode.
+The owner links to its user or organization page and the name to the
+repository page at REF, nil for the default branch, so one can walk up
+from any page.  HERE, non-nil on the repository page itself, leaves the
+name plain: a page's own name is never a link."
+  (pcase-let* ((`(,owner ,name) (split-string repo "/"))
+               (link (lambda (label help on-click)
+                       (vui-button label :no-decoration t :face '(link octocat-repo)
+                                   :help-echo help :on-click on-click))))
+    (vui-fragment
+     (funcall link owner "RET: open owner page" (lambda () (octocat-user-open owner)))
+     (vui-text "/" :face 'octocat-repo)
+     (if here
+         (vui-text name :face 'octocat-repo)
+       (funcall link name "RET: open repository page"
+                (lambda () (octocat-visit-repo repo ref)))))))
+
 (defun octocat-vui-commit-top-row (repo sha)
   "Return the top row of a page about commit SHA of REPO.
-That is `owner/repo@sha', RET-able to the repo page, as `owner/repo#N'
-is on an issue."
-  (octocat-vui-row
-   (concat (propertize repo 'face 'octocat-repo)
-           (propertize (concat "@" (substring sha 0 (min 7 (length sha))))
-                       'face 'octocat-commit-sha))
-   (lambda () (octocat-visit-repo repo))
-   "RET: open repo view"))
+That is `owner/repo@sha', as `owner/repo#N' is on an issue."
+  (vui-hstack :spacing 0
+    (octocat-vui-repo-heading repo)
+    (vui-text (concat "@" (substring sha 0 (min 7 (length sha))))
+              :face 'octocat-commit-sha)))
 
 (defun octocat-vui-actions-top-row (repo)
-  "Return the top row of a workflow, run or job page of REPO.
-That is the repo, RET-able to the repo page."
-  (octocat-vui-row (propertize repo 'face 'octocat-repo)
-                   (lambda () (octocat-visit-repo repo))
-                   "RET: open repo view"))
+  "Return the top row of a workflow, run or job page of REPO."
+  (octocat-vui-repo-heading repo))
 
 (defun octocat-vui-fields (fields)
   "Return a vnode of FIELDS on one line, or nil when none has a value.
@@ -1058,11 +1071,7 @@ them again."
   (let ((counts (plist-get (octocat-vui-use-resource (list 'counts kind repo) tick) :data)))
     (vui-fragment
      (apply #'vui-hstack :spacing 2
-            ;; A row, not a button: buttons draw their [brackets], and the
-            ;; repo name is plain text on every other page's top line.
-            (octocat-vui-row (propertize repo 'face 'octocat-repo)
-                             (lambda () (octocat-visit-repo repo))
-                             "RET: open repository page")
+            (octocat-vui-repo-heading repo)
             (octocat-vui-repo-tabs repo tab tick))
      (vui-newline)
      (when (and counts (gethash "open" counts))

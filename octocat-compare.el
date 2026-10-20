@@ -41,6 +41,8 @@
 (require 'octocat-diff)
 (require 'octocat-sync)
 (require 'octocat-vui)
+
+(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional ref here))
 (require 'vui)
 
 (declare-function octocat-search-repo "octocat-search" ())
@@ -140,16 +142,13 @@ DAYS is as `octocat-compare--commit-days' returns."
 
 (defun octocat-compare--top-row (repo base dots head)
   "Return the top row of the comparison of BASE and HEAD of REPO.
-That is `owner/repo BASE...HEAD', RET-able to the repo page, as the
-commit page's `owner/repo@sha' is."
-  (octocat-vui-row
-   (concat (propertize repo 'face 'octocat-repo)
-           "  "
-           (propertize base 'face 'octocat-branch)
-           (propertize dots 'face 'octocat-dimmed)
-           (propertize head 'face 'octocat-branch))
-   (lambda () (octocat-visit-repo repo))
-   "RET: open repo view"))
+That is `owner/repo BASE...HEAD', as the commit page's `owner/repo@sha'."
+  (vui-hstack :spacing 0
+    (octocat-vui-repo-heading repo)
+    (vui-text (concat "  "
+                      (propertize base 'face 'octocat-branch)
+                      (propertize dots 'face 'octocat-dimmed)
+                      (propertize head 'face 'octocat-branch)))))
 
 
 ;;;; Page
