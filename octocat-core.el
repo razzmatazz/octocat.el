@@ -1052,16 +1052,16 @@ After toggling, the buffer is refreshed via `octocat--refresh-fn'."
 (defvar octocat-repo--local-dir)
 (defvar octocat-repo--ref)
 
-(declare-function octocat--async-search-repos "octocat-search" ())
+(declare-function octocat--async-search-repos "octocat-search" (&optional gate))
 (declare-function octocat-user-open "octocat-user" (login))
 
 (defun octocat-switch-repo ()
   "Search GitHub repositories or users interactively with live API queries.
-Each keystroke (debounced by `consult-async-input-debounce') calls
-`gh search repos' against GitHub's global search index.  Input starting
-with \"@\" searches users and organizations instead (the `search/users'
-API).
-Results update in place as you type — no pre-fetching, no blocking wait.
+Input starting with \"@\" searches users and organizations instead.
+The repos and users octocat has stored that match the input show at
+once, newest first.  GitHub's results, debounced by
+`consult-async-input-debounce', then lead the list in GitHub's order,
+the stored matches it did not return after them.
 
 Uses `consult--read' with a custom async pipeline so Vertico, Embark,
 Marginalia, and other consult-aware packages integrate seamlessly.
@@ -1073,7 +1073,6 @@ The selected repository is opened via `octocat-visit-repo', a selected
          (consult--read
           (consult--async-pipeline
            (consult--async-min-input 2)
-           (consult--async-throttle)
            (octocat--async-search-repos))
           :prompt   "Search GitHub repos (@ for users): "
           :category 'octocat-repo

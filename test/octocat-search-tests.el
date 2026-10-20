@@ -40,10 +40,12 @@ Each `gh' call is pushed to `calls' as (ARGS . CALLBACK), not run."
   "Stored results show at once; new input cancels a queued fetch."
   (octocat-search-tests--with-store
     (let* ((log (list nil))
-           (stage (funcall (octocat--async-search-repos) (octocat-search-tests--sink log))))
+           (stage (funcall (octocat--async-search-repos #'identity)
+                           (octocat-search-tests--sink log))))
       (funcall stage "emacs")
       (should (equal (car (car calls)) '("search" "repos" "--limit" "30"
-                                         "--json" "fullName" "emacs")))
+                                         "--json" "fullName" "--include-forks=true"
+                                         "emacs")))
       (funcall (cdr (pop calls)) "[{\"fullName\":\"o/emacs\"}]")
       (should (equal (car log) '("o/emacs")))
       (should (equal (cdr log) [indicator finished]))
@@ -63,6 +65,53 @@ Each `gh' call is pushed to `calls' as (ARGS . CALLBACK), not run."
       (funcall stage "@alice")
       (funcall (cdr (pop calls)) "[{\"login\":\"alice\"}]")
       (should (equal (car log) '("@alice"))))))
+
+(ert-deftest octocat-search-test-repo-search-args ()
+  "Forks are searched; \"owner/name\" searches the repos of owner."
+  (should (equal (octocat--repo-search-args "razzmatazz/open")
+                 '("search" "repos" "--limit" "30" "--json" "fullName"
+                   "--include-forks=true" "--owner=razzmatazz" "open")))
+  (should (equal (last (octocat--repo-search-args "razzmatazz/"))
+                 '("--owner=razzmatazz")))
+  (should (equal (last (octocat--repo-search-args "openra")) '("openra"))))
+
+;; Fields as `gh repo view' gives them, no more than the entity needs.
+(defun octocat-search-tests--repo (name)
+  "Return the `repo' entity of NAME."
+  (let ((h (make-hash-table :test #'equal)))
+    (puthash "nameWithOwner" name h)
+    (octocat-sync-repo h)))
+
+(ert-deftest octocat-search-test-repo-search-stored ()
+  "Stored repos and users matching the input show at once, newest first;
+GitHub's results lead once in, the stored ones it lacks after them."
+  (octocat-search-tests--with-store
+    (let ((now (float-time)))
+      (octocat-sync--write octocat-sync--db "(repo-summary \"a/octocat.el\")"
+                           (octocat-search-tests--repo "a/octocat.el") (- now 2))
+      (octocat-sync--write octocat-sync--db "(repo-summary \"b/other\")"
+                           (octocat-search-tests--repo "b/other") (- now 2))
+      (octocat-sync--write octocat-sync--db "(repo-search \"oct\")"
+                           ["c/octo" "A/Octocat.el" "@octo-org"] (- now 3))
+      ;; Too old to lend its names.
+      (octocat-sync--write octocat-sync--db "(repo-search \"o\")"
+                           ["e/octo-old"] (- now octocat-repo-search-reuse-for 1))
+      (octocat-sync--write octocat-sync--db "(user-profile \"octavia\")"
+                           (octocat-sync-user (let ((h (make-hash-table :test #'equal)))
+                                                (puthash "login" "octavia" h)
+                                                h))
+                           (- now 1))
+      (let* ((log (list nil))
+             (stage (funcall (octocat--async-search-repos #'identity)
+                             (octocat-search-tests--sink log))))
+        (funcall stage "octo")
+        (should (equal (car log) '("a/octocat.el" "c/octo")))
+        (should (equal (cdr log) [indicator running]))
+        (funcall (cdr (pop calls)) "[{\"fullName\":\"A/OCTOCAT.EL\"},{\"fullName\":\"d/octo\"}]")
+        (should (equal (car log) '("A/OCTOCAT.EL" "d/octo" "c/octo")))
+        (should (equal (cdr log) [indicator finished]))
+        (funcall stage "@oct")
+        (should (equal (car log) '("@octavia" "@octo-org")))))))
 
 (ert-deftest octocat-search-test-repo-objects ()
   "Each type's stored result shows at once; its fetched one replaces it."

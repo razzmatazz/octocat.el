@@ -340,7 +340,7 @@ owner/repo  src/foo.el  (7 commits)
 | `C-c C-e` | Edit body or comment at point (PR and issue detail views) |
 | `C-c C-n` | Write a new issue (PR and issue lists and detail views): the first line is the title, the rest the body; `C-c C-c` creates it and opens its page |
 | `C-c C-m` | Merge the PR (all PR pages): edit the commit message, `C-c C-t` picks Merge / Squash / Rebase (starting on the one last used in the repo, if still allowed), `C-c C-d` toggles deleting the branch, `C-c C-c` merges |
-| `C-c C-j` | Jump to another repository |
+| `C-c C-j` | Jump to another repository, or a user with `@`: repos and users octocat has seen before that match show at once, then GitHub's search results take the lead as they arrive, without repeating any |
 | `C-c C-v` | Alternative view of the page (see below): raw markdown on the repo page and the PR, commit and issue pages; one line per item on the PR and issue lists |
 | `C-c C-b` | Pick the branch shown (repo page, commits page); `[reset to main]` goes back to the default branch |
 | `C-c C-f` | Open fuzzy file finder — `completing-read` over the full recursive file list of the commit shown; works from the repo page and the file viewer (the list is fetched once per commit) |

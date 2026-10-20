@@ -523,6 +523,24 @@ of the pending mutations of SPEC, see `octocat-sync-define-mutation'."
             :fetched-at fetched-at
             :mutating (octocat-sync--mutating key)))))
 
+(defun octocat-sync-entities (type)
+  "Return the stored entities of TYPE, a symbol, as (KEY FIELDS FETCHED-AT).
+FIELDS are as stored: refs to other entities are left unresolved."
+  (mapcar (pcase-lambda (`(,key ,fields ,at)) (list key (octocat-sync--parse fields) at))
+          (sqlite-select (octocat-sync--db)
+                         "SELECT key, fields, fetched_at FROM entity WHERE type = ?"
+                         (list (symbol-name type)))))
+
+(defun octocat-sync-stored (name)
+  "Return the stored data of every resource NAME, as (DATA . FETCHED-AT).
+Only for resources whose data holds no entities: refs are left unresolved."
+  (let ((prefix (format "(%s " name)))
+    (mapcar (pcase-lambda (`(,body ,at)) (cons (octocat-sync--parse body) at))
+            (sqlite-select (octocat-sync--db)
+                           "SELECT body, fetched_at FROM resource
+                            WHERE substr(key, 1, ?1) = ?2 AND body IS NOT NULL"
+                           (list (length prefix) prefix)))))
+
 (defun octocat-sync--wanted-p (spec force)
   "Return non-nil if SPEC should be fetched, or FORCE.
 It is not when fetched just now, within `octocat-sync-fresh-for' or the

@@ -345,19 +345,35 @@ It is at least `octocat-sync-fresh-for'."
   :type 'integer
   :group 'octocat)
 
+(defun octocat--repo-search-args (query)
+  "Return the `gh' arguments searching for the repos or users of QUERY.
+Forks are included: GitHub leaves them out by default, so one's own fork
+could not be found even by its full name.  \"owner/name\" searches the
+repos of owner, as GitHub's global search does not match a partial name
+there."
+  (cond
+   ((string-prefix-p "@" query)
+    ;; `gh search' has no users subcommand; -X GET keeps -f fields in the
+    ;; query string.
+    (list "api" "-X" "GET" "search/users"
+          "-f" (concat "q=" (substring query 1))
+          "-f" "per_page=15"
+          "--jq" "[.items[] | {login}]"))
+   ((string-match "\\`\\([^/ \t]+\\)/\\(.*\\)\\'" query)
+    (append (list "search" "repos" "--limit" "30" "--json" "fullName"
+                  "--include-forks=true" (concat "--owner=" (match-string 1 query)))
+            (let ((name (string-trim (match-string 2 query))))
+              (unless (string-empty-p name) (list name)))))
+   (t
+    (list "search" "repos" "--limit" "30" "--json" "fullName"
+          "--include-forks=true" query))))
+
 (octocat-sync-define-resource repo-search (query)
   :max-age octocat-repo-search-cache-ttl
   :fetch (lambda (done)
            (octocat--run-gh
             "search-repos"
-            (if (string-prefix-p "@" query)
-                ;; `gh search' has no users subcommand; -X GET keeps -f
-                ;; fields in the query string.
-                (list "api" "-X" "GET" "search/users"
-                      "-f" (concat "q=" (substring query 1))
-                      "-f" "per_page=15"
-                      "--jq" "[.items[] | {login}]")
-              (list "search" "repos" "--limit" "30" "--json" "fullName" query))
+            (octocat--repo-search-args query)
             (lambda (output)
               (vconcat (mapcar (lambda (r)
                                  (if-let* ((login (gethash "login" r)))
@@ -366,40 +382,140 @@ It is at least `octocat-sync-fresh-for'."
                                (octocat--parse-json-list output))))
             done)))
 
-(defun octocat--async-search-repos ()
-  "Return a consult async stage searching GitHub for the input's repos.
-Input starting with \"@\" searches users instead.  The stored result of
-the input shows at once, and the fetched one replaces it.  New input
-cancels the fetch of the last if it is still queued, so it never waits
-behind input typed past.  Debounce it upstream with
-`consult--async-min-input' and `consult--async-throttle'."
+;; Repos and users octocat has stored, matched as you type, show before
+;; GitHub's answer: most of the time the one wanted was opened before.
+;; The store is only a faster source; GitHub's answer overrides it.
+
+(defconst octocat--repo-search-local-limit 15
+  "Maximum number of stored repos or users shown for one input.")
+
+(defcustom octocat-repo-search-reuse-for (* 7 24 60 60)
+  "Seconds a past repo search result lends its names to other input.
+`octocat-switch-repo' matches the names of the results of past input,
+not only of the repos and users octocat stored, against what is typed;
+older results are left out.  Repos and users stored otherwise are always
+matched: octocat showed them."
+  :type 'integer
+  :group 'octocat)
+
+(defun octocat--repo-search-names (entries)
+  "Return the names of ENTRIES, (NAME . FETCHED-AT), newest first.
+A name seen more than once, in any case, keeps its newest entry."
+  (let ((seen (make-hash-table :test #'equal))
+        names)
+    (dolist (entry (sort (copy-sequence entries)
+                         (lambda (a b) (> (or (cdr a) 0) (or (cdr b) 0)))))
+      (let ((key (downcase (car entry))))
+        (unless (gethash key seen)
+          (puthash key t seen)
+          (push (car entry) names))))
+    (nreverse names)))
+
+(defun octocat--repo-search-stored (now)
+  "Return the repos and \"@login\" users in the sync store, newest first.
+They are the repo and user entities, and the `repo-search' results
+fetched within `octocat-repo-search-reuse-for' of NOW."
+  (octocat--repo-search-names
+   (append
+    (delq nil (mapcar (pcase-lambda (`(,_ ,fields ,at))
+                        (when-let* ((name (gethash "nameWithOwner" fields)))
+                          (cons name at)))
+                      (octocat-sync-entities 'repo)))
+    (delq nil (mapcar (pcase-lambda (`(,_ ,fields ,at))
+                        (when-let* ((login (gethash "login" fields)))
+                          (cons (concat "@" login) at)))
+                      (octocat-sync-entities 'user)))
+    (mapcan (pcase-lambda (`(,data . ,at))
+              (when (< (- now (or at 0)) octocat-repo-search-reuse-for)
+                (mapcar (lambda (name) (cons name at)) data)))
+            (octocat-sync-stored 'repo-search)))))
+
+(defun octocat--repo-search-match (names input)
+  "Return the NAMES matching INPUT, at most `octocat--repo-search-local-limit'.
+A name matches when it holds every word of INPUT, ignoring case.  Input
+starting with \"@\" matches only the \"@login\" names, other input only
+the repos."
+  (let* ((users (string-prefix-p "@" input))
+         (words (split-string (downcase (if users (substring input 1) input))
+                              "[ \t]+" t)))
+    (when words
+      (seq-take (seq-filter (lambda (name)
+                              (and (eq users (string-prefix-p "@" name))
+                                   (let ((name (downcase name)))
+                                     (cl-every (lambda (w) (string-search w name)) words))))
+                            names)
+                octocat--repo-search-local-limit))))
+
+(defun octocat--repo-search-merge (local remote)
+  "Return REMOTE, then the LOCAL names not in it, ignoring case.
+GitHub's REMOTE answer is authoritative, the stored LOCAL matches only
+fill in what it lacks, or all of it before it arrives."
+  (let ((seen (mapcar #'downcase remote)))
+    (append remote
+            (seq-remove (lambda (name) (member (downcase name) seen)) local))))
+
+(defun octocat--async-search-repos (&optional gate)
+  "Return a consult async stage searching the input's repos.
+Input starting with \"@\" searches users instead.  The stored repos and
+users matching the input show at once, and GitHub's results, first the
+stored result of the input and then the fetched one, take the lead as
+they arrive; see `octocat--repo-search-merge'.  New input cancels the
+fetch of the last if it is still queued, so it never waits behind input
+typed past.
+Fetches go through GATE, a consult async stage, by default
+`consult--async-throttle'.  Enforce a minimum input upstream with
+`consult--async-min-input'."
   (lambda (sink)
-    (let (current)
-      (lambda (action)
-        (pcase action
-          ((pred stringp)
-           (when current (octocat-sync-cancel current))
-           (let ((spec (list 'repo-search action)))
-             (setq current spec)
+    (let (current stored local remote waiting fetch-gate)
+      (cl-labels
+          ((publish (&optional failed)
              (funcall sink 'flush)
-             (when-let* ((stored (plist-get (octocat-sync-read spec) :data)))
-               (funcall sink (append stored nil)))
-             (funcall sink [indicator running])
-             (octocat-sync-get
-              spec
-              (lambda (result)
-                (when (eq current spec)
-                  (if (eq (car-safe result) 'error)
-                      (funcall sink [indicator failed])
-                    (funcall sink 'flush)
-                    (when (> (length result) 0)
-                      (funcall sink (append result nil)))
-                    (funcall sink [indicator finished])))))))
-          ((or 'cancel 'destroy)
-           (when current (octocat-sync-cancel current))
-           (setq current nil)
-           (funcall sink action))
-          (_ (funcall sink action)))))))
+             (when-let* ((all (octocat--repo-search-merge local remote)))
+               (funcall sink all))
+             (funcall sink (cond (failed [indicator failed])
+                                 (waiting [indicator running])
+                                 (t [indicator finished]))))
+           (cancel ()
+             (when current (octocat-sync-cancel current))
+             (setq current nil))
+           (fetch (action)
+             (pcase action
+               ((pred stringp)
+                (cancel)
+                (let ((spec (list 'repo-search (substring-no-properties action))))
+                  (setq current spec)
+                  (octocat-sync-get
+                   spec
+                   (lambda (result)
+                     (when (eq current spec)
+                       (setq waiting nil)
+                       (if (eq (car-safe result) 'error)
+                           (publish t)
+                         (setq remote (append result nil))
+                         (publish)))))))
+               ('cancel (cancel)))))
+        (setq fetch-gate (funcall (or gate (consult--async-throttle)) #'fetch))
+        (lambda (action)
+          (pcase action
+            ((pred stringp)
+             (unless stored
+               (setq stored (octocat--repo-search-stored (float-time))))
+             (setq local   (octocat--repo-search-match stored action)
+                   remote  (append (plist-get (octocat-sync-read
+                                               (list 'repo-search
+                                                     (substring-no-properties action)))
+                                              :data)
+                                   nil)
+                   waiting t)
+             (publish)
+             (funcall fetch-gate action))
+            ((or 'cancel 'destroy)
+             (funcall fetch-gate action)
+             (cancel)
+             (funcall sink action))
+            (_
+             (funcall fetch-gate action)
+             (funcall sink action))))))))
 
 ;;;; Branch picker
 
