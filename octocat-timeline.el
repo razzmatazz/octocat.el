@@ -642,6 +642,21 @@ lost."
   ;; The comments are the page resource's, not an entity's.
   :invalidates (lambda () (list (octocat-timeline--detail-spec kind repo number))))
 
+(octocat-sync-define-mutation edit-values (kind repo number flag add remove)
+  :label (format "Saving %ss…" flag)
+  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
+  :send (lambda (done)
+          (octocat--run-gh (concat "edit-" flag)
+                           (append (list kind "edit" (number-to-string number) "--repo" repo)
+                                   (and add (list (concat "--add-" flag) (string-join add ",")))
+                                   (and remove (list (concat "--remove-" flag)
+                                                     (string-join remove ","))))
+                           #'ignore done))
+  :invalidates (lambda ()
+                 `(,(octocat-timeline--detail-spec kind repo number)
+                   (timeline-events ,repo ,number)
+                   (list-items ,(if (equal kind "pr") 'pulls 'issues) ,repo _ _))))
+
 (defun octocat-timeline-state-change (kind verb repo number)
   "Close or reopen issue or PR NUMBER of REPO after asking.
 KIND is \"issue\" or \"pr\" (the `gh' subcommand) and VERB is \"close\" or
@@ -668,9 +683,65 @@ Every page showing it changes at once; the mode line shows it under way."
       (octocat-sync-submit `(set-title ,kind ,repo ,number ,new)
                            (lambda (_) (octocat-vui-mode-line-action buf nil))))))
 
+(defconst octocat-timeline--value-fields
+  '(("label"    "Labels"    "labels"         "name")
+    ("assignee" "Assignees" "assignees"      "login")
+    ;; Only pending requests: a review given can't be withdrawn.
+    ("reviewer" "Reviewers" "reviewRequests" "login"))
+  "Each FLAG of `gh ... edit --add-FLAG': prompt, item field, value key.")
+
+(defun octocat-timeline-edit-field (kind repo item flag)
+  "Return the label of the FLAG field of ITEM, a button picking its values.
+See `octocat-repo-vui--detail-fields' and `octocat-timeline-edit-values'.
+ITEM is an issue or PR (KIND) of REPO."
+  (let ((number (gethash "number" item)))
+    ;; The target says which field `C-c C-e' edits.
+    (cons (propertize (nth 1 (assoc flag octocat-timeline--value-fields))
+                      'octocat-timeline-target flag)
+          (lambda () (octocat-timeline-edit-values kind repo number flag)))))
+
+(defun octocat-timeline-edit-values (kind repo number flag)
+  "Pick the values of the FLAG field of NUMBER, an issue or PR (KIND) of REPO.
+FLAG is in `octocat-timeline--value-fields'.  The candidates are the
+stored ones, refetched behind the prompt (see `octocat-vui-list--stored')."
+  (pcase-let* ((`(,_ ,prompt ,field ,key) (assoc flag octocat-timeline--value-fields))
+               (labels  (equal flag "label"))
+               (item    (octocat-sync-detail-read (octocat-timeline--detail-spec kind repo number)))
+               (current (delq nil (mapcar (lambda (x) (gethash key x))
+                                          (and item (gethash field item)))))
+               (at      (lambda (s) (if labels s (concat "@" s))))
+               (buf     (current-buffer)))
+    (funcall
+     (if labels
+         (octocat-vui-list--stored 'labels #'octocat-vui-list--label-name)
+       (octocat-vui-list--stored 'assignees))
+     repo
+     (lambda (result)
+       ;; Outside the process sentinel, as the list filters do.
+       (run-at-time
+        0 nil
+        (lambda ()
+          (when (octocat--still-selected-p buf)
+            (with-current-buffer buf
+              (let* ((picked (mapcar (lambda (s) (if labels s (string-remove-prefix "@" s)))
+                                     (octocat-vui-list--read-multiple
+                                      prompt
+                                      (if (eq (car-safe result) 'error)
+                                          (progn (message "Octocat: %s" (cdr result)) nil)
+                                        (mapcar at result))
+                                      (mapcar at current))))
+                     (add    (seq-difference picked current))
+                     (remove (seq-difference current picked)))
+                (when (or add remove)
+                  (octocat-vui-mode-line-action buf ":saving")
+                  (octocat-sync-submit
+                   `(edit-values ,kind ,repo ,number ,flag ,add ,remove)
+                   (lambda (_) (octocat-vui-mode-line-action buf nil)))))))))))))
+
 (defun octocat-timeline-target ()
   "Return what the timeline entry at point stands for, or nil.
-It is the symbol `title' or `body', or a comment hash-table, as stored in
+It is the symbol `title' or `body', a field's flag (see
+`octocat-timeline--value-fields'), or a comment hash-table, as stored in
 the `octocat-timeline-target' text property by the renderer."
   (get-text-property (point) 'octocat-timeline-target))
 

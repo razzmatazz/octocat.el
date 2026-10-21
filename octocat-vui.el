@@ -1303,12 +1303,14 @@ new value."
 (defun octocat-vui-list--read-multiple (prompt candidates selected)
   "Read values from CANDIDATES in one prompt; return the list of them.
 PROMPT names what is being chosen.  SELECTED are the current values,
-given as initial input so RET alone keeps them."
+given as initial input so RET alone keeps them.  Vertico's RET picks a
+candidate for an empty last value, so the prompt names M-RET, which
+takes the input as typed."
   (delete-dups
    (seq-remove #'string-empty-p
                (mapcar #'string-trim
                        (completing-read-multiple
-                        (format "%s (comma-separated): " prompt)
+                        (format "%s (comma-separated, M-RET: as typed): " prompt)
                         ;; Candidates first, keeping their faces over
                         ;; the plain selected strings.
                         (delete-dups (append candidates selected)) nil nil

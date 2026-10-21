@@ -338,7 +338,7 @@ owner/repo  src/foo.el  (7 commits)
 | `C-c C-o` | Open item at point in browser |
 | `C-c C-a` | Add a comment (PR and issue detail views) |
 | `C-c C-r` | Submit a review (all PR pages: conversation, commits, files changed); `C-c C-t` picks Comment / Approve / Request changes |
-| `C-c C-e` | Edit body or comment at point (PR and issue detail views) |
+| `C-c C-e` | Edit the title, body, comment, or Labels / Assignees / Reviewers field at point (PR and issue detail views); `RET` on a field does the same |
 | `C-c C-n` | Write a new issue (PR and issue lists and detail views): the first line is the title, the rest the body; `C-c C-c` creates it and opens its page |
 | `C-c C-m` | Merge the PR (all PR pages): edit the commit message, `C-c C-t` picks Merge / Squash / Rebase (starting on the one last used in the repo, if still allowed), `C-c C-d` toggles deleting the branch, `C-c C-c` merges |
 | `C-c C-j` | Jump to another repository, or a user with `@`: repos and users octocat has seen before that match show at once, then GitHub's search results take the lead as they arrive, without repeating any |

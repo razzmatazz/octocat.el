@@ -118,7 +118,8 @@ See `octocat-timeline-submit' for ON-SUCCESS."
 On the title: rename the issue.
 On the opening post: replace the issue body.
 On a comment you authored: edit that comment.
-On someone else\\='s comment: signal an error."
+On someone else\\='s comment: signal an error.
+On a field such as Labels: pick its values."
   (interactive)
   (unless (and octocat--issue-repo octocat--issue-number)
     (user-error "Octocat: Buffer is not associated with an issue"))
@@ -126,6 +127,8 @@ On someone else\\='s comment: signal an error."
     (cond
      ((eq target 'title) (octocat-issue-edit-title))
      ((eq target 'body)  (octocat-issue-edit-body))
+     ((stringp target)
+      (octocat-timeline-edit-values "issue" octocat--issue-repo octocat--issue-number target))
      ((hash-table-p target)
       (let* ((authored   (eq (gethash "viewerDidAuthor" target) t))
              (comment-id (octocat--comment-numeric-id target))
@@ -296,7 +299,10 @@ BG is as for `octocat--label-face'."
       #'octocat-issue-edit-title bg nil '(:comments))
      (list
       (octocat-repo-vui--detail-fields
-       (list (cons "Assignees" (octocat-repo-vui--logins (gethash "assignees" issue)))
+       (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
+                   (octocat-repo-vui--logins (gethash "assignees" issue)))
+             (cons (octocat-timeline-edit-field "issue" repo issue "label")
+                   (octocat--format-labels (gethash "labels" issue) bg))
              (cons "Milestone" (octocat-repo-vui--milestone issue))
              (cons "Fixed by"  (octocat-repo-vui--numbers
                                 repo (gethash "closedByPullRequestsReferences" issue)

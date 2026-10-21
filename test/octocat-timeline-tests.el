@@ -236,5 +236,40 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
     (should (equal (nth 0 reopened) "New comment"))
     (should (equal (nth 3 reopened) "hello"))))
 
+(ert-deftest octocat-timeline-test-edit-values-send ()
+  "Editing labels adds and removes them in one `gh ... edit'."
+  (let (args)
+    (cl-letf (((symbol-function 'octocat--run-gh)
+               (lambda (_name a &rest _) (setq args a))))
+      (funcall (plist-get (funcall (gethash 'edit-values octocat-sync--mutations)
+                                   "pr" "o/r" 5 "label" '("bug" "ui") '("wip"))
+                          :send)
+               #'ignore))
+    (should (equal args '("pr" "edit" "5" "--repo" "o/r"
+                          "--add-label" "bug,ui" "--remove-label" "wip")))))
+
+(ert-deftest octocat-timeline-test-edit-values-diff ()
+  "Picking assignees submits only who was added or removed, without the @."
+  (let ((item (make-hash-table :test #'equal)) submitted)
+    (puthash "assignees"
+             (vector (let ((u (make-hash-table :test #'equal))) (puthash "login" "ann" u) u)
+                     (let ((u (make-hash-table :test #'equal))) (puthash "login" "bob" u) u))
+             item)
+    (cl-letf (((symbol-function 'octocat-sync-detail-read) (lambda (_) item))
+              ((symbol-function 'octocat-vui-list--stored)
+               (lambda (&rest _) (lambda (_repo cb) (funcall cb '("ann" "bob" "cy")))))
+              ((symbol-function 'run-at-time) (lambda (_ _ f) (funcall f)))
+              ((symbol-function 'octocat--still-selected-p) (lambda (_) t))
+              ((symbol-function 'octocat-vui-list--read-multiple)
+               (lambda (_prompt candidates selected)
+                 (should (equal candidates '("@ann" "@bob" "@cy")))
+                 (should (equal selected '("@ann" "@bob")))
+                 '("@bob" "cy")))
+              ((symbol-function 'octocat-vui-mode-line-action) #'ignore)
+              ((symbol-function 'octocat-sync-submit)
+               (lambda (spec &rest _) (setq submitted spec))))
+      (octocat-timeline-edit-values "issue" "o/r" 3 "assignee"))
+    (should (equal submitted '(edit-values "issue" "o/r" 3 "assignee" ("cy") ("ann"))))))
+
 (provide 'octocat-timeline-tests)
 ;;; octocat-timeline-tests.el ends here

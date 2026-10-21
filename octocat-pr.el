@@ -159,7 +159,8 @@ See `octocat-timeline-submit' for ON-SUCCESS."
 On the title: rename the PR.
 On the opening post: replace the PR body.
 On a comment you authored: edit that comment.
-On someone else\\='s comment: signal an error."
+On someone else\\='s comment: signal an error.
+On a field such as Labels: pick its values."
   (interactive)
   (unless (and octocat--pr-repo octocat--pr-number)
     (user-error "Octocat: Buffer is not associated with a pull request"))
@@ -167,6 +168,8 @@ On someone else\\='s comment: signal an error."
     (cond
      ((eq target 'title) (octocat-pr-edit-title))
      ((eq target 'body)  (octocat-pr-edit-body))
+     ((stringp target)
+      (octocat-timeline-edit-values "pr" octocat--pr-repo octocat--pr-number target))
      ((hash-table-p target)
       (let* ((authored   (eq (gethash "viewerDidAuthor" target) t))
              (comment-id (octocat--comment-numeric-id target))
@@ -898,8 +901,11 @@ TAB is the page showing it, `conversation' (the default), `commits' or
      (list
       (octocat-repo-vui--detail-fields
        (list (cons nil (plist-get (octocat-repo-vui--cells repo pr bg) :review))
-             (cons "Reviewers" reviewers)
-             (cons "Assignees" (octocat-repo-vui--logins (gethash "assignees" pr)))
+             (cons (octocat-timeline-edit-field "pr" repo pr "reviewer") reviewers)
+             (cons (octocat-timeline-edit-field "pr" repo pr "assignee")
+                   (octocat-repo-vui--logins (gethash "assignees" pr)))
+             (cons (octocat-timeline-edit-field "pr" repo pr "label")
+                   (octocat--format-labels (gethash "labels" pr) bg))
              (cons "Milestone" (octocat-repo-vui--milestone pr))
              (cons "Closes"    (octocat-repo-vui--numbers
                                 repo (gethash "closingIssuesReferences" pr)

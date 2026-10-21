@@ -629,8 +629,8 @@ without the state when NO-STATE is non-nil."
 
 ;; The header of an issue or PR page is drawn like a regular list row (see
 ;; above), so the page continues the list it was opened from: the state
-;; before the title with the labels after it, then who opened it and when
-;; with its review and branch.
+;; before the title, then who opened it and when with its review and
+;; branch.  The labels are a field below, see `octocat-repo-vui--detail-fields'.
 
 (defun octocat-repo-vui--detail-header (repo item state on-edit-title bg
                                             &optional branch omit)
@@ -643,6 +643,8 @@ is as for `octocat-repo-vui--cells'.  BRANCH, when non-nil, is shown
 after the review.  OMIT is a list of cell keys (see
 `octocat-repo-vui--cells') to leave out."
   (let* ((cells (octocat-repo-vui--cells repo item bg))
+         ;; The labels are a field below, where they can be edited.
+         (cells (plist-put cells :chips nil))
          (cells (if branch (plist-put cells :branch branch) cells))
          (lines (octocat-repo-vui--item-lines
                  state cells (seq-difference '(:review :branch :ci :prs :comments) omit))))
@@ -680,18 +682,25 @@ ITEM, CELLS, OMIT and ON-EDIT-TITLE are as for
 (defun octocat-repo-vui--detail-fields (fields)
   "Return a vnode listing FIELDS under the title, or nil when none has a value.
 FIELDS is a list of (LABEL . VALUE), VALUE a string or a list of vnodes;
-a nil or empty VALUE is skipped, and a nil LABEL shows VALUE alone.  The
-line is lined up with the title column."
+a nil or empty VALUE is skipped, and a nil LABEL shows VALUE alone.  A
+LABEL of (NAME . EDIT) is a button calling EDIT, shown even with no
+VALUE.  The line is lined up with the title column."
   (let ((parts (delq nil
                      (mapcar (lambda (f)
-                               (and (cdr f) (not (equal (cdr f) ""))
-                                    (append
-                                     (and (car f)
-                                          (list (vui-text (concat (car f) " ")
-                                                          :face 'octocat-dimmed)))
-                                     (if (stringp (cdr f))
-                                         (list (vui-text (cdr f)))
-                                       (cdr f)))))
+                               (pcase-let ((`(,name . ,edit) (if (consp (car f)) (car f)
+                                                               (list (car f))))
+                                           (empty (member (cdr f) '(nil ""))))
+                                 (unless (and empty (not edit))
+                                   (append
+                                    (cond (edit (list (octocat-repo-vui--link
+                                                       name 'octocat-dimmed edit
+                                                       (concat "RET: edit " (downcase name)))
+                                                      (vui-text " ")))
+                                          (name (list (vui-text (concat name " ")
+                                                                :face 'octocat-dimmed))))
+                                    (cond (empty (list (vui-text "none" :face 'octocat-dimmed)))
+                                          ((stringp (cdr f)) (list (vui-text (cdr f))))
+                                          (t (cdr f)))))))
                              fields))))
     (and parts
          (vui-hstack :spacing 0

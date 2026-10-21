@@ -223,6 +223,21 @@ Examples:
 
 ---
 
+## Users are `@login`
+
+A GitHub user is shown as `@login` everywhere: in rows, page headers and
+fields, and in completion, such as the assignee and reviewer pickers.
+The `@` tells a person from a label or branch with the same name, as
+GitHub's own UI does.  A picker adds the `@` to its candidates and
+strips it from the answer, so `gh` still gets the bare login, and typing
+a login without the `@` works too.
+
+The list filters are the exception: their completions are search
+qualifier values (`author:alice`), where `@me` means you, so they keep
+the bare login.
+
+---
+
 ## Formatting branch names in tabular rows
 
 Branch names appear in columnar list views (dashboard Workflow Runs, PR
