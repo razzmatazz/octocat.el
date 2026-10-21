@@ -27,33 +27,35 @@
 
 (define-derived-mode octocat-core-test-page-mode special-mode "Test")
 
+(vui-defcomponent octocat-core-test--rows (tick)
+  :render
+  (vui-vstack
+   (format "tick %s" tick)
+   (apply #'vui-vstack
+          (mapcar (lambda (i) (vui-button (format "row %d" i) :key i))
+                  (number-sequence 1 60)))))
+
 (ert-deftest octocat-core-test-quit-window-returns-to-point ()
-  "`q' goes back to the row point was on, though the page re-rendered hidden.
-The re-render drops the window's markers for the page at the top, as a
-vui render does; the buffer's own point stays on its row."
+  "`q' goes back to the row point was on, though the page re-rendered hidden."
   (let ((list (generate-new-buffer "*octocat-test-list*"))
-        (page (generate-new-buffer "*octocat-test-page*")))
+        (page (generate-new-buffer "*octocat-test-page*"))
+        (vui-render-delay nil))
     (unwind-protect
         (save-window-excursion
           (delete-other-windows)
-          (with-current-buffer list
-            (octocat-core-test-page-mode)
-            (let ((inhibit-read-only t))
-              (dotimes (i 60) (insert (format "row %d\n" i)))))
+          (with-current-buffer list (octocat-core-test-page-mode))
           (with-current-buffer page (octocat-core-test-page-mode))
-          (switch-to-buffer list)
-          (goto-char (point-min))
-          (forward-line 40)
-          (let ((row (point)))
-            (octocat-display-buffer page)
-            (with-current-buffer list
-              (let ((inhibit-read-only t))
-                (erase-buffer)
-                (dotimes (i 60) (insert (format "row %d\n" i)))
-                (goto-char row)))
-            (octocat-quit-window)
-            (should (eq (window-buffer) list))
-            (should (= (window-point) row))))
+          (let ((root (vui-mount (vui-component 'octocat-core-test--rows :tick 0)
+                                 (buffer-name list))))
+            (goto-char (point-min))
+            (search-forward "row 40")
+            (beginning-of-line)
+            (let ((row (point)))
+              (octocat-display-buffer page)
+              (vui-update-props root '(:tick 1))
+              (octocat-quit-window)
+              (should (eq (window-buffer) list))
+              (should (= (window-point) row)))))
       (kill-buffer list)
       (kill-buffer page))))
 

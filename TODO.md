@@ -1,19 +1,5 @@
 # TODO list
 
-## Report to vui.el: a re-render loses where windows return to a hidden buffer
-
-`q` from a PR back to the PR list landed at the top of the list: the
-sync store refreshed the list while the PR page covered it, and vui's
-re-render dropped the window's remembered point for the list
-(`window-prev-buffers`, `quit-restore`, `quit-restore-prev`).  vui keeps
-only the buffer's point and the windows that show the buffer (PR #157).
-Not reported upstream yet.
-
-Worked around by `octocat--resync-prev-buffers` (`octocat-core.el`).
-The repro, the Emacs internals, a tested fix for vui and what is left
-before filing are in plans/vui-remembered-window-points.md, as is how
-to remove the workaround once vui ships a fix.
-
 ## Report to vui.el: a handler's remount is undone, leaking the new page
 
 File at https://github.com/d12frosted/vui.el/issues: title and body below.

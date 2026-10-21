@@ -1116,17 +1116,10 @@ COMMAND takes the \"owner/name\" repo to open the tab's page for.")
   (string-prefix-p "octocat-" (symbol-name (buffer-local-value
                                              'major-mode (or buffer (current-buffer))))))
 
-(defvar-local octocat--window-start-lines nil
-  "Lines from `window-start' to point when the page was last left.
-See `octocat--resync-prev-buffers'.")
-
 (defun octocat-display-buffer (buffer)
   "Show BUFFER and select its window, as Magit does.
 From an octocat page, in the selected window; from elsewhere, wherever
 `display-buffer' puts it.  `display-buffer-alist' overrides both."
-  (when (octocat-buffer-p)
-    (setq octocat--window-start-lines
-          (count-lines (window-start) (line-beginning-position))))
   (pop-to-buffer buffer (and (octocat-buffer-p) '(display-buffer-same-window)))
   ;; A window with no earlier buffers was made for BUFFER: remember it
   ;; for `octocat-quit-window', as `magit-maybe-set-dedicated' does.
@@ -1170,42 +1163,12 @@ may have gone on to another buffer while `gh' ran, and must not be
 pulled back to it (see docs/user-interface-conventions.md)."
   (eq (window-buffer (selected-window)) buffer))
 
-(defun octocat--resync-prev-buffers (window)
-  "Put back the place WINDOW remembers for each hidden page.
-A window remembers a page's start and point when it shows another
-buffer: in `window-prev-buffers', and, when `display-buffer' showed it,
-in its `quit-restore' and `quit-restore-prev' parameters, which
-`quit-window' prefers.  The points are markers, and a page re-rendered
-while hidden, when the sync store refreshed what it shows, dropped them
-at the top of the rewritten text.  vui keeps the buffer's own point on
-the row it was on, so it is used instead, with the start that many lines
-above it that the window had.  A vui.el bug: see
-plans/vui-remembered-window-points.md."
-  (dolist (place (append (window-prev-buffers window)
-                         (list (nth 1 (window-parameter window 'quit-restore))
-                               (nth 1 (window-parameter window 'quit-restore-prev)))))
-    (pcase place
-      (`(,(and buffer (pred bufferp)) ,start ,(and pos (pred markerp)) . ,_)
-       (when (and (buffer-live-p buffer)
-                  (octocat-buffer-p buffer)
-                  (not (get-buffer-window buffer t)))
-         (with-current-buffer buffer
-           (let ((new-start (save-excursion
-                              (forward-line (- (or octocat--window-start-lines 0)))
-                              (point))))
-             (set-marker pos (point))
-             ;; `quit-restore' keeps the start as a number
-             (if (markerp start)
-                 (set-marker start new-start)
-               (setcar (cdr place) new-start)))))))))
-
 (defun octocat-quit-window (&optional kill)
   "Quit the selected window and bury its buffer, or kill it with KILL.
 As `quit-window', which shows the window's previous buffer, but a window
 made for octocat is deleted once no other octocat page it showed is
 left."
   (interactive "P")
-  (octocat--resync-prev-buffers (selected-window))
   (if (or (one-window-p)
           (seq-find (pcase-lambda (`(,buffer))
                       (and (not (eq buffer (current-buffer)))
