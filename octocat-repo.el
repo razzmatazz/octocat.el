@@ -67,9 +67,14 @@
 
 (defcustom octocat-section-limit 15
   "Default number of items to display per paged section.
-Used as the initial page size for workflow runs and user repos.  Each
+Used as the initial page size for user repos.  Each
 section starts with this many items and increments by this amount
 every time its \"Load more\" button is used."
+  :type 'integer
+  :group 'octocat)
+
+(defcustom octocat-actions-runs-page-size 30
+  "Number of runs the Actions page's Runs tab shows, and loads, at a time."
   :type 'integer
   :group 'octocat)
 

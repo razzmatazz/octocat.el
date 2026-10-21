@@ -166,8 +166,9 @@ survives restarting Emacs; pages start in the full view.
 ### Actions (`M-x octocat-actions`)
 
 The Actions page has two tabs, as on GitHub: **Runs**, shown first, lists
-the repository's recent workflow runs across all workflows, with a
-button to load more; **Workflows** lists its workflows and whether they
+the repository's recent workflow runs across all workflows,
+`octocat-actions-runs-page-size` (30) at a time with a button to load
+more; **Workflows** lists its workflows and whether they
 are enabled, with their count on the tab.  `RET` on a tab switches to
 it, and `RET` on a row opens that run or workflow.
 

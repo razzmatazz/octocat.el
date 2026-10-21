@@ -142,7 +142,7 @@ tokens of QUERY that are no qualifier of `octocat-actions--run-qualifiers'."
   "The Runs tab of REPO's Actions page: its recent runs matching QUERY.
 See `octocat-actions--run-args' for QUERY.  TICK is the page's refresh
 tick."
-  :state ((limit octocat-section-limit))
+  :state ((limit octocat-actions-runs-page-size))
   :render
   (let* ((parsed  (octocat-actions--run-args query))
          (snap    (octocat-vui-use-resource (list 'runs repo limit (car parsed)) tick))
@@ -182,11 +182,11 @@ tick."
                  repo r current-branch wf-w title-w branch-w))
               (lambda (r) (gethash "databaseId" r))))
            (when (and runs (or (>= (length runs) limit)
-                               (and loading (> limit octocat-section-limit))))
+                               (and loading (> limit octocat-actions-runs-page-size))))
              (octocat-vui-load-more-button
-              'load-more-runs octocat-section-limit
+              'load-more-runs octocat-actions-runs-page-size
               "RET: load more runs"
-              (lambda () (vui-set-state :limit (+ limit octocat-section-limit)))
+              (lambda () (vui-set-state :limit (+ limit octocat-actions-runs-page-size)))
               (and loading (< (length runs) limit)) 0
               (octocat-vui-line-skeleton)))))))))
 
