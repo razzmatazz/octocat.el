@@ -641,7 +641,7 @@ name, and PATH the github.com sub-path `octocat-vui-list-browse' opens.
 REPO, an \"owner/name\" string, overrides the repository below.
 Inside an octocat repo or list buffer the page is for that buffer's
 repository and local clone; elsewhere the repository is derived from
-the current git working tree."
+the current git working tree.  A page already open isn't refreshed."
   (let* ((repo      (cond (repo)
                           ((derived-mode-p 'octocat-repo-mode) octocat-repo--repo)
                           ((derived-mode-p 'octocat-vui-list-mode) octocat-vui-list--repo)
@@ -653,11 +653,12 @@ the current git working tree."
     (octocat-display-buffer buf)
     (when local-dir
       (setq default-directory (file-name-as-directory local-dir)))
-    (unless (derived-mode-p mode)
-      (funcall mode))
-    (setq octocat-vui-list--repo repo
-          octocat-vui-list--path path)
-    (funcall revert-buffer-function)))
+    (if (and (derived-mode-p mode) octocat-vui--page)
+        (octocat-vui-revisit-page)
+      (funcall mode)
+      (setq octocat-vui-list--repo repo
+            octocat-vui-list--path path)
+      (funcall revert-buffer-function))))
 
 ;;;###autoload
 (defun octocat-pr-list (&optional repo)

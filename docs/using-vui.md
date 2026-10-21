@@ -45,7 +45,9 @@ A page mounts once, when it is opened, through
 `octocat-vui-refresh-page`.  Its refresh (`g`, or after an action) calls
 that again, which re-renders in place with a new `:tick`.  Each
 resource the page reads takes the tick (`octocat-vui-use-resource`), so
-it refetches and keeps showing the old data until the new data arrives.  A handler that must remount
+it refetches and keeps showing the old data until the new data arrives.
+Returning to an open page, as from its tab, is not a refresh: see
+`octocat-vui-revisit-page`.  A handler that must remount
 defers it, e.g. `(run-at-time 0 nil ...)`.
 
 ## Reading the sync store

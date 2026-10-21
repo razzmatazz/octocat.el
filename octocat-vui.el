@@ -839,6 +839,14 @@ would pull the user back to it (see docs/using-vui.md)."
                   (vui-mount (apply #'vui-component component props)
                              (buffer-name)))))))
 
+(defun octocat-vui-revisit-page ()
+  "Fetch the current page's resources unless fresh, unlike a refresh."
+  (let ((buf (current-buffer)))
+    (maphash (lambda (key subs)
+               (when (assq buf subs)
+                 (octocat-sync-request (car (read-from-string key)))))
+             octocat-vui--subscriptions)))
+
 
 ;;;; List-page base mode
 ;;
@@ -1116,17 +1124,19 @@ PAGE is as `octocat--parse-list-items' returns; each item is an entity."
 
 (octocat-sync-define-resource list-items (kind repo query limit)
   :fetch (lambda (done)
-           (octocat--list-items
-            kind repo
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error) r (octocat-vui--list-tree kind repo r))))
-            query nil limit)))
+           ;; As many as "load more" stored, so a refetch keeps them.
+           (let ((data (plist-get (octocat-sync-read (list 'list-items kind repo query limit)) :data)))
+             (octocat--list-items
+              kind repo
+              (lambda (r)
+                (funcall done (if (eq (car-safe r) 'error) r (octocat-vui--list-tree kind repo r))))
+              query nil (min 100 (max limit (length (and data (gethash "nodes" data)))))))))
 
 (vui-defcomponent octocat-vui--search-results (repo kind query row-fn compact tick)
   "The KIND items of REPO matching QUERY, as for `octocat-vui-search-list'.
 They are a sync resource, painted from the store while it is refetched;
 \"load more\" appends the page after the last to it, by its cursor (see
-`octocat-sync-more').  A new TICK refetches the first page."
+`octocat-sync-more').  A new TICK refetches them."
   :state ((fetching nil))
   :render
   (let* ((width  (octocat-vui-window-width))

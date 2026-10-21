@@ -285,5 +285,32 @@ unsubscribes it."
         (should (equal got '("alice" "bob")))
         (should (= fetches 2))))))
 
+(ert-deftest octocat-vui-test-list-items-refetch-keeps-loaded ()
+  "A list refetch asks for as many items as are stored, up to 100."
+  (let ((spec '(list-items issues "o/r" nil 15)) asked)
+    (dolist (stored '(0 40 130))
+      (cl-letf (((symbol-function 'octocat-sync-read)
+                 (lambda (_)
+                   (and (> stored 0)
+                        (list :data (let ((h (make-hash-table :test #'equal)))
+                                      (puthash "nodes" (make-vector stored nil) h)
+                                      h)))))
+                ((symbol-function 'octocat--list-items)
+                 (lambda (_kind _repo _cb _query _after limit) (push limit asked))))
+        (funcall (plist-get (octocat-sync--props spec) :fetch) #'ignore)))
+    (should (equal (nreverse asked) '(15 40 100)))))
+
+(ert-deftest octocat-vui-test-revisit-page-fetches-unforced ()
+  "Revisiting requests only this buffer's resources, without forcing."
+  (let ((octocat-vui--subscriptions (make-hash-table :test #'equal))
+        requests)
+    (with-temp-buffer
+      (puthash "(a 1)" (list (cons (current-buffer) (list 0))) octocat-vui--subscriptions)
+      (puthash "(b 2)" (list (cons 'other-buffer (list 0))) octocat-vui--subscriptions)
+      (cl-letf (((symbol-function 'octocat-sync-request)
+                 (lambda (spec &optional force) (push (cons spec force) requests))))
+        (octocat-vui-revisit-page)))
+    (should (equal requests '(((a 1)))))))
+
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here
