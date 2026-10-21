@@ -53,13 +53,6 @@ the window's point; mid-render that scrambled the page."
               (should (= (point) 5))))
         (kill-buffer buf)))))
 
-(ert-deftest octocat-markdown-test-insert-allows-folding ()
-  "Inserting markdown lets folded <details> bodies be invisible."
-  (with-temp-buffer
-    (setq buffer-invisibility-spec '((other . t)))
-    (octocat--insert-markdown "text")
-    (should (member 'octocat-markdown-details buffer-invisibility-spec))))
-
 
 ;;; Inline
 
@@ -472,17 +465,6 @@ Text replaced by a `display' string shows as that string."
       (should (memq 'octocat-markdown-mention (face-at "#12")))
       (should (memq 'octocat-markdown-code-block (face-at "not bold")))
       (should-not (memq 'bold (face-at "not bold"))))))
-
-(ert-deftest octocat-markdown-test-quote-prefix-marks-every-line ()
-  "Bodies rendered with the quote prefix start every line, blanks included, with \"  │ \"."
-  (with-temp-buffer
-    (setq octocat--markdown-raw t)
-    (octocat--insert-markdown "first\n\nthird" octocat--quote-prefix)
-    (should (equal (buffer-substring-no-properties (point-min) (point-max))
-                   "  │ first\n  │ \n  │ third\n"))
-    ;; Wrapped continuation lines repeat the prefix.
-    (should (equal (get-text-property (point-min) 'wrap-prefix) octocat--quote-prefix))
-    (should (equal (get-text-property (1- (point-max)) 'wrap-prefix) octocat--quote-prefix))))
 
 (ert-deftest octocat-markdown-test-fill-prose ()
   "Paragraphs and list items wider than WIDTH break at spaces, hung."

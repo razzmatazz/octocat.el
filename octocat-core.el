@@ -753,17 +753,9 @@ when `global-eldoc-mode' is on (the default)."
 
 ;;;; Markdown rendering
 
-(defconst octocat--quote-prefix (propertize "  │ " 'face 'octocat-dimmed)
-  "Line prefix that marks PR/issue bodies and comments as quoted blocks.
-The bar is a box-drawing character, which joins vertically with the
-bars of neighbouring lines in GUI and terminal frames alike.
-The bar sits in column 2, under the first character of the comment
-author's handle (and of the \"Body\" heading's text indent), with the
-text two columns further right.")
-
 (defvar-local octocat--markdown-raw nil
   "Non-nil means show markdown body text verbatim instead of rendered.
-When nil (the default) `octocat--insert-markdown' processes text through
+When nil (the default) body text is rendered by
 `octocat-markdown-render'.  Toggle with `octocat-toggle-markdown'.")
 
 (defvar-local octocat--refresh-fn nil
@@ -815,15 +807,6 @@ point is saved around it."
   (if (and octocat--capped octocat-max-width)
       (min width octocat-max-width)
     width))
-
-(defun octocat--insert-markdown (text &optional indent)
-  "Insert TEXT rendered by `octocat--markdown-string' into the current buffer.
-Each line is prefixed with INDENT, as for `octocat--markdown-string'.
-When `octocat--markdown-raw' is non-nil in the current buffer the text is
-inserted verbatim without any font-lock rendering."
-  (octocat-markdown--ensure-invisibility)
-  (insert (octocat--markdown-string text indent octocat--markdown-raw
-                                    (octocat--markdown-width))))
 
 (defun octocat--markdown-open-ref (kind repo id)
   "Open the reference of KIND (`issue' or `commit') ID in REPO.

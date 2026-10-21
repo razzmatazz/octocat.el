@@ -214,20 +214,6 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
                    #'octocat--parse-json-list
                    callback))
 
-(defun octocat-repo--list-workflow-runs (repo workflow-id callback)
-  "Fetch recent run history for WORKFLOW-ID in REPO asynchronously.
-Retrieves the 20 most recent entries and calls CALLBACK with a list of
-run hash-tables, or a cons \\=(error . MSG) on failure."
-  (octocat--run-gh
-   (format "workflow-runs-%d" workflow-id)
-   (list "run" "list"
-         "--repo"     repo
-         "--workflow" (number-to-string workflow-id)
-         "--limit"    "20"
-         "--json"     "databaseId,displayTitle,status,conclusion,createdAt,headBranch")
-   #'octocat--parse-json-list
-   callback))
-
 (defun octocat-repo--list-recent-runs (repo limit callback &optional args)
   "Fetch the LIMIT most recent workflow run entries across all workflows in REPO.
 ARGS are more `gh run list' options, filtering the runs, such as
