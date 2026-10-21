@@ -244,5 +244,21 @@
                  "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":0,\"nodes\":[]}},\"dir\":null}}}"
                  "main" "missing")))
 
+(ert-deftest octocat-repo-test-compact-pr-row-marks-draft ()
+  "Without the state column, a compact draft PR row says draft before its title."
+  (let ((pr (make-hash-table :test #'equal)) titles)
+    (puthash "number" 7 pr)
+    (puthash "title" "Wip" pr)
+    (puthash "state" "OPEN" pr)
+    (puthash "isDraft" t pr)
+    (cl-letf (((symbol-function 'octocat-repo-vui--item-row)
+               (lambda (_state cells &rest _)
+                 (push (substring-no-properties (plist-get cells :title)) titles))))
+      (octocat-repo-vui--pr-row "o/r" pr 80 nil t t)
+      (octocat-repo-vui--pr-row "o/r" pr 80 nil t nil)
+      (puthash "isDraft" :false pr)
+      (octocat-repo-vui--pr-row "o/r" pr 80 nil t t))
+    (should (equal (nreverse titles) '("draft Wip" "Wip" "Wip")))))
+
 (provide 'octocat-repo-tests)
 ;;; octocat-repo-tests.el ends here
