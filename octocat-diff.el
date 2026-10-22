@@ -121,45 +121,57 @@ comments there, in order."
     (cons (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) by-line)
           (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) by-pos))))
 
-(defun octocat-diff--patch-text (patch index raw width)
-  "Return the unified diff PATCH as a propertized string, without final newline.
-INDEX is the comment index of the file, see `octocat-diff--index'.  RAW
-and WIDTH are as for `octocat-diff--comment-lines'.
-Each comment is placed right after the diff line it is on, found by
-tracking the right-side line number (from the `@@' headers) and the
-1-based position in the diff."
+(defun octocat-diff--walk (patch index fn)
+  "Call FN with each line of the unified diff PATCH and the comments after it.
+INDEX is the comment index of the file, see `octocat-diff--index'.  FN
+gets the line, its face (nil for context) and the list of comments
+placed right after it, found by tracking the right-side line number,
+from the `@@' headers, and the 1-based position in the diff.  A comment
+on no line of PATCH, as an outdated one, is placed nowhere."
   (let ((by-line (car index))
         (by-pos  (cdr index))
         (right 0)
         (pos   0)
-        (lines (split-string patch "\n"))
-        out)
+        (lines (split-string patch "\n")))
     (when (equal (car (last lines)) "")
       (setq lines (butlast lines)))
-    ;; Diff lines are not indented, so they copy out as a valid patch.
-    (cl-flet ((emit (text &optional face)
-                (push (if face (propertize text 'face face) text) out))
-              (comments (key table)
-                (dolist (c (cdr (assq key table)))
-                  (dolist (l (octocat-diff--comment-lines c raw width))
-                    (push l out)))))
+    (cl-flet ((at (key table) (cdr (assq key table))))
       (dolist (raw lines)
         (cl-incf pos)
         (cond
          ((string-prefix-p "@@" raw)
           (when (string-match "@@ -[0-9]+\\(?:,[0-9]+\\)? \\+\\([0-9]+\\)" raw)
             (setq right (string-to-number (match-string 1 raw))))
-          (emit raw 'octocat-diff-hunk-heading)
-          (comments pos by-pos))
+          (funcall fn raw 'octocat-diff-hunk-heading (at pos by-pos)))
          ;; Deleted: only in the old file, so the right line stays.
          ((string-prefix-p "-" raw)
-          (emit raw 'diff-removed)
-          (comments pos by-pos))
+          (funcall fn raw 'diff-removed (at pos by-pos)))
          (t
-          (if (string-prefix-p "+" raw) (emit raw 'diff-added) (emit raw))
-          (comments right by-line)
-          (comments pos by-pos)
-          (cl-incf right)))))
+          (funcall fn raw (and (string-prefix-p "+" raw) 'diff-added)
+                   (append (at right by-line) (at pos by-pos)))
+          (cl-incf right)))))))
+
+(defun octocat-diff--placed-count (patch comments)
+  "Return how many of COMMENTS, on the file of PATCH, are placed in its diff."
+  (let ((n 0))
+    (octocat-diff--walk patch (octocat-diff--index comments)
+                        (lambda (_line _face placed) (cl-incf n (length placed))))
+    n))
+
+(defun octocat-diff--patch-text (patch index raw width)
+  "Return the unified diff PATCH as a propertized string, without final newline.
+INDEX is the comment index of the file, see `octocat-diff--index'.  RAW
+and WIDTH are as for `octocat-diff--comment-lines'.  Each comment is
+placed right after the diff line it is on, see `octocat-diff--walk'."
+  (let (out)
+    ;; Diff lines are not indented, so they copy out as a valid patch.
+    (octocat-diff--walk
+     patch index
+     (lambda (line face placed)
+       (push (if face (propertize line 'face face) line) out)
+       (dolist (c placed)
+         (dolist (l (octocat-diff--comment-lines c raw width))
+           (push l out)))))
     (mapconcat #'identity (nreverse out) "\n")))
 
 
@@ -226,20 +238,26 @@ They start unfolded when FITS, the whole diff fitting in the window.
 HIDE leaves the comments out.  RAW and WIDTH are as for
 `octocat-diff--comment-lines'.  The heading's \"Expand all\" button
 unfolds or folds every file, and its \"Show comments (N)\" button, there
-when some file has comments, runs `octocat-diff-toggle-comments'."
+when the diff shows some comment, runs `octocat-diff-toggle-comments'."
   :state ((bulk (and fits (cons 0 t))))
   :render
-  (let ((heading (vui-text (propertize (format "Files (%d)" (length files))
-                                       'face 'octocat-section-heading))))
+  (let* ((heading (vui-text (propertize (format "Files (%d)" (length files))
+                                        'face 'octocat-section-heading)))
+         ;; Only those the diff places: an outdated comment's line is gone.
+         (placed  (vui-use-memo (files by-path)
+                    (cl-loop for f across files
+                             for patch = (gethash "patch" f)
+                             for comments = (cdr (assoc (gethash "filename" f) by-path))
+                             when (and comments (stringp patch))
+                             sum (octocat-diff--placed-count patch comments)))))
     (vui-vstack
      (if (cl-some (lambda (f) (stringp (gethash "patch" f))) files)
          (apply #'vui-hstack :spacing 2
                 heading
                 (octocat-vui-expand-all-button
                  bulk (vui-async-callback (v) (vui-set-state :bulk v)))
-                (and by-path
-                     (list (vui-button (format "%s comments (%d)" (if hide "Show" "Hide")
-                                               (cl-loop for e in by-path sum (length (cdr e))))
+                (and (> placed 0)
+                     (list (vui-button (format "%s comments (%d)" (if hide "Show" "Hide") placed)
                                        :face 'octocat-dimmed
                                        :key 'hide-comments
                                        :help-echo (octocat--key-help

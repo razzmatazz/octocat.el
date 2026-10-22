@@ -74,5 +74,20 @@ The comments come as a sync snapshot."
     (should (string-search "+x" out))
     (should-not (string-search "note" out))))
 
+(ert-deftest octocat-diff-test-outdated-comments-no-button ()
+  "Comments the diff cannot place, as outdated ones, leave out the button."
+  (let* ((file (json-parse-string
+                "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}"))
+         (c    (json-parse-string
+                "{\"path\":\"a.el\",\"line\":40,\"body\":\"gone\",\"created_at\":\"\"}"))
+         (out  (with-temp-buffer
+                 (vui-render (vui-component 'octocat-diff--files
+                                            :files (vector file)
+                                            :by-path (octocat-diff-by-path (vector c))
+                                            :hide nil :fits t :raw nil :width 80))
+                 (buffer-substring-no-properties (point-min) (point-max)))))
+    (should-not (string-search "comments (" out))
+    (should (string-search "+x" out))))
+
 (provide 'octocat-diff-tests)
 ;;; octocat-diff-tests.el ends here
