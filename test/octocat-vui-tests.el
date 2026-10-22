@@ -18,7 +18,7 @@
         ((vui-vnode-text-p vnode) (list (vui-vnode-text-content vnode)))))
 
 (ert-deftest octocat-vui-test-repo-heading-links-owner-and-repo ()
-  "The owner and repo link to their pages; on the repo page its name is plain."
+  "The owner and repo link to their pages; with the tab strip the name is plain."
   (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r"))
                  '((link "o") "/" (link "r"))))
   (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r" nil t))

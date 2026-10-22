@@ -744,13 +744,14 @@ never bracketed, so the top line reads `owner/repo` (or `owner/repo#N`,
 The repo name on a page's top line is a breadcrumb: each part links to
 the page it names, so one can walk up without `C-c C-j`.  The owner opens
 the owner's user or organization page; the name opens the repository
-page (at the ref shown, on the tree and file log pages).  On the
-repository page itself the name is plain: a page's own name is never a
-link.  Build it with `octocat-vui-repo-heading`; the file viewer, which
+page (at the ref shown, on the tree and file log pages).  On the pages
+with the tab strip (the repository page and the issue, PR and Actions
+lists) the name is plain: the Code tab already opens the repository
+page, and on that page a page's own name is never a link.  Build it with `octocat-vui-repo-heading`; the file viewer, which
 is not a vui page, inserts the same with `octocat-tree--insert-repo-heading`.
 
 ```
-octocat/hello  [Code]  [Issues (N)]  …     ← on the repo page: only "octocat" links
+octocat/hello  [Code]  [Issues (N)]  …     ← with the tab strip: only "octocat" links
 octocat/hello@abc1234                       ← elsewhere: "octocat" and "hello" both link
 ```
 

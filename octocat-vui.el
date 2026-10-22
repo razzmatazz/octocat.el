@@ -936,8 +936,9 @@ The choice is remembered for this page of this repository."
   "Return REPO, \"owner/name\", as a breadcrumb vnode.
 The owner links to its user or organization page and the name to the
 repository page at REF, nil for the default branch, so one can walk up
-from any page.  HERE, non-nil on the repository page itself, leaves the
-name plain: a page's own name is never a link."
+from any page.  HERE, non-nil on the pages with the repository's tab
+strip, leaves the name plain: there the Code tab opens the repository
+page, and on it a page's own name is never a link."
   (pcase-let* ((`(,owner ,name) (split-string repo "/"))
                (link (lambda (label help on-click)
                        (vui-button label :no-decoration t :face '(link octocat-repo)
@@ -1080,7 +1081,7 @@ them again."
   (let ((counts (plist-get (octocat-vui-use-resource (list 'counts kind repo) tick) :data)))
     (vui-fragment
      (apply #'vui-hstack :spacing 2
-            (octocat-vui-repo-heading repo)
+            (octocat-vui-repo-heading repo nil t)
             (octocat-vui-repo-tabs repo tab tick))
      (vui-newline)
      (when (and counts (gethash "open" counts))
