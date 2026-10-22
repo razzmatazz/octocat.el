@@ -1345,7 +1345,7 @@ one summary resource and the rest from the root's `repo-head' at REF."
                                            'face 'octocat-commit-sha)))))))
      (when fork-parent
        (octocat-vui-row
-        (concat "Forked from  " (propertize fork-parent 'face 'octocat-repo) "\n")
+        (concat "Forked from  " (propertize fork-parent 'face 'octocat-repo))
         (lambda () (octocat-visit-repo fork-parent))
         "RET: open parent repo view"))
      (vui-newline)
