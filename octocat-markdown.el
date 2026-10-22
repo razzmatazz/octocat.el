@@ -1223,14 +1223,24 @@ they can be.  A nil WIDTH leaves ROWS as they are."
            (list row))
           ((funcall has 'octocat-markdown-code)
            (let* ((head  (car (octocat-markdown--cut s width)))
+                  (room  (max 1 (- width hang 2)))
                   (arrow (concat (make-string hang ?\s)
-                                 (propertize "↪ " 'face 'octocat-markdown-dimmed))))
-             (add-face-text-property 0 (length arrow) 'octocat-markdown-code-block t arrow)
-             (put-text-property 0 (length arrow) 'octocat-markdown-code t arrow)
+                                 (propertize "↪ " 'face 'octocat-markdown-dimmed)))
+                  (code  (lambda (str)
+                           (add-face-text-property 0 (length str) 'octocat-markdown-code-block t str)
+                           (put-text-property 0 (length str) 'octocat-markdown-code t str)
+                           str)))
+             (funcall code arrow)
+             ;; Pad each piece, the last above all, so the block's
+             ;; background reaches the column like its other lines.
              (cons (cons head hang)
-                   (mapcar (lambda (piece) (cons (concat arrow piece) hang))
-                           (octocat-markdown--cut (substring s (length head))
-                                                  (max 1 (- width hang 2)))))))
+                   (mapcar (lambda (piece)
+                             (cons (concat arrow piece
+                                           (funcall code (make-string
+                                                          (max 0 (- room (string-width piece)))
+                                                          ?\s)))
+                                   hang))
+                           (octocat-markdown--cut (substring s (length head)) room)))))
           (t
            (mapcar (lambda (l) (cons l hang))
                    (octocat-markdown-wrap-hung s width hang))))))

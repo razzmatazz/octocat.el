@@ -475,13 +475,15 @@ Text replaced by a `display' string shows as that string."
   (should (equal (octocat-markdown-tests--md "aaa bbb ccc ddd") "aaa bbb ccc ddd\n")))
 
 (ert-deftest octocat-markdown-test-fill-code ()
-  "A code line wider than WIDTH is cut, its continuations marked."
-  (let ((lines (split-string (octocat-markdown-tests--md
-                              (concat "```\n" (make-string 20 ?x) "\n```") 10)
-                             "\n" t)))
-    (should (cl-every (lambda (l) (<= (string-width l) 10)) lines))
+  "A code line wider than WIDTH is cut, its continuations marked and padded."
+  (let* ((out (octocat-markdown-render
+               (concat "```\n" (make-string 20 ?x) "\n```") "" 10))
+         (lines (split-string out "\n" t)))
+    (should (cl-every (lambda (l) (= (string-width l) 10)) lines))
     (should (string-prefix-p "↪ " (cadr lines)))
-    (should (= (length (apply #'concat lines)) (+ 22 (* 2 (1- (length lines))))))))
+    (should (= (cl-count ?x out) 20))
+    (should (memq 'octocat-markdown-code-block
+                  (ensure-list (get-text-property (- (length out) 2) 'face out))))))
 
 (provide 'octocat-markdown-tests)
 ;;; octocat-markdown-tests.el ends here
