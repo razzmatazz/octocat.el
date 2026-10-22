@@ -169,7 +169,7 @@ Off an entry, such as on the header, move right."
     (call-interactively #'evil-forward-char)))
 
 (defun octocat-evil-tree-h ()
-  "List the directory containing the one shown, as in treemacs-evil.
+  "Move to the directory containing the entry at point, as in treemacs-evil.
 Off an entry, such as on the header, move left."
   (interactive)
   (if (octocat-tree--entry-at-point-p)

@@ -114,8 +114,7 @@ Chosen with `octocat-repo-switch-branch' or by a github.com link; kept
 by `g', cleared when the page is opened anew.")
 
 (defvar-local octocat-repo--path nil
-  "The tree browser's directory, or the path the commits page is of.
-Nil is the root, or all the commits.")
+  "The path the commits page is of, or nil for all the commits.")
 
 (defvar-local octocat-repo--reveal nil
   "Path the tree browser was opened down to, or nil.")
@@ -1243,27 +1242,6 @@ stays put no request is made."
 
 ;;;; Root
 
-(defun octocat-repo-vui--path-line (repo path on-dir)
-  "Return the path line of PATH of REPO, as GitHub's above files.
-Each directory of it but the last is a button calling ON-DIR with its
-path; the repository's name leads back to the root, \"\"."
-  (let* ((crumb (lambda (label face dir)
-                  (vui-button label :no-decoration t :face face
-                              :help-echo (format "RET: open %s" (if (string-empty-p dir) "/" dir))
-                              :on-click (lambda () (funcall on-dir dir)))))
-         (parts (split-string path "/"))
-         (nodes (list (funcall crumb (cadr (split-string repo "/")) 'octocat-repo "")))
-         (dir   ""))
-    (while parts
-      (setq dir (octocat-tree--join dir (car parts)))
-      (push (vui-text " / " :face 'octocat-dimmed) nodes)
-      (push (if (cdr parts)
-                (funcall crumb (car parts) 'octocat-branch dir)
-              (vui-text (car parts) :face 'octocat-section-heading))
-            nodes)
-      (setq parts (cdr parts)))
-    (apply #'vui-hstack :spacing 0 (nreverse nodes))))
-
 (defun octocat-repo-vui--head-line (repo ref path head-snap default-branch current-branch)
   "Return the line of the picker of REF and the last commit of PATH of REPO.
 HEAD-SNAP is the snapshot of PATH's `repo-head'; DEFAULT-BRANCH and
@@ -1341,13 +1319,13 @@ one summary resource and the rest from the root's `repo-head' at REF."
                         :key shown :repo repo :tree tree :raw raw)
        (octocat-repo-vui--docs-skeleton)))))
 
-(vui-defcomponent octocat-repo-vui--tree-page (repo ref tracked path reveal focus tick)
+(vui-defcomponent octocat-repo-vui--tree-page (repo ref tracked reveal focus tick)
   "Root component of the tree browser: the whole tree of REF of REPO.
-As GitHub's sidebar, it is opened down to REVEAL.  PATH, the browser's
-directory, nil for the root, has the picker's line and the path line,
-and is highlighted in the tree.  Point goes to FOCUS, an entry's path,
-once it is shown.  REF is a branch, tag or SHA, nil for TRACKED, the
-clone's branch, or else the default branch."
+As GitHub's sidebar, it is opened down to REVEAL, and point goes to
+FOCUS, an entry's path, once it is shown.  Above it is the root's last
+commit, which expanding a directory leaves be.  REF is a branch, tag
+or SHA, nil for TRACKED, the clone's branch, or else the default
+branch."
   :render
   (let* ((buf            (current-buffer))
          (current-branch (plist-get (octocat--head-info) :branch))
@@ -1355,9 +1333,8 @@ clone's branch, or else the default branch."
                                     :data))
          (default-branch (and summary (gethash "default-branch" summary)))
          (shown          (or ref tracked))
-         (head-snap      (octocat-vui-use-resource (list 'repo-head repo shown path) tick))
-         (root           (plist-get (octocat-vui-use-resource (list 'repo-head repo shown nil) tick)
-                                    :data)))
+         (head-snap      (octocat-vui-use-resource (list 'repo-head repo shown nil) tick))
+         (root           (plist-get head-snap :data)))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
         (with-current-buffer buf
@@ -1366,22 +1343,16 @@ clone's branch, or else the default branch."
     (vui-vstack
      (octocat-vui-repo-heading repo ref)
      (vui-newline)
-     (octocat-repo-vui--head-line repo ref path head-snap (or tracked default-branch)
+     (octocat-repo-vui--head-line repo ref nil head-snap (or tracked default-branch)
                                   current-branch)
-     (when path
-       (octocat-repo-vui--path-line
-        repo path (lambda (dir) (octocat-repo--show-path dir dir))))
-     ;; The tree hangs on the root's head only, so moving within it
-     ;; keeps it up while the new directory's commit loads.
      (if root
          ;; Each ref, and each opening from elsewhere, starts the tree
-         ;; afresh; moving within it keeps what is open.
+         ;; afresh.
          (vui-component 'octocat-tree--subtree
                         :key (list shown reveal)
                         :repo repo :branch (or shown default-branch "HEAD")
                         :sha (gethash "tree" root)
-                        :depth 0 :path "" :reveal reveal :current path :focus focus
-                        :on-dir (lambda (dir) (octocat-repo--show-path dir)))
+                        :depth 0 :path "" :reveal reveal :focus focus)
        (vui-text (octocat-tree--skeleton))))))
 
 (vui-defcomponent octocat-repo-vui--commits-page (repo ref tracked path tick)
@@ -1416,15 +1387,14 @@ touched it, as GitHub's History."
 
 (defun octocat-repo-browse ()
   "Open what point is on, or else the page, on GitHub.
-On a tree entry that is the file or directory; elsewhere the directory
-at the ref shown, or on the commits page its commits."
+On a tree entry that is the file or directory; elsewhere the ref shown,
+or on the commits page its commits."
   (interactive)
   (unless octocat-repo--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
   (let* ((repo   octocat-repo--repo)
          (ref    (or octocat-repo--ref octocat-repo--tracked))
-         (path   (and (derived-mode-p 'octocat-tree-mode 'octocat-commits-mode)
-                      octocat-repo--path))
+         (path   (and (derived-mode-p 'octocat-commits-mode) octocat-repo--path))
          (branch (or ref octocat-repo--default-branch "HEAD"))
          (type   (octocat-tree--type-at-point))
          (url    (cond ((derived-mode-p 'octocat-commits-mode)
@@ -1433,7 +1403,6 @@ at the ref shown, or on the commits page its commits."
                                       (ref  (concat "/" ref)))))
                        ((memq type '(file dir))
                         (octocat-tree--entry-url repo branch type (octocat-tree--path-at-point)))
-                       (path (format "https://github.com/%s/tree/%s/%s" repo branch path))
                        (ref  (format "https://github.com/%s/tree/%s" repo ref))
                        (t    (concat "https://github.com/" repo)))))
     (message "Octocat: Opening %s in browser…" url)
@@ -1449,23 +1418,14 @@ The tree browser stays in its directory, as GitHub's does."
         (octocat-vui-update-page :ref ref))
       (funcall revert-buffer-function)))
 
-(defun octocat-repo--show-path (dir &optional focus)
-  "Make DIR the tree browser's directory, in place; \"\" is the root.
-The tree stays as it is; point goes to FOCUS, an entry's path."
-  (let ((path (unless (string-empty-p dir) dir)))
-    (setq octocat-repo--path  path
-          octocat-repo--focus focus)
-    (or (octocat-vui-update-page :path path :focus focus)
-        (funcall revert-buffer-function))))
-
 (defun octocat-repo-up ()
-  "Make the directory containing the tree browser's the one shown.
-Point goes to it."
+  "Move point to the directory containing the tree entry at point."
   (interactive)
-  (unless (and (derived-mode-p 'octocat-tree-mode) octocat-repo--path)
-    (user-error "Octocat: Already at the top"))
-  (let ((parent (octocat-tree--parent octocat-repo--path)))
-    (octocat-repo--show-path parent (unless (string-empty-p parent) parent))))
+  (let* ((path   (and (derived-mode-p 'octocat-tree-mode) (octocat-tree--path-at-point)))
+         (parent (and path (octocat-tree--parent path))))
+    (unless (and parent (not (string-empty-p parent)))
+      (user-error "Octocat: Already at the top"))
+    (octocat-tree--goto-path parent)))
 
 (defun octocat-repo-switch-branch ()
   "Show another branch, picked from the repository's."
@@ -1563,7 +1523,6 @@ PATH, a directory or file, is the one the tree opens down to, with point on it."
     (setq octocat-repo--repo      repo
           octocat-repo--local-dir (octocat-repo--local-dir-for repo)
           octocat-repo--ref       ref
-          octocat-repo--path      path
           octocat-repo--reveal    path
           octocat-repo--focus     path)
     (octocat-tree-refresh)))
@@ -1576,7 +1535,7 @@ PATH, a directory or file, is the one the tree opens down to, with point on it."
   (octocat-vui-refresh-page 'octocat-repo-vui--tree-page octocat-repo--repo
                             (list :repo octocat-repo--repo :ref octocat-repo--ref
                                   :tracked (octocat-repo--sync-checkout)
-                                  :path octocat-repo--path :reveal octocat-repo--reveal
+                                  :reveal octocat-repo--reveal
                                   :focus octocat-repo--focus)))
 
 (defun octocat-commits-open (repo &optional ref path)

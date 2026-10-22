@@ -128,7 +128,6 @@ at, with point on it:
 owner/repo
 
 [main ▾]  a9fc167  Show open issue and PR counts …  [62 commits]
-octocat.el / docs
 ▸ .github/
 ▾ docs/
     user-interface-conventions.md
@@ -138,14 +137,12 @@ octocat.el / docs
   …
 ```
 
-`RET` on a directory expands or collapses it and makes it the browser's
-directory: the one the last commit, `[N commits]` and the path line are
-of, highlighted in the tree.  `RET` on a file opens it in the file
-viewer.  The path line (`octocat.el / docs`) moves to each directory
-above, and `^` up one at a time.  `S-RET` opens a file in another
-window (see Keybindings).  Under
-Evil, as in treemacs-evil, `l` opens the entry at point and `h` goes up
-a directory; `o` is `RET` and `O` is `S-RET`.  The entries are
+`RET` on a directory only expands or collapses it; the line above the
+tree stays on the root's last commit.  `RET` on a file opens it in the
+file viewer, and `^` moves point to the directory holding the entry at
+point.  `S-RET` opens a file in another window (see Keybindings).
+Under Evil, as in treemacs-evil, `l` opens the entry at point and `h`
+goes up a directory; `o` is `RET` and `O` is `S-RET`.  The entries are
 not buttons, so `TAB` does not step from file to file.  The repo name
 on the top line leads back to the repo page.  A github.com link to a
 path (`/tree/main/src/parser`) opens the browser at it.

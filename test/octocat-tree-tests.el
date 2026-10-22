@@ -58,22 +58,16 @@ so no gh call is made."
                                     :on-dir (lambda (dir)
                                               (push dir octocat-tree-tests--visited))))))
 
-(defun octocat-tree-tests--mount-full-tree (reveal current &optional focus)
+(defun octocat-tree-tests--mount-full-tree (reveal &optional focus)
   "Show the whole tree of root \"rootsha\" here, opened down to REVEAL.
-CURRENT is the page's directory and FOCUS where point goes, as for
-`octocat-tree--subtree'.  Moves are recorded as for
-`octocat-tree-tests--mount-tree'."
-  (unless (derived-mode-p 'octocat-repo-mode)
-    (octocat-repo-mode))
-  (setq octocat-tree-tests--visited nil)
+FOCUS is where point goes, as for `octocat-tree--subtree'."
+  (unless (derived-mode-p 'octocat-tree-mode)
+    (octocat-tree-mode))
   (cl-letf (((symbol-function 'octocat-tree--fetch-dir)
              (lambda (&rest _) (error "Unexpected directory fetch"))))
     (octocat-vui-refresh-page 'octocat-tree--subtree "tree"
                               (list :repo "owner/repo" :branch "main" :sha "rootsha"
-                                    :depth 0 :path "" :reveal reveal :current current
-                                    :focus focus
-                                    :on-dir (lambda (dir)
-                                              (push dir octocat-tree-tests--visited))))))
+                                    :depth 0 :path "" :reveal reveal :focus focus))))
 
 (defun octocat-tree-tests--entry (path type sha)
   "Return a tree API entry for PATH of TYPE (\"tree\" or \"blob\") and SHA."
@@ -168,16 +162,30 @@ It does not fold, however long."
                                          (octocat-tree-tests--entry "a.el" "blob" "b1")))
       (octocat-tree-tests--store '(tree-dir "owner/repo" "srcsha")
                                  (vector (octocat-tree-tests--entry "x.el" "blob" "b2")))
-      (octocat-tree-tests--mount-full-tree "src" "src" "src")
+      (octocat-tree-tests--mount-full-tree "src" "src")
       (accept-process-output nil 0.01)
       (should (string-match-p "▸ doc/\n▾ src/\n    x\\.el\n  a\\.el" (buffer-string)))
       (should (equal (octocat-tree--path-at-point) "src"))
       (octocat-tree-visit)
       (vui-flush-sync)
-      (should (equal octocat-tree-tests--visited '("src")))
       (should (string-match-p "▸ src/" (buffer-string)))
       (should-not (string-match-p "x\\.el" (buffer-string)))
       (should-not (string-match-p "more entries" (buffer-string)))))))
+
+(ert-deftest octocat-tree-test-up ()
+  "Up moves point to the directory holding the entry, not past the root's."
+  (with-temp-buffer
+    (octocat-tree-tests--with-store
+      (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
+                                 (vector (octocat-tree-tests--entry "src" "tree" "srcsha")))
+      (octocat-tree-tests--store '(tree-dir "owner/repo" "srcsha")
+                                 (vector (octocat-tree-tests--entry "x.el" "blob" "b2")))
+      (octocat-tree-tests--mount-full-tree "src/x.el" "src/x.el")
+      (accept-process-output nil 0.01)
+      (should (equal (octocat-tree--path-at-point) "src/x.el"))
+      (octocat-repo-up)
+      (should (equal (octocat-tree--path-at-point) "src"))
+      (should-error (octocat-repo-up) :type 'user-error))))
 
 (ert-deftest octocat-tree-test-folds-long-directories ()
   "Past `octocat-tree-entries' the root's entries give way to Browse code."
@@ -206,7 +214,7 @@ It does not fold, however long."
      (vconcat (mapcar (lambda (i) (octocat-tree-tests--entry (format "f%02d" i) "blob" "b"))
                       (number-sequence 1 5))))
     (with-temp-buffer
-      (octocat-tree-tests--mount-full-tree nil nil "f04")
+      (octocat-tree-tests--mount-full-tree nil "f04")
       (accept-process-output nil 0.01)
       (should (equal (octocat-tree--path-at-point) "f04")))))
 

@@ -425,13 +425,13 @@ ON-BROWSE, for the whole tree."
                     :on-click on-browse))))))
 
 (vui-defcomponent octocat-tree--subtree
-    (repo branch sha depth path reveal current focus on-dir)
+    (repo branch sha depth path reveal focus)
   "The entries of directory PATH, tree SHA, at nesting DEPTH of the tree.
 They are of REPO at BRANCH.  Directories on the way to REVEAL start
-expanded, and CURRENT, the page's directory, is highlighted.  RET on a
-directory toggles it and calls ON-DIR with its path; on a file it opens
-it.  Point moves to FOCUS, an entry's path, once it is listed.  Unlike
-the root's listing it does not fold: it is for browsing."
+expanded.  RET on a directory only toggles it, so the rest of the page
+stays put; on a file it opens it.  Point moves to FOCUS, an entry's
+path, once it is listed.  Unlike the root's listing it does not fold:
+it is for browsing."
   :render
   (let* ((indent  (make-string (* depth 2) ?\s))
          (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
@@ -448,12 +448,11 @@ the root's listing it does not fold: it is for browsing."
                      (lambda (entry)
                        (vui-component 'octocat-tree--node
                                       :repo repo :branch branch :entry entry :depth depth
-                                      :parent path :reveal reveal :current current
-                                      :focus focus :on-dir on-dir))
+                                      :parent path :reveal reveal :focus focus))
                      (lambda (entry) (gethash "path" entry))))))))
 
 (vui-defcomponent octocat-tree--node
-    (repo branch entry depth parent reveal current focus on-dir)
+    (repo branch entry depth parent reveal focus)
   "One tree ENTRY (hash-table) at nesting DEPTH, inside directory PARENT.
 The other arguments are as for `octocat-tree--subtree'."
   :state ((expanded (octocat-tree--reveals-p
@@ -468,21 +467,18 @@ The other arguments are as for `octocat-tree--subtree'."
         (vui-fragment
          (octocat-tree--entry-line
           indent (concat (if expanded "▾ " "▸ ") name "/")
-          (if (equal path current) '(octocat-section-heading octocat-branch) 'octocat-branch)
-          'dir entry path
+          'octocat-branch 'dir entry path
           (vui-with-async-context
-            (vui-set-state :expanded (lambda (old) (not old)))
-            (funcall on-dir path)))
+            (vui-set-state :expanded (lambda (old) (not old)))))
          (when expanded
            (vui-fragment
             (vui-newline)
             (vui-component 'octocat-tree--subtree
                            :repo repo :branch branch :sha sha :depth (1+ depth)
-                           :path path :reveal reveal :current current
-                           :focus focus :on-dir on-dir))))
+                           :path path :reveal reveal :focus focus))))
       ;; Two spaces stand for "▸ ", so names line up with directories'.
       (octocat-tree--entry-line
-       indent (concat "  " name) (if (equal path current) 'octocat-section-heading 'default)
+       indent (concat "  " name) 'default
        'file entry path
        (lambda () (octocat-tree--open-file-by-path repo branch path sha))))))
 
