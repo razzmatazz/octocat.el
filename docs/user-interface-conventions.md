@@ -698,6 +698,10 @@ Brackets therefore signal an *action*: `[State]`, `[Author]`, `[Load more]`,
 the `[Code]` / `[Issues (N)]` tabs.  Plain, un-bracketed text is content or
 a heading.
 
+One exception: the compact PR list marks a draft with a grey `[draft]`
+before its title, where there is no state column to say so.  Bare
+`draft` ran into the title; the grey sets it apart from the buttons.
+
 The **repo name is not an action**; it is where the page sits.  It is
 never bracketed, so the top line reads `owner/repo` (or `owner/repo#N`,
 `owner/repo@sha`) on every page.
