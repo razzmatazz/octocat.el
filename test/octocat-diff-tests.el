@@ -53,9 +53,26 @@ The comments come as a sync snapshot."
                               (json-parse-string
                                "{\"path\":\"a.el\",\"body\":\"x\",\"created_at\":\"\"}")))))
       (should (string-search "Comments (2)" out))
-      (should (string-search "(1 inline comment shown in the diff above)" out))
+      (should (string-search "(1 inline comment, in the diff above)" out))
       (should (string-search "┌─ @me" out))
       (should (string-search "│ hi" out)))))
+
+(ert-deftest octocat-diff-test-files-hide-comments ()
+  "Inline comments start hidden, their count on the button that shows them."
+  (let* ((file (json-parse-string
+                "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}"))
+         (c    (json-parse-string
+                "{\"path\":\"a.el\",\"line\":1,\"body\":\"note\",\"created_at\":\"\"}"))
+         (out  (with-temp-buffer
+                 (vui-render (vui-component 'octocat-diff--files
+                                            :files (vector file)
+                                            :by-path (octocat-diff-by-path (vector c))
+                                            :hide t
+                                            :fits t :raw nil :width 80))
+                 (buffer-substring-no-properties (point-min) (point-max)))))
+    (should (string-search "Show comments (1)" out))
+    (should (string-search "+x" out))
+    (should-not (string-search "note" out))))
 
 (provide 'octocat-diff-tests)
 ;;; octocat-diff-tests.el ends here

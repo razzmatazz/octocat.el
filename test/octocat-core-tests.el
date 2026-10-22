@@ -380,5 +380,20 @@ Other links, and an explicit request for an external browser, skip it;
         (octocat-dashboard-browse)))
     (should (equal urls '("https://github.com/o/r/pull/5")))))
 
+(ert-deftest octocat-core-test-key-help ()
+  "A button's hint names its command's key, and only then shows in ElDoc."
+  (with-temp-buffer
+    (let ((map (make-sparse-keymap)))
+      (define-key map (kbd "C-c C-v") #'ignore)
+      (use-local-map map))
+    (let ((help (octocat--key-help #'ignore "do nothing")))
+      (should (equal help "RET, C-c C-v: do nothing"))
+      (insert (propertize "[x]" 'help-echo help) (propertize "[y]" 'help-echo "RET: y"))
+      (goto-char 2)
+      (should (equal (octocat--key-help-eldoc) help))
+      (goto-char 5)
+      (should-not (octocat--key-help-eldoc)))
+    (should (equal (octocat--key-help #'octocat-core-test-key-help "go") "RET: go"))))
+
 (provide 'octocat-core-tests)
 ;;; octocat-core-tests.el ends here

@@ -348,7 +348,7 @@ owner/repo  src/foo.el  (7 commits)
 | `C-c C-m` | Merge the PR (all PR pages): edit the commit message, `C-c C-t` picks Merge / Squash / Rebase (starting on the one last used in the repo, if still allowed), `C-c C-d` toggles deleting the branch, `C-c C-c` merges |
 | `C-c C-j` | Jump to another repository, or a user with `@`: repos and users octocat has seen before that match show at once, then GitHub's search results take the lead as they arrive, without repeating any |
 | `C-c C-s` | Search the repository's PRs, issues, commits and files: those octocat has seen before that match show at once, with the commits `git log` finds in a local clone, when there is one; GitHub's search results then take the lead as they arrive, without repeating any |
-| `C-c C-v` | Alternative view of the page (see below): raw markdown on the repo page and the PR, commit and issue pages; one line per item on the PR and issue lists |
+| `C-c C-v` | Alternative view of the page (see below): raw markdown on the repo page and the PR, commit and issue pages; the review comments in the diff on the PR's files changed page; one line per item on the PR and issue lists |
 | `C-c C-b` | Pick the branch shown (repo page, commits page); `[reset to main]` goes back to the clone's branch, or the default |
 | `C-c C-f` | Open fuzzy file finder — `completing-read` over the full recursive file list of the commit shown; works from the repo page and the file viewer (the list is fetched once per commit) |
 | `C-c C-l` | Open file commit log — shows the commit history for the file currently open in `octocat-file-mode` |
@@ -360,8 +360,12 @@ owner/repo  src/foo.el  (7 commits)
 `C-c C-v` is the one key for seeing a page another way: wherever a page
 has a second way to show what is on it, `C-c C-v` switches to it and
 back.  Pages showing markdown switch between rendered and raw text, so
-the markup can be read or copied as written; the PR and issue lists
-switch between two-line rows and a compact view of one line per item.
+the markup can be read or copied as written.  The PR's files changed
+page instead shows or hides the review comments in the diff, which start
+hidden so the diff reads uninterrupted; the `[Show comments (N)]` button
+in its Files heading does the same, also on the commit page.  The PR and
+issue lists switch between two-line rows and a compact view of one line
+per item.
 The list pages remember the choice per repository, across Emacs
 sessions; the others go back to the default view when reopened.
 

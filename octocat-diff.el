@@ -210,38 +210,64 @@ its heading.  RAW and WIDTH are as for `octocat-diff--comment-lines'."
         (push c (alist-get path table nil nil #'equal))))
     (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) table)))
 
-(vui-defcomponent octocat-diff--files (files by-path fits raw width)
+(defvar-local octocat-diff--hide-comments t
+  "Non-nil leaves the inline comments out of this page's diff.
+They start hidden, so the diff reads uninterrupted.")
+
+(defun octocat-diff-toggle-comments ()
+  "Show or hide the inline comments in the diff of this page."
+  (interactive)
+  (setq octocat-diff--hide-comments (not octocat-diff--hide-comments))
+  (octocat-vui-update-page :hide-comments octocat-diff--hide-comments))
+
+(vui-defcomponent octocat-diff--files (files by-path hide fits raw width)
   "The Files section: FILES with the review comments BY-PATH, folded.
 They start unfolded when FITS, the whole diff fitting in the window.
-RAW and WIDTH are as for `octocat-diff--comment-lines'.
-The heading's \"Expand all\" button unfolds or folds every file."
+HIDE leaves the comments out.  RAW and WIDTH are as for
+`octocat-diff--comment-lines'.  The heading's \"Expand all\" button
+unfolds or folds every file, and its \"Show comments (N)\" button, there
+when some file has comments, runs `octocat-diff-toggle-comments'."
   :state ((bulk (and fits (cons 0 t))))
   :render
   (let ((heading (vui-text (propertize (format "Files (%d)" (length files))
                                        'face 'octocat-section-heading))))
     (vui-vstack
      (if (cl-some (lambda (f) (stringp (gethash "patch" f))) files)
-         (vui-hstack :spacing 2
-                     heading
-                     (octocat-vui-expand-all-button
-                      bulk (vui-async-callback (v) (vui-set-state :bulk v))))
+         (apply #'vui-hstack :spacing 2
+                heading
+                (octocat-vui-expand-all-button
+                 bulk (vui-async-callback (v) (vui-set-state :bulk v)))
+                (and by-path
+                     (list (vui-button (format "%s comments (%d)" (if hide "Show" "Hide")
+                                               (cl-loop for e in by-path sum (length (cdr e))))
+                                       :face 'octocat-dimmed
+                                       :key 'hide-comments
+                                       :help-echo (octocat--key-help
+                                                   #'octocat-diff-toggle-comments
+                                                   (if hide
+                                                       "show the comments in the diff"
+                                                     "hide the comments in the diff"))
+                                       :on-click #'octocat-diff-toggle-comments))))
        heading)
      (if (zerop (length files))
          (vui-text "  (no files changed)" :face 'octocat-dimmed)
        (vui-list (append files nil)
                  (lambda (f)
-                   (octocat-diff--file f (cdr (assoc (gethash "filename" f) by-path))
+                   (octocat-diff--file f (and (not hide)
+                                                (cdr (assoc (gethash "filename" f) by-path)))
                                       bulk raw width))
                  (lambda (f) (gethash "filename" f)))))))
 
-(defun octocat-diff-files-section (files by-path raw width)
+(defun octocat-diff-files-section (files by-path hide raw width)
   "Return the vnode of the Files section: the heading and one entry per file.
-FILES is the files vector and BY-PATH the review comments by file path.
+FILES is the files vector and BY-PATH the review comments by file path,
+left out when HIDE.
 Files start folded, unless the whole diff fits in the window.  The
 comments are markdown, rendered unless RAW, to fit WIDTH columns."
   (vui-component 'octocat-diff--files
                  :files files
                  :by-path by-path
+                 :hide hide
                  :raw raw
                  :width width
                  :fits (<= (octocat-diff--line-count files) (octocat-vui-window-height))))
@@ -269,7 +295,7 @@ WIDTH are as for `octocat-diff--comment-lines'."
                     (list (vui-text (format "  (no %ss)" noun) :face 'octocat-dimmed))
                   (append
                    (and (> inline 0)
-                        (list (vui-text (format "  (%d inline %s%s shown in the diff above)"
+                        (list (vui-text (format "  (%d inline %s%s, in the diff above)"
                                                 inline noun (if (= inline 1) "" "s"))
                                         :face 'octocat-dimmed)))
                    (mapcar (lambda (c)

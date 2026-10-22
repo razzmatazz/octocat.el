@@ -221,6 +221,30 @@ Examples:
 "RET: expand commit"
 ```
 
+### A button with a key shows it
+
+When a button does what a key on the page also does, its `help-echo`
+names the key, and ElDoc shows it in the echo area once point has
+rested on the button for `eldoc-idle-delay`.  The reader who TABs to the
+button learns the key and can skip the button next time, without
+having to read the README's key table.  Build the hint with
+`octocat--key-help`, which looks the key up with `where-is-internal`, so
+it stays right when the user rebinds the command:
+
+```elisp
+(vui-button "Show comments (3)"
+            :help-echo (octocat--key-help #'octocat-diff-toggle-comments
+                                          "show the comments in the diff")
+            :on-click #'octocat-diff-toggle-comments)
+;; point rests on it → echo area: "RET, C-c C-v: show the comments in the diff"
+```
+
+Only such hints reach the echo area, marked by a text property on the
+`help-echo` string.  The plain "RET: …" hint of every row and button
+would show on every line point crosses, and add nothing to what the
+line already shows.  The hook is added by `octocat--ts-eldoc-setup`,
+which every octocat major mode already calls.
+
 ---
 
 ## Users are `@login`
@@ -478,7 +502,10 @@ view that has a github.com page, add its URL to
 
 `C-c C-v` switches a page to its other way of showing the same content,
 and back: rendered vs. raw markdown on pages with markdown, two-line vs.
-one-line rows on the PR and issue lists.  Users learn one key for "show
+one-line rows on the PR and issue lists.  The PR's files changed page
+shows or hides its review comments instead: there the diff is what is
+read, and the comments' markdown matters less than reading it without
+them.  Users learn one key for "show
 this differently", so a page that gains a second view binds it to
 `C-c C-v` (in the mode map and, for Evil, in octocat-evil.el) rather than
 to a key of its own, and documents it in the README's keybinding table.

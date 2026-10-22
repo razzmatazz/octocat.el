@@ -218,9 +218,10 @@ Write the review text, pick Comment, Approve or Request changes with
 
 ;;;; Components
 
-(vui-defcomponent octocat-pr-diff--page (repo number raw tick)
+(vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw tick)
   "The diff of pull request NUMBER of REPO, under the PR page's header.
-RAW shows the review comments' markdown verbatim.  A review being
+HIDE-COMMENTS leaves the review comments out of the diff, and RAW shows
+their markdown verbatim.  A review being
 submitted shows in place of the submit button.  A new TICK fetches
 everything again."
   :render
@@ -250,7 +251,7 @@ everything again."
        ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
        ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
        (_ (octocat-diff-files-section (plist-get files :data) by-path
-                                      raw (octocat--markdown-width))))
+                                      hide-comments raw (octocat--markdown-width))))
      (vui-newline)
      (octocat-diff-comments-section "Review Comments" comments
                                     raw (octocat--markdown-width))
@@ -283,7 +284,7 @@ everything again."
 (define-key octocat-pr-diff-mode-map (kbd "C-c C-r") #'octocat-pr-diff-review)
 (define-key octocat-pr-diff-mode-map (kbd "C-c C-m") #'octocat-pr-merge)
 (define-key octocat-pr-diff-mode-map (kbd "C-c C-o") #'octocat-pr-diff-browse)
-(define-key octocat-pr-diff-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
+(define-key octocat-pr-diff-mode-map (kbd "C-c C-v") #'octocat-diff-toggle-comments)
 (define-key octocat-pr-diff-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
 (define-key octocat-pr-diff-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
@@ -314,6 +315,7 @@ independently, in place."
                             (cons octocat--pr-diff-repo octocat--pr-diff-number)
                             (list :repo octocat--pr-diff-repo
                                   :number octocat--pr-diff-number
+                                  :hide-comments octocat-diff--hide-comments
                                   :raw octocat--markdown-raw)))
 
 (defun octocat-pr-diff-open (repo number)

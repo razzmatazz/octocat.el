@@ -194,9 +194,10 @@ Its check-runs are in CHECKS, a sync snapshot."
 
 ;;;; Page
 
-(vui-defcomponent octocat-commit--page (repo sha raw tick)
+(vui-defcomponent octocat-commit--page (repo sha hide-comments raw tick)
   "Commit SHA of REPO: header, message, checks, files and comments.
-RAW shows markdown verbatim.  The commit, its checks and its comments
+HIDE-COMMENTS leaves the inline comments out of the diff.  RAW shows
+markdown verbatim.  The commit, its checks and its comments
 are fetched independently; each shows what the store holds until then.  A
 new TICK fetches them again."
   :render
@@ -228,7 +229,7 @@ new TICK fetches them again."
                              (when-let* ((section (octocat-commit--checks repo sha checks)))
                                (vui-fragment section (vui-newline)))
                              (octocat-diff-files-section
-                              (or (gethash "files" data) []) by-path raw md-width)
+                              (or (gethash "files" data) []) by-path hide-comments raw md-width)
                              ;; Most commits have none, so the section is left
                              ;; out unless there are any, or they failed to load.
                              (when (or (not (seq-empty-p (plist-get comments :data)))
@@ -291,6 +292,7 @@ only on `g'."
                             (cons octocat--commit-repo octocat--commit-sha)
                             (list :repo octocat--commit-repo
                                   :sha octocat--commit-sha
+                                  :hide-comments octocat-diff--hide-comments
                                   :raw octocat--markdown-raw)))
 
 (defun octocat-commit-open (repo sha)

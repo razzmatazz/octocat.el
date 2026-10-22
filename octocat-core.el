@@ -742,11 +742,33 @@ Use this wherever a timestamp is shown to the user."
 An `eldoc-documentation-functions' member."
   (get-text-property (point) 'octocat-ts))
 
+(defun octocat--key-help (command action)
+  "Return the `help-echo' of a button that runs COMMAND to do ACTION.
+It names COMMAND's key in the current buffer, as in \"RET, C-c C-v:
+hide the comments\", and ElDoc shows it when point rests on the
+button, so the key is learnt from the button (see
+`octocat--ts-eldoc-setup').  Without a key it is just \"RET: ACTION\"."
+  (if-let* ((key (where-is-internal command nil t)))
+      (propertize (format "RET, %s: %s" (key-description key) action)
+                  'octocat-key-help t)
+    (concat "RET: " action)))
+
+(defun octocat--key-help-eldoc (&rest _)
+  "Return the key hint of the button at point, or nil.
+An `eldoc-documentation-functions' member; see `octocat--key-help'."
+  (let ((help (get-text-property (point) 'help-echo)))
+    (and (stringp help)
+         (get-text-property 0 'octocat-key-help help)
+         help)))
+
 (defun octocat--ts-eldoc-setup ()
-  "Show the exact time of the timestamp at point in the echo area.
-Call from a major-mode body.  ElDoc shows it after `eldoc-idle-delay'
-when `global-eldoc-mode' is on (the default)."
+  "Show what point rests on in the echo area.
+That is the exact time of a timestamp, or the key of a button that has
+one (see `octocat--key-help').  Call from a major-mode body.  ElDoc
+shows it after `eldoc-idle-delay' when `global-eldoc-mode' is on (the
+default)."
   (add-hook 'eldoc-documentation-functions #'octocat--ts-eldoc nil t)
+  (add-hook 'eldoc-documentation-functions #'octocat--key-help-eldoc nil t)
   ;; vui motions, so ElDoc reacts to them like to `next-line'.
   (eldoc-add-command-completions "vui-forward" "vui-backward"))
 
