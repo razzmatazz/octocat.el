@@ -114,5 +114,20 @@
     (should (equal (cadr (car (octocat-pr--merge-rows pr (list run run))))
                    "2 workflows awaiting approval"))))
 
+(ert-deftest octocat-pr-test-reviewers-stack ()
+  "Several reviewers stack under their label, lined up after it."
+  (let* ((pr (json-parse-string
+              (concat "{\"latestReviews\":[{\"author\":{\"login\":\"ann\"},\"state\":\"APPROVED\"}],"
+                      "\"reviewRequests\":[{\"login\":\"bob\"}]}")))
+         (out (with-temp-buffer
+                (vui-render (octocat-repo-vui--detail-stack
+                             (cons "Reviewers" #'ignore) (octocat-pr--reviewers pr)))
+                (buffer-substring-no-properties (point-min) (point-max))))
+         (lines (split-string out "\n" t)))
+    (should (= (length lines) 2))
+    (should (string-match-p "Reviewers @ann (approved)\\'" (nth 0 lines)))
+    (should (= (string-search "@ann" (nth 0 lines)) (string-search "@bob" (nth 1 lines))))
+    (should (string-suffix-p "@bob (pending)" (nth 1 lines)))))
+
 (provide 'octocat-pr-tests)
 ;;; octocat-pr-tests.el ends here

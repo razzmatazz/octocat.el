@@ -754,6 +754,23 @@ VALUE.  The line is lined up with the title column."
            (vui-text (make-string (+ octocat-repo-vui--state-width 2) ?\s))
            (octocat-repo-vui--separate parts (propertize " · " 'face 'octocat-dimmed))))))
 
+(defun octocat-repo-vui--detail-stack (label values)
+  "Return the field LABEL with VALUES, one per line, as a vnode.
+LABEL is as for `octocat-repo-vui--detail-fields' and each of VALUES a
+list of vnodes: the first goes beside LABEL, the others under it, so
+many of them don't make one long line."
+  (apply #'vui-vstack
+         (octocat-repo-vui--detail-fields (list (cons label (car values))))
+         (mapcar (lambda (value)
+                   (apply #'vui-hstack :spacing 0
+                          (vui-text (make-string (+ octocat-repo-vui--state-width 3
+                                                    (string-width (if (consp label)
+                                                                      (car label)
+                                                                    label)))
+                                                 ?\s))
+                          value))
+                 (cdr values))))
+
 (defun octocat-repo-vui--separate (items sep)
   "Return ITEMS (vnodes or lists of them) with a `vui-text' of SEP between."
   (cdr (mapcan (lambda (item) (list (vui-text sep) item)) items)))

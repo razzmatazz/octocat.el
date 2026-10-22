@@ -49,6 +49,7 @@
 (declare-function octocat-repo-vui--detail-header "octocat-repo" (repo item state on-edit-title bg &optional branch omit))
 (declare-function octocat-repo-vui--cells "octocat-repo" (repo item bg))
 (declare-function octocat-repo-vui--detail-fields "octocat-repo" (fields))
+(declare-function octocat-repo-vui--detail-stack  "octocat-repo" (label values))
 (declare-function octocat-repo-vui--logins "octocat-repo" (users))
 (declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
 (declare-function octocat-repo-vui--login-link "octocat-repo" (login))
@@ -880,7 +881,10 @@ TAB is the page showing it, `conversation' (the default), `commits' or
          (head    (or (gethash "headRefName" pr) ""))
          (base     (or (gethash "baseRefName" pr) ""))
          (local    (octocat--current-branch))
-         (reviewers (octocat-pr--reviewers pr)))
+         (reviewers (octocat-pr--reviewers pr))
+         (reviewer-field (octocat-timeline-edit-field "pr" repo pr "reviewer"))
+         ;; Several reviewers stack under their label, each with its state.
+         (stack    (cdr reviewers)))
     (append
      (octocat-repo-vui--detail-header
       repo pr
@@ -899,15 +903,17 @@ TAB is the page showing it, `conversation' (the default), `commits' or
       ;; is on the line of what the PR only shows, below.
       '(:review :ci :comments))
      ;; One line of the fields one edits, then one, when any is set, of
-     ;; what is only shown, so neither runs long.
+     ;; what is only shown, so neither runs long.  Stacked reviewers go
+     ;; between them.
      (delq nil
            (list
             (octocat-repo-vui--detail-fields
-             (list (cons (octocat-timeline-edit-field "pr" repo pr "reviewer") reviewers)
+             (list (and (not stack) (cons reviewer-field (car reviewers)))
                    (cons (octocat-timeline-edit-field "pr" repo pr "assignee")
                          (octocat-repo-vui--logins (gethash "assignees" pr)))
                    (cons (octocat-timeline-edit-field "pr" repo pr "label")
                          (octocat--format-labels (gethash "labels" pr) bg))))
+            (and stack (octocat-repo-vui--detail-stack reviewer-field reviewers))
             (octocat-repo-vui--detail-fields
              (list (cons nil (plist-get (octocat-repo-vui--cells repo pr bg) :review))
                    (cons "Milestone" (octocat-repo-vui--milestone pr))
@@ -930,7 +936,7 @@ it, so they share its fetch."
   (octocat-vui-use-detail (list 'pr repo number) tick))
 
 (defun octocat-pr--reviewers (pr)
-  "Return the reviewers of PR as a list of vnodes, or nil when there are none.
+  "Return the reviewers of PR, each a list of vnodes, or nil when there are none.
 Each is \"@login (state)\": the state of their latest review, or
 \"pending\" for a requested review not yet given; the login opens the
 user's page."
@@ -956,7 +962,7 @@ user's page."
                           (funcall reviewer (gethash "login" u) (gethash "name" u)
                                    "pending"))
                         requests)))))
-    (and parts (octocat-repo-vui--separate parts ", "))))
+    parts))
 
 (vui-defcomponent octocat-pr--page (repo number raw tick)
   "Pull request NUMBER of REPO as a timeline; RAW shows markdown verbatim.
