@@ -864,7 +864,6 @@ would pull the user back to it (see docs/using-vui.md)."
 (declare-function octocat--setting "octocat-core" (key))
 (declare-function octocat--setting-put "octocat-core" (key value))
 (declare-function octocat-visit-repo "octocat-core" (repo &optional ref))
-(declare-function octocat-user-open "octocat-user" (login))
 (declare-function octocat-issue-list "octocat" ())
 (declare-function octocat-pr-list "octocat" ())
 (declare-function octocat-actions "octocat" ())
@@ -934,22 +933,19 @@ The choice is remembered for this page of this repository."
 
 (defun octocat-vui-repo-heading (repo &optional ref here)
   "Return REPO, \"owner/name\", as a breadcrumb vnode.
-The owner links to its user or organization page and the name to the
-repository page at REF, nil for the default branch, so one can walk up
-from any page.  HERE, non-nil on the pages with the repository's tab
-strip, leaves the name plain: there the Code tab opens the repository
-page, and on it a page's own name is never a link."
-  (pcase-let* ((`(,owner ,name) (split-string repo "/"))
-               (link (lambda (label help on-click)
-                       (vui-button label :no-decoration t :face '(link octocat-repo)
-                                   :help-echo help :on-click on-click))))
+The name links to the repository page at REF, nil for the default
+branch, so one can walk up from any page.  HERE, non-nil on the pages
+with the repository's tab strip, leaves the name plain: there the Code
+tab opens the repository page, and on it a page's own name is never a
+link."
+  (pcase-let ((`(,owner ,name) (split-string repo "/")))
     (vui-fragment
-     (funcall link owner "RET: open owner page" (lambda () (octocat-user-open owner)))
-     (vui-text "/" :face 'octocat-repo)
+     (vui-text (concat owner "/") :face 'octocat-repo)
      (if here
          (vui-text name :face 'octocat-repo)
-       (funcall link name "RET: open repository page"
-                (lambda () (octocat-visit-repo repo ref)))))))
+       (vui-button name :no-decoration t :face '(link octocat-repo)
+                   :help-echo "RET: open repository page"
+                   :on-click (lambda () (octocat-visit-repo repo ref)))))))
 
 (defun octocat-vui-commit-top-row (repo sha)
   "Return the top row of a page about commit SHA of REPO.

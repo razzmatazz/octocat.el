@@ -17,12 +17,12 @@
         ((vui-vnode-button-p vnode) (list (list 'link (vui-vnode-button-label vnode))))
         ((vui-vnode-text-p vnode) (list (vui-vnode-text-content vnode)))))
 
-(ert-deftest octocat-vui-test-repo-heading-links-owner-and-repo ()
-  "The owner and repo link to their pages; with the tab strip the name is plain."
+(ert-deftest octocat-vui-test-repo-heading-links-repo ()
+  "The repo links to its page, the owner never; with the tab strip neither."
   (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r"))
-                 '((link "o") "/" (link "r"))))
+                 '("o/" (link "r"))))
   (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r" nil t))
-                 '((link "o") "/" "r"))))
+                 '("o/" "r"))))
 
 (ert-deftest octocat-vui-test-filter-active-p ()
   "Only a query other than the default counts as an active filter."

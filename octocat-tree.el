@@ -67,7 +67,6 @@
 
 (declare-function octocat-commit-open "octocat-commit" (repo sha))
 (declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
-(declare-function octocat-user-open "octocat-user" (login))
 (declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional ref here))
 
 
@@ -491,14 +490,11 @@ The other arguments are as for `octocat-tree--subtree'."
 
 (defun octocat-tree--insert-repo-heading (repo)
   "Insert REPO as `octocat-vui-repo-heading' draws it, in a plain buffer."
-  (pcase-let ((`(,owner ,name) (split-string repo "/"))
-              (link (lambda (label help action)
-                      (insert-text-button label 'face '(link octocat-repo)
-                                          'help-echo help 'follow-link t
-                                          'action (lambda (_) (funcall action))))))
-    (funcall link owner "RET: open owner page" (lambda () (octocat-user-open owner)))
-    (insert (propertize "/" 'face 'octocat-repo))
-    (funcall link name "RET: open repository page" (lambda () (octocat-visit-repo repo)))))
+  (pcase-let ((`(,owner ,name) (split-string repo "/")))
+    (insert (propertize (concat owner "/") 'face 'octocat-repo))
+    (insert-text-button name 'face '(link octocat-repo)
+                        'help-echo "RET: open repository page" 'follow-link t
+                        'action (lambda (_) (octocat-visit-repo repo)))))
 
 (defun octocat-tree--insert-file-header (path)
   "Insert the top of the viewer of file PATH, a rule under it.
