@@ -42,7 +42,7 @@
 (require 'octocat-sync)
 (require 'octocat-vui)
 
-(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional ref here))
+(declare-function octocat-vui-repo-heading "octocat-vui" (repo))
 (require 'vui)
 
 (declare-function octocat-search-repo "octocat-search" ())

@@ -47,7 +47,7 @@
 (require 'octocat-search) ; `octocat--read-branch'
 (require 'octocat-vui)
 
-(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional ref here))
+(declare-function octocat-vui-repo-heading "octocat-vui" (repo))
 (require 'vui)
 (require 'vui-components) ; vui-collapsible, vui-heading-*, etc.
 
@@ -587,15 +587,15 @@ rows and the page headers so the two read alike."
 (defun octocat-repo-vui--compact-line (state number cells &optional width)
   "Return the one line of an item in a compact list.
 That is STATE text, NUMBER (\"#N\"), the title and its label chips, then
-the author; CELLS are as made by `octocat-repo-vui--cells'.  A nil STATE
-leaves it out.  The repo is
-the page's and the age is left out, to make room for the title.
-WIDTH, when non-nil, cuts the line to fit, shortening the title first,
-and puts the author at its right edge, so the authors line up."
+a dot and the author; CELLS are as made by `octocat-repo-vui--cells'.  A
+nil STATE leaves it out.  The repo is the page's and the age is left
+out, to make room for the title.  WIDTH, when non-nil, cuts the line to
+fit, shortening the title first, and puts the author at its right edge,
+so the authors of a list laid out to one WIDTH line up."
   (let* ((cap   (and width (max 10 (1- width))))
          (chips (let ((c (or (plist-get cells :chips) "")))
                   (if (string-empty-p c) "" (concat "  " c))))
-         (tail  (concat "  " (plist-get cells :author)))
+         (tail  (concat (propertize " · " 'face 'octocat-dimmed) (plist-get cells :author)))
          (head  (concat (and state (concat state "  ")) number "  "))
          (title (plist-get cells :title))
          (body  (concat head
@@ -615,22 +615,29 @@ and puts the author at its right edge, so the authors line up."
          cap nil nil "…")
       (concat body tail))))
 
+(defun octocat-repo-vui--compact-width (lines width)
+  "Return the width to lay out compact LINES in, at most WIDTH.
+LINES are uncut (see `octocat-repo-vui--compact-line'): the widest sets
+it, so the authors line up after the longest title, not at the window's
+edge when every title is short."
+  (min width (1+ (apply #'max 0 (mapcar #'string-width lines)))))
+
 (defun octocat-repo-vui--item-row (state cells width on-visit help
-                                         &optional compact number prefetch)
+                                         &optional compact-line prefetch)
   "Return the row vnode for an item with STATE text.
 CELLS are as made by `octocat-repo-vui--cells'; each line is cut to
-WIDTH.  ON-VISIT and HELP are as for `octocat-vui-row'.  COMPACT draws
-the one line of `octocat-repo-vui--compact-line', with NUMBER.
-PREFETCH is the sync specs ON-VISIT opens, fetched while point rests
-on the row (see `octocat-vui--prefetch-schedule')."
+WIDTH.  ON-VISIT and HELP are as for `octocat-vui-row'.  COMPACT-LINE,
+when non-nil, is the one line drawn instead, as made by
+`octocat-repo-vui--compact-line'.  PREFETCH is the sync specs ON-VISIT
+opens, fetched while point rests on the row (see
+`octocat-vui--prefetch-schedule')."
   (octocat-vui-row
    (propertize
-    (if compact
-        (octocat-repo-vui--compact-line state number cells width)
-      (mapconcat #'identity
-                 (octocat-repo-vui--item-lines
-                  state cells '(:review :ci :prs :comments) width)
-                 "\n"))
+    (or compact-line
+        (mapconcat #'identity
+                   (octocat-repo-vui--item-lines
+                    state cells '(:review :ci :prs :comments) width)
+                   "\n"))
     'octocat-sync-prefetch prefetch)
    on-visit help))
 
@@ -638,24 +645,40 @@ on the row (see `octocat-vui--prefetch-schedule')."
   "Return the \"#N\" of the issue or PR ITEM."
   (propertize (format "#%d" (gethash "number" item)) 'face 'octocat-pr-number))
 
+(defun octocat-repo-vui--pr-compact-line (repo pr bg no-state &optional width)
+  "Return the compact line of PR in REPO, without the state when NO-STATE.
+BG is as for `octocat-repo-vui--cells'; WIDTH is as for
+`octocat-repo-vui--compact-line'."
+  (let ((cells (octocat-repo-vui--cells repo pr bg)))
+    ;; Without the state column, a draft says so before its title, in
+    ;; parentheses: bare it reads as part of it, bracketed as a button.
+    (when (and no-state (eq (gethash "isDraft" pr) t))
+      (plist-put cells :title (concat (propertize "(draft) " 'face 'octocat-dimmed)
+                                      (plist-get cells :title))))
+    (octocat-repo-vui--compact-line
+     (unless no-state
+       (octocat-repo-vui--state-label (gethash "state" pr) (gethash "isDraft" pr)))
+     (octocat-repo-vui--number pr) cells width)))
+
+(defun octocat-repo-vui--issue-compact-line (repo issue bg no-state &optional width)
+  "Return the compact line of ISSUE in REPO, without the state when NO-STATE.
+BG is as for `octocat-repo-vui--cells'; WIDTH is as for
+`octocat-repo-vui--compact-line'."
+  (octocat-repo-vui--compact-line
+   (unless no-state (octocat-repo-vui--state-label (gethash "state" issue)))
+   (octocat-repo-vui--number issue) (octocat-repo-vui--cells repo issue bg) width))
+
 (defun octocat-repo-vui--pr-row (repo pr width bg &optional compact no-state)
   "Return a row vnode for PR in REPO, cut to WIDTH.
 BG is as for `octocat-repo-vui--cells'; COMPACT draws it on one line,
 without the state when NO-STATE is non-nil."
   (octocat-repo-vui--item-row
-   (unless (and compact no-state)
-     (octocat-repo-vui--state-label (gethash "state" pr) (gethash "isDraft" pr)))
-   (let ((cells (octocat-repo-vui--cells repo pr bg)))
-     ;; Without the state column, a draft says so before its title, in
-     ;; parentheses: bare it reads as part of it, bracketed as a button.
-     (if (and compact no-state (eq (gethash "isDraft" pr) t))
-         (plist-put cells :title (concat (propertize "(draft) " 'face 'octocat-dimmed)
-                                         (plist-get cells :title)))
-       cells))
+   (octocat-repo-vui--state-label (gethash "state" pr) (gethash "isDraft" pr))
+   (octocat-repo-vui--cells repo pr bg)
    width
    (lambda () (octocat-repo-vui--open-pr repo pr))
    "RET: view pull request"
-   compact (octocat-repo-vui--number pr)
+   (and compact (octocat-repo-vui--pr-compact-line repo pr bg no-state width))
    (let ((n (gethash "number" pr)))
      `((pr ,repo ,n) (timeline-events ,repo ,n)))))
 
@@ -664,74 +687,83 @@ without the state when NO-STATE is non-nil."
 BG is as for `octocat-repo-vui--cells'; COMPACT draws it on one line,
 without the state when NO-STATE is non-nil."
   (octocat-repo-vui--item-row
-   (unless (and compact no-state)
-     (octocat-repo-vui--state-label (gethash "state" issue)))
+   (octocat-repo-vui--state-label (gethash "state" issue))
    (octocat-repo-vui--cells repo issue bg)
    width
    (lambda () (octocat-repo-vui--open-issue repo issue))
    "RET: view issue"
-   compact (octocat-repo-vui--number issue)
+   (and compact (octocat-repo-vui--issue-compact-line repo issue bg no-state width))
    (let ((n (gethash "number" issue)))
      `((issue ,repo ,n) (timeline-events ,repo ,n)))))
 
-;; The header of an issue or PR page is drawn like a regular list row (see
-;; above), so the page continues the list it was opened from: the state
-;; before the title, then who opened it and when with its review and
-;; branch.  The labels are a field below, see `octocat-repo-vui--detail-fields'.
+;; The header of an issue or PR page starts as the other pages do, with
+;; `owner/repo#N', then the title and author.  The state heads the line
+;; of the fields one edits (assignees, labels, ...), and a last line
+;; shows the rest: its branch, review, milestone.
 
-(defun octocat-repo-vui--detail-header (repo item state on-edit-title bg
+(defun octocat-repo-vui--detail-header (repo item state on-edit-title
+                                            bg width fields shown
                                             &optional branch omit)
   "Return the header vnodes of the issue or PR ITEM of REPO.
-STATE is its coloured state text (see `octocat-repo-vui--state-label').
-The rows are the item's two list lines (see
-`octocat-repo-vui--item-lines'), uncut; the first is the `title' target
-of the page's edit command, and RET on either calls ON-EDIT-TITLE.  BG
-is as for `octocat-repo-vui--cells'.  BRANCH, when non-nil, is shown
-after the review.  OMIT is a list of cell keys (see
-`octocat-repo-vui--cells') to leave out."
-  (let* ((cells (octocat-repo-vui--cells repo item bg))
-         ;; The labels are a field below, where they can be edited.
-         (cells (plist-put cells :chips nil))
-         (cells (if branch (plist-put cells :branch branch) cells))
-         (lines (octocat-repo-vui--item-lines
-                 state cells (seq-difference '(:review :branch :ci :prs :comments) omit))))
-    (list
-     (octocat-vui-row
-      (propertize (car lines) 'octocat-timeline-target 'title)
-      on-edit-title
-      "RET: edit title")
-     (octocat-repo-vui--detail-who repo item cells omit on-edit-title))))
+The first row is the breadcrumb (`octocat-vui-repo-heading'), number,
+title and author, the `title' target of the page's edit command, on
+which RET calls ON-EDIT-TITLE; the title is cut to fit WIDTH, its whole
+shown on hover and by ElDoc.  Then the FIELDS one edits, as for
+`octocat-repo-vui--field-lines', headed by STATE, its coloured state
+text (see `octocat-repo-vui--state-label').  Last, the cells of ITEM,
+then SHOWN, fields as for `octocat-repo-vui--detail-fields'; not the
+date, which the opening timeline entry shows.  BG is as for
+`octocat-repo-vui--cells'.  BRANCH, when non-nil, is shown first.
+OMIT is a list of cell keys (see `octocat-repo-vui--cells') to leave
+out."
+  (let* ((cells  (octocat-repo-vui--cells repo item bg))
+         (cells  (if branch (plist-put cells :branch branch) cells))
+         (number (propertize (format "#%d  " (gethash "number" item))
+                             'face 'octocat-pr-number))
+         (author (plist-get cells :author))
+         (dot    (propertize " · " 'face 'octocat-dimmed))
+         (by     (if (string-empty-p author) "" (concat dot author)))
+         (title  (octocat-repo-vui--fit-title
+                  (plist-get cells :title)
+                  (- width 1 (string-width repo) (string-width number)
+                     (string-width by)))))
+    (append
+     (list
+      (octocat-vui-row
+       (list (octocat-vui-repo-heading repo)
+             (propertize (concat number title) 'octocat-timeline-target 'title)
+             (if (string-empty-p author)
+                 ""
+               (list (vui-text dot)
+                     (octocat-repo-vui--login-link (substring author 1)))))
+       on-edit-title
+       "RET: edit title"))
+     (octocat-repo-vui--field-lines fields (concat state "  "))
+     (list
+      (octocat-repo-vui--detail-fields
+       (cons (cons nil (octocat-repo-vui--join-cells
+                        cells (seq-difference '(:branch :review :ci :prs :comments) omit)))
+             shown))))))
 
-(defun octocat-repo-vui--detail-who (repo item cells omit on-edit-title)
-  "Return the header row under the title: number, author, date and cells.
-As the second of `octocat-repo-vui--item-lines', but REPO is a
-breadcrumb (`octocat-vui-repo-heading') and the author a TAB-able link.
-ITEM, CELLS, OMIT and ON-EDIT-TITLE are as for
-`octocat-repo-vui--detail-header'."
-  (let* ((author (plist-get cells :author))
-         (rest   (octocat-repo-vui--join-cells
-                  cells (cons :date (seq-difference '(:review :branch :ci :prs :comments)
-                                                    omit)))))
-    (octocat-vui-row
-     (list (make-string (+ octocat-repo-vui--state-width 2) ?\s)
-           (octocat-vui-repo-heading repo)
-           (propertize (format "#%d" (gethash "number" item)) 'face 'octocat-pr-number)
-           (propertize " by " 'face 'octocat-dimmed)
-           (if (string-empty-p author)
-               ""
-             (octocat-repo-vui--login-link (substring author 1)))
-           (if (or (string-empty-p author) (string-empty-p rest))
-               rest
-             (concat (propertize " · " 'face 'octocat-dimmed) rest)))
-     on-edit-title
-     "RET: edit title")))
+(defun octocat-repo-vui--fit-title (title width)
+  "Return TITLE cut with an ellipsis to WIDTH columns, at least 10.
+A cut title carries its whole as `help-echo' and `octocat-full-text',
+so hovering or resting point on it shows it."
+  (let ((width (max 10 width)))
+    (if (<= (string-width title) width)
+        title
+      (let ((full (substring-no-properties title)))
+        (propertize (truncate-string-to-width title width nil nil "…")
+                    'help-echo full 'octocat-full-text full)))))
 
-(defun octocat-repo-vui--detail-fields (fields)
+(defun octocat-repo-vui--detail-fields (fields &optional head)
   "Return a vnode listing FIELDS under the title, or nil when none has a value.
 FIELDS is a list of (LABEL . VALUE), VALUE a string or a list of vnodes;
 a nil or empty VALUE is skipped, and a nil LABEL shows VALUE alone.  A
 LABEL of (NAME . EDIT) is a button calling EDIT, shown even with no
-VALUE.  The line is lined up with the title column."
+VALUE.  HEAD, a string as wide as the state column and its gap, starts
+the line, blank by default, so the line is lined up with the title
+column."
   (let ((parts (delq nil
                      (mapcar (lambda (f)
                                (pcase-let ((`(,name . ,edit) (if (consp (car f)) (car f)
@@ -751,7 +783,7 @@ VALUE.  The line is lined up with the title column."
                              fields))))
     (and parts
          (vui-hstack :spacing 0
-           (vui-text (make-string (+ octocat-repo-vui--state-width 2) ?\s))
+           (vui-text (or head (make-string (+ octocat-repo-vui--state-width 2) ?\s)))
            (octocat-repo-vui--separate parts (propertize " · " 'face 'octocat-dimmed))))))
 
 (defun octocat-repo-vui--detail-stack (label values)
@@ -771,8 +803,9 @@ many of them don't make one long line."
                           value))
                  (cdr values))))
 
-(defun octocat-repo-vui--field-lines (fields)
+(defun octocat-repo-vui--field-lines (fields &optional head)
   "Return the vnodes of FIELDS: one line of them, then each stacked one.
+HEAD starts the line, as for `octocat-repo-vui--detail-fields'.
 FIELDS is as for `octocat-repo-vui--detail-fields', except that a VALUE
 may be (:stack . ITEMS), ITEMS a list of vnode lists such as the users
 of `octocat-repo-vui--login-items'.  One item stays on the line; several
@@ -785,7 +818,8 @@ in the order of FIELDS."
                            (cond ((not (eq (car-safe (cdr f)) :stack)) f)
                                  ((cdr (funcall items f)) nil)
                                  (t (cons (car f) (car (funcall items f))))))
-                         fields))
+                         fields)
+                 head)
                 (mapcar (lambda (f)
                           (when (cdr (funcall items f))
                             (octocat-repo-vui--detail-stack (car f) (funcall items f))))
@@ -1330,7 +1364,7 @@ one summary resource and the rest from the root's `repo-head' at REF."
       nil)
     (vui-vstack
      (apply #'vui-hstack :spacing 2
-            (octocat-vui-repo-heading repo nil t)
+            (octocat-vui-repo-heading repo)
             (octocat-vui-repo-tabs repo 'code tick))
      (when local-dir
        (vui-text
@@ -1386,7 +1420,7 @@ branch."
           (setq octocat-repo--default-branch default-branch)))
       nil)
     (vui-vstack
-     (octocat-vui-repo-heading repo ref)
+     (octocat-vui-repo-heading repo)
      (vui-newline)
      (octocat-repo-vui--head-line repo ref nil head-snap (or tracked default-branch)
                                   current-branch)

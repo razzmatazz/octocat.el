@@ -41,10 +41,9 @@
 ;; from octocat-repo.el, which requires this file (so cannot be required
 ;; here).
 (declare-function octocat-repo-vui--issue-row "octocat-repo" (repo issue width bg &optional compact no-state))
+(declare-function octocat-repo-vui--issue-compact-line "octocat-repo" (repo issue bg no-state &optional width))
 (declare-function octocat-repo-vui--state-label "octocat-repo" (state &optional draft))
-(declare-function octocat-repo-vui--detail-header "octocat-repo" (repo item state on-edit-title bg &optional branch omit))
-(declare-function octocat-repo-vui--detail-fields "octocat-repo" (fields))
-(declare-function octocat-repo-vui--field-lines "octocat-repo" (fields))
+(declare-function octocat-repo-vui--detail-header "octocat-repo" (repo item state on-edit-title bg width fields shown &optional branch omit))
 (declare-function octocat-repo-vui--login-items "octocat-repo" (users))
 (declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
 (declare-function octocat-pr-open "octocat-pr" (repo number))
@@ -290,27 +289,23 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
 ;;
 ;; The timeline itself (items, entries, rail) is in octocat-timeline.el.
 
-(defun octocat-issue--header (repo issue bg)
+(defun octocat-issue--header (repo issue bg width)
   "Return the vnodes above the timeline: repo, title and labels of ISSUE in REPO.
-BG is as for `octocat--label-face'."
+BG is as for `octocat--label-face'; the title is cut to fit WIDTH."
   (let ((state (or (gethash "state" issue) "OPEN")))
     (append
      (octocat-repo-vui--detail-header
       repo issue (octocat-repo-vui--state-label state)
-      #'octocat-issue-edit-title bg nil '(:comments))
-     ;; As a PR's: the fields one edits, then what is only shown.
-     (octocat-repo-vui--field-lines
+      #'octocat-issue-edit-title bg width
       (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
                   (cons :stack (octocat-repo-vui--login-items (gethash "assignees" issue))))
             (cons (octocat-timeline-edit-field "issue" repo issue "label")
-                  (octocat--format-labels (gethash "labels" issue) bg))))
-     (delq nil
-           (list
-            (octocat-repo-vui--detail-fields
-             (list (cons "Milestone" (octocat-repo-vui--milestone issue))
-                   (cons "Fixed by"  (octocat-repo-vui--numbers
-                                      repo (gethash "closedByPullRequestsReferences" issue)
-                                      #'octocat-pr-open))))))
+                  (octocat--format-labels (gethash "labels" issue) bg)))
+      (list (cons "Milestone" (octocat-repo-vui--milestone issue))
+            (cons "Fixed by"  (octocat-repo-vui--numbers
+                               repo (gethash "closedByPullRequestsReferences" issue)
+                               #'octocat-pr-open)))
+      nil '(:comments))
      (list (vui-newline)))))
 
 (vui-defcomponent octocat-issue--page (repo number raw tick)
@@ -336,13 +331,13 @@ A new TICK fetches everything again."
                  (if partial
                      ;; The list fetched the issue: its header paints at once.
                      (apply #'vui-vstack
-                            (append (delq nil (octocat-issue--header repo partial bg))
+                            (append (delq nil (octocat-issue--header repo partial bg (octocat--markdown-width)))
                                     (list (vui-text (octocat-vui-post-skeleton width)))))
                    (vui-text (octocat-vui-detail-skeleton repo number width))))
      :render (lambda (_)
                (apply #'vui-vstack
                       (append
-                       (delq nil (octocat-issue--header repo issue bg))
+                       (delq nil (octocat-issue--header repo issue bg (octocat--markdown-width)))
                        entries
                        (octocat-timeline-buttons-or-action
                         (list '("+ Add a comment" "RET: write a comment" octocat-issue-add-comment)
@@ -428,7 +423,10 @@ the background, in place: what is unfolded stays so."
                                     :compact (octocat-vui-list-compact-p)
                                     :row-fn (lambda (issue width compact no-state)
                                               (octocat-repo-vui--issue-row
-                                               repo issue width bg compact no-state))))))
+                                               repo issue width bg compact no-state))
+                                    :line-fn (lambda (issue no-state)
+                                               (octocat-repo-vui--issue-compact-line
+                                                repo issue bg no-state))))))
 
 (define-derived-mode octocat-issue-list-mode octocat-vui-list-mode "Octocat-Issues"
   "Major mode for the issue list of a repository.

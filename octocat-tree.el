@@ -67,7 +67,8 @@
 
 (declare-function octocat-commit-open "octocat-commit" (repo sha))
 (declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
-(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional ref here))
+(declare-function octocat-user-open "octocat-user" (login))
+(declare-function octocat-vui-repo-heading "octocat-vui" (repo))
 
 
 ;;;; User options
@@ -491,10 +492,10 @@ The other arguments are as for `octocat-tree--subtree'."
 (defun octocat-tree--insert-repo-heading (repo)
   "Insert REPO as `octocat-vui-repo-heading' draws it, in a plain buffer."
   (pcase-let ((`(,owner ,name) (split-string repo "/")))
-    (insert (propertize (concat owner "/") 'face 'octocat-repo))
-    (insert-text-button name 'face '(link octocat-repo)
-                        'help-echo "RET: open repository page" 'follow-link t
-                        'action (lambda (_) (octocat-visit-repo repo)))))
+    (insert-text-button owner 'face '(link octocat-repo)
+                        'help-echo "RET: open owner page" 'follow-link t
+                        'action (lambda (_) (octocat-user-open owner)))
+    (insert (propertize (concat "/" name) 'face 'octocat-repo))))
 
 (defun octocat-tree--insert-file-header (path)
   "Insert the top of the viewer of file PATH, a rule under it.
@@ -781,7 +782,7 @@ them again."
          (commits (append (plist-get result :data) nil)))
     (vui-vstack
      (vui-hstack :spacing 0
-       (and repo (octocat-vui-repo-heading repo ref))
+       (and repo (octocat-vui-repo-heading repo))
        (vui-text (concat
                   "  "
                   (propertize (or path "") 'face 'octocat-branch)

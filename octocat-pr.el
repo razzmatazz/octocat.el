@@ -45,11 +45,10 @@
 ;; plumbing from octocat-repo.el, which requires this file (so cannot be
 ;; required here).
 (declare-function octocat-repo-vui--pr-row "octocat-repo" (repo pr width bg &optional compact no-state))
+(declare-function octocat-repo-vui--pr-compact-line "octocat-repo" (repo pr bg no-state &optional width))
 (declare-function octocat-repo-vui--state-label"octocat-repo" (state &optional draft))
-(declare-function octocat-repo-vui--detail-header "octocat-repo" (repo item state on-edit-title bg &optional branch omit))
+(declare-function octocat-repo-vui--detail-header "octocat-repo" (repo item state on-edit-title bg width fields shown &optional branch omit))
 (declare-function octocat-repo-vui--cells "octocat-repo" (repo item bg))
-(declare-function octocat-repo-vui--detail-fields "octocat-repo" (fields))
-(declare-function octocat-repo-vui--field-lines   "octocat-repo" (fields))
 (declare-function octocat-repo-vui--login-items   "octocat-repo" (users))
 (declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
 (declare-function octocat-repo-vui--login-link "octocat-repo" (login))
@@ -860,7 +859,8 @@ GitHub does.  See `octocat-vui-tab-row' for WIDTH."
 (defun octocat-pr--header (repo pr bg width &optional tab)
   "Return the vnodes above the body: repo, title, branches, labels, tabs.
 PR is the hash-table of the pull request in REPO.  BG is as for
-`octocat--label-face'.  WIDTH is that of the tabs, see `octocat-pr--tabs'.
+`octocat--label-face'.  WIDTH is that of the title and the tabs, see
+`octocat-pr--tabs'.
 TAB is the page showing it, `conversation' (the default), `commits' or
 `files'."
   (let* ((number   (gethash "number" pr))
@@ -874,7 +874,18 @@ TAB is the page showing it, `conversation' (the default), `commits' or
       repo pr
       (octocat-repo-vui--state-label state (gethash "isDraft" pr))
       (lambda () (octocat-timeline-rename "pr" repo number))
-      bg
+      bg width
+      ;; Several assignees or reviewers stack under their line.
+      (list (cons (octocat-timeline-edit-field "pr" repo pr "assignee")
+                  (cons :stack (octocat-repo-vui--login-items (gethash "assignees" pr))))
+            (cons (octocat-timeline-edit-field "pr" repo pr "reviewer")
+                  (cons :stack reviewers))
+            (cons (octocat-timeline-edit-field "pr" repo pr "label")
+                  (octocat--format-labels (gethash "labels" pr) bg)))
+      (list (cons "Milestone" (octocat-repo-vui--milestone pr))
+            (cons "Closes"    (octocat-repo-vui--numbers
+                               repo (gethash "closingIssuesReferences" pr)
+                               #'octocat-issue-open)))
       ;; The list leaves the branch out; the page shows it and its base,
       ;; once known: a header painted from a list's copy lacks them.
       (unless (string-empty-p head)
@@ -883,27 +894,8 @@ TAB is the page showing it, `conversation' (the default), `commits' or
                                          'octocat-branch))
                 (propertize " → " 'face 'octocat-dimmed)
                 (propertize base 'face 'octocat-branch)))
-      ;; The checks and comments are further down the page; the review
-      ;; is on the line of what the PR only shows, below.
-      '(:review :ci :comments))
-     ;; One line of the fields one edits, then one, when any is set, of
-     ;; what is only shown, so neither runs long.  Several assignees or
-     ;; reviewers stack between them.
-     (octocat-repo-vui--field-lines
-      (list (cons (octocat-timeline-edit-field "pr" repo pr "assignee")
-                  (cons :stack (octocat-repo-vui--login-items (gethash "assignees" pr))))
-            (cons (octocat-timeline-edit-field "pr" repo pr "reviewer")
-                  (cons :stack reviewers))
-            (cons (octocat-timeline-edit-field "pr" repo pr "label")
-                  (octocat--format-labels (gethash "labels" pr) bg))))
-     (delq nil
-           (list
-            (octocat-repo-vui--detail-fields
-             (list (cons nil (plist-get (octocat-repo-vui--cells repo pr bg) :review))
-                   (cons "Milestone" (octocat-repo-vui--milestone pr))
-                   (cons "Closes"    (octocat-repo-vui--numbers
-                                      repo (gethash "closingIssuesReferences" pr)
-                                      #'octocat-issue-open))))))
+      ;; The checks and comments are further down the page.
+      '(:ci :comments))
      (list
       (vui-newline)
       (octocat-pr--tabs (or tab 'conversation) repo number width
@@ -1184,7 +1176,10 @@ the background, in place: what is unfolded stays so."
                                     :compact (octocat-vui-list-compact-p)
                                     :row-fn (lambda (pr width compact no-state)
                                               (octocat-repo-vui--pr-row
-                                               repo pr width bg compact no-state))))))
+                                               repo pr width bg compact no-state))
+                                    :line-fn (lambda (pr no-state)
+                                               (octocat-repo-vui--pr-compact-line
+                                                repo pr bg no-state))))))
 
 (define-derived-mode octocat-pr-list-mode octocat-vui-list-mode "Octocat-PRs"
   "Major mode for the pull request list of a repository.

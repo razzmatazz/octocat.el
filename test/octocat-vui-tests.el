@@ -17,12 +17,10 @@
         ((vui-vnode-button-p vnode) (list (list 'link (vui-vnode-button-label vnode))))
         ((vui-vnode-text-p vnode) (list (vui-vnode-text-content vnode)))))
 
-(ert-deftest octocat-vui-test-repo-heading-links-repo ()
-  "The repo links to its page, the owner never; with the tab strip neither."
+(ert-deftest octocat-vui-test-repo-heading-links-owner ()
+  "The owner links to its page; the repo name is plain."
   (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r"))
-                 '("o/" (link "r"))))
-  (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r" nil t))
-                 '("o/" "r"))))
+                 '((link "o") "/r"))))
 
 (ert-deftest octocat-vui-test-filter-active-p ()
   "Only a query other than the default counts as an active filter."
@@ -78,18 +76,18 @@
                  "label:x")))
 
 (ert-deftest octocat-vui-test-detail-skeleton ()
-  "The skeleton names the item and keeps its grey bars within WIDTH."
+  "The skeleton starts with the item and keeps its grey bars within WIDTH."
   (let ((text (octocat-vui-detail-skeleton "o/r" 7 30)))
-    (should (string-search "o/r#7" (cadr (split-string text "\n"))))
+    (should (string-prefix-p "o/r#7" text))
     (should (text-property-any 0 (length text) 'face 'octocat-skeleton text))
     (dolist (line (split-string text "\n"))
       (should (<= (string-width line) 30)))))
 
 (ert-deftest octocat-vui-test-detail-skeleton-tabs ()
-  "TABS adds a header line and the tab strip, still within WIDTH."
+  "TABS adds the tab strip, still within WIDTH."
   (let ((plain (split-string (octocat-vui-detail-skeleton "o/r" 7 40) "\n"))
         (tabs  (split-string (octocat-vui-detail-skeleton "o/r" 7 40 '("A" "B")) "\n")))
-    (should (= (length tabs) (+ 2 (length plain))))
+    (should (= (length tabs) (1+ (length plain))))
     (should (seq-some (lambda (l) (string-prefix-p "A  B" l)) tabs))
     (dolist (line tabs)
       (should (<= (string-width line) 40)))))

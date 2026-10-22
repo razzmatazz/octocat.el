@@ -791,8 +791,10 @@ Use this wherever a timestamp is shown to the user."
 
 (defun octocat--ts-eldoc (&rest _)
   "Return the exact time of the timestamp at point, or nil.
-An `eldoc-documentation-functions' member."
-  (get-text-property (point) 'octocat-ts))
+Also the whole of a cut text at point, its `octocat-full-text'.  An
+`eldoc-documentation-functions' member."
+  (or (get-text-property (point) 'octocat-ts)
+      (get-text-property (point) 'octocat-full-text)))
 
 (defun octocat--key-help (command action)
   "Return the `help-echo' of a button running COMMAND to do ACTION.
@@ -835,7 +837,8 @@ An `eldoc-documentation-functions' member; see `octocat--key-help'."
 
 (defun octocat--ts-eldoc-setup ()
   "Show what point rests on in the echo area.
-That is the exact time of a timestamp, or the key of a button that has
+That is the exact time of a timestamp, the whole of a cut title, or the
+key of a button that has
 one (see `octocat--key-help').  Call from a major-mode body.  ElDoc
 shows it after `eldoc-idle-delay' when `global-eldoc-mode' is on (the
 default)."

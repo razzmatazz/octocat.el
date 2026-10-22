@@ -739,26 +739,48 @@ The **repo name is not an action**; it is where the page sits.  It is
 never bracketed, so the top line reads `owner/repo` (or `owner/repo#N`,
 `owner/repo@sha`) on every page.
 
-### Walk up with the breadcrumb
+### Every page starts with `owner/repo`
 
-The repo name on a page's top line is a breadcrumb: the name links to
-the repository page (at the ref shown, on the tree and file log pages),
-so one can walk up without `C-c C-j`.  The owner is plain text.  On the
-pages with the tab strip (the repository page and the issue, PR and
-Actions lists) the name is plain too: the Code tab already opens the
-repository page, and on that page a page's own name is never a link.
-Build it with `octocat-vui-repo-heading`; the file viewer, which is not
-a vui page, inserts the same with `octocat-tree--insert-repo-heading`.
+Every page about a repository starts with `owner/repo` on its first
+line, so one always sees where one is and every page reads alike.  What
+the page is about follows on that line: the tab strip on the repository
+and list pages, `#N`, the title and its author on an issue or PR, `@sha` on a
+commit.  Details such as an item's state and date go on the
+lines below, never before the repo name.  On an issue or PR the state
+heads the line of the fields one edits, and a last line shows the rest,
+but not the age: the opening timeline entry has it.
 
 ```
-octocat/hello  [Code]  [Issues (N)]  …     ← with the tab strip: no links
-octocat/hello@abc1234                       ← elsewhere: "hello" links
+octocat/hello#42  Fix the greeting · @alice
+OPEN    Assignees @bob · Reviewers none · Labels bug
+        feature → main · Review required · Milestone v1
 ```
 
-The name is an unbracketed button in `link` over `octocat-repo`, so
+A title too long for the line is cut with `…`; hovering or resting
+point on it shows the whole.
+
+Two spaces separate the page's name (`owner/repo`, with its `#N` or
+`@sha`) from what follows on the line, such as a title or the tab
+strip, so the name stands apart from it.
+
+A new page starts the same way, using `octocat-vui-repo-heading`.
+
+### The owner links, the repo name does not
+
+On a page's first line the owner links to the owner's user or
+organization page, so one can walk up to it.  The repo name is plain on
+every page: it is where the page sits, and the repository page is a
+`C-c C-j` or the Code tab away.  Build the heading with
+`octocat-vui-repo-heading`; the file viewer, which is not a vui page,
+inserts the same with `octocat-tree--insert-repo-heading`.
+
+```
+octocat/hello#42  Fix the greeting · @alice  ← only "octocat" (and @alice) link
+```
+
+The owner is an unbracketed button in `link` over `octocat-repo`, so
 it is a TAB stop and looks like a link.  What follows the name (`#N`,
-`@sha`, a branch pair) is plain text; deeper levels may be added to the
-breadcrumb later.
+`@sha`, a branch pair) is plain text.
 
 ### The tab strip
 

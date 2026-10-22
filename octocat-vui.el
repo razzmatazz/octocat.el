@@ -59,6 +59,7 @@
 (require 'vui-components)
 
 (defvar octocat-repo-vui--state-width)  ; defconst in octocat-repo.el
+(declare-function octocat-repo-vui--compact-width "octocat-repo" (lines width))
 
 (defvar octocat-vui-page-map
   (let ((map (make-sparse-keymap)))
@@ -328,17 +329,17 @@ a dimmed marker; nil is an empty line."
   "Return grey bars shaped like the issue or PR NUMBER of REPO, cut to WIDTH.
 Shown when there is neither a cache nor a response yet: the header and
 the opening timeline entry, laid out as the real page lays them out.
-TABS, a list of tab labels, adds the line of reviewers and the tab strip
-of a PR page (see `octocat-vui-tab-row')."
+TABS, a list of tab labels, adds the tab strip of a PR page (see
+`octocat-vui-tab-row')."
   (let* ((state  octocat-repo-vui--state-width)
          (indent (make-string (+ octocat-repo-vui--state-width 2) ?\s))
          (strip  (and tabs (string-join tabs "  "))))
     (octocat-vui-skeleton
-     `((,state "  " 44 "  " 16)
-       (,indent ,(propertize repo 'face 'octocat-repo)
+     `((,(propertize repo 'face 'octocat-repo)
         ,(propertize (format "#%d" number) 'face 'octocat-pr-number)
-        " " 24)
-       ,@(and tabs `((,indent 16 "  " 22)))
+        "  " 44 "  " 10)
+       (,state "  " 16 "  " 22)
+       (,indent 24)
        nil
        ,@(and tabs
               `((,(propertize strip 'face '(octocat-dimmed underline))
@@ -864,6 +865,7 @@ would pull the user back to it (see docs/using-vui.md)."
 (declare-function octocat--setting "octocat-core" (key))
 (declare-function octocat--setting-put "octocat-core" (key value))
 (declare-function octocat-visit-repo "octocat-core" (repo &optional ref))
+(declare-function octocat-user-open "octocat-user" (login))
 (declare-function octocat-issue-list "octocat" ())
 (declare-function octocat-pr-list "octocat" ())
 (declare-function octocat-actions "octocat" ())
@@ -931,21 +933,16 @@ The choice is remembered for this page of this repository."
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup))
 
-(defun octocat-vui-repo-heading (repo &optional ref here)
-  "Return REPO, \"owner/name\", as a breadcrumb vnode.
-The name links to the repository page at REF, nil for the default
-branch, so one can walk up from any page.  HERE, non-nil on the pages
-with the repository's tab strip, leaves the name plain: there the Code
-tab opens the repository page, and on it a page's own name is never a
-link."
+(defun octocat-vui-repo-heading (repo)
+  "Return REPO, \"owner/name\", as the heading vnode at the top of a page.
+The owner links to its user or organization page; the name is plain,
+being where the page sits (the Code tab reaches the repository page)."
   (pcase-let ((`(,owner ,name) (split-string repo "/")))
     (vui-fragment
-     (vui-text (concat owner "/") :face 'octocat-repo)
-     (if here
-         (vui-text name :face 'octocat-repo)
-       (vui-button name :no-decoration t :face '(link octocat-repo)
-                   :help-echo "RET: open repository page"
-                   :on-click (lambda () (octocat-visit-repo repo ref)))))))
+     (vui-button owner :no-decoration t :face '(link octocat-repo)
+                 :help-echo "RET: open owner page"
+                 :on-click (lambda () (octocat-user-open owner)))
+     (vui-text (concat "/" name) :face 'octocat-repo))))
 
 (defun octocat-vui-commit-top-row (repo sha)
   "Return the top row of a page about commit SHA of REPO.
@@ -1077,7 +1074,7 @@ them again."
   (let ((counts (plist-get (octocat-vui-use-resource (list 'counts kind repo) tick) :data)))
     (vui-fragment
      (apply #'vui-hstack :spacing 2
-            (octocat-vui-repo-heading repo nil t)
+            (octocat-vui-repo-heading repo)
             (octocat-vui-repo-tabs repo tab tick))
      (vui-newline)
      (when (and counts (gethash "open" counts))
@@ -1092,11 +1089,14 @@ them again."
                   :face 'octocat-dimmed)
         (vui-newline))))))
 
-(vui-defcomponent octocat-vui-search-list (repo kind query row-fn compact tick)
+(vui-defcomponent octocat-vui-search-list (repo kind query row-fn line-fn compact tick)
   "List page of the KIND items of REPO, `issues' or `pulls', matching QUERY.
-ROW-FN returns the row of an item, given it, the window width, COMPACT,
-non-nil for one-line rows, and NO-STATE, non-nil to leave a compact
-row's state out: under the default query, every item is open.  A new QUERY or COMPACT re-renders
+ROW-FN returns the row of an item, given it, the width, COMPACT, non-nil
+for one-line rows, and NO-STATE, non-nil to leave a compact row's state
+out: under the default query, every item is open.  LINE-FN returns the
+uncut compact line of an item, given it and NO-STATE; the widest of them
+sets the width the compact rows are laid out in (see
+`octocat-repo-vui--compact-width').  A new QUERY or COMPACT re-renders
 in place: the header keeps its counts, and the results start afresh, as
 the compact view loads more at a time.  A new TICK refetches the counts
 and starts the results afresh."
@@ -1107,7 +1107,7 @@ and starts the results afresh."
    (vui-component 'octocat-vui--search-results
                   :key (list query (and compact t) tick)
                   :repo repo :kind kind :query query :row-fn row-fn
-                  :compact compact :tick tick)))
+                  :line-fn line-fn :compact compact :tick tick)))
 
 (defun octocat-vui--list-tree (kind repo page)
   "Return PAGE, a page of KIND items of REPO, as a list resource's tree.
@@ -1130,7 +1130,7 @@ PAGE is as `octocat--parse-list-items' returns; each item is an entity."
                 (funcall done (if (eq (car-safe r) 'error) r (octocat-vui--list-tree kind repo r))))
               query nil (min 100 (max limit (length (and data (gethash "nodes" data)))))))))
 
-(vui-defcomponent octocat-vui--search-results (repo kind query row-fn compact tick)
+(vui-defcomponent octocat-vui--search-results (repo kind query row-fn line-fn compact tick)
   "The KIND items of REPO matching QUERY, as for `octocat-vui-search-list'.
 They are a sync resource, painted from the store while it is refetched;
 \"load more\" appends the page after the last to it, by its cursor (see
@@ -1150,8 +1150,13 @@ They are a sync resource, painted from the store while it is refetched;
      :skeleton (lambda (_) (vui-text (octocat-vui-list-skeleton width compact no-state)))
      :render
      (lambda (data)
-       (let ((items  (append (gethash "nodes" data) nil))
-             (cursor (gethash "cursor" data)))
+       (let* ((items  (append (gethash "nodes" data) nil))
+              (cursor (gethash "cursor" data))
+              (row-w  (if compact
+                          (octocat-repo-vui--compact-width
+                           (mapcar (lambda (item) (funcall line-fn item no-state)) items)
+                           width)
+                        width)))
          (vui-fragment
           (if (null items)
               (vui-text (format (if (octocat-vui-list-filter-active-p query)
@@ -1161,7 +1166,7 @@ They are a sync resource, painted from the store while it is refetched;
                         :face 'octocat-dimmed)
             (octocat-vui-reveal-list
              items
-             (lambda (item) (funcall row-fn item width compact no-state))
+             (lambda (item) (funcall row-fn item row-w compact no-state))
              (lambda (item) (gethash "number" item))))
           (when (and items cursor)
             (octocat-vui-load-more-button
