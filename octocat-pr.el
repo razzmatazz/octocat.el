@@ -1192,6 +1192,12 @@ the background, in place: what is unfolded stays so."
 \\{octocat-pr-list-mode-map}"
   :group 'octocat
   (setq-local octocat-vui-list--states '("open" "closed" "merged" "all"))
+  (setq-local octocat-vui-list--facets
+              '(("State"    . octocat-vui-list-filter-state)
+                ("Author"   . octocat-vui-list-filter-author)
+                ("Assignee" . octocat-vui-list-filter-assignee)
+                ("Reviewer" . octocat-vui-list-filter-reviewer)
+                ("Label"    . octocat-vui-list-filter-label)))
   (setq-local octocat-vui-list--view "pr-list")
   (setq-local revert-buffer-function #'octocat-pr-list-refresh))
 (define-key octocat-pr-list-mode-map (kbd "C-c C-n") #'octocat-issue-new)

@@ -1218,7 +1218,8 @@ They are a sync resource, painted from the store while it is refetched;
 (defvar-local octocat-vui-list--qualifiers
   '("is:open" "is:closed" "is:merged" "is:draft" "author:" "author:@me"
     "assignee:" "assignee:@me" "label:" "-label:" "no:label" "no:assignee"
-    "base:" "head:" "mentions:" "milestone:" "review:required"
+    "base:" "head:" "mentions:" "milestone:" "review-requested:"
+    "review-requested:@me" "reviewed-by:" "reviewed-by:@me" "review:required"
     "review:approved" "review:changes_requested" "sort:updated-desc"
     "sort:created-desc" "sort:comments-desc")
   "Qualifier completions offered while editing a query.")
@@ -1458,6 +1459,13 @@ text as the way to enter a value."
   (interactive)
   (octocat-vui-list--check-filterable)
   (octocat-vui-list--edit-facet "assignee:" "Assignee" nil
+                                (octocat-vui-list--stored 'assignees) '("@me")))
+
+(defun octocat-vui-list-filter-reviewer ()
+  "Filter by requested reviewer; @me lists the PRs awaiting your review."
+  (interactive)
+  (octocat-vui-list--check-filterable)
+  (octocat-vui-list--edit-facet "review-requested:" "Reviewer" nil
                                 (octocat-vui-list--stored 'assignees) '("@me")))
 
 (defun octocat-vui-list-filter-label ()
