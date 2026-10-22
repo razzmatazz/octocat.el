@@ -640,10 +640,10 @@ without the state when NO-STATE is non-nil."
    (unless (and compact no-state)
      (octocat-repo-vui--state-label (gethash "state" pr) (gethash "isDraft" pr)))
    (let ((cells (octocat-repo-vui--cells repo pr bg)))
-     ;; Without the state column, a draft says so before its title,
-     ;; bracketed so it does not read as part of it.
+     ;; Without the state column, a draft says so before its title, in
+     ;; parentheses: bare it reads as part of it, bracketed as a button.
      (if (and compact no-state (eq (gethash "isDraft" pr) t))
-         (plist-put cells :title (concat (propertize "[draft] " 'face 'octocat-dimmed)
+         (plist-put cells :title (concat (propertize "(draft) " 'face 'octocat-dimmed)
                                          (plist-get cells :title)))
        cells))
    width

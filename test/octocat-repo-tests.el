@@ -274,7 +274,7 @@
                  "main" "missing")))
 
 (ert-deftest octocat-repo-test-compact-pr-row-marks-draft ()
-  "Without the state column, a compact draft PR row says [draft] before its title."
+  "Without the state column, a compact draft PR row says (draft) before its title."
   (let ((pr (make-hash-table :test #'equal)) titles)
     (puthash "number" 7 pr)
     (puthash "title" "Wip" pr)
@@ -287,7 +287,7 @@
       (octocat-repo-vui--pr-row "o/r" pr 80 nil t nil)
       (puthash "isDraft" :false pr)
       (octocat-repo-vui--pr-row "o/r" pr 80 nil t t))
-    (should (equal (nreverse titles) '("[draft] Wip" "Wip" "Wip")))))
+    (should (equal (nreverse titles) '("(draft) Wip" "Wip" "Wip")))))
 
 (provide 'octocat-repo-tests)
 ;;; octocat-repo-tests.el ends here
