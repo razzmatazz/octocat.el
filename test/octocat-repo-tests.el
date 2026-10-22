@@ -191,6 +191,35 @@
             (should (= (plist-get u :behind) 1))))
       (delete-directory root t))))
 
+(ert-deftest octocat-repo-test-tracked-branch ()
+  "The clone's branch is followed under its name on origin, once pushed."
+  (skip-unless (executable-find "git"))
+  (let* ((root   (make-temp-file "octocat-tracked" t))
+         (origin (expand-file-name "origin" root))
+         (clone  (expand-file-name "clone" root))
+         (git    (lambda (dir &rest args)
+                   (let ((default-directory (file-name-as-directory dir)))
+                     (apply #'call-process "git" nil nil nil
+                            "-c" "user.name=T" "-c" "user.email=t@t" args)))))
+    (unwind-protect
+        (progn
+          (make-directory origin)
+          (funcall git origin "init" "-q" "-b" "main")
+          (funcall git origin "commit" "-q" "--allow-empty" "-m" "base")
+          (funcall git origin "branch" "theirs")
+          (funcall git root "clone" "-q" origin clone)
+          (should-not (octocat-repo--tracked-branch nil))
+          (should (equal (octocat-repo--tracked-branch clone) "main"))
+          (funcall git clone "checkout" "-q" "-b" "local" "origin/theirs")
+          (should (equal (octocat-repo--tracked-branch clone) "theirs"))
+          (funcall git clone "checkout" "-q" "-b" "unpushed")
+          (should-not (octocat-repo--tracked-branch clone))
+          (funcall git clone "push" "-q" "origin" "unpushed")
+          (should (equal (octocat-repo--tracked-branch clone) "unpushed"))
+          (funcall git clone "checkout" "-q" "--detach")
+          (should-not (octocat-repo--tracked-branch clone)))
+      (delete-directory root t))))
+
 (ert-deftest octocat-repo-test-parse-history ()
   "History edges become REST-shaped commits that keep their cursor."
   (let* ((json "{\"data\":{\"repository\":{\"object\":{\"history\":{\"edges\":[{\"cursor\":\"abc 0\",\"node\":{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}},{\"cursor\":\"abc 1\",\"node\":{\"oid\":\"def\",\"messageHeadline\":\"Old\",\"authoredDate\":\"2026-10-13T00:00:00Z\",\"author\":{\"name\":\"Bo\",\"email\":\"b@x\",\"user\":null}}}]}}}}}")

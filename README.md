@@ -83,8 +83,16 @@ README  License
 …
 ```
 
-The `[main ▾]` picker (or `C-c C-b`) shows another branch, and
-`[reset to main]` goes back to the default branch.  Beside it is the
+Opened from a local clone, the page, its tree browser and its commits
+page show the branch checked out there, as GitHub has it: its upstream
+on `origin`, or else `origin`'s branch of the same name.  A clone with
+a detached HEAD, or on a branch never pushed, shows the default branch.
+The pages follow the checkout: after a `git checkout`, `g` or switching
+back to the page shows the new branch.
+
+The `[main ▾]` picker (or `C-c C-b`) shows another branch, which the
+page then keeps to, and `[reset to main]` goes back to the branch it
+opened on: the clone's, or else the default branch.  Beside it is the
 branch's last commit, `RET` opening it; `[N commits]` opens its history
 on its own commits page (see below).
 
@@ -344,7 +352,7 @@ owner/repo  src/foo.el  (7 commits)
 | `C-c C-j` | Jump to another repository, or a user with `@`: repos and users octocat has seen before that match show at once, then GitHub's search results take the lead as they arrive, without repeating any |
 | `C-c C-s` | Search the repository's PRs, issues, commits and files: those octocat has seen before that match show at once, with the commits `git log` finds in a local clone, when there is one; GitHub's search results then take the lead as they arrive, without repeating any |
 | `C-c C-v` | Alternative view of the page (see below): raw markdown on the repo page and the PR, commit and issue pages; one line per item on the PR and issue lists |
-| `C-c C-b` | Pick the branch shown (repo page, commits page); `[reset to main]` goes back to the default branch |
+| `C-c C-b` | Pick the branch shown (repo page, commits page); `[reset to main]` goes back to the clone's branch, or the default |
 | `C-c C-f` | Open fuzzy file finder — `completing-read` over the full recursive file list of the commit shown; works from the repo page and the file viewer (the list is fetched once per commit) |
 | `C-c C-l` | Open file commit log — shows the commit history for the file currently open in `octocat-file-mode` |
 | `g` / `gr` | Refresh current buffer |

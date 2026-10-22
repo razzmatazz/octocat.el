@@ -63,6 +63,7 @@
 (defvar octocat-repo--repo)
 (defvar octocat-repo--ref)
 (defvar octocat-repo--default-branch)
+(defvar octocat-repo--tracked)
 
 (declare-function octocat-commit-open "octocat-commit" (repo sha))
 (declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
@@ -625,8 +626,9 @@ commit.  Works from the repo page and from a file viewer."
   (interactive)
   (pcase-let* ((`(,repo ,ref ,label)
                 (cond ((derived-mode-p 'octocat-repo-mode)
-                       (list octocat-repo--repo octocat-repo--ref
-                             (or octocat-repo--ref octocat-repo--default-branch "HEAD")))
+                       (let ((ref (or octocat-repo--ref octocat-repo--tracked)))
+                         (list octocat-repo--repo ref
+                               (or ref octocat-repo--default-branch "HEAD"))))
                       ((derived-mode-p 'octocat-file-mode)
                        (list octocat-tree--file-repo octocat-tree--file-branch
                              octocat-tree--file-branch))

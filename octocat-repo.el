@@ -108,7 +108,8 @@ opened from inside a git working tree.  Nil means the buffer was opened
 in detached mode — tracking a remote repository without a local clone.")
 
 (defvar-local octocat-repo--ref nil
-  "Ref the page shows: a branch, tag or SHA, or nil for the default branch.
+  "Ref the page shows: a branch, tag or SHA, or nil to follow the clone.
+Nil shows `octocat-repo--tracked', or else the default branch.
 Chosen with `octocat-repo-switch-branch' or by a github.com link; kept
 by `g', cleared when the page is opened anew.")
 
@@ -124,6 +125,11 @@ Nil is the root, or all the commits.")
 
 (defvar-local octocat-repo--default-branch nil
   "The repository's default branch, once its summary is known.")
+
+(defvar-local octocat-repo--tracked nil
+  "The GitHub branch the local clone has checked out, or nil.
+Read by `octocat-repo--sync-checkout' on each refresh; a page with no
+`octocat-repo--ref' shows it.")
 
 
 ;;;; Repo detection
@@ -205,6 +211,41 @@ last fetch; non-zero means the branches diverged.  Reads git synchronously."
                                    dir "rev-list" "--count" "HEAD..@{u}"))
                              "0"))
                       0)))))
+
+;;;; Checked-out branch
+
+(defun octocat-repo--tracked-branch (dir)
+  "Return the GitHub branch the clone in DIR has checked out, or nil.
+That is its upstream on origin, or else origin's branch of the same
+name, as of the last fetch.  Nil when DIR is nil, HEAD is detached or
+the branch was never pushed: GitHub has nothing to show for it."
+  (when-let* ((dir)
+              (branch (car (octocat-repo--git-lines dir "symbolic-ref" "--short" "HEAD"))))
+    (let ((upstream (car (octocat-repo--git-lines
+                          dir "rev-parse" "--abbrev-ref" "--symbolic-full-name" "@{u}"))))
+      (cond ((and upstream (string-prefix-p "origin/" upstream))
+             (substring upstream (length "origin/")))
+            ((octocat-repo--git-lines dir "rev-parse" "--verify" "--quiet"
+                                      (concat "refs/remotes/origin/" branch))
+             branch)))))
+
+(defun octocat-repo--sync-checkout ()
+  "Re-read the local clone's checkout into this page's state.
+Return the new `octocat-repo--tracked'."
+  (when octocat-repo--local-dir
+    ;; `octocat--head-info' reads `default-directory' at render time.
+    (setq default-directory (file-name-as-directory octocat-repo--local-dir)))
+  (setq octocat-repo--tracked (octocat-repo--tracked-branch octocat-repo--local-dir)))
+
+(defun octocat-repo--follow-checkout (window)
+  "Refresh the page in WINDOW if its clone has checked out another branch.
+Run as the page is shown or selected, so a `git checkout' made
+elsewhere is followed; a page on a picked ref stays on it."
+  (with-current-buffer (window-buffer window)
+    (when (and octocat-repo--local-dir (null octocat-repo--ref) octocat-vui--page
+               (not (equal octocat-repo--tracked
+                           (octocat-repo--tracked-branch octocat-repo--local-dir))))
+      (funcall revert-buffer-function))))
 
 
 ;;;; gh integration
@@ -1008,7 +1049,7 @@ adds a button back to the DEFAULT branch.  Nil while LABEL is unknown."
                (list (vui-button back
                                  :no-decoration t
                                  :face 'octocat-dimmed
-                                 :help-echo "RET: show the default branch"
+                                 :help-echo (format "RET: show %s" (or default "the default branch"))
                                  :on-click #'octocat-repo-reset-branch)))))))
 
 (defun octocat-repo-vui--commits-heading (label current-branch reset default)
@@ -1241,13 +1282,13 @@ CURRENT-BRANCH are as for `octocat-repo-vui--ref-picker'."
                (octocat-vui-window-width)))
       (_ (funcall beside (vui-text (octocat-vui-skeleton '((7 "  " 40 "  " 12)))))))))
 
-(vui-defcomponent octocat-repo-vui--root (repo ref local-dir unpushed raw tick)
+(vui-defcomponent octocat-repo-vui--root (repo ref tracked local-dir unpushed raw tick)
   "Root component for the repo buffer, as GitHub's Code tab: header and
 tabs, local-head/fork-parent info, the UNPUSHED section, then the picker
 of REF and its last commit, the root's first files and its README.  REF
-is a branch, tag or SHA, nil for the default branch.  RAW shows markdown
-verbatim.  The header comes from one summary resource and the rest from
-the root's `repo-head' at REF."
+is a branch, tag or SHA, nil for TRACKED, the clone's branch, or else
+the default branch.  RAW shows markdown verbatim.  The header comes from
+one summary resource and the rest from the root's `repo-head' at REF."
   :render
   (let* ((buf            (current-buffer))
          (head-info      (octocat--head-info))
@@ -1255,8 +1296,9 @@ the root's `repo-head' at REF."
          (snap           (octocat-vui-use-resource (list 'repo-summary repo) tick))
          (summary        (plist-get snap :data))
          (default-branch (and summary (gethash "default-branch" summary)))
+         (shown          (or ref tracked))
          (fork-parent    (and summary (gethash "fork-parent" summary)))
-         (head-snap      (octocat-vui-use-resource (list 'repo-head repo ref nil) tick))
+         (head-snap      (octocat-vui-use-resource (list 'repo-head repo shown nil) tick))
          (tree           (let ((d (plist-get head-snap :data))) (and d (gethash "tree" d)))))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
@@ -1286,33 +1328,35 @@ the root's `repo-head' at REF."
      (vui-newline)
      (when unpushed
        (octocat-repo-vui--unpushed-section unpushed))
-     (octocat-repo-vui--head-line repo ref nil head-snap default-branch current-branch)
+     (octocat-repo-vui--head-line repo ref nil head-snap (or tracked default-branch)
+                                  current-branch)
      (if tree
          (vui-component 'octocat-tree--dir
-                        :key ref :repo repo :branch (or ref default-branch "HEAD") :sha tree
+                        :key shown :repo repo :branch (or shown default-branch "HEAD") :sha tree
                         :on-dir (lambda (dir) (octocat-tree-open repo ref dir))
                         :on-browse (lambda () (octocat-tree-open repo ref)))
        (vui-text (octocat-tree--skeleton)))
      (if tree
          (vui-component 'octocat-repo-vui--docs-section
-                        :key ref :repo repo :tree tree :raw raw)
+                        :key shown :repo repo :tree tree :raw raw)
        (octocat-repo-vui--docs-skeleton)))))
 
-(vui-defcomponent octocat-repo-vui--tree-page (repo ref path reveal focus tick)
+(vui-defcomponent octocat-repo-vui--tree-page (repo ref tracked path reveal focus tick)
   "Root component of the tree browser: the whole tree of REF of REPO.
 As GitHub's sidebar, it is opened down to REVEAL.  PATH, the browser's
 directory, nil for the root, has the picker's line and the path line,
 and is highlighted in the tree.  Point goes to FOCUS, an entry's path,
-once it is shown.  REF is a branch, tag or SHA, nil for the default
-branch."
+once it is shown.  REF is a branch, tag or SHA, nil for TRACKED, the
+clone's branch, or else the default branch."
   :render
   (let* ((buf            (current-buffer))
          (current-branch (plist-get (octocat--head-info) :branch))
          (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
                                     :data))
          (default-branch (and summary (gethash "default-branch" summary)))
-         (head-snap      (octocat-vui-use-resource (list 'repo-head repo ref path) tick))
-         (root           (plist-get (octocat-vui-use-resource (list 'repo-head repo ref nil) tick)
+         (shown          (or ref tracked))
+         (head-snap      (octocat-vui-use-resource (list 'repo-head repo shown path) tick))
+         (root           (plist-get (octocat-vui-use-resource (list 'repo-head repo shown nil) tick)
                                     :data)))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
@@ -1322,7 +1366,8 @@ branch."
     (vui-vstack
      (octocat-vui-repo-heading repo ref)
      (vui-newline)
-     (octocat-repo-vui--head-line repo ref path head-snap default-branch current-branch)
+     (octocat-repo-vui--head-line repo ref path head-snap (or tracked default-branch)
+                                  current-branch)
      (when path
        (octocat-repo-vui--path-line
         repo path (lambda (dir) (octocat-repo--show-path dir dir))))
@@ -1332,17 +1377,18 @@ branch."
          ;; Each ref, and each opening from elsewhere, starts the tree
          ;; afresh; moving within it keeps what is open.
          (vui-component 'octocat-tree--subtree
-                        :key (list ref reveal)
-                        :repo repo :branch (or ref default-branch "HEAD")
+                        :key (list shown reveal)
+                        :repo repo :branch (or shown default-branch "HEAD")
                         :sha (gethash "tree" root)
                         :depth 0 :path "" :reveal reveal :current path :focus focus
                         :on-dir (lambda (dir) (octocat-repo--show-path dir)))
        (vui-text (octocat-tree--skeleton))))))
 
-(vui-defcomponent octocat-repo-vui--commits-page (repo ref path tick)
+(vui-defcomponent octocat-repo-vui--commits-page (repo ref tracked path tick)
   "Root component of the commits page: the history of REF of REPO.
-REF is a branch, tag or SHA, nil for the default branch.  PATH, when
-non-nil, keeps the commits that touched it, as GitHub's History."
+REF is a branch, tag or SHA, nil for TRACKED, the clone's branch, or
+else the default branch.  PATH, when non-nil, keeps the commits that
+touched it, as GitHub's History."
   :render
   (let* ((buf            (current-buffer))
          (head-info      (octocat--head-info))
@@ -1359,8 +1405,9 @@ non-nil, keeps the commits that touched it, as GitHub's History."
      (octocat-vui-repo-heading repo)
      (vui-newline)
      (vui-component 'octocat-repo-vui--commits-section
-                    :key (list ref path)
-                    :repo repo :ref ref :path path :default-branch default-branch
+                    :key (list (or ref tracked) path)
+                    :repo repo :ref (or ref tracked) :path path
+                    :default-branch (or tracked default-branch)
                     :current-branch (plist-get head-info :branch)
                     :head-info head-info :tick tick))))
 
@@ -1375,7 +1422,7 @@ at the ref shown, or on the commits page its commits."
   (unless octocat-repo--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
   (let* ((repo   octocat-repo--repo)
-         (ref    octocat-repo--ref)
+         (ref    (or octocat-repo--ref octocat-repo--tracked))
          (path   (and (derived-mode-p 'octocat-tree-mode 'octocat-commits-mode)
                       octocat-repo--path))
          (branch (or ref octocat-repo--default-branch "HEAD"))
@@ -1393,7 +1440,7 @@ at the ref shown, or on the commits page its commits."
     (octocat-browse-external url)))
 
 (defun octocat-repo--show-ref (ref)
-  "Show REF on this page, nil for the default branch, in place.
+  "Show REF on this page, nil to follow the clone, in place.
 The tree browser stays in its directory, as GitHub's does."
   (setq octocat-repo--ref ref
         octocat-repo--focus nil)
@@ -1426,13 +1473,14 @@ Point goes to it."
   (unless octocat-repo--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
   (let* ((default octocat-repo--default-branch)
+         (home    (or octocat-repo--tracked default))
          (picked  (octocat--read-branch
                    octocat-repo--repo default (plist-get (octocat--head-info) :branch)
-                   (or octocat-repo--ref default))))
-    (octocat-repo--show-ref (unless (equal picked default) picked))))
+                   (or octocat-repo--ref home))))
+    (octocat-repo--show-ref (unless (equal picked home) picked))))
 
 (defun octocat-repo-reset-branch ()
-  "Show the default branch again."
+  "Show the clone's checked-out branch again, or else the default branch."
   (interactive)
   (octocat-repo--show-ref nil))
 
@@ -1462,7 +1510,9 @@ Point goes to it."
   (setq-local octocat--refresh-fn #'octocat-repo-refresh)
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
-  (octocat--max-width-setup))
+  (octocat--max-width-setup)
+  (add-hook 'window-buffer-change-functions #'octocat-repo--follow-checkout nil t)
+  (add-hook 'window-selection-change-functions #'octocat-repo--follow-checkout nil t))
 
 ;; The commits page and the tree browser derive from the repo page, for
 ;; its state: so `C-c C-b', `C-c C-f' and `C-c C-o' work on them alike.
@@ -1495,6 +1545,7 @@ the top of this file)."
   (octocat-vui-refresh-page 'octocat-repo-vui--root octocat-repo--repo
                             (list :repo octocat-repo--repo
                                   :ref octocat-repo--ref
+                                  :tracked (octocat-repo--sync-checkout)
                                   :local-dir octocat-repo--local-dir
                                   :raw octocat--markdown-raw
                                   :unpushed (and octocat-repo--local-dir
@@ -1503,8 +1554,8 @@ the top of this file)."
 
 (defun octocat-tree-open (repo &optional ref path)
   "Open (or switch to) the tree browser of REPO at REF.
-REF is a branch, tag or SHA, nil for the default branch.  PATH, a
-directory or file, is the one the tree opens down to, with point on it."
+REF is a branch, tag or SHA, nil to follow the local clone's branch.
+PATH, a directory or file, is the one the tree opens down to, with point on it."
   (let ((buf (get-buffer-create (format "*%s tree*" repo))))
     (octocat-display-buffer buf)
     (unless (derived-mode-p 'octocat-tree-mode)
@@ -1524,13 +1575,14 @@ directory or file, is the one the tree opens down to, with point on it."
     (user-error "Octocat: Buffer is not associated with a repository"))
   (octocat-vui-refresh-page 'octocat-repo-vui--tree-page octocat-repo--repo
                             (list :repo octocat-repo--repo :ref octocat-repo--ref
+                                  :tracked (octocat-repo--sync-checkout)
                                   :path octocat-repo--path :reveal octocat-repo--reveal
                                   :focus octocat-repo--focus)))
 
 (defun octocat-commits-open (repo &optional ref path)
   "Open (or switch to) the commits page of REPO, from REF back.
-REF is a branch, tag or SHA, nil for the default branch.  PATH, a file
-or directory, keeps the commits that touched it."
+REF is a branch, tag or SHA, nil to follow the local clone's branch.
+PATH, a file or directory, keeps the commits that touched it."
   (let ((buf (get-buffer-create (format "*%s commits*" repo))))
     (octocat-display-buffer buf)
     (unless (derived-mode-p 'octocat-commits-mode)
@@ -1548,6 +1600,7 @@ or directory, keeps the commits that touched it."
     (user-error "Octocat: Buffer is not associated with a repository"))
   (octocat-vui-refresh-page 'octocat-repo-vui--commits-page octocat-repo--repo
                             (list :repo octocat-repo--repo :ref octocat-repo--ref
+                                  :tracked (octocat-repo--sync-checkout)
                                   :path octocat-repo--path)))
 
 ;; NOTE: the `M-x octocat-repo' entry point itself (the `;;;###autoload'
