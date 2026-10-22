@@ -896,20 +896,25 @@ TAB is the page showing it, `conversation' (the default), `commits' or
                 (propertize " → " 'face 'octocat-dimmed)
                 (propertize base 'face 'octocat-branch)))
       ;; The checks and comments are further down the page; the review
-      ;; leads the line below, with the reviewers.
+      ;; is on the line of what the PR only shows, below.
       '(:review :ci :comments))
+     ;; One line of the fields one edits, then one, when any is set, of
+     ;; what is only shown, so neither runs long.
+     (delq nil
+           (list
+            (octocat-repo-vui--detail-fields
+             (list (cons (octocat-timeline-edit-field "pr" repo pr "reviewer") reviewers)
+                   (cons (octocat-timeline-edit-field "pr" repo pr "assignee")
+                         (octocat-repo-vui--logins (gethash "assignees" pr)))
+                   (cons (octocat-timeline-edit-field "pr" repo pr "label")
+                         (octocat--format-labels (gethash "labels" pr) bg))))
+            (octocat-repo-vui--detail-fields
+             (list (cons nil (plist-get (octocat-repo-vui--cells repo pr bg) :review))
+                   (cons "Milestone" (octocat-repo-vui--milestone pr))
+                   (cons "Closes"    (octocat-repo-vui--numbers
+                                      repo (gethash "closingIssuesReferences" pr)
+                                      #'octocat-issue-open))))))
      (list
-      (octocat-repo-vui--detail-fields
-       (list (cons nil (plist-get (octocat-repo-vui--cells repo pr bg) :review))
-             (cons (octocat-timeline-edit-field "pr" repo pr "reviewer") reviewers)
-             (cons (octocat-timeline-edit-field "pr" repo pr "assignee")
-                   (octocat-repo-vui--logins (gethash "assignees" pr)))
-             (cons (octocat-timeline-edit-field "pr" repo pr "label")
-                   (octocat--format-labels (gethash "labels" pr) bg))
-             (cons "Milestone" (octocat-repo-vui--milestone pr))
-             (cons "Closes"    (octocat-repo-vui--numbers
-                                repo (gethash "closingIssuesReferences" pr)
-                                #'octocat-issue-open))))
       (vui-newline)
       (octocat-pr--tabs (or tab 'conversation) repo number width
                         (gethash "changedFiles" pr)

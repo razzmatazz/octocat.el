@@ -297,17 +297,20 @@ BG is as for `octocat--label-face'."
      (octocat-repo-vui--detail-header
       repo issue (octocat-repo-vui--state-label state)
       #'octocat-issue-edit-title bg nil '(:comments))
-     (list
-      (octocat-repo-vui--detail-fields
-       (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
-                   (octocat-repo-vui--logins (gethash "assignees" issue)))
-             (cons (octocat-timeline-edit-field "issue" repo issue "label")
-                   (octocat--format-labels (gethash "labels" issue) bg))
-             (cons "Milestone" (octocat-repo-vui--milestone issue))
-             (cons "Fixed by"  (octocat-repo-vui--numbers
-                                repo (gethash "closedByPullRequestsReferences" issue)
-                                #'octocat-pr-open))))
-      (vui-newline)))))
+     ;; As a PR's: the fields one edits, then what is only shown.
+     (delq nil
+           (list
+            (octocat-repo-vui--detail-fields
+             (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
+                         (octocat-repo-vui--logins (gethash "assignees" issue)))
+                   (cons (octocat-timeline-edit-field "issue" repo issue "label")
+                         (octocat--format-labels (gethash "labels" issue) bg))))
+            (octocat-repo-vui--detail-fields
+             (list (cons "Milestone" (octocat-repo-vui--milestone issue))
+                   (cons "Fixed by"  (octocat-repo-vui--numbers
+                                      repo (gethash "closedByPullRequestsReferences" issue)
+                                      #'octocat-pr-open))))))
+     (list (vui-newline)))))
 
 (vui-defcomponent octocat-issue--page (repo number raw tick)
   "Issue NUMBER of REPO as a timeline; RAW shows markdown bodies verbatim.
