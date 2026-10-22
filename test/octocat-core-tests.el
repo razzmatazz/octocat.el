@@ -400,5 +400,32 @@ Other links, and an explicit request for an external browser, skip it;
     (should (equal (octocat--key-help #'octocat-core-test-key-help "go")
                    "RET, C-c C-m: go"))))
 
+(ert-deftest octocat-core-test-run-gh-answers-every-end ()
+  "A `gh' call that hangs is stopped and answered, as is one killed."
+  (let* ((answers nil)
+         (run (lambda (timeout)
+                (let ((octocat-gh-timeout timeout))
+                  ;; `sleep' stands in for a `gh' that never answers.
+                  (cl-letf (((symbol-function 'executable-find) (lambda (_) "sleep")))
+                    (octocat--run-gh "test" '("5") #'identity
+                                     (lambda (r) (push r answers)))))))
+         (wait (lambda ()
+                 (let ((n 0))
+                   (while (and (null answers) (< n 100))
+                     (accept-process-output nil 0.05)
+                     (cl-incf n))))))
+    (funcall run 0.1)
+    (funcall wait)
+    (should (eq (car-safe (car answers)) 'error))
+    (should (string-search "(timed out)" (cdar answers)))
+    (should (eq (octocat-sync--error-kind (cdar answers)) 'offline))
+    (setq answers nil)
+    (funcall run nil)
+    (kill-process (seq-find (lambda (p) (and (eq (process-type p) 'real)
+                                             (string-prefix-p "octocat-gh-test" (process-name p))))
+                            (process-list)))
+    (funcall wait)
+    (should (eq (car-safe (car answers)) 'error))))
+
 (provide 'octocat-core-tests)
 ;;; octocat-core-tests.el ends here

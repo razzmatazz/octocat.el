@@ -325,13 +325,15 @@ An offline failure is retried on the next open.  `g' retries at once.")
 
 (defun octocat-sync--error-kind (message)
   "Return the kind of the failure `gh' reported in MESSAGE.
-That is `offline' when GitHub could not be reached, `permanent' when
+That is `offline' when GitHub could not be reached, or did not answer
+in `octocat-gh-timeout', `permanent' when
 the resource is missing or out of reach (404, 410, 401, 403), and
 `transient' otherwise, such as a 5xx or a rate limit.  `gh' commands
 other than `gh api' report no HTTP status, so this reads their words."
   (cond ((string-match-p (concat "error connecting to\\|no such host\\|dial tcp"
                                  "\\|connection refused\\|network is unreachable"
-                                 "\\|i/o timeout\\|TLS handshake timeout")
+                                 "\\|i/o timeout\\|TLS handshake timeout"
+                                 "\\|(timed out)")
                          message)
          'offline)
         ((string-match-p "rate limit" message) 'transient)
@@ -476,6 +478,13 @@ commit's: within it, opening doesn't refetch, but `g' does."
 (defvar octocat-sync--running 0
   "How many fetches are running.")
 
+(defvar octocat-sync--fetches (make-hash-table :test #'equal)
+  "The fetch running of each resource key, a token (KEY . COUNTED).
+COUNTED is whether it counts in `octocat-sync--running'.  Only the
+answer of the current token is taken: a forced request takes over a
+running fetch, which may hang until `octocat-gh-timeout', killing its
+`gh' calls (see `octocat--gh-owner'), so `g' always fetches anew.")
+
 (defvar octocat-sync--offline nil
   "Non-nil when the last request found GitHub out of reach.
 Kept in memory only, and cleared by the next success.")
@@ -573,6 +582,11 @@ raised to a page request.  Return immediately; the store reports the
 result."
   (let ((key (octocat-sync-spec-key spec)))
     (cond
+     ;; Forced while running: take over, see `octocat-sync--fetches'.
+     ((and force (gethash key octocat-sync--fetches))
+      (octocat-sync--drop-fetch key)
+      (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
+      (octocat-sync--pump))
      ((assoc key octocat-sync--prefetches)
       (setq octocat-sync--prefetches (assoc-delete-all key octocat-sync--prefetches))
       (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
@@ -582,6 +596,16 @@ result."
       (octocat-sync--set-loading key t)
       (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
       (octocat-sync--pump)))))
+
+(defun octocat-sync--drop-fetch (key)
+  "Forget the fetch running of resource KEY, freeing its slot.
+Its `gh' calls still running are killed, and their answers dropped."
+  (when-let* ((token (gethash key octocat-sync--fetches)))
+    (remhash key octocat-sync--fetches)
+    (octocat--gh-stop token)
+    (when (cdr token) (cl-decf octocat-sync--running))
+    (when (equal key octocat-sync--prefetching)
+      (setq octocat-sync--prefetching nil))))
 
 (defun octocat-sync--set-loading (key loading)
   "Record whether resource KEY is LOADING, and report it.
@@ -646,17 +670,26 @@ first again."
     (if (or (null cursor) (gethash key octocat-sync--loading))
         (when on-done (funcall on-done '(error . "Nothing more to load yet")))
       (octocat-sync--set-loading key t)
-      (funcall more cursor
-               (lambda (result)
-                 (octocat-sync--set-loading key nil)
-                 (unless (eq (car-safe result) 'error)
-                   ;; The stored nodes are refs already; the new ones
-                   ;; are split out as any fetch's.
-                   (puthash "nodes" (vconcat (gethash "nodes" tree) (gethash "nodes" result)) tree)
-                   (puthash "cursor" (gethash "cursor" result) tree)
-                   (octocat-sync--notify (cl-adjoin key (octocat-sync--write db key tree (float-time))
-                                                    :test #'equal)))
-                 (when on-done (funcall on-done (and (eq (car-safe result) 'error) result))))))))
+      (let ((token (list key)))
+        (puthash key token octocat-sync--fetches)
+        (let ((octocat--gh-owner token))
+          (funcall more cursor
+                   (lambda (result)
+                     (if (not (eq (gethash key octocat-sync--fetches) token))
+                         ;; Taken over by a forced request: a fetch of the
+                         ;; first pages again, which answers instead.
+                         (when on-done (funcall on-done nil))
+                       (remhash key octocat-sync--fetches)
+                       (octocat-sync--set-loading key nil)
+                       (unless (eq (car-safe result) 'error)
+                         ;; The stored nodes are refs already; the new ones
+                         ;; are split out as any fetch's.
+                         (puthash "nodes" (vconcat (gethash "nodes" tree) (gethash "nodes" result)) tree)
+                         (puthash "cursor" (gethash "cursor" result) tree)
+                         (octocat-sync--notify (cl-adjoin key (octocat-sync--write db key tree (float-time))
+                                                          :test #'equal)))
+                       (when on-done
+                         (funcall on-done (and (eq (car-safe result) 'error) result)))))))))))
 
 (defun octocat-sync-prefetch (specs)
   "Fetch SPECS at low priority, in place of the prefetches still queued.
@@ -681,15 +714,19 @@ It only writes the store."
 A fetch that signals as it starts fails like any other, so it can't
 leave KEY loading for good."
   (cl-incf octocat-sync--running)
-  (let ((answered nil))
+  (let ((answered nil)
+        (token (cons key t)))
+    (puthash key token octocat-sync--fetches)
     (condition-case err
-        (funcall (plist-get (octocat-sync--props spec) :fetch)
-                 (lambda (result)
-                   (setq answered t)
-                   (octocat-sync--done key result)))
-      (error (if answered
-                 (signal (car err) (cdr err))
-               (octocat-sync--done key (cons 'error (error-message-string err))))))))
+        (let ((octocat--gh-owner token))
+          (funcall (plist-get (octocat-sync--props spec) :fetch)
+                   (lambda (result)
+                     (setq answered t)
+                     (when (eq (gethash key octocat-sync--fetches) token)
+                       (octocat-sync--done key result)))))
+      (error (cond (answered (signal (car err) (cdr err)))
+                   ((eq (gethash key octocat-sync--fetches) token)
+                    (octocat-sync--done key (cons 'error (error-message-string err)))))))))
 
 (defun octocat-sync--pump ()
   "Start queued fetches while fewer than `octocat-sync-max-requests' run.
@@ -708,9 +745,7 @@ when no other prefetch runs."
 
 (defun octocat-sync--done (key result)
   "Store RESULT, the outcome of fetching resource KEY, and notify."
-  (cl-decf octocat-sync--running)
-  (when (equal key octocat-sync--prefetching)
-    (setq octocat-sync--prefetching nil))
+  (octocat-sync--drop-fetch key)
   (let* ((db      (octocat-sync--db))
          (spec    (car (read-from-string key)))
          (props   (octocat-sync--props spec))

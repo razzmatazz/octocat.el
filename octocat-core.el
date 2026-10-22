@@ -69,6 +69,14 @@
   :type 'boolean
   :group 'octocat)
 
+(defcustom octocat-gh-timeout 60
+  "Seconds a `gh' call may take before it is stopped as failed, or nil.
+A call can hang without failing, say after the network changed under an
+open connection; stopped, it fails as when GitHub cannot be reached, so
+its page says so and `g' retries, instead of loading for good."
+  :type '(choice (const :tag "Never" nil) number)
+  :group 'octocat)
+
 (defcustom octocat-list-page-size 15
   "Number of items the PR and issue list pages show, and load, at a time.
 See `octocat-list-compact-page-size' for their compact view."
@@ -452,6 +460,19 @@ so callers can omit the GitHub line entirely in that case."
       (insert label "\n")
       (insert data "\n\n"))))
 
+(defvar octocat--gh-owner nil
+  "What the `gh' calls started now belong to, so they can be stopped together.
+A sync fetch binds it to its token (see `octocat-sync--fetches'); a call
+started from another's callback belongs to the same owner, so a fetch
+of several calls is stopped whole.")
+
+(defun octocat--gh-stop (owner)
+  "Stop OWNER's `gh' processes, each then answering as failed."
+  (when owner
+    (dolist (proc (process-list))
+      (when (and (eq (process-get proc 'octocat-owner) owner) (process-live-p proc))
+        (kill-process proc)))))
+
 (defun octocat--run-gh (name args parse-fn callback)
   "Run `gh' asynchronously with ARGS and call CALLBACK with the result.
 NAME is a short identifier used for the process and temp-buffer names.
@@ -459,55 +480,85 @@ ARGS is a list of string arguments passed directly to the `gh' executable.
 PARSE-FN is called with the raw output string on success; its return value
 is forwarded to CALLBACK.  On a `gh' non-zero exit or a parse failure,
 CALLBACK receives a cons cell \\=(error . MESSAGE) where MESSAGE is the
-human-readable reason.  Errors raised inside CALLBACK propagate normally
-so they appear in the *Backtrace* buffer."
+human-readable reason.  A call still running after `octocat-gh-timeout'
+is stopped, and so is answered too.  Errors raised inside CALLBACK
+propagate normally so they appear in the *Backtrace* buffer."
   (let* ((gh-executable (executable-find "gh")))
     (if (not gh-executable)
         (funcall callback '(error . "`gh' executable not found"))
-      (let* ((buf     (generate-new-buffer (format " *octocat-gh-%s*" name)))
+      (let* ((owner   octocat--gh-owner)
+             (buf     (generate-new-buffer (format " *octocat-gh-%s*" name)))
              (err-buf (generate-new-buffer (format " *octocat-gh-%s-stderr*" name)))
              (cmd     (cons gh-executable args))
              (process-environment (cons "NO_COLOR=1" process-environment)))
-        (make-process
-         :name (format "octocat-gh-%s" name)
-         :buffer buf
-         :stderr err-buf
-         :command cmd
-         :sentinel
-         (lambda (proc event)
-           (when (string-match-p "\\(finished\\|exited\\)" event)
-             ;; Collect output before buffers are killed.
-             (let* ((exit-code (process-exit-status proc))
-                    (output    (with-current-buffer (process-buffer proc)
-                                 (buffer-string)))
-                    (stderr    (with-current-buffer err-buf
-                                 (buffer-string))))
-               (kill-buffer (process-buffer proc))
-               (when (buffer-live-p err-buf)
-                 ;; The stderr pipe-process attached by `make-process :stderr'
-                 ;; may still be live when the sentinel fires, causing Emacs to
-                 ;; prompt "has running process; kill it?" interactively.
-                 ;; Delete it explicitly first so `kill-buffer' is unconditional.
-                 (let ((pipe (get-buffer-process err-buf)))
-                   (when pipe (delete-process pipe)))
-                 (kill-buffer err-buf))
-               (octocat--debug-log
-                (format "gh %s exit-code: %d" name exit-code) output)
-               (octocat--debug-log
-                (format "gh %s stderr" name) stderr)
-               ;; Resolve to a parsed value or an (error . msg) cell.
-               ;; The condition-case only covers parse-fn; callback runs
-               ;; outside it so renderer errors surface as real Lisp errors.
-               (let ((result
-                      (if (= exit-code 0)
-                          (condition-case err
-                              (funcall parse-fn output)
-                            (error (cons 'error (error-message-string err))))
-                        (cons 'error (string-trim
-                                      (if (string-empty-p stderr)
-                                          (format "gh exited with code %d" exit-code)
-                                        stderr))))))
-                 (funcall callback result))))))))))
+        (octocat--gh-track
+         owner
+         (make-process
+          :name (format "octocat-gh-%s" name)
+          :buffer buf
+          :stderr err-buf
+          :command cmd
+          :sentinel
+          (lambda (proc _event)
+            ;; Every way it can end, a signal included: a call left
+            ;; unanswered would keep its page loading for good.
+            (unless (process-live-p proc)
+              (when-let* ((timer (process-get proc 'octocat-deadline)))
+                (cancel-timer timer))
+              ;; Collect output before buffers are killed.
+              (let* ((exit-code (if (eq (process-status proc) 'exit)
+                                    (process-exit-status proc)
+                                  -1))
+                     (timed-out (process-get proc 'octocat-timed-out))
+                     (output    (with-current-buffer (process-buffer proc)
+                                  (buffer-string)))
+                     (stderr    (with-current-buffer err-buf
+                                  (buffer-string))))
+                (kill-buffer (process-buffer proc))
+                (when (buffer-live-p err-buf)
+                  ;; The stderr pipe-process attached by `make-process :stderr'
+                  ;; may still be live when the sentinel fires, causing Emacs to
+                  ;; prompt "has running process; kill it?" interactively.
+                  ;; Delete it explicitly first so `kill-buffer' is unconditional.
+                  (let ((pipe (get-buffer-process err-buf)))
+                    (when pipe (delete-process pipe)))
+                  (kill-buffer err-buf))
+                (octocat--debug-log
+                 (format "gh %s exit-code: %d" name exit-code) output)
+                (octocat--debug-log
+                 (format "gh %s stderr" name) stderr)
+                ;; Resolve to a parsed value or an (error . msg) cell.
+                ;; The condition-case only covers parse-fn; callback runs
+                ;; outside it so renderer errors surface as real Lisp errors.
+                (let ((result
+                       (if (= exit-code 0)
+                           (condition-case err
+                               (funcall parse-fn output)
+                             (error (cons 'error (error-message-string err))))
+                         (cons 'error
+                               (cond
+                                (timed-out
+                                 (format "GitHub did not answer within %ss (timed out)"
+                                         timed-out))
+                                ((not (string-empty-p (string-trim stderr)))
+                                 (string-trim stderr))
+                                ((< exit-code 0)
+                                 (format "gh was stopped (%s)" (process-status proc)))
+                                (t (format "gh exited with code %d" exit-code)))))))
+                  (let ((octocat--gh-owner owner))
+                    (funcall callback result))))))))))))
+
+(defun octocat--gh-track (owner proc)
+  "Mark PROC, a `gh' call, as OWNER's, and stop it after `octocat-gh-timeout'."
+  (process-put proc 'octocat-owner owner)
+  (when octocat-gh-timeout
+    (process-put proc 'octocat-deadline
+                 (run-at-time octocat-gh-timeout nil
+                              (lambda ()
+                                (when (process-live-p proc)
+                                  (process-put proc 'octocat-timed-out octocat-gh-timeout)
+                                  (kill-process proc))))))
+  proc)
 
 (defun octocat--parse-json-list (json-string)
   "Parse JSON-STRING from gh into a list of hash-tables.
@@ -743,11 +794,11 @@ An `eldoc-documentation-functions' member."
   (get-text-property (point) 'octocat-ts))
 
 (defun octocat--key-help (command action)
-  "Return the `help-echo' of a button that runs COMMAND to do ACTION.
-It names COMMAND's key in the current buffer, as in \"RET, C-c C-v:
-hide the comments\", and ElDoc shows it when point rests on the
-button, so the key is learnt from the button (see
-`octocat--ts-eldoc-setup').  Without a key it is just \"RET: ACTION\"."
+  "Return the `help-echo' of a button running COMMAND to do ACTION.
+It names COMMAND's key in the current buffer, as in \"RET, KEY: hide
+the comments\", and ElDoc shows it when point rests on the button, so
+the key is learnt from the button (see `octocat--ts-eldoc-setup').
+Without a key it is just \"RET: ACTION\"."
   (if-let* ((key (where-is-internal command nil t)))
       ;; C-m and C-i are the RET and TAB characters, which `key-description'
       ;; names so; after a prefix they are typed, and documented, as C-m.
