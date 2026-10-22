@@ -234,6 +234,7 @@ shown up until the fresh data replaces it."
       (octocat-vui-window-width))
      (if (eq tab 'runs)
          (vui-vstack
+          (vui-newline)
           (octocat-vui-list-filter-bar query)
           (vui-component 'octocat-actions--runs-section
                          :key query
