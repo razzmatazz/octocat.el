@@ -590,15 +590,15 @@ That is STATE text, NUMBER (\"#N\"), the title and its label chips, then
 the author; CELLS are as made by `octocat-repo-vui--cells'.  A nil STATE
 leaves it out.  The repo is
 the page's and the age is left out, to make room for the title.
-WIDTH, when non-nil, cuts the line to fit, shortening the title first."
+WIDTH, when non-nil, cuts the line to fit, shortening the title first,
+and puts the author at its right edge, so the authors line up."
   (let* ((cap   (and width (max 10 (1- width))))
          (chips (let ((c (or (plist-get cells :chips) "")))
                   (if (string-empty-p c) "" (concat "  " c))))
-         (tail  (concat (propertize " · " 'face 'octocat-dimmed)
-                        (plist-get cells :author)))
+         (tail  (concat "  " (plist-get cells :author)))
          (head  (concat (and state (concat state "  ")) number "  "))
          (title (plist-get cells :title))
-         (line  (concat head
+         (body  (concat head
                         (if cap
                             (truncate-string-to-width
                              title
@@ -606,8 +606,14 @@ WIDTH, when non-nil, cuts the line to fit, shortening the title first."
                                         (string-width tail)))
                              nil nil "…")
                           title)
-                        chips tail)))
-    (if cap (truncate-string-to-width line cap nil nil "…") line)))
+                        chips)))
+    (if cap
+        (truncate-string-to-width
+         (concat body
+                 (make-string (max 0 (- cap (string-width body) (string-width tail))) ?\s)
+                 tail)
+         cap nil nil "…")
+      (concat body tail))))
 
 (defun octocat-repo-vui--item-row (state cells width on-visit help
                                          &optional compact number prefetch)

@@ -154,12 +154,17 @@
                       :chips "bug" :number "o/r#1"))
          (line  (octocat-repo-vui--compact-line "open" "#1" cells)))
     (should (string-prefix-p "open  #1  t" line))
-    (should (string-suffix-p "  bug · @a" line))
+    (should (string-suffix-p "  bug  @a" line))
     (should-not (string-search "o/r" line))
     (should-not (string-search "1d" line))
     (let ((cut (octocat-repo-vui--compact-line "open" "#1" cells 40)))
       (should (<= (string-width cut) 39))
-      (should (string-suffix-p "  bug · @a" cut)))
+      (should (string-suffix-p "  bug  @a" cut)))
+    ;; A short title leaves the author at the right edge all the same.
+    (let ((short (octocat-repo-vui--compact-line
+                  "open" "#1" (plist-put (copy-sequence cells) :title "t") 40)))
+      (should (= (string-width short) 39))
+      (should (string-suffix-p " @a" short)))
     (should (string-prefix-p "#1  t" (octocat-repo-vui--compact-line nil "#1" cells)))))
 
 (ert-deftest octocat-repo-test-unpushed ()
