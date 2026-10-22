@@ -830,22 +830,9 @@ That is what `octocat-repo-vui--commit-row' reads."
              rest)
     rest))
 
-(defun octocat-pr--commit-days (pr)
-  "Return the commits of PR grouped by local day, oldest first, as GitHub.
-Each group is (HEADING . COMMITS), COMMITS shaped by
-`octocat-pr--rest-commit'."
-  (let (groups)
-    (mapc (lambda (commit)
-            (let* ((ts  (octocat--get commit "committedDate"))
-                   (day (condition-case nil
-                            (format-time-string "Commits on %b %-d, %Y" (date-to-time ts))
-                          (error "Commits")))
-                   (rest (octocat-pr--rest-commit commit)))
-              (if (equal day (caar groups))
-                  (push rest (cdar groups))
-                (push (list day rest) groups))))
-          (or (octocat--get pr "commits") []))
-    (nreverse (mapcar (lambda (g) (cons (car g) (nreverse (cdr g)))) groups))))
+(defun octocat-pr--commits (pr)
+  "Return the commits of PR, oldest first, shaped by `octocat-pr--rest-commit'."
+  (mapcar #'octocat-pr--rest-commit (or (octocat--get pr "commits") [])))
 
 (defconst octocat-pr--tab-labels '("Conversation" "Commits" "Files changed")
   "The labels of a PR page's tabs (see `octocat-pr--tabs'), for its skeleton.")
@@ -1033,7 +1020,7 @@ A new TICK fetches them again."
   (let* ((width (octocat--markdown-width))
          (snap  (octocat-pr--use-data repo number tick))
          (pr    (plist-get snap :data))
-         (days  (vui-use-memo (pr) (and pr (octocat-pr--commit-days pr)))))
+         (commits (vui-use-memo (pr) (and pr (octocat-pr--commits pr)))))
     (octocat-vui-resource-view
      snap
      :skeleton (lambda (_)
@@ -1041,21 +1028,14 @@ A new TICK fetches them again."
                                                         octocat-pr--tab-labels)))
      :render
      (lambda (_)
-       (let* ((commits   (apply #'append (mapcar #'cdr days)))
-              (author-w  (octocat-repo-vui--author-width commits))
+       (let* ((author-w  (octocat-repo-vui--author-width commits))
               (subject-w (octocat-repo-vui--subject-width commits width author-w)))
          (apply #'vui-vstack
                 (append
                  (delq nil (octocat-pr--header repo pr (octocat--label-background) width 'commits))
-                 (mapcan (lambda (day)
-                           (cons (vui-text (car day) :face 'octocat-section-heading)
-                                 (append
-                                  (mapcar (lambda (c)
-                                            (octocat-repo-vui--commit-row
-                                             repo c nil author-w subject-w))
-                                          (cdr day))
-                                  (list (vui-newline)))))
-                         days))))))))
+                 (mapcar (lambda (c)
+                           (octocat-repo-vui--commit-row repo c nil author-w subject-w))
+                         commits))))))))
 
 
 ;;;; Major mode

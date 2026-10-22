@@ -209,9 +209,9 @@ following collapsible sections (toggle with `TAB`):
 Under the header, as on GitHub, a tab row switches between the PR's
 pages: **Conversation** (this timeline), **Commits (N)** and **Files
 changed (N)**.  `RET` on a tab opens that page in its own buffer.  The
-Commits page lists the PR's commits oldest first, grouped under a
-"Commits on <day>" heading per day; `RET` on one opens the commit and
-`C-c C-o` opens the PR's commits on GitHub.  It reuses the PR page's
+Commits page lists all of the PR's commits oldest first, one per line;
+`RET` on one opens the commit and `C-c C-o` opens the PR's commits on
+GitHub.  It reuses the PR page's
 data, so it fetches nothing more.
 
 #### Inline editing
@@ -273,15 +273,13 @@ check opens the commit's checks.
 
 Following a github.com compare link, such as
 `https://github.com/owner/repo/compare/v1.0...main`, opens what GitHub's
-compare page shows: the commits HEAD has that BASE lacks, grouped by day
-as on a PR's Commits tab, then the changed files, folded as on the
-commit and PR diff pages.
+compare page shows: the commits HEAD has that BASE lacks, oldest first,
+then the changed files, folded as on the commit and PR diff pages.
 
 ```
 owner/repo  v1.0...main
 3 commits · 5 files changed
 
-Commits on Oct 17, 2026
 a1b2c3d  Fix the parser          Jane Doe  2 days ago
 …
 

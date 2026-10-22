@@ -21,9 +21,9 @@
 ;;; Commentary:
 
 ;; The `octocat-compare-mode' page: what github.com/OWNER/REPO/compare/
-;; BASE...HEAD shows, the commits between two refs grouped by day as on
-;; a PR's Commits tab, then the changed files as on the commit and PR
-;; diff pages (octocat-diff.el).  One `gh api' call fetches it all.
+;; BASE...HEAD shows, the commits between two refs, oldest first, then
+;; the changed files as on the commit and PR diff pages
+;; (octocat-diff.el).  One `gh api' call fetches it all.
 ;;
 ;; GitHub's API compares from the merge base only (BASE...HEAD); it has
 ;; no two-dot BASE..HEAD.  The two agree whenever BASE is an ancestor of
@@ -83,22 +83,6 @@ Unlike a branch or tag, it names the same commit for good."
 
 ;;;; Sections
 
-(defun octocat-compare--commit-days (commits)
-  "Return COMMITS, a REST commits vector, grouped by local committer day.
-Each group is (HEADING . COMMITS), in the order given: oldest first."
-  (let (groups)
-    (seq-doseq (commit commits)
-      (let* ((c   (gethash "commit" commit))
-             (ts  (let ((who (and c (gethash "committer" c))))
-                    (and (hash-table-p who) (gethash "date" who))))
-             (day (condition-case nil
-                      (format-time-string "Commits on %b %-d, %Y" (date-to-time ts))
-                    (error "Commits"))))
-        (if (equal day (caar groups))
-            (push commit (cdar groups))
-          (push (list day commit) groups))))
-    (nreverse (mapcar (lambda (g) (cons (car g) (nreverse (cdr g)))) groups))))
-
 (defun octocat-compare--summary (data dots)
   "Return the dimmed summary lines of the comparison DATA.
 DOTS is as in `octocat--compare-refs': a two-dot comparison of refs that
@@ -125,20 +109,16 @@ have diverged gets a note that the three-dot one is shown."
            ;; GitHub returns at most 300 files and doesn't say how many more.
            (and (>= files 300) "GitHub's API lists at most 300 changed files")))))
 
-(defun octocat-compare--commits (repo days width)
-  "Return the vnodes of the commits of REPO in DAYS, fitted to WIDTH.
-DAYS is as `octocat-compare--commit-days' returns."
-  (let* ((commits   (apply #'append (mapcar #'cdr days)))
+(defun octocat-compare--commits (repo commits width)
+  "Return the vnodes of COMMITS of REPO, a REST commits vector, fitted to WIDTH."
+  (let* ((commits   (append commits nil))
          (author-w  (octocat-repo-vui--author-width commits))
          (subject-w (octocat-repo-vui--subject-width commits width author-w)))
-    (mapcan (lambda (day)
-              (cons (vui-text (car day) :face 'octocat-section-heading)
-                    (append (mapcar (lambda (c)
-                                      (octocat-repo-vui--commit-row
-                                       repo c nil author-w subject-w))
-                                    (cdr day))
-                            (list (vui-newline)))))
-            days)))
+    (and commits
+         (append (mapcar (lambda (c)
+                           (octocat-repo-vui--commit-row repo c nil author-w subject-w))
+                         commits)
+                 (list (vui-newline))))))
 
 (defun octocat-compare--top-row (repo base dots head)
   "Return the top row of the comparison of BASE and HEAD of REPO.
@@ -159,10 +139,7 @@ DOTS is as in `octocat--compare-refs'.  RAW shows markdown verbatim.  A
 new TICK fetches it again."
   :render
   (let* ((width    (octocat--markdown-width))
-         (snap     (octocat-vui-use-resource (list 'compare repo base head) tick))
-         (data     (plist-get snap :data))
-         (days     (vui-use-memo (data)
-                     (and data (octocat-compare--commit-days (gethash "commits" data))))))
+         (snap     (octocat-vui-use-resource (list 'compare repo base head) tick)))
     (vui-vstack
      (octocat-compare--top-row repo base dots head)
      (octocat-vui-resource-view
@@ -179,7 +156,7 @@ new TICK fetches it again."
                 (mapcar (lambda (line) (vui-text line :face 'octocat-dimmed))
                         (octocat-compare--summary data dots))
                 (list (vui-newline))
-                (octocat-compare--commits repo days width)
+                (octocat-compare--commits repo (or (gethash "commits" data) []) width)
                 (list (octocat-diff-files-section
                        (or (gethash "files" data) []) nil raw width)))))))))
 

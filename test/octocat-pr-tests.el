@@ -36,8 +36,8 @@
     (should (equal (octocat-pr--merge-message "Squash" pr) "Fix (#7)\n\n* a\n* b"))
     (should (equal (octocat-pr--merge-message "Rebase" pr) ""))))
 
-(ert-deftest octocat-pr-test-commit-days ()
-  "Commits are grouped by day, oldest first, and read as REST commits."
+(ert-deftest octocat-pr-test-commits ()
+  "Commits are listed oldest first and read as REST commits."
   (let* ((pr (octocat-pr-test--pr
               "{\"commits\":[
                  {\"oid\":\"aaa\",\"messageHeadline\":\"a\",
@@ -48,22 +48,17 @@
                   \"authors\":[{\"login\":\"\",\"name\":\"Anon\"}]},
                  {\"oid\":\"ccc\",\"messageHeadline\":\"c\",
                   \"committedDate\":\"2026-10-05T12:00:00Z\"}]}"))
-         (days (octocat-pr--commit-days pr)))
-    (should (equal (mapcar (lambda (d) (cons (car d) (mapcar (lambda (c) (gethash "sha" c))
-                                                         (cdr d))))
-                           days)
-                   '(("Commits on Oct 3, 2026" "aaa" "bbb")
-                     ("Commits on Oct 5, 2026" "ccc"))))
-    (should (equal (mapcar #'octocat--commit-author (cdar days)) '("@me" "Anon")))
+         (commits (octocat-pr--commits pr)))
+    (should (equal (mapcar (lambda (c) (gethash "sha" c)) commits) '("aaa" "bbb" "ccc")))
+    (should (equal (mapcar #'octocat--commit-author (butlast commits)) '("@me" "Anon")))
     ;; Short subjects get the minimum column; long ones what the page leaves.
-    (let ((commits (apply #'append (mapcar #'cdr days))))
-      (should (= (octocat-repo-vui--subject-width commits 112 3)
-                 octocat-repo-vui--subject-min-width))
-      (puthash "message" (make-string 200 ?x) (gethash "commit" (car commits)))
-      (should (= (+ (octocat-repo-vui--subject-width commits 112 3) 7 2 2 3 2
-                    (apply #'max (mapcar (lambda (c) (string-width (octocat-repo-vui--date c)))
-                                         commits)))
-                 112)))))
+    (should (= (octocat-repo-vui--subject-width commits 112 3)
+               octocat-repo-vui--subject-min-width))
+    (puthash "message" (make-string 200 ?x) (gethash "commit" (car commits)))
+    (should (= (+ (octocat-repo-vui--subject-width commits 112 3) 7 2 2 3 2
+                  (apply #'max (mapcar (lambda (c) (string-width (octocat-repo-vui--date c)))
+                                       commits)))
+               112))))
 
 (ert-deftest octocat-pr-test-merge-allowed ()
   "Only the methods the repo allows are offered, in GitHub's order."

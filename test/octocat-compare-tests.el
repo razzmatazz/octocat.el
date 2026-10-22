@@ -34,19 +34,6 @@
                     "...")
                    '("These refs are identical")))))
 
-(ert-deftest octocat-compare-test-commit-days ()
-  "Commits are grouped by committer day, in the order given."
-  (let* ((commit (lambda (sha date)
-                   (octocat-compare-tests--json
-                    (format "{\"sha\":%S,\"commit\":{\"committer\":{\"date\":%S}}}" sha date))))
-         (days (octocat-compare--commit-days
-                (vector (funcall commit "a" "2026-10-01T10:00:00Z")
-                        (funcall commit "b" "2026-10-01T10:30:00Z")
-                        (funcall commit "c" "2026-10-03T12:00:00Z")))))
-    (should (equal (mapcar (lambda (d) (mapcar (lambda (c) (gethash "sha" c)) (cdr d))) days)
-                   '(("a" "b") ("c"))))
-    (should (string-prefix-p "Commits on Oct" (caar days)))))
-
 (ert-deftest octocat-compare-test-max-age ()
   "Only a comparison of two commits is kept, as a commit is; refs move."
   (let ((max-age (lambda (base head)
