@@ -371,13 +371,27 @@ like \"defaced\" and numbers like 1234567 are not taken for hashes."
        (string-match-p "[0-9]" sha)
        (string-match-p "[a-f]" sha)))
 
+(defun octocat-markdown--image (alt src &optional width)
+  "Return the image of SRC as a link labelled by ALT.
+It carries its SRC and WIDTH, in pixels, as `octocat-markdown-img', for
+`octocat-markdown--image-row' to tell an image alone on its line."
+  (let ((s (octocat-markdown--link
+            (format "[image%s]" (if (string-empty-p (or alt "")) "" (concat ": " alt)))
+            src)))
+    (put-text-property 0 (length s) 'octocat-markdown-img
+                       (list :url src :width width) s)
+    s))
+
 (defun octocat-markdown--img (tag)
   "Return the HTML <img> TAG as an image link."
-  (let ((src (and (string-match "src=\"\\([^\"]*\\)\"" tag) (match-string 1 tag)))
-        (alt (and (string-match "alt=\"\\([^\"]*\\)\"" tag) (match-string 1 tag))))
-    (octocat-markdown--link
-     (format "[image%s]" (if (string-empty-p (or alt "")) "" (concat ": " alt)))
-     (or src ""))))
+  (let ((attr (lambda (name)
+                (and (string-match (concat "\\b" name "=\"\\([^\"]*\\)\"") tag)
+                     (match-string 1 tag)))))
+    (octocat-markdown--image
+     (funcall attr "alt") (or (funcall attr "src") "")
+     ;; A percentage is of a width GitHub's page has and this one lacks.
+     (let ((w (funcall attr "width")))
+       (and w (string-match-p "\\`[0-9]+\\'" w) (string-to-number w))))))
 
 (defun octocat-markdown--tag-re (names)
   "Return a regexp matching an HTML element NAMES (an alternation) on one line.
@@ -443,11 +457,7 @@ They alone apply inside <pre>, where markdown is not rendered.")
     ,@octocat-markdown--html-rules
     ;; Images show their alt text; links their label.
     (,"!\\[\\([^]\n]*\\)\\](\\([^)[:space:]]+\\)\\(?: +\"[^\"]*\"\\)?)"
-     ,(lambda (m)
-          (octocat-markdown--link
-           (format "[image%s]" (if (string-empty-p (nth 1 m)) ""
-                                 (concat ": " (nth 1 m))))
-           (nth 2 m))))
+     ,(lambda (m) (octocat-markdown--image (nth 1 m) (nth 2 m))))
     (,"\\[\\([^]\n]+\\)\\](\\([^)[:space:]]+\\)\\(?: +\"[^\"]*\"\\)?)"
      ,(lambda (m)
           (octocat-markdown--link (octocat-markdown--inline (nth 1 m))
@@ -637,6 +647,21 @@ lines.  Tags in code spans are skipped unless HTML (inside <pre>)."
 (defvar octocat-markdown--avail nil
   "Columns available to the block being rendered, or nil for no limit.
 Bound by `octocat-markdown-render' and narrowed inside quotes and lists.")
+
+(defun octocat-markdown--image-row (s)
+  "Return paragraph line S, marked if it is an image alone.
+The mark is `octocat-markdown-image': the image's plist, as
+`octocat-markdown--image' made it, plus :cols, the columns it may take,
+or nil for no limit.  Only such an image can be shown in its link's
+place, as one tall line, without breaking the layout of the text."
+  (let ((img (and (> (length s) 0) (get-text-property 0 'octocat-markdown-img s))))
+    (if (or (null img) (next-single-property-change 0 'octocat-markdown-img s))
+        s
+      (let ((s (copy-sequence s)))
+        (put-text-property 0 (length s) 'octocat-markdown-image
+                           (append img (list :cols octocat-markdown--avail))
+                           s)
+        s))))
 
 (defconst octocat-markdown--min-column 6
   "Narrowest a table column is squeezed to before the table overflows instead.")
@@ -1125,7 +1150,8 @@ DEPTH is the list nesting depth, which picks the bullet."
          (t
           (pcase-let ((`(,l . ,o) (octocat-markdown--balance (string-trim line) carry)))
             (setq open o)
-            (push (cons (octocat-markdown--inline l) 0) out))))))
+            (push (cons (octocat-markdown--image-row (octocat-markdown--inline l)) 0)
+                  out))))))
     (nreverse out)))
 
 (defun octocat-markdown--standout (row)
@@ -1219,7 +1245,9 @@ they can be.  A nil WIDTH leaves ROWS as they are."
               (hang (cdr row))
               (has  (lambda (prop) (text-property-not-all 0 (length s) prop nil s))))
          (cond
-          ((or (<= (string-width s) width) (funcall has 'octocat-markdown-table))
+          ;; An image's link is replaced whole by the image.
+          ((or (<= (string-width s) width) (funcall has 'octocat-markdown-table)
+               (funcall has 'octocat-markdown-image))
            (list row))
           ((funcall has 'octocat-markdown-code)
            (let* ((head  (car (octocat-markdown--cut s width)))

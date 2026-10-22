@@ -37,6 +37,7 @@
 ;;; Code:
 
 (require 'octocat-core)
+(require 'octocat-image)
 (require 'octocat-sync)
 (require 'octocat-pr)
 (require 'octocat-commit)

@@ -33,6 +33,7 @@
 (require 'eldoc)
 (require 'browse-url)
 (require 'octocat-markdown)
+(require 'octocat-image)
 (require 'consult)
 
 ;; Forward declarations for octocat-repo.el functions called from this file.
@@ -863,13 +864,14 @@ newline; INDENT is also repeated on the wrapped continuation lines of
 long lines.
 
 When RAW is non-nil the text is returned verbatim, without any
-rendering.
+rendering.  Otherwise images uploaded to GitHub are shown, see
+`octocat-image-display'.
 
 WIDTH is the columns to fit, as for `octocat-markdown-render'; callers
 read it from the window once, with `octocat--markdown-width'."
   (if raw
       (octocat-markdown-render-verbatim text indent)
-    (octocat-markdown-render text indent width)))
+    (octocat-image-display (octocat-markdown-render text indent width))))
 
 (defun octocat--markdown-width ()
   "Return the columns rendered markdown should fit in the current buffer.

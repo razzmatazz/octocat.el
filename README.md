@@ -334,6 +334,24 @@ owner/repo  src/foo.el  (7 commits)
 
 ---
 
+### Images in markdown
+
+In a graphical frame, an image that has a line of a PR, issue, comment
+or README to itself is shown there, scaled down to fit the window and
+at most `octocat-image-max-lines` lines tall; `RET` on it opens it in
+the browser.  Images within text or tables, and every image in a
+terminal, are shown as `[image: alt]` links instead.
+
+Only images uploaded to GitHub are fetched: those on
+`user-images.githubusercontent.com` (uploads before 2023),
+`private-user-images.githubusercontent.com` and
+`github.com/user-attachments/assets/` (uploads since).  Any other URL
+would tell whoever wrote it who reads the page, and when.  Each
+redirect is checked too, so a fetch cannot be bounced elsewhere.
+Uploads to private repositories need a GitHub web session, which
+octocat does not have, so they stay links.  Set `octocat-image-show`
+to nil to never fetch images.
+
 ### Keybindings
 
 | Key | Action |

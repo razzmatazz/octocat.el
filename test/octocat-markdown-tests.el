@@ -77,6 +77,25 @@ the window's point; mid-render that scrambled the page."
     (should (equal (get-text-property 0 'octocat-markdown-url out) "http://x/y.png")))
   (should (equal (octocat-markdown-tests--md "press <kbd>Ctrl</kbd>") "press [Ctrl]\n")))
 
+(ert-deftest octocat-markdown-test-image-alone ()
+  "An image alone on its line is marked, with its columns, and not wrapped."
+  (let* ((out  (octocat-markdown-render
+                "- <img width=\"300\" alt=\"a long description\" src=\"https://x/y.png\">"
+                "" 12))
+         (mark (octocat-markdown-tests--prop out "[image" 'octocat-markdown-image)))
+    (should (equal (substring-no-properties out) "• [image: a long description]\n"))
+    (should (equal mark '(:url "https://x/y.png" :width 300 :cols 10))))
+  (let ((out (octocat-markdown-render "![shot](https://x/y.png)" "" nil)))
+    (should (equal (get-text-property 0 'octocat-markdown-image out)
+                   '(:url "https://x/y.png" :width nil :cols nil))))
+  (dolist (md '("see ![shot](https://x/y.png)" "![a](https://x/a.png) ![b](https://x/b.png)"
+                "| ![shot](https://x/y.png) |\n|-|"))
+    (let ((out (octocat-markdown-render md "" nil)))
+      (should-not (text-property-not-all 0 (length out) 'octocat-markdown-image nil out))))
+  (let ((out (octocat-markdown-render "<img width=\"80%\" src=\"https://x/y.png\">" "" nil)))
+    (should (equal (get-text-property 0 'octocat-markdown-image out)
+                   '(:url "https://x/y.png" :width nil :cols nil)))))
+
 (ert-deftest octocat-markdown-test-inline-html ()
   "Inline HTML formatting tags become faces and <a href> a link."
   (let ((out (octocat-markdown-render

@@ -101,7 +101,8 @@ edit.  **Issue one `emacs__eval-elisp` call per phase** — `dolist` returns
 succeeded or crashed; splitting makes failures attributable.
 
 Load order: `octocat-mermaid.el` first (standalone), then
-`octocat-markdown.el` (requires it; `octocat-core.el` requires that), then
+`octocat-markdown.el` (requires it), then `octocat-image.el` (requires
+that; `octocat-core.el` requires both), then
 `octocat-core.el` (everything else depends on it), then `octocat-sync.el`
 (`octocat-vui.el` requires it), then `octocat-vui.el`
 and `octocat-diff.el` (which the commit and PR diff pages require);
@@ -150,7 +151,7 @@ string rather than `ok` is an error — fix it before proceeding):
 ```elisp
 (let (results)
   (dolist (f (list "octocat-mermaid.el" "octocat-markdown.el"
-                   "octocat-core.el" "octocat-sync.el" "octocat-vui.el"
+                   "octocat-image.el" "octocat-core.el" "octocat-sync.el" "octocat-vui.el"
                    "octocat-diff.el"
                    "octocat-edit.el"
                    "octocat-commit.el" "octocat-compare.el" "octocat-job.el" "octocat-run.el"
