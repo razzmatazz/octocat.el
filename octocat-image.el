@@ -20,36 +20,33 @@
 
 ;;; Commentary:
 
-;; In a graphical frame, shows the images that `octocat-markdown-render'
-;; marks as alone on their line (`octocat-markdown-image') in place of
-;; their "[image: ...]" link.
+;; In a graphical frame, `RET' on an image that `octocat-markdown-render'
+;; marks as alone on its line (`octocat-markdown-image') fetches it and
+;; shows it in place of its "[image: ...]" link; `RET' on the image then
+;; opens it in the browser.  Nothing is fetched until asked for.
 ;;
-;; Only images uploaded to GitHub are fetched, see
+;; Only images uploaded to GitHub can be fetched, see
 ;; `octocat-image-allowed-p': any other URL in a comment would let its
 ;; author learn who reads the page, and when, and feed Emacs's image
 ;; decoders whatever they like.  `url-retrieve' would follow a redirect
 ;; anywhere, so redirects are followed here instead, one hop at a time,
-;; each checked against `octocat-image--redirect-hosts'.
+;; each checked against `octocat-image--redirect-hosts'.  An image that
+;; cannot be fetched, as one in a private repository, stays a link.
 ;;
-;; An image is fetched once a session and kept in memory.  A rendered
-;; string shows the images already fetched at once; one that arrives
-;; later is put in place in the buffers that asked for it, without
-;; re-rendering them.  An image that cannot be fetched, as one in a
-;; private repository, stays a link.
+;; A fetched image is kept in memory for the session.  It is put on the
+;; buffer's text, not on the rendered string, by a `jit-lock' function,
+;; as fontification would be: pages re-render often, from strings cached
+;; by `vui-use-memo' before the image was fetched, and the function
+;; shows it again on whatever text comes to be displayed.
 
 ;;; Code:
 
 (require 'cl-lib)
 (require 'subr-x)
+(require 'jit-lock)
 (require 'url)
 (require 'url-http)
 (require 'octocat-markdown)
-
-(defcustom octocat-image-show t
-  "Non-nil to show images uploaded to GitHub in markdown.
-Only in a graphical frame; elsewhere, and when nil, they are links."
-  :type 'boolean
-  :group 'octocat-markdown)
 
 (defcustom octocat-image-max-lines 20
   "The most lines of text an image may be as tall as."
@@ -133,17 +130,19 @@ response, and is killed here.  HOPS is as for `octocat-image--fetch'."
         (octocat-image--fetch next (1- hops) callback)
       (funcall callback body))))
 
-(defun octocat-image--spans (&optional string)
-  "Return the (BEG END PLIST) of each image marked in STRING.
-PLIST is its `octocat-markdown-image'.  STRING nil means the current
-buffer."
-  (let ((pos (if string 0 (point-min)))
-        (end (if string (length string) (point-max)))
+(defun octocat-image--spans (beg end)
+  "Return the (BEG END PLIST) of each image marked from BEG to END.
+PLIST is its `octocat-markdown-image'.  A span is returned whole, even
+where it reaches past BEG or END."
+  (let ((pos (if (and (> beg (point-min)) (get-text-property beg 'octocat-markdown-image))
+                 (or (previous-single-property-change beg 'octocat-markdown-image)
+                     (point-min))
+               beg))
         spans)
-    (while (setq pos (text-property-not-all pos end 'octocat-markdown-image nil string))
-      (let ((next (next-single-property-change pos 'octocat-markdown-image string end)))
-        (push (list pos next (get-text-property pos 'octocat-markdown-image string))
-              spans)
+    (while (and (< pos end)
+                (setq pos (text-property-not-all pos end 'octocat-markdown-image nil)))
+      (let ((next (next-single-property-change pos 'octocat-markdown-image nil (point-max))))
+        (push (list pos next (get-text-property pos 'octocat-markdown-image)) spans)
         (setq pos next)))
     (nreverse spans)))
 
@@ -156,48 +155,77 @@ buffer."
            (when-let* ((max (delq nil (list width (and cols (* cols (frame-char-width)))))))
              (list :max-width (apply #'min max))))))
 
-(defun octocat-image--arrived (url data)
-  "Record DATA, the bytes of URL or nil, and show it where it is waited for."
-  (let ((ok (and data
-                 (let ((type (image-type-from-data data)))
-                   (and type (image-type-available-p type))))))
-    (puthash url (if ok data 'failed) octocat-image--cache)
-    (when ok
-      (dolist (buf (gethash url octocat-image--waiting))
-        (when (buffer-live-p buf)
-          (with-current-buffer buf
-            (let ((inhibit-read-only t))
-              (with-silent-modifications
-                (pcase-dolist (`(,beg ,end ,plist) (octocat-image--spans))
-                  (when (equal (plist-get plist :url) url)
-                    (put-text-property beg end 'display
-                                       (octocat-image--image data plist))))))))))
-    (remhash url octocat-image--waiting)))
+(defvar octocat-image-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "RET") #'octocat-image-show)
+    (define-key map [mouse-1] #'octocat-image-show)
+    map)
+  "Keymap put on an image's link until the image is shown.")
 
-(defun octocat-image--request (url buffer)
-  "Fetch URL unless it was, to show it in BUFFER once it arrives."
-  (cl-pushnew buffer (gethash url octocat-image--waiting))
-  (unless (gethash url octocat-image--cache)
-    (puthash url 'pending octocat-image--cache)
-    ;; Called while rendering: start the request after it.
-    (run-at-time 0 nil #'octocat-image--fetch url octocat-image--max-hops
-                 (lambda (data) (octocat-image--arrived url data)))))
-
-(defun octocat-image-display (string)
-  "Return STRING, rendered markdown, showing its images already fetched.
-Those of its images not fetched yet are fetched, and shown in the
-current buffer once they arrive.  STRING is changed."
-  (when (and octocat-image-show (display-images-p))
-    (pcase-dolist (`(,beg ,end ,plist) (octocat-image--spans string))
+(defun octocat-image--fontify (beg end)
+  "Show the fetched images marked from BEG to END; offer to fetch the others.
+For `jit-lock-functions'."
+  (when (display-images-p)
+    (pcase-dolist (`(,b ,e ,plist) (octocat-image--spans beg end))
       (let* ((url  (plist-get plist :url))
              (data (and (octocat-image-allowed-p url)
                         (gethash url octocat-image--cache 'absent))))
         (cond ((stringp data)
-               (put-text-property beg end 'display (octocat-image--image data plist)
-                                  string))
-              ((memq data '(absent pending))
-               (octocat-image--request url (current-buffer)))))))
-  string)
+               (add-text-properties
+                b e (list 'display (octocat-image--image data plist)
+                          'keymap octocat-markdown-link-map
+                          'help-echo (format "RET: open %s" url))))
+              (data
+               (add-text-properties
+                b e (list 'keymap octocat-image-map
+                          'help-echo (if (eq data 'pending) "Loading image…"
+                                       "RET: show image"))))))))
+  nil)
+
+(defun octocat-image--refontify (url)
+  "Have the current buffer's images of URL shown afresh."
+  (pcase-dolist (`(,b ,e ,plist) (octocat-image--spans (point-min) (point-max)))
+    (when (equal (plist-get plist :url) url)
+      (jit-lock-refontify b e))))
+
+(defun octocat-image--arrived (url data)
+  "Record DATA, the bytes of URL or nil, and show it where it was asked for."
+  (let ((ok (and data
+                 (let ((type (image-type-from-data data)))
+                   (and type (image-type-available-p type))))))
+    (puthash url (if ok data 'failed) octocat-image--cache)
+    (unless ok (message "Octocat: could not load %s" url))
+    (dolist (buf (gethash url octocat-image--waiting))
+      (when (buffer-live-p buf)
+        (with-current-buffer buf (octocat-image--refontify url))))
+    (remhash url octocat-image--waiting)))
+
+(defun octocat-image--request (url buffer)
+  "Fetch URL, to show it in BUFFER once it arrives.  A failed fetch is retried."
+  (cl-pushnew buffer (gethash url octocat-image--waiting))
+  (unless (memq (gethash url octocat-image--cache) '(pending))
+    (puthash url 'pending octocat-image--cache)
+    (octocat-image--fetch url octocat-image--max-hops
+                          (lambda (data) (octocat-image--arrived url data)))))
+
+(defun octocat-image-show (&optional event)
+  "Fetch and show the image whose link is at point (or at EVENT)."
+  (interactive (list last-nonmenu-event))
+  (let* ((pos   (if (mouse-event-p event) (posn-point (event-start event)) (point)))
+         (buf   (if (mouse-event-p event) (window-buffer (posn-window (event-start event)))
+                  (current-buffer)))
+         (plist (with-current-buffer buf (get-text-property pos 'octocat-markdown-image)))
+         (url   (plist-get plist :url)))
+    (unless (and url (octocat-image-allowed-p url))
+      (user-error "Octocat: no image to show here"))
+    (with-current-buffer buf
+      (octocat-image--request url buf)
+      (octocat-image--refontify url))))
+
+(defun octocat-image-enable ()
+  "Show fetched images, and offer the others, in the current buffer's markdown."
+  (unless (memq #'octocat-image--fontify jit-lock-functions)
+    (jit-lock-register #'octocat-image--fontify)))
 
 (provide 'octocat-image)
 ;;; octocat-image.el ends here

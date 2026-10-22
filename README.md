@@ -337,20 +337,23 @@ owner/repo  src/foo.el  (7 commits)
 ### Images in markdown
 
 In a graphical frame, an image that has a line of a PR, issue, comment
-or README to itself is shown there, scaled down to fit the window and
-at most `octocat-image-max-lines` lines tall; `RET` on it opens it in
-the browser.  Images within text or tables, and every image in a
-terminal, are shown as `[image: alt]` links instead.
+or README to itself can be shown there: `RET` (or a click) on its
+`[image: alt]` link fetches it and shows it in place of the link,
+scaled down to fit the window and at most `octocat-image-max-lines`
+lines tall.  `RET` on the image then opens it in the browser.  Nothing
+is downloaded until asked for, and a fetched image stays shown, across
+refreshes, for the rest of the session.  Images within text or tables,
+and every image in a terminal, are plain links to the browser.
 
-Only images uploaded to GitHub are fetched: those on
+Only images uploaded to GitHub can be fetched: those on
 `user-images.githubusercontent.com` (uploads before 2023),
 `private-user-images.githubusercontent.com` and
-`github.com/user-attachments/assets/` (uploads since).  Any other URL
-would tell whoever wrote it who reads the page, and when.  Each
-redirect is checked too, so a fetch cannot be bounced elsewhere.
-Uploads to private repositories need a GitHub web session, which
-octocat does not have, so they stay links.  Set `octocat-image-show`
-to nil to never fetch images.
+`github.com/user-attachments/assets/` (uploads since); other images'
+links open the browser.  Any other URL would tell whoever wrote it who
+reads the page, and when.  Each redirect is checked too, so a fetch
+cannot be bounced elsewhere.  Uploads to private repositories need a
+GitHub web session, which octocat does not have, so they cannot be
+fetched.
 
 ### Keybindings
 

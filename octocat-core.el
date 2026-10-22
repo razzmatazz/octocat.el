@@ -864,14 +864,15 @@ newline; INDENT is also repeated on the wrapped continuation lines of
 long lines.
 
 When RAW is non-nil the text is returned verbatim, without any
-rendering.  Otherwise images uploaded to GitHub are shown, see
-`octocat-image-display'.
+rendering.  Otherwise images uploaded to GitHub can be shown in the
+current buffer, see `octocat-image-enable'.
 
 WIDTH is the columns to fit, as for `octocat-markdown-render'; callers
 read it from the window once, with `octocat--markdown-width'."
   (if raw
       (octocat-markdown-render-verbatim text indent)
-    (octocat-image-display (octocat-markdown-render text indent width))))
+    (octocat-image-enable)
+    (octocat-markdown-render text indent width)))
 
 (defun octocat--markdown-width ()
   "Return the columns rendered markdown should fit in the current buffer.
