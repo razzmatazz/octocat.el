@@ -239,6 +239,12 @@ it stays right when the user rebinds the command:
 ;; point rests on it → echo area: "RET, C-c C-v: show the comments in the diff"
 ```
 
+Builders that take a button's command, such as `octocat-timeline-buttons`
+and `octocat-vui-tab-row`, pass its "RET: …" hint through
+`octocat--button-help`, which does this whenever the command has a key;
+so a button added there needs nothing more.  A button that runs a
+lambda has no key to show.
+
 Only such hints reach the echo area, marked by a text property on the
 `help-echo` string.  The plain "RET: …" hint of every row and button
 would show on every line point crosses, and add nothing to what the

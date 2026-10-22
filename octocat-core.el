@@ -749,9 +749,29 @@ hide the comments\", and ElDoc shows it when point rests on the
 button, so the key is learnt from the button (see
 `octocat--ts-eldoc-setup').  Without a key it is just \"RET: ACTION\"."
   (if-let* ((key (where-is-internal command nil t)))
-      (propertize (format "RET, %s: %s" (key-description key) action)
+      ;; C-m and C-i are the RET and TAB characters, which `key-description'
+      ;; names so; after a prefix they are typed, and documented, as C-m.
+      (propertize (format "RET, %s: %s"
+                          (if (cdr (append key nil))
+                              (mapconcat (lambda (ev)
+                                           (pcase ev
+                                             (?\C-m "C-m")
+                                             (?\C-i "C-i")
+                                             (_ (single-key-description ev))))
+                                         key " ")
+                            (key-description key))
+                          action)
                   'octocat-key-help t)
     (concat "RET: " action)))
+
+(defun octocat--button-help (help on-click)
+  "Return HELP, a \"RET: ACTION\" hint, naming ON-CLICK's key if it has one.
+ON-CLICK is what the button runs; only a command, a symbol, can have a
+key (see `octocat--key-help')."
+  (if (and on-click (symbolp on-click) (stringp help)
+           (string-prefix-p "RET: " help))
+      (octocat--key-help on-click (substring help 5))
+    help))
 
 (defun octocat--key-help-eldoc (&rest _)
   "Return the key hint of the button at point, or nil.

@@ -986,7 +986,8 @@ what is below it without a blank line."
          (nodes (mapcar (pcase-lambda (`(,label ,help ,on-click))
                           (if on-click
                               (vui-button label :face (funcall ul 'octocat-dimmed)
-                                          :help-echo help :on-click on-click)
+                                          :help-echo (octocat--button-help help on-click)
+                                          :on-click on-click)
                             (vui-text label :face (funcall ul 'octocat-section-heading))))
                         tabs))
          ;; Buttons are drawn in brackets.
@@ -1522,7 +1523,8 @@ A [clear] button shows when it differs from the default."
                      :no-decoration t
                      :face 'octocat-dimmed
                      :key :clear
-                     :help-echo "RET: reset the query"
+                     :help-echo (octocat--button-help "RET: reset the query"
+                                                      #'octocat-vui-list-clear-filter)
                      :on-click #'octocat-vui-list-clear-filter)))
      (vui-newline)
      (apply #'vui-hstack :spacing 2
@@ -1532,8 +1534,10 @@ A [clear] button shows when it differs from the default."
                                   :no-decoration t
                                   :face 'octocat-dimmed
                                   :key (car facet)
-                                  :help-echo (format "RET: filter by %s"
-                                                     (downcase (car facet)))
+                                  :help-echo (octocat--button-help
+                                              (format "RET: filter by %s"
+                                                      (downcase (car facet)))
+                                              (cdr facet))
                                   :on-click (cdr facet)))
                     octocat-vui-list--facets))
      (vui-newline))))

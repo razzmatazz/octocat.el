@@ -543,7 +543,8 @@ entry in BUTTONS is skipped."
                                      :no-decoration t
                                      :face 'octocat-dimmed
                                      :key (nth 0 button)
-                                     :help-echo (nth 1 button)
+                                     :help-echo (octocat--button-help (nth 1 button)
+                                                                      (nth 2 button))
                                      :on-click (nth 2 button))
                          nodes))
                  (nreverse nodes))))))

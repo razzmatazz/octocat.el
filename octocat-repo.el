@@ -1049,13 +1049,16 @@ adds a button back to the DEFAULT branch.  Nil while LABEL is unknown."
                          :face (if (equal label current-branch)
                                    'octocat-branch-current
                                  'octocat-branch)
-                         :help-echo "RET: show another branch (C-c C-b)"
+                         :help-echo (octocat--key-help #'octocat-repo-switch-branch
+                                                       "show another branch")
                          :on-click #'octocat-repo-switch-branch)
              (when back
                (list (vui-button back
                                  :no-decoration t
                                  :face 'octocat-dimmed
-                                 :help-echo (format "RET: show %s" (or default "the default branch"))
+                                 :help-echo (octocat--button-help
+                                             (format "RET: show %s" (or default "the default branch"))
+                                             #'octocat-repo-reset-branch)
                                  :on-click #'octocat-repo-reset-branch)))))))
 
 (defun octocat-repo-vui--commits-heading (label current-branch reset default)

@@ -393,7 +393,12 @@ Other links, and an explicit request for an external browser, skip it;
       (should (equal (octocat--key-help-eldoc) help))
       (goto-char 5)
       (should-not (octocat--key-help-eldoc)))
-    (should (equal (octocat--key-help #'octocat-core-test-key-help "go") "RET: go"))))
+    (should (equal (octocat--key-help #'octocat-core-test-key-help "go") "RET: go"))
+    (should (equal (octocat--button-help "RET: do nothing" #'ignore) "RET, C-c C-v: do nothing"))
+    (should (equal (octocat--button-help "RET: go" (lambda () nil)) "RET: go"))
+    (local-set-key (kbd "C-c C-m") #'octocat-core-test-key-help)
+    (should (equal (octocat--key-help #'octocat-core-test-key-help "go")
+                   "RET, C-c C-m: go"))))
 
 (provide 'octocat-core-tests)
 ;;; octocat-core-tests.el ends here
