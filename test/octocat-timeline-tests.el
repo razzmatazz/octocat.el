@@ -116,13 +116,13 @@
                 comment))))
 
 (ert-deftest octocat-timeline-test-event-line-wraps ()
-  "An event line wider than WIDTH breaks, hung under its actor."
+  "An event line wider than WIDTH breaks, hung under its actor on the rail."
   (let ((entry (substring-no-properties
                 (octocat-timeline--entry-string
                  (list :time "" :kind 'event :actor "@bob"
                        :text "changed the title aaa bbb → ccc ddd")
                  nil 20))))
-    (should (string-prefix-p "○ @bob changed the\n  title" entry))
+    (should (string-prefix-p "○ @bob changed the\n│ title" entry))
     (should (cl-every (lambda (l) (<= (string-width l) 20))
                       (split-string entry "\n")))))
 

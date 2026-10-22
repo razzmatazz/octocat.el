@@ -423,9 +423,18 @@ under its actor.  The text carries ITEM's target in the
           (if line
               (let ((s (concat bullet " " actor (if (string-empty-p actor) "" " ")
                                (plist-get item :text) "  " date (plist-get item :suffix))))
+                ;; Continuations carry the rail, as a body's lines do;
+                ;; it is as wide as the hang it replaces.
                 (if (and width (> (string-width s) width))
-                    (string-join (octocat-markdown-wrap-hung s width 2) "\n")
-                  s))
+                    (let ((lines (octocat-markdown-wrap-hung s width 2)))
+                      (mapconcat #'identity
+                                 (cons (car lines)
+                                       (mapcar (lambda (l)
+                                                 (concat octocat-timeline--body-prefix
+                                                         (substring l 2)))
+                                               (cdr lines)))
+                                 "\n"))
+                  (propertize s 'wrap-prefix octocat-timeline--body-prefix)))
             (let ((body   (plist-get item :body))
                   (empty  (plist-get item :empty))
                   (prefix octocat-timeline--body-prefix))
