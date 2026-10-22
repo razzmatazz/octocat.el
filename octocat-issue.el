@@ -44,7 +44,8 @@
 (declare-function octocat-repo-vui--state-label "octocat-repo" (state &optional draft))
 (declare-function octocat-repo-vui--detail-header "octocat-repo" (repo item state on-edit-title bg &optional branch omit))
 (declare-function octocat-repo-vui--detail-fields "octocat-repo" (fields))
-(declare-function octocat-repo-vui--logins "octocat-repo" (users))
+(declare-function octocat-repo-vui--field-lines "octocat-repo" (fields))
+(declare-function octocat-repo-vui--login-items "octocat-repo" (users))
 (declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
 (declare-function octocat-pr-open "octocat-pr" (repo number))
 (declare-function octocat-repo-vui--milestone "octocat-repo" (item))
@@ -298,13 +299,13 @@ BG is as for `octocat--label-face'."
       repo issue (octocat-repo-vui--state-label state)
       #'octocat-issue-edit-title bg nil '(:comments))
      ;; As a PR's: the fields one edits, then what is only shown.
+     (octocat-repo-vui--field-lines
+      (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
+                  (cons :stack (octocat-repo-vui--login-items (gethash "assignees" issue))))
+            (cons (octocat-timeline-edit-field "issue" repo issue "label")
+                  (octocat--format-labels (gethash "labels" issue) bg))))
      (delq nil
            (list
-            (octocat-repo-vui--detail-fields
-             (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
-                         (octocat-repo-vui--logins (gethash "assignees" issue)))
-                   (cons (octocat-timeline-edit-field "issue" repo issue "label")
-                         (octocat--format-labels (gethash "labels" issue) bg))))
             (octocat-repo-vui--detail-fields
              (list (cons "Milestone" (octocat-repo-vui--milestone issue))
                    (cons "Fixed by"  (octocat-repo-vui--numbers

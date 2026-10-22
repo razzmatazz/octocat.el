@@ -115,19 +115,35 @@
                    "2 workflows awaiting approval"))))
 
 (ert-deftest octocat-pr-test-reviewers-stack ()
-  "Several reviewers stack under their label, lined up after it."
+  "Several assignees or reviewers stack under their label, lined up after it.
+One stays on the line of the other fields; the stacks follow it in order."
   (let* ((pr (json-parse-string
               (concat "{\"latestReviews\":[{\"author\":{\"login\":\"ann\"},\"state\":\"APPROVED\"}],"
-                      "\"reviewRequests\":[{\"login\":\"bob\"}]}")))
-         (out (with-temp-buffer
-                (vui-render (octocat-repo-vui--detail-stack
-                             (cons "Reviewers" #'ignore) (octocat-pr--reviewers pr)))
-                (buffer-substring-no-properties (point-min) (point-max))))
-         (lines (split-string out "\n" t)))
-    (should (= (length lines) 2))
-    (should (string-match-p "Reviewers @ann (approved)\\'" (nth 0 lines)))
-    (should (= (string-search "@ann" (nth 0 lines)) (string-search "@bob" (nth 1 lines))))
-    (should (string-suffix-p "@bob (pending)" (nth 1 lines)))))
+                      "\"reviewRequests\":[{\"login\":\"bob\"}],"
+                      "\"assignees\":[{\"login\":\"cy\"},{\"login\":\"di\"}]}")))
+         (render (lambda (fields)
+                   (with-temp-buffer
+                     (vui-render (apply #'vui-vstack (octocat-repo-vui--field-lines fields)))
+                     (split-string (buffer-substring-no-properties (point-min) (point-max))
+                                   "\n" t))))
+         (lines (funcall render
+                         (list (cons (cons "Assignees" #'ignore)
+                                     (cons :stack (octocat-repo-vui--login-items
+                                                   (gethash "assignees" pr))))
+                               (cons (cons "Reviewers" #'ignore)
+                                     (cons :stack (octocat-pr--reviewers pr)))
+                               (cons "Milestone" "v1")))))
+    (should (equal (mapcar #'string-trim lines)
+                   '("Milestone v1" "Assignees @cy" "@di"
+                     "Reviewers @ann (approved)" "@bob (pending)")))
+    (should (= (string-search "@cy" (nth 1 lines)) (string-search "@di" (nth 2 lines))))
+    (should (= (string-search "@ann" (nth 3 lines)) (string-search "@bob" (nth 4 lines))))
+    (should (equal (mapcar #'string-trim
+                           (funcall render
+                                    (list (cons (cons "Reviewers" #'ignore)
+                                                (cons :stack (list (list (vui-text "@ann")))))
+                                          (cons "Milestone" "v1"))))
+                   '("Reviewers @ann · Milestone v1")))))
 
 (provide 'octocat-pr-tests)
 ;;; octocat-pr-tests.el ends here

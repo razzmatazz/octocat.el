@@ -771,6 +771,26 @@ many of them don't make one long line."
                           value))
                  (cdr values))))
 
+(defun octocat-repo-vui--field-lines (fields)
+  "Return the vnodes of FIELDS: one line of them, then each stacked one.
+FIELDS is as for `octocat-repo-vui--detail-fields', except that a VALUE
+may be (:stack . ITEMS), ITEMS a list of vnode lists such as the users
+of `octocat-repo-vui--login-items'.  One item stays on the line; several
+stack under their label below it (see `octocat-repo-vui--detail-stack'),
+in the order of FIELDS."
+  (let ((items (lambda (f) (and (eq (car-safe (cdr f)) :stack) (cddr f)))))
+    (delq nil
+          (cons (octocat-repo-vui--detail-fields
+                 (mapcar (lambda (f)
+                           (cond ((not (eq (car-safe (cdr f)) :stack)) f)
+                                 ((cdr (funcall items f)) nil)
+                                 (t (cons (car f) (car (funcall items f))))))
+                         fields))
+                (mapcar (lambda (f)
+                          (when (cdr (funcall items f))
+                            (octocat-repo-vui--detail-stack (car f) (funcall items f))))
+                        fields)))))
+
 (defun octocat-repo-vui--separate (items sep)
   "Return ITEMS (vnodes or lists of them) with a `vui-text' of SEP between."
   (cdr (mapcan (lambda (item) (list (vui-text sep) item)) items)))
@@ -790,19 +810,17 @@ ACTION is called on RET or a click; HELP is its hover text, by default
   (octocat-repo-vui--link (concat "@" login) 'octocat-pr-author
                           (lambda () (octocat-user-open login))))
 
-(defun octocat-repo-vui--logins (users)
+(defun octocat-repo-vui--login-items (users)
   "Return the \"@login\" names of USERS (a vector of user objects), or nil.
-A list of vnodes, comma-separated; each opens the page of its user."
-  (and (vectorp users) (> (length users) 0)
-       (octocat-repo-vui--separate
-        (mapcar (lambda (u)
-                  (let ((login (gethash "login" u)))
-                    (if (octocat--nonempty login)
-                        (octocat-repo-vui--login-link login)
-                      (vui-text (concat "@" (or (gethash "name" u) ""))
-                                :face 'octocat-pr-author))))
-                users)
-        ", ")))
+Each is a list of one vnode, which opens the page of its user."
+  (and (vectorp users)
+       (mapcar (lambda (u)
+                 (let ((login (gethash "login" u)))
+                   (list (if (octocat--nonempty login)
+                             (octocat-repo-vui--login-link login)
+                           (vui-text (concat "@" (or (gethash "name" u) ""))
+                                     :face 'octocat-pr-author)))))
+               users)))
 
 (defun octocat-repo-vui--numbers (repo refs open)
   "Return the \"#N\" numbers of REFS (a vector of issue/PR objects), or nil.
