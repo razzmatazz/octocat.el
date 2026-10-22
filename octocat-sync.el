@@ -63,6 +63,14 @@ The file is named after the host, such as \"sync-github.com.sqlite\"."
   :type 'number
   :group 'octocat)
 
+(defcustom octocat-sync-stuck-after 10
+  "Seconds after which `g' gives up on a fetch still running and starts anew.
+Before, the fetch running is the refresh: pressing `g' again neither
+kills it nor asks GitHub again.  A fetch that hangs is stopped anyway
+after `octocat-gh-timeout'."
+  :type 'number
+  :group 'octocat)
+
 (defcustom octocat-sync-max-requests 4
   "Most fetches that run at once."
   :type 'integer
@@ -479,11 +487,12 @@ commit's: within it, opening doesn't refetch, but `g' does."
   "How many fetches are running.")
 
 (defvar octocat-sync--fetches (make-hash-table :test #'equal)
-  "The fetch running of each resource key, a token (KEY . COUNTED).
-COUNTED is whether it counts in `octocat-sync--running'.  Only the
-answer of the current token is taken: a forced request takes over a
-running fetch, which may hang until `octocat-gh-timeout', killing its
-`gh' calls (see `octocat--gh-owner'), so `g' always fetches anew.")
+  "The fetch running of each resource key, a token (KEY COUNTED STARTED).
+COUNTED is whether it counts in `octocat-sync--running', and STARTED
+when it started.  Only the answer of the current token is taken: a
+forced request takes over a fetch running past `octocat-sync-stuck-after',
+killing its `gh' calls (see `octocat--gh-owner'), so `g' unsticks a
+hung fetch, which could otherwise hang until `octocat-gh-timeout'.")
 
 (defvar octocat-sync--offline nil
   "Non-nil when the last request found GitHub out of reach.
@@ -582,8 +591,10 @@ raised to a page request.  Return immediately; the store reports the
 result."
   (let ((key (octocat-sync-spec-key spec)))
     (cond
-     ;; Forced while running: take over, see `octocat-sync--fetches'.
-     ((and force (gethash key octocat-sync--fetches))
+     ;; Forced while running a while: take over, see `octocat-sync--fetches'.
+     ((and force
+           (when-let* ((token (gethash key octocat-sync--fetches)))
+             (>= (- (float-time) (nth 2 token)) octocat-sync-stuck-after)))
       (octocat-sync--drop-fetch key)
       (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
       (octocat-sync--pump))
@@ -603,7 +614,7 @@ Its `gh' calls still running are killed, and their answers dropped."
   (when-let* ((token (gethash key octocat-sync--fetches)))
     (remhash key octocat-sync--fetches)
     (octocat--gh-stop token)
-    (when (cdr token) (cl-decf octocat-sync--running))
+    (when (nth 1 token) (cl-decf octocat-sync--running))
     (when (equal key octocat-sync--prefetching)
       (setq octocat-sync--prefetching nil))))
 
@@ -670,7 +681,7 @@ first again."
     (if (or (null cursor) (gethash key octocat-sync--loading))
         (when on-done (funcall on-done '(error . "Nothing more to load yet")))
       (octocat-sync--set-loading key t)
-      (let ((token (list key)))
+      (let ((token (list key nil (float-time))))
         (puthash key token octocat-sync--fetches)
         (let ((octocat--gh-owner token))
           (funcall more cursor
@@ -715,7 +726,7 @@ A fetch that signals as it starts fails like any other, so it can't
 leave KEY loading for good."
   (cl-incf octocat-sync--running)
   (let ((answered nil)
-        (token (cons key t)))
+        (token (list key t (float-time))))
     (puthash key token octocat-sync--fetches)
     (condition-case err
         (let ((octocat--gh-owner token))

@@ -429,6 +429,7 @@ The resource keeps the error, and the fetch's slot is free again."
           (should (eq (plist-get snap :kind) 'offline)))
         ;; Forced while hanging: the hung `gh' is killed, a new one runs.
         (let ((octocat-gh-timeout nil)
+              (octocat-sync-stuck-after 0)
               (live (lambda () (seq-filter (lambda (p) (and (eq (process-type p) 'real)
                                                             (process-live-p p)
                                                             (string-prefix-p "octocat-gh-test"
@@ -454,8 +455,9 @@ The resource keeps the error, and the fetch's slot is free again."
         (should (= octocat-sync--running 0))))))
 
 (ert-deftest octocat-sync-test-force-takes-over ()
-  "A forced request while a fetch runs fetches anew, in a slot of its own.
-The old fetch's answer, coming late, is dropped."
+  "A forced request fetches anew once the fetch running seems stuck.
+The new fetch takes the old one's slot; the old answer, coming late, is
+dropped."
   (octocat-sync-tests--with-sync
     (let ((octocat-sync-max-requests 1))
       (octocat-sync-request '(thing 1))
@@ -463,7 +465,11 @@ The old fetch's answer, coming late, is dropped."
       (let ((stale (cdar pending)))
         (octocat-sync-request '(thing 1))   ; unforced: already loading
         (should (= (length pending) 1))
+        ;; Forced, but just started: the fetch running is the refresh.
         (octocat-sync-request '(thing 1) t)
+        (should (= (length pending) 1))
+        (let ((octocat-sync-stuck-after 0))
+          (octocat-sync-request '(thing 1) t))
         (should (= (length pending) 2))
         (should (= octocat-sync--running 1))
         (funcall stale (octocat-sync-tests--table "n" "old"))
