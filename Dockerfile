@@ -16,7 +16,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # GCC 15 defaults to C23, which Emacs before 30 does not build with.
-RUN curl -fsSL https://ftpmirror.gnu.org/emacs/emacs-${EMACS}.tar.xz | tar xJ -C /tmp && \
+RUN curl -fsSL --retry 5 https://ftp.gnu.org/gnu/emacs/emacs-${EMACS}.tar.xz | tar xJ -C /tmp && \
     cd /tmp/emacs-${EMACS} && \
     ./configure --prefix=/opt/emacs CFLAGS="-O2 -std=gnu17" \
                 --without-x --without-native-compilation \
