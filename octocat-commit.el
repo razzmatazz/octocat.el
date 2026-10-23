@@ -41,7 +41,6 @@
 (require 'octocat-vui)
 (require 'vui)
 
-(declare-function octocat-search-repo "octocat-search" ())
 
 
 
@@ -257,12 +256,8 @@ new TICK fetches them again."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-commit-mode'.")
-(define-key octocat-commit-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-commit-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-commit-mode-map (kbd "C-c C-o") #'octocat-commit-browse)
 (define-key octocat-commit-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
-(define-key octocat-commit-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-commit-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
 (define-derived-mode octocat-commit-mode vui-mode "Octocat-Commit"
   "Major mode for viewing a GitHub commit.

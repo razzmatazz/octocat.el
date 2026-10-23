@@ -1037,8 +1037,6 @@ A new TICK fetches them again."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-pr-mode'.")
-(define-key octocat-pr-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-pr-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-pr-mode-map (kbd "C-c C-o") #'octocat-pr-browse)
 (define-key octocat-pr-mode-map (kbd "C-c C-a") #'octocat-pr-add-comment)
 (define-key octocat-pr-mode-map (kbd "C-c C-e") #'octocat-pr-edit)
@@ -1046,8 +1044,6 @@ A new TICK fetches them again."
 (define-key octocat-pr-mode-map (kbd "C-c C-m") #'octocat-pr-merge)
 (define-key octocat-pr-mode-map (kbd "C-c C-r") #'octocat-pr-diff-review)
 (define-key octocat-pr-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
-(define-key octocat-pr-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-pr-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
 (define-derived-mode octocat-pr-mode vui-mode "Octocat-PR"
   "Major mode for viewing a GitHub Pull Request as a timeline.
@@ -1116,13 +1112,9 @@ the background, in place: what is unfolded stays so."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-pr-commits-mode'.")
-(define-key octocat-pr-commits-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-pr-commits-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-pr-commits-mode-map (kbd "C-c C-o") #'octocat-pr-commits-browse)
 (define-key octocat-pr-commits-mode-map (kbd "C-c C-m") #'octocat-pr-merge)
 (define-key octocat-pr-commits-mode-map (kbd "C-c C-r") #'octocat-pr-diff-review)
-(define-key octocat-pr-commits-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-pr-commits-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
 (define-derived-mode octocat-pr-commits-mode vui-mode "Octocat-PR-Commits"
   "Major mode for the commits of a GitHub Pull Request.

@@ -61,6 +61,7 @@
 (defvar octocat--job-repo)
 (defvar octocat--checks-repo)
 (defvar octocat-tree--file-repo)
+(defvar octocat-vui-list--repo)
 
 
 ;;;; Options
@@ -1165,6 +1166,28 @@ The selected repository is opened via `octocat-visit-repo', a selected
             (octocat-user-open choice)
           (octocat-visit-repo choice))))))
 
+(declare-function octocat-search-repo "octocat-search" ())
+
+(defun octocat-jump (&optional other)
+  "Find something to open: in the current repository, or elsewhere.
+Without a prefix argument OTHER, search the current repository's PRs,
+issues, commits and files, as `octocat-search-repo' does.  With one, or
+where there is no current repository, search other repositories and
+users, as `octocat-switch-repo' does."
+  (interactive "P")
+  (if (or other (not (octocat--search-repo--current-repo)))
+      (octocat-switch-repo)
+    (octocat-search-repo)))
+
+(defvar octocat-common-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-j")    #'octocat-jump)
+    (define-key map (kbd "S-<return>") #'octocat-visit-other-window)
+    map)
+  "Keys every octocat page shares, whatever its major mode.
+Each page's mode map inherits it: the vui pages through
+`octocat-vui-page-map', the others with `make-composed-keymap'.")
+
 
 ;;;; Repo tab strip
 ;;
@@ -1297,6 +1320,7 @@ back to parsing the git origin remote via `octocat-repo--current-repo'."
       (and (boundp 'octocat--job-repo)      (ignore-errors octocat--job-repo))
       (and (boundp 'octocat--checks-repo)   (ignore-errors octocat--checks-repo))
       (and (boundp 'octocat-tree--file-repo) (ignore-errors octocat-tree--file-repo))
+      (and (boundp 'octocat-vui-list--repo) (ignore-errors octocat-vui-list--repo))
       (ignore-errors (octocat-repo--current-repo))))
 
 ;;;; List filters

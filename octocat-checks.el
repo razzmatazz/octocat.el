@@ -43,7 +43,6 @@
 (require 'vui)
 
 (declare-function octocat-run-open "octocat-run" (repo run-id))
-(declare-function octocat-search-repo "octocat-search" ())
 
 
 ;;;; Buffer-local declarations
@@ -277,11 +276,7 @@ A new TICK fetches them again."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-checks-mode'.")
-(define-key octocat-checks-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-checks-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-checks-mode-map (kbd "C-c C-o") #'octocat-checks-browse)
-(define-key octocat-checks-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-checks-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
 (define-derived-mode octocat-checks-mode vui-mode "Octocat-Checks"
   "Major mode for viewing the GitHub check-runs of a commit.

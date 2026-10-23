@@ -354,15 +354,11 @@ A new TICK fetches everything again."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-issue-mode'.")
-(define-key octocat-issue-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-issue-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-issue-mode-map (kbd "C-c C-o") #'octocat-issue-browse)
 (define-key octocat-issue-mode-map (kbd "C-c C-a") #'octocat-issue-add-comment)
 (define-key octocat-issue-mode-map (kbd "C-c C-e") #'octocat-issue-edit)
 (define-key octocat-issue-mode-map (kbd "C-c C-n") #'octocat-issue-new)
 (define-key octocat-issue-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
-(define-key octocat-issue-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-issue-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
 (define-derived-mode octocat-issue-mode vui-mode "Octocat-Issue"
   "Major mode for viewing a GitHub Issue as a timeline.

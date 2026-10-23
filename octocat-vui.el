@@ -63,8 +63,9 @@
 
 (defvar octocat-vui-page-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map vui-mode-map)
-    (define-key map (kbd "S-<return>") #'octocat-visit-other-window)
+    (set-keymap-parent map (make-composed-keymap octocat-common-map vui-mode-map))
+    (define-key map (kbd "q") #'octocat-quit-window)
+    (define-key map (kbd "g") #'revert-buffer)
     map)
   "Parent keymap of every vui-rendered octocat page, for the keys all share.")
 
@@ -861,7 +862,6 @@ would pull the user back to it (see docs/using-vui.md)."
 (declare-function octocat--fetch-counts "octocat-core" (repo kind callback))
 (declare-function octocat--list-labels "octocat-core" (repo callback))
 (declare-function octocat--list-people "octocat-core" (repo callback))
-(declare-function octocat-switch-repo "octocat-core" ())
 (declare-function octocat--setting "octocat-core" (key))
 (declare-function octocat--setting-put "octocat-core" (key value))
 (declare-function octocat-visit-repo "octocat-core" (repo &optional ref))
@@ -869,7 +869,6 @@ would pull the user back to it (see docs/using-vui.md)."
 (declare-function octocat-issue-list "octocat" ())
 (declare-function octocat-pr-list "octocat" ())
 (declare-function octocat-actions "octocat" ())
-(declare-function octocat-search-repo "octocat-search" ())
 
 (defvar-local octocat-vui-list--repo nil
   "The \"owner/repo\" string this list buffer is tracking.")
@@ -912,11 +911,7 @@ The choice is remembered for this page of this repository."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-vui-list-mode' and the list pages derived from it.")
-(define-key octocat-vui-list-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-vui-list-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-vui-list-mode-map (kbd "C-c C-o") #'octocat-vui-list-browse)
-(define-key octocat-vui-list-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-vui-list-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 (define-key octocat-vui-list-mode-map (kbd "C-c C-v") #'octocat-vui-list-toggle-compact)
 
 (define-derived-mode octocat-vui-list-mode vui-mode "Octocat-List"

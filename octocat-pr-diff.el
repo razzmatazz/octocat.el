@@ -51,8 +51,6 @@
 (declare-function octocat-pr--busy "octocat-pr" (repo number slot))
 (declare-function octocat-pr-merge "octocat-pr" ())
 (declare-function octocat-pr--tabs "octocat-pr" (current repo number width &optional files commits))
-(declare-function octocat-switch-repo "octocat-core" ())
-(declare-function octocat-search-repo "octocat-search" ())
 
 
 ;;;; Buffer-local declarations
@@ -279,14 +277,10 @@ everything again."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-pr-diff-mode'.")
-(define-key octocat-pr-diff-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-pr-diff-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-pr-diff-mode-map (kbd "C-c C-r") #'octocat-pr-diff-review)
 (define-key octocat-pr-diff-mode-map (kbd "C-c C-m") #'octocat-pr-merge)
 (define-key octocat-pr-diff-mode-map (kbd "C-c C-o") #'octocat-pr-diff-browse)
 (define-key octocat-pr-diff-mode-map (kbd "C-c C-v") #'octocat-diff-toggle-comments)
-(define-key octocat-pr-diff-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-pr-diff-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
 (define-derived-mode octocat-pr-diff-mode vui-mode "Octocat-PR-Diff"
   "Major mode for viewing the complete diff of a GitHub Pull Request.

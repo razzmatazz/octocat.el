@@ -47,7 +47,6 @@
 (require 'vui)
 
 (declare-function octocat-run-open "octocat-run" (repo run-id))
-(declare-function octocat-search-repo "octocat-search" ())
 
 
 ;;;; Buffer-local state
@@ -584,11 +583,7 @@ unfolded, until the fresh data replaces it."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-job-mode'.")
-(define-key octocat-job-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-job-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-job-mode-map (kbd "C-c C-o") #'octocat-job-browse)
-(define-key octocat-job-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-job-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
 (define-derived-mode octocat-job-mode vui-mode "Octocat-Job"
   "Major mode for viewing a GitHub Actions job.

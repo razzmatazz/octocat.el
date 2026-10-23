@@ -545,8 +545,8 @@ expects:
   and runs it inside `octocat-call-in-other-window`, so a new page
   needs nothing extra as long as it opens through `octocat-display-buffer`
   synchronously, before any fetch.  The key lives in
-  `octocat-vui-page-map`, the parent of every vui page's keymap; Evil's
-  `o`/`O` are bound per mode in `octocat-evil-setup`.  A lone window
+  `octocat-common-map` (see [Keys every page shares](#keys-every-page-shares));
+  Evil's `o`/`O` are bound per mode in `octocat-evil-setup`.  A lone window
   is split to the right, and the new window is selected; `q` deletes
   it, as it is `octocat-dedicated`.  Otherwise another window is reused,
   so repeated opens keep one pane.
@@ -573,6 +573,27 @@ config (octocat must not call Doom):
 `(add-hook 'doom-real-buffer-functions #'octocat-buffer-p)`.
 
 ---
+
+## Keys every page shares
+
+A key that does the same thing on every page is bound once, not in each
+mode's keymap, so adding or changing it touches one line.  Each mode's
+map inherits the shared keys through its parent:
+
+- `octocat-common-map` (`octocat-core.el`) holds the keys of every octocat
+  page, such as `C-c C-j` and `S-RET`.
+- `octocat-vui-page-map` (`octocat-vui.el`) is the parent of every vui
+  page's keymap.  It adds the keys only vui pages share, `q` and `g`, and
+  inherits `octocat-common-map` and `vui-mode-map` through
+  `make-composed-keymap`.
+- A page that is not a vui page, such as the file viewer, composes
+  `octocat-common-map` with its own base map, here `special-mode-map`.
+
+A mode binds a shared key itself only when it means something else
+there, as `gr` does in the file viewer.  Evil's normal-state bindings
+are the exception: Evil does not reliably find them through a parent
+keymap, so `octocat-evil-setup` binds the shared ones in a loop over
+every mode's map.
 
 ## Indicating that a page is loading or refreshing
 
@@ -770,7 +791,7 @@ A new page starts the same way, using `octocat-vui-repo-heading`.
 On a page's first line the owner links to the owner's user or
 organization page, so one can walk up to it.  The repo name is plain on
 every page: it is where the page sits, and the repository page is a
-`C-c C-j` or the Code tab away.  Build the heading with
+`C-u C-c C-j` or the Code tab away.  Build the heading with
 `octocat-vui-repo-heading`; the file viewer, which is not a vui page,
 inserts the same with `octocat-tree--insert-repo-heading`.
 

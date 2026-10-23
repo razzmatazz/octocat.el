@@ -36,7 +36,6 @@
 (require 'octocat-vui)
 (require 'vui)
 
-(declare-function octocat-search-repo "octocat-search" ())
 
 
 ;;;; Buffer-local declarations
@@ -287,11 +286,7 @@ data replaces it."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-run-mode'.")
-(define-key octocat-run-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-run-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-run-mode-map (kbd "C-c C-o") #'octocat-run-browse)
-(define-key octocat-run-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-run-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
 (define-derived-mode octocat-run-mode vui-mode "Octocat-Run"
   "Major mode for viewing a GitHub Actions workflow run.

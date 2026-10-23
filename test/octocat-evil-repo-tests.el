@@ -65,7 +65,7 @@ Evil bindings of `octocat-repo-mode' are installed."
   ;; installs on the mode, the canary that it ran for this mode at all.
   (let* ((aux (evil-get-auxiliary-keymap octocat-repo-mode-map 'normal nil t))
          (binding (and aux (lookup-key aux (kbd "C-c C-j")))))
-    (should (eq binding #'octocat-switch-repo))))
+    (should (eq binding #'octocat-jump))))
 
 (provide 'octocat-evil-repo-tests)
 ;;; octocat-evil-repo-tests.el ends here

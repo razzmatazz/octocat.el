@@ -20,7 +20,7 @@
 
 ;;; Commentary:
 
-;; `octocat-search-repo' (bound to C-c C-s in every octocat view) searches
+;; `octocat-search-repo' (C-c C-j in every octocat view) searches
 ;; the pull requests, issues and commits of the current repository with
 ;; live `gh search' queries, through a consult async pipeline.  File paths
 ;; of the repository's default branch are matched too, locally, against a
@@ -32,8 +32,8 @@
 ;; GitHub's results lead the list as they arrive, each item listed once.
 ;; Results are kept in the sync store per (repo, type, query).
 ;;
-;; It also holds the stage of `octocat-switch-repo', which searches all
-;; of GitHub's repos, and the branch picker, `octocat--read-branch'; both
+;; It also holds the stage of `octocat-switch-repo' (C-u C-c C-j), which
+;; searches all of GitHub's repos, and the branch picker, `octocat--read-branch'; both
 ;; keep their results in the sync store.
 
 ;;; Code:

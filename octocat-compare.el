@@ -45,7 +45,6 @@
 (declare-function octocat-vui-repo-heading "octocat-vui" (repo))
 (require 'vui)
 
-(declare-function octocat-search-repo "octocat-search" ())
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
                   (repo commit head-info author-w &optional subject-w))
 (declare-function octocat-repo-vui--author-width "octocat-repo" (commits))
@@ -181,12 +180,8 @@ new TICK fetches it again."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-compare-mode'.")
-(define-key octocat-compare-mode-map (kbd "q") #'octocat-quit-window)
-(define-key octocat-compare-mode-map (kbd "g") #'revert-buffer)
 (define-key octocat-compare-mode-map (kbd "C-c C-o") #'octocat-compare-browse)
 (define-key octocat-compare-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
-(define-key octocat-compare-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-compare-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 
 (define-derived-mode octocat-compare-mode vui-mode "Octocat-Compare"
   "Major mode for viewing the comparison of two refs of a GitHub repository.

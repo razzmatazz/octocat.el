@@ -101,15 +101,12 @@ The rest expands on RET.  Nil never folds."
 
 (defvar octocat-file-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map special-mode-map)
+    (set-keymap-parent map (make-composed-keymap octocat-common-map special-mode-map))
     map)
   "Keymap for `octocat-file-mode'.")
 (define-key octocat-file-mode-map (kbd "C-c C-o") #'octocat-file-browse)
-(define-key octocat-file-mode-map (kbd "S-<return>") #'octocat-visit-other-window)
 (define-key octocat-file-mode-map (kbd "C-c C-f") #'octocat-tree-find-file)
 (define-key octocat-file-mode-map (kbd "C-c C-l") #'octocat-file-log-open)
-(define-key octocat-file-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-file-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 (define-key octocat-file-mode-map (kbd "gr")      #'octocat-file-refresh)
 
 (define-derived-mode octocat-file-mode special-mode "Octocat-File"
@@ -140,11 +137,8 @@ The rest expands on RET.  Nil never folds."
     (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-file-log-mode'.")
-(define-key octocat-file-log-mode-map (kbd "q")       #'octocat-quit-window)
 (define-key octocat-file-log-mode-map (kbd "RET")     #'octocat-file-log-visit)
 (define-key octocat-file-log-mode-map (kbd "C-c C-o") #'octocat-file-log-browse)
-(define-key octocat-file-log-mode-map (kbd "C-c C-j") #'octocat-switch-repo)
-(define-key octocat-file-log-mode-map (kbd "C-c C-s") #'octocat-search-repo)
 (define-key octocat-file-log-mode-map (kbd "gr")      #'octocat-file-log-refresh)
 
 (define-derived-mode octocat-file-log-mode vui-mode "Octocat-File-Log"
