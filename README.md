@@ -327,10 +327,13 @@ relative image shows it in place.  `C-c C-v` shows the Markdown source
 instead.  Any other file is shown with the syntax highlighting of its
 major mode.
 
-The top of the page continues the tree browser's: the repository, then
-the ref picker with the file's last commit and a `[N commits]` button to
-its history, then the file's path, with `[Browse tree]` to open the tree
-browser down to it.  Each ref of a file has a buffer of its own, named
+The top of the page is the tree browser's: `owner/repo[main ▾]:/dir/file`,
+the branch picker and the path, whose directories open the tree browser
+down to them, and `[Browse tree]`, which opens it down to the file.
+Under it are the file's last commit and a `[N commits]` button to its
+history, then a rule.  A branch name longer than `octocat-ref-max-width`
+is cut in its middle, there and in every branch picker; hovering over
+it shows it in full, as does picking a branch.  Each ref of a file has a buffer of its own, named
 `*owner/repo@ref:path*`; `C-c C-b`, or `RET` on the picker, opens the
 file at another branch, in another buffer, so the two can be read side
 by side.  Press `C-c C-o` to open the file on GitHub, `C-c C-l` to open
@@ -465,7 +468,9 @@ make ci EMACS=29.1
 ```
 
 CI runs 29.1, the oldest release octocat supports, as well as 30.2 and
-31.1.  The newest matters too: Emacs 31 checks a call's argument count
+31.1.  `make ci-all` runs all three at once, as CI does, each one's
+output in `.ci/VERSION.log`; their `checkdoc`s differ, so a docstring
+one passes can fail another.  The newest matters too: Emacs 31 checks a call's argument count
 against any loaded function, while older releases check it only against
 callees that are already byte-compiled, so only 31 catches every call
 with the wrong number of arguments.

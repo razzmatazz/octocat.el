@@ -161,9 +161,23 @@ A refresh asks GitHub again, which never answers."
           (let ((text (buffer-substring-no-properties (point-min) (point-max))))
             (should (equal (buffer-name) "*owner/repo@dev:docs/GUIDE.md*"))
             (should (derived-mode-p 'octocat-file-mode))
-            (should (string-match-p "\\`owner/repo\n\n\\[dev ▾\\]  abc1234  Add the guide" text))
+            (should (string-match-p
+                     (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  \\[Browse tree\\]\n"
+                             "abc1234  Add the guide .*\n━+\n")
+                     text))
             (should-not (string-match-p "reset" text))
-            (should (string-match-p "^docs/GUIDE.md  \\[Browse tree\\]$" text))
+            ;; The root and the directories on the way open the tree.
+            (let (opened)
+              (cl-letf (((symbol-function 'octocat-tree-open)
+                         (lambda (&rest args) (push args opened))))
+                (goto-char (point-min))
+                (search-forward ":/docs/GUIDE")
+                (dolist (pos (list (- (point) 11) (- (point) 10) (- (point) 5)))
+                  (goto-char pos)
+                  (call-interactively (key-binding (kbd "RET")))))
+              ;; ":" is plain; "/" is the root, "docs" docs/.
+              (should (equal (nreverse opened)
+                             '(("owner/repo" "dev" nil) ("owner/repo" "dev" "docs")))))
             (should (string-match-p "^Guide$" text))
             (should-not (string-match-p "# Guide" text))
             (goto-char (point-min))
@@ -174,6 +188,31 @@ A refresh asks GitHub again, which never answers."
             (octocat-toggle-markdown)
             (should (string-match-p "^# Guide$" (buffer-string))))
         (kill-buffer)))))
+
+(ert-deftest octocat-tree-test-ref-label ()
+  "A long branch name is cut in its middle, keeping both ends; a SHA to seven."
+  (let ((octocat-ref-max-width 12))
+    (should (equal (octocat-repo-vui--ref-label "main") "main"))
+    (should (equal (octocat-repo-vui--ref-label "feature/long-name") "featur…-name"))
+    (should (= (length (octocat-repo-vui--ref-label "feature/long-name")) 12))
+    (should (equal (octocat-repo-vui--ref-label (make-string 40 ?a)) "aaaaaaa"))
+    (should (equal (octocat-repo-vui--picker-labels "feature/long-name" t "release/2026-10")
+                   '("[featur…-name ▾]" "[reset to releas…26-10]")))))
+
+(ert-deftest octocat-tree-test-cut-branch-in-full-on-hover ()
+  "The help of a cut branch's picker names it in full."
+  (octocat-tree-tests--with-file-page
+    (let ((octocat-ref-max-width 12))
+      (octocat-tree-tests--store-file "feature/long-name" "a.el" "(a)\n")
+      (save-current-buffer
+        (octocat-tree--open-file-by-path "owner/repo" "feature/long-name" "a.el")
+        (unwind-protect
+            (progn
+              (goto-char (point-min))
+              (should (search-forward "[featur…-name ▾]" nil t))
+              (should (string-prefix-p "feature/long-name\n"
+                                       (get-text-property (match-beginning 0) 'help-echo))))
+          (kill-buffer))))))
 
 (ert-deftest octocat-tree-test-file-branches ()
   "Each ref of a file has a buffer, the default branch by its name; picking another opens it."

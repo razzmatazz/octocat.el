@@ -193,26 +193,35 @@ For `jit-lock-functions'."
                (add-text-properties
                 ;; The link's underline would be drawn under the image.
                 b e (list 'face nil
+                          'octocat-vui-spinner nil
                           'display (octocat-image--image data plist)
                           'keymap octocat-markdown-link-map
                           'help-echo (format "RET: open %s" url))))
               ((eq data 'pending)
-               (add-text-properties
-                b e (list 'display (octocat-image--loading-label b e)
-                          'keymap octocat-image-map
-                          'help-echo "Loading image…")))
+               (let ((link (octocat-image--link b e)))
+                 (add-text-properties
+                  ;; `octocat-vui' turns the spinner, see `octocat-vui-spinner'.
+                  b e (list 'octocat-vui-spinner
+                            (lambda (frame) (octocat-image--loading-label frame link))
+                            'display (octocat-image--loading-label "…" link)
+                            'keymap octocat-image-map
+                            'help-echo "Loading image…"))))
               (data
-               (remove-text-properties b e '(display nil))
+               (remove-text-properties b e '(display nil octocat-vui-spinner nil))
                (add-text-properties
                 b e (list 'keymap octocat-image-map
                           'help-echo "RET: show image")))))))
   nil)
 
-(defun octocat-image--loading-label (beg end)
-  "Return the link from BEG to END, saying its image is loading."
+(defun octocat-image--link (beg end)
+  "Return the link from BEG to END, without what is displayed over it."
   (let ((link (buffer-substring beg end)))
-    (remove-text-properties 0 (length link) '(display nil) link)
-    (concat link (propertize " loading…" 'face 'shadow))))
+    (remove-text-properties 0 (length link) '(display nil octocat-vui-spinner nil) link)
+    link))
+
+(defun octocat-image--loading-label (frame link)
+  "Return LINK, its image loading, after FRAME of a spinner."
+  (concat (propertize frame 'face 'shadow) " " link))
 
 (defun octocat-image--refontify (url)
   "Have the current buffer's images of URL shown afresh."

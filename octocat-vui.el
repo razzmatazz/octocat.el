@@ -709,11 +709,14 @@ Return nil, and forget BUF, once it has none."
   (with-current-buffer buf
     (let ((pos (point-min)) found)
       (with-silent-modifications
-        (while (setq pos (text-property-any pos (point-max) 'octocat-vui-spinner t))
-          (let ((end (or (next-single-property-change pos 'octocat-vui-spinner)
-                         (point-max))))
+        (while (setq pos (text-property-not-all pos (point-max) 'octocat-vui-spinner nil))
+          (let ((spin (get-text-property pos 'octocat-vui-spinner))
+                (end  (or (next-single-property-change pos 'octocat-vui-spinner)
+                          (point-max))))
             (setq found t)
-            (put-text-property pos end 'display octocat-vui--spinner)
+            (put-text-property pos end 'display (if (functionp spin)
+                                                    (funcall spin octocat-vui--spinner)
+                                                  octocat-vui--spinner))
             (setq pos end))))
       (setq octocat-vui--page-spinner found))))
 
@@ -746,7 +749,8 @@ Stop the timer once no buffer shows it."
   "Return a spinner to render in the current buffer's page.
 It turns in step with the mode line's, through its `display' property,
 so the page is not re-rendered for each frame; it stops once the page
-no longer shows it."
+no longer shows it.  Text whose `octocat-vui-spinner' is a function
+turns too, displayed as what it returns for each frame."
   (setq octocat-vui--page-spinner t)
   (octocat-vui--spinner-start)
   (propertize (aref octocat-vui--spinner-frames 0) 'octocat-vui-spinner t))
@@ -783,7 +787,10 @@ takes precedence over \":loading\"."
 
 (defun octocat-vui--image-loading (buf loading)
   "Show \":loading\" in BUF's mode line while an image it asked for is LOADING.
-For `octocat-image-loading-function'."
+Its link's spinner turns with the mode line's.  For
+`octocat-image-loading-function'."
+  (when (and loading (buffer-live-p buf))
+    (with-current-buffer buf (setq octocat-vui--page-spinner t)))
   (octocat-vui--add-loading buf (if loading 1 -1)))
 
 (setq octocat-image-loading-function #'octocat-vui--image-loading)

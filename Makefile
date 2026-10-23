@@ -1,5 +1,7 @@
 # The Emacs release to run, e.g. 29.1, 30.2 or 31.1, see the Dockerfile.
 EMACS ?= 31.1
+# The releases CI runs, as in .github/workflows/ci.yml, for `make ci-all'.
+EMACS_ALL := 29.1 30.2 31.1
 IMAGE := octocat-test:emacs-$(EMACS)
 
 DOCKER := $(shell command -v docker 2>/dev/null || command -v podman 2>/dev/null)
@@ -9,7 +11,7 @@ endif
 
 RUN = $(DOCKER) run --rm -v "$(CURDIR)":/src -w /src $(IMAGE)
 
-.PHONY: ci image deps clean compile lint test screenshots
+.PHONY: ci ci-all image deps clean compile lint test screenshots
 
 # Build the image and install the dependencies, then run compile, lint and
 # test in parallel, as they are independent.  compile, lint and test can
@@ -18,6 +20,21 @@ ci: clean
 	$(MAKE) image
 	$(MAKE) deps
 	$(MAKE) -j3 compile lint test
+
+# ci on every release CI runs, at once: each has its own image, and its
+# own .eask/VERSION.  Each run's output goes to .ci/VERSION.log; a failed
+# one's end is printed.
+ci-all:
+	@mkdir -p .ci
+	@for v in $(EMACS_ALL); do \
+	  ( $(MAKE) ci EMACS=$$v > .ci/$$v.log 2>&1; echo $$? > .ci/$$v.status ) & \
+	done; wait; \
+	failed=0; \
+	for v in $(EMACS_ALL); do \
+	  if [ "$$(cat .ci/$$v.status)" = 0 ]; then echo "Emacs $$v: ok"; \
+	  else failed=1; echo "Emacs $$v: failed, see .ci/$$v.log"; \
+	    grep -E "\.el:[0-9]+: |FAILED|Error" .ci/$$v.log | tail -20; fi; \
+	done; exit $$failed
 
 image:
 	$(DOCKER) build --build-arg EMACS=$(EMACS) -t $(IMAGE) .

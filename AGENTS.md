@@ -9,7 +9,7 @@ See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as f
 ## Rules
 
 - **Never commit or modify git state.** The developer handles all commits.
-- **Always run `make ci`** (compile + lint + test) after making changes. Fix all errors and warnings before finishing.
+- **Always run `make ci-all`** (compile + lint + test, on every Emacs release CI runs, at once) after making changes. Fix all errors and warnings before finishing; `make ci` runs one release, for a quicker check while working.
 - **Only call functions from declared dependencies.** The declared deps are in the `Package-Requires` header of `octocat.el`. Do not call into magit internals, transient internals, or any other package not listed there — even when taking inspiration from them. Re-implement the idea in plain Elisp instead.
 - **Update `CHANGELOG.md` for significant changes**: anything a user would notice (features, key bindings, fixed bugs) or that changes which Emacs versions are supported or tested. Add a line under `## [Unreleased]`, worded for users, in the style of the entries already there.
 - **Keep `Assisted-by:` headers complete.** Every `.el` file, tests included, lists each model that has worked on it, one line per model, as MELPA asks (`;; Assisted-by: AGENT_NAME:MODEL_VERSION`, e.g. `;; Assisted-by: Claude:claude-opus-5-5`). When you edit or create a file and your model is not listed there, add a line after the existing `Assisted-by:` lines, or, in a file with none, after the title line. Never remove a line.

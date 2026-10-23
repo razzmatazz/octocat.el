@@ -156,6 +156,14 @@
       (should-not (octocat-vui--turn-page-spinners buf))
       (should-not octocat-vui--page-spinner))))
 
+(ert-deftest octocat-vui-test-page-spinner-function ()
+  "Text whose spinner is a function displays what it returns for each frame."
+  (with-temp-buffer
+    (let ((octocat-vui--spinner "▗"))
+      (insert (propertize "[image]" 'octocat-vui-spinner (lambda (f) (concat f " [image]"))))
+      (should (octocat-vui--turn-page-spinners (current-buffer)))
+      (should (equal (get-text-property 1 'display) "▗ [image]")))))
+
 (ert-deftest octocat-vui-test-header-notice ()
   "Only a failed refresh over shown data gets a notice; offline names the time."
   (let ((h (make-hash-table)))

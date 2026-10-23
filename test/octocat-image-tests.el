@@ -151,11 +151,16 @@
         (should (equal (car mode-line-process) ":loading "))
         (octocat-image--fontify (point-min) (point-max))
         (should (equal (substring-no-properties (get-text-property (point) 'display))
-                       "[image: a] loading…"))
+                       "… [image: a]"))
+        ;; Each frame of the spinner, as `octocat-vui' turns it.
+        (should (equal (substring-no-properties
+                        (funcall (get-text-property (point) 'octocat-vui-spinner) "▘"))
+                       "▘ [image: a]"))
         (funcall done "BYTES")
         (should-not mode-line-process)
         (octocat-image--fontify (point-min) (point-max))
-        (should (equal (get-text-property (point) 'display) '(img "BYTES")))))))
+        (should (equal (get-text-property (point) 'display) '(img "BYTES")))
+        (should-not (get-text-property (point) 'octocat-vui-spinner))))))
 
 (ert-deftest octocat-image-test-failed-unmarked ()
   "An image that could not be had shows its link again, not that it loads."
