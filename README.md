@@ -11,7 +11,7 @@ A GitHub client for Emacs, powered by the [`gh`](https://cli.github.com/) comman
 
 ## Requirements
 
-- [Emacs](https://www.gnu.org/software/emacs/) 29.1 or later, built with SQLite (`(sqlite-available-p)` returns `t`); pages keep what they fetched in a SQLite store
+- [Emacs](https://www.gnu.org/software/emacs/) 29.1 or later, built with SQLite (`(sqlite-available-p)` returns `t`); pages keep what they fetched in a SQLite store. On Emacs 29 it must also be built with JSON support, i.e. libjansson (`(json-available-p)` returns `t`); Emacs 30 and later always have it
 - [GitHub CLI (`gh`)](https://cli.github.com/) — must be installed and authenticated
 - [vui.el](https://melpa.org/#/vui) — declarative UI library every octocat buffer is drawn with, from MELPA
 
@@ -437,23 +437,25 @@ no local Emacs install is required.
 make ci
 ```
 
-It runs Emacs 31 by default, built from the GNU release since Ubuntu does
-not package it.  Pass `EMACS=30` to run Ubuntu's own Emacs 30 instead:
+It runs Emacs 31.1 by default; pass `EMACS` to run another release.  The
+image builds every release from the GNU sources, as Ubuntu 26.04 packages
+only Emacs 30:
 
 ```bash
-make ci EMACS=30
+make ci EMACS=29.1
 ```
 
-Both are worth running: Emacs 30 checks a call's argument count only
-against callees that are already byte-compiled, while Emacs 31 checks it
-against any loaded function, so it catches calls with the wrong number of
-arguments that Emacs 30 lets through.
+CI runs 29.1, the oldest release octocat supports, as well as 30.2 and
+31.1.  The newest matters too: Emacs 31 checks a call's argument count
+against any loaded function, while older releases check it only against
+callees that are already byte-compiled, so only 31 catches every call
+with the wrong number of arguments.
 
 ### CI
 
-GitHub Actions runs compile, lint and test on Emacs 30 and 31 on every push
-and pull request, caching the Docker layers (the Emacs 31 build takes
-minutes) and the Eask dependencies between runs.  See
+GitHub Actions runs compile, lint and test on Emacs 29.1, 30.2 and 31.1
+on every push and pull request, caching the Docker layers (building Emacs
+takes minutes) and the Eask dependencies between runs.  See
 [`.github/workflows/test.yml`](.github/workflows/test.yml).
 
 ## License

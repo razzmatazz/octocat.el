@@ -7,11 +7,12 @@ FROM ubuntu:26.04 AS build
 ARG EMACS
 
 # The libraries are the ones octocat needs: zlib for avatars, SQLite for
-# the sync cache, GnuTLS for fetching packages.
+# the sync cache, GnuTLS for fetching packages, and Jansson for JSON on
+# Emacs 29, which 30 parses itself.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       build-essential pkg-config curl ca-certificates xz-utils \
-      libgnutls28-dev libncurses-dev libsqlite3-dev libxml2-dev zlib1g-dev && \
+      libgnutls28-dev libjansson-dev libncurses-dev libsqlite3-dev libxml2-dev zlib1g-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # GCC 15 defaults to C23, which Emacs before 30 does not build with.
@@ -28,7 +29,7 @@ FROM ubuntu:26.04
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       curl git ca-certificates unzip \
-      libgnutls30t64 libncurses6 libsqlite3-0 libxml2-16 zlib1g && \
+      libgnutls30t64 libjansson4 libncurses6 libsqlite3-0 libxml2-16 zlib1g && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/emacs /opt/emacs
