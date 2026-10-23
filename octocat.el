@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 Saulius Menkevicius
 
-;; Author: octocat.el contributors
+;; Author: Saulius Menkevicius <sauliusmenkevicius@fastmail.com>
 ;; Assisted-by: Claude:claude-sonnet-4-6
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1") (consult "1.0") (vui "0.1"))
