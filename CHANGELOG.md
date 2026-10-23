@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-10-23
+* First release, and the first on MELPA Stable
 * Fix the compare page failing to render its files with a wrong-number-of-arguments error
 * Test on Emacs 29.1, the oldest release octocat supports, as well as 30.2 and 31.1
 * `C-c C-j` (`octocat-jump`) now searches the current repository's PRs, issues, commits and files; `C-u C-c C-j` jumps to another repository, or to a user with `@`, as `C-c C-j` did before. On a page with no repository, `C-c C-j` jumps to another repository or user
