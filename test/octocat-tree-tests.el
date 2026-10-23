@@ -176,6 +176,19 @@ A refresh asks GitHub again, which never answers."
                   (goto-char pos)
                   (call-interactively (key-binding (kbd "RET")))))
               ;; ":" is plain; "/" is the root, "docs" docs/.
+              ;; C-c C-o on a link opens it, not the file, on GitHub.
+              (let (browsed)
+                (cl-letf (((symbol-function 'octocat-browse-external)
+                           (lambda (url) (push url browsed))))
+                  (goto-char (point-min))
+                  (search-forward "shots")
+                  (backward-char)
+                  (octocat-file-browse)
+                  (goto-char (point-min))
+                  (octocat-file-browse))
+                (should (equal (nreverse browsed)
+                               '("https://github.com/owner/repo/blob/dev/docs/shots/README.md"
+                                 "https://github.com/owner/repo/blob/dev/docs/GUIDE.md"))))
               (should (equal (nreverse opened)
                              '(("owner/repo" "dev" nil) ("owner/repo" "dev" "docs")))))
             (should (string-match-p "^Guide$" text))
@@ -188,6 +201,19 @@ A refresh asks GitHub again, which never answers."
             (octocat-toggle-markdown)
             (should (string-match-p "^# Guide$" (buffer-string))))
         (kill-buffer)))))
+
+(ert-deftest octocat-tree-test-image-file-page ()
+  "An image file is shown as the image, or, where it cannot be, said to be one."
+  (let ((png "\211PNG\r\n\032\nbytes"))
+    (cl-letf (((symbol-function 'display-images-p) #'always)
+              ((symbol-function 'image-type-available-p) #'always)
+              ((symbol-function 'create-image)
+               (lambda (data type &rest _) (list 'img type data))))
+      (let ((text (octocat-repo--file-text "o/r" "main" "docs/a.png" png nil 80)))
+        (should (equal (get-text-property 0 'display text) (list 'img 'png png)))))
+    (cl-letf (((symbol-function 'display-images-p) #'ignore))
+      (should (string-match-p "\\`An image of "
+                              (octocat-repo--file-text "o/r" "main" "docs/a.png" png nil 80))))))
 
 (ert-deftest octocat-tree-test-ref-label ()
   "A long branch name is cut in its middle, keeping both ends; a SHA to seven."
@@ -354,75 +380,36 @@ It does not fold, however long."
       (accept-process-output nil 0.01)
       (should (equal (octocat-tree--path-at-point) "f04")))))
 
-(defconst octocat-tree-tests--file-log-commits-json
-  (concat "[{\"sha\":\"a1b2c3d4e5f6\",\"author\":{\"login\":\"ann\"},"
-          "\"commit\":{\"message\":\"Fix parser\\n\\nLonger body\","
-          "\"author\":{\"name\":\"Ann\",\"date\":\"2026-06-01T10:00:00Z\"}}},"
-          "{\"sha\":\"f6e5d4c3b2a1\",\"author\":null,"
-          "\"commit\":{\"message\":\"Add tests\","
-          "\"author\":{\"name\":\"Bob\",\"date\":\"2026-05-28T10:00:00Z\"}}}]")
-  "Two commits as the REST commits endpoint returns them.")
-
-(defun octocat-tree-tests--mount-file-log (&rest result)
-  "Mount the file log page in the current buffer.
-Its fetch gives the car of RESULT, or never returns when there is none."
-  (octocat-file-log-mode)
-  (setq octocat-file-log--repo "owner/repo"
-        octocat-file-log--path "src/foo.el")
-  (cl-letf (((symbol-function 'octocat-tree--fetch-file-commits)
-             (lambda (_repo _ref _path callback)
-               (when result (funcall callback (car result))))))
-    (octocat-file-log-refresh)))
-
-(ert-deftest octocat-tree-test-file-log-commit-line ()
-  "A commit line shows short SHA, author and subject, and carries the SHA."
-  (let* ((commit (aref (json-parse-string octocat-tree-tests--file-log-commits-json
-                                          :null-object nil)
-                       0))
-         (line   (octocat-file-log--commit-line commit)))
-    (should (string-match-p "a1b2c3d " line))
-    (should (string-match-p "@ann" line))
-    (should (string-match-p "Fix parser" line))
-    (should-not (string-match-p "Longer body" line))
-    (should-not (string-search "\n" line))
-    (should (equal (get-text-property 0 'octocat-file-log--sha line)
-                   "a1b2c3d4e5f6"))
-    (should (equal (get-text-property (1- (length line)) 'octocat-file-log--sha line)
-                   "a1b2c3d4e5f6"))))
-
-(ert-deftest octocat-tree-test-file-log-render-commits ()
-  "The file log lists one line per commit under a header with the count."
-  (octocat-tree-tests--with-store
-    (with-temp-buffer
-      (octocat-tree-tests--mount-file-log
-       (append (json-parse-string octocat-tree-tests--file-log-commits-json
-                                  :null-object nil)
-               nil))
-      (let ((text (buffer-string)))
-        (should (string-match-p "owner/repo  src/foo.el  (2 commits)" text))
-        (should (< (string-search "Fix parser" text)
-                   (string-search "Add tests" text))))
-      (goto-char (point-min))
-      (search-forward "Add tests")
-      (should (equal (octocat-file-log--sha-at-point) "f6e5d4c3b2a1"))
-      (goto-char (point-min))
-      (should-not (octocat-file-log--sha-at-point)))))
-
-(ert-deftest octocat-tree-test-file-log-render-loading-and-empty ()
-  "The file log shows no count while loading, an error, or a no-commits line."
-  (octocat-tree-tests--with-store
-    (with-temp-buffer
-      (octocat-tree-tests--mount-file-log)
-      (should-not (string-match-p "commits)" (buffer-string)))))
-  (octocat-tree-tests--with-store
-    (with-temp-buffer
-      (octocat-tree-tests--mount-file-log '(error . "boom"))
-      (should (string-match-p "Error: boom; g to retry" (buffer-string)))))
-  (octocat-tree-tests--with-store
-    (with-temp-buffer
-      (octocat-tree-tests--mount-file-log nil)
-      (should (string-match-p "(0 commits)" (buffer-string)))
-      (should (string-match-p "(no commits found)" (buffer-string))))))
+(ert-deftest octocat-tree-test-commits-page ()
+  "The commits page has the tree's top line, with the count, and a rule; C-c C-l opens it."
+  (octocat-tree-tests--with-file-page
+    (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n")
+    (octocat-tree-tests--store
+     '(commits "owner/repo" "dev" "docs/GUIDE.md")
+     (vconcat (octocat-repo--parse-history
+               "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":3,\"edges\":[{\"cursor\":\"c 0\",\"node\":{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}}]}}}}}")))
+    (save-current-buffer
+      (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md")
+      (let ((file (current-buffer)))
+        (octocat-file-log-open)
+        (unwind-protect
+            (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+              (should (derived-mode-p 'octocat-commits-mode))
+              (should (string-match-p
+                       (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  3 commits  "
+                               "\\[reset to main\\]\n━+\nabc1234  Add the guide")
+                       text))
+              ;; A directory on the way shows its own commits.
+              (let (opened)
+                (cl-letf (((symbol-function 'octocat-commits-open)
+                           (lambda (&rest args) (push args opened))))
+                  (goto-char (point-min))
+                  (search-forward ":/docs")
+                  (backward-char)
+                  (call-interactively (key-binding (kbd "RET"))))
+                (should (equal opened '(("owner/repo" "dev" "docs"))))))
+          (kill-buffer)
+          (kill-buffer file))))))
 
 (provide 'octocat-tree-tests)
 ;;; octocat-tree-tests.el ends here

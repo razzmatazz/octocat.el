@@ -60,7 +60,6 @@
 (defvar octocat-run-mode-map)
 (defvar octocat-job-mode-map)
 (defvar octocat-file-mode-map)
-(defvar octocat-file-log-mode-map)
 
 (declare-function octocat-tree-find-file     "octocat-tree"      ())
 (declare-function octocat-repo-up            "octocat-repo"      ())
@@ -72,9 +71,6 @@
 (declare-function octocat-file-browse        "octocat-tree"      ())
 (declare-function octocat-file-log-open      "octocat-tree"      ())
 (declare-function octocat-file-switch-branch "octocat-tree"      ())
-(declare-function octocat-file-log-refresh   "octocat-tree"      (&optional _ignore-auto _noconfirm))
-(declare-function octocat-file-log-visit     "octocat-tree"      ())
-(declare-function octocat-file-log-browse    "octocat-tree"      ())
 (declare-function octocat-jump               "octocat-core"      (&optional other))
 (declare-function octocat-toggle-markdown    "octocat-core"      ())
 (declare-function octocat-pr-refresh         "octocat-pr"        (&optional _ignore-auto _noconfirm))
@@ -335,16 +331,6 @@ Off an entry, such as on the header, move left."
   (evil-define-key* 'motion octocat-file-mode-map
     (kbd "gr")      #'octocat-file-refresh)
 
-  ;; ── octocat-file-log-mode ─────────────────────────────────────────────
-  (evil-define-key* 'normal octocat-file-log-mode-map
-    (kbd "RET")     #'octocat-file-log-visit
-    (kbd "C-c C-o") #'octocat-file-log-browse
-    (kbd "gs")      #'octocat-search-repo
-    (kbd "q")       #'octocat-quit-window
-    (kbd "gr")      #'octocat-file-log-refresh)
-  (evil-define-key* 'motion octocat-file-log-mode-map
-    (kbd "RET")     #'octocat-file-log-visit)
-
   ;; ── Keys every page but the lists (see above) shares ─────────────────
   ;; As treemacs-evil: `o' is RET and `O' opens in another window.  Each
   ;; mode's own map, as Evil's auxiliary keymaps are not reliably found
@@ -355,8 +341,7 @@ Off an entry, such as on the header, move left."
                      octocat-checks-mode-map octocat-pr-diff-mode-map
                      octocat-pr-commits-mode-map octocat-issue-mode-map
                      octocat-workflow-mode-map octocat-run-mode-map
-                     octocat-job-mode-map octocat-file-mode-map
-                     octocat-file-log-mode-map))
+                     octocat-job-mode-map octocat-file-mode-map))
     (evil-define-key* 'normal map
       (kbd "o")          #'octocat-visit
       (kbd "O")          #'octocat-visit-other-window

@@ -160,8 +160,11 @@ path (`/tree/main/src/parser`) opens the browser at it.
 
 `[N commits]` on the repo page lists the history of the ref shown, or of
 the directory shown, newest first, `octocat-repo-commits-page-size` (25) at a time with a button to
-load more.  The local `HEAD` commit is highlighted, `RET` on a commit
-opens it, and the picker shows another branch's history.  A github.com
+load more; `C-c C-l` in the file viewer lists a file's.  Its top line is
+the tree browser's, `owner/repo[main ▾]:/dir`, with how many commits
+there are, then a rule: the picker shows another branch's history, and
+a directory of the path its own.  The local `HEAD` commit is
+highlighted, and `RET` on a commit opens it.  A github.com
 `/commits/REF` link opens it too, and `/commits/REF/PATH` the history of
 a file or directory.
 
@@ -315,9 +318,7 @@ link with one ref, where github.com picks the base, opens in the browser.
 
 ---
 
-### Files (`octocat-file-mode`, `octocat-file-log-mode`)
-
-#### File viewer (`octocat-file-mode`)
+### Files (`octocat-file-mode`)
 
 `RET` on a file of the repo page's tree, a github.com `/blob/REF/PATH`
 link, or a relative link in a README, opens a read-only buffer showing
@@ -336,27 +337,10 @@ is cut in its middle, there and in every branch picker; hovering over
 it shows it in full, as does picking a branch.  Each ref of a file has a buffer of its own, named
 `*owner/repo@ref:path*`; `C-c C-b`, or `RET` on the picker, opens the
 file at another branch, in another buffer, so the two can be read side
-by side.  Press `C-c C-o` to open the file on GitHub, `C-c C-l` to open
-the file's commit history, and `gr` to reload.
-
-#### File commit log (`octocat-file-log-mode`)
-
-Press `C-c C-l` from a file viewer buffer to open the commit history for that
-file, from the ref it was opened at back; a github.com `/commits/REF/PATH`
-link opens it too.  The log buffer lists up to 25 commits that touched the
-file, one per row:
-
-```
-owner/repo  src/foo.el  (7 commits)
-  a1b2c3d  2026-06-01       Jane Doe          Refactor parser logic
-  f4e5d6c  2026-05-28       Bob Smith         Fix edge case in tokeniser
-  …
-```
-
-- **`RET`** on a commit row opens its full commit detail view.
-- **`C-c C-o`** opens the commit on GitHub in the browser.
-- **`gr`** re-fetches the commit list from the API.
-- **`q`** closes the buffer.
+by side.  Press `C-c C-o` to open the file on GitHub, or, on a link or
+image, what it links to; `C-c C-l` to open the file's history on the
+commits page, as `[N commits]` does; and `gr` to reload.  `RET` on an
+image shown in place opens its file here, where it is shown whole.
 
 ---
 
@@ -397,7 +381,7 @@ fetched.
 | `C-c C-v` | Alternative view of the page (see below): raw markdown on the repo page, the file viewer and the PR, commit and issue pages; the review comments in the diff on the PR's files changed page; one line per item on the PR and issue lists |
 | `C-c C-b` | Pick the branch shown (repo page, commits page); `[reset to main]` goes back to the clone's branch, or the default.  In the file viewer, open the file at another branch, in a buffer of its own |
 | `C-c C-f` | Open fuzzy file finder — `completing-read` over the full recursive file list of the commit shown; works from the repo page and the file viewer (the list is fetched once per commit) |
-| `C-c C-l` | Open file commit log — shows the commit history for the file currently open in `octocat-file-mode` |
+| `C-c C-l` | Open the history of the file shown in `octocat-file-mode`, on the commits page |
 | `g` / `gr` | Refresh current buffer |
 | `q` | Back to the previous page, or out of octocat (see below) |
 | `TAB` | Expand / collapse section at point |

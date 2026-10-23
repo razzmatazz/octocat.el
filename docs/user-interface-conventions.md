@@ -737,7 +737,7 @@ where the bare identity would collide.
 | Run / job | `*owner/repo run 123*`, `*owner/repo job 456*` |
 | Workflow | `*owner/repo/CI*` |
 | Lists | `*owner/repo prs*`, `issues`, `actions` |
-| File / file log | `*owner/repo:path*`, `*owner/repo:path log*` |
+| File | `*owner/repo@ref:path*`, one buffer per ref |
 | User | `*@login*` |
 | Edit | `*<title>*` |
 

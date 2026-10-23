@@ -22,27 +22,22 @@
 
 ;;; Commentary:
 
-;; A repository's files, as the repo page lists them, and two modes for
+;; A repository's files, as the repo page lists them, and the mode for
 ;; one file:
 ;;
 ;;   `octocat-tree--dir'     — one directory of the repo page, as on GitHub
 ;;   octocat-file-mode     — one file at one ref, highlighted, or rendered if markdown
-;;   octocat-file-log-mode — commit log for a single file (git log -- <path>)
 ;;
 ;; Entry points:
 ;;   the repo page (`octocat-visit-repo'), which lists the root's first
 ;;   entries, and the tree browser (`octocat-tree-open'), the whole tree
 ;;   `octocat-tree-find-file' — pick any file of the ref shown (C-c C-f)
-;;   `octocat-file-log-open'  — open the file commit log (C-c C-l in file mode)
+;;   `octocat-file-log-open'  — the file's commits page (C-c C-l in file mode)
 ;;
 ;; octocat-file-mode derives from `vui-mode' and is rendered by
 ;; `octocat-repo-vui--file-page', in octocat-repo.el: its top is the
 ;; tree browser's, so one reads on from the other.  Each ref of a file
 ;; has a buffer of its own, and picking another ref opens another.
-;; octocat-file-log-mode derives from `vui-mode' and is rendered by
-;; `octocat-file-log--page': one line per commit, carrying the commit's
-;; SHA in the `octocat-file-log--sha' text property, which RET
-;; (`octocat-file-log-visit') and C-c C-o (`octocat-file-log-browse') read.
 ;; The repo page lists the root's first entries flat, as GitHub's does;
 ;; RET on a directory opens the tree browser, `octocat-tree-mode', the
 ;; whole tree opened down to it, as GitHub's sidebar (see "Rendering —
@@ -70,8 +65,8 @@
 (defvar octocat-repo--default-branch)
 (defvar octocat-repo--tracked)
 
-(declare-function octocat-commit-open "octocat-commit" (repo sha))
 (declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
+(declare-function octocat-commits-open "octocat-repo" (repo &optional ref path))
 (declare-function octocat-user-open "octocat-user" (login))
 (declare-function octocat-vui-repo-heading "octocat-vui" (repo))
 
@@ -123,41 +118,6 @@ The rest expands on RET.  Nil never folds."
   (setq-local revert-buffer-function #'octocat-file-refresh)
   (setq-local octocat--refresh-fn #'octocat-file-refresh)
   (octocat-markdown--ensure-invisibility)
-  (octocat--ts-eldoc-setup))
-
-
-;;;; Buffer-local variables — file log mode
-
-(defvar-local octocat-file-log--repo nil
-  "The \"owner/repo\" string for the file log buffer.")
-
-(defvar-local octocat-file-log--path nil
-  "Relative file path whose commit history is being shown.")
-
-(defvar-local octocat-file-log--branch nil
-  "Ref the file log lists the commits from, or nil for the default branch.")
-
-
-;;;; Mode: octocat-file-log-mode
-
-(defvar octocat-file-log-mode-map
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    map)
-  "Keymap for `octocat-file-log-mode'.")
-(define-key octocat-file-log-mode-map (kbd "RET")     #'octocat-file-log-visit)
-(define-key octocat-file-log-mode-map (kbd "C-c C-o") #'octocat-file-log-browse)
-(define-key octocat-file-log-mode-map (kbd "gr")      #'octocat-file-log-refresh)
-
-(define-derived-mode octocat-file-log-mode vui-mode "Octocat-File-Log"
-  "Major mode for browsing the commit history of a single file.
-The buffer is rendered by vui.el; see `octocat-file-log--page'.
-
-\\{octocat-file-log-mode-map}"
-  :group 'octocat
-  (setq-local buffer-read-only t)
-  (setq-local truncate-lines t)
-  (setq-local revert-buffer-function #'octocat-file-log-refresh)
   (octocat--ts-eldoc-setup))
 
 
@@ -648,179 +608,34 @@ TYPE is `file' or `dir'."
          :raw octocat--markdown-raw)))
 
 (defun octocat-file-browse ()
-  "Open the current file on GitHub in the browser."
+  "Open the current file on GitHub in the browser.
+On a link or image of rendered markdown, open what it links to."
   (interactive)
   (unless (and octocat-tree--file-repo
                octocat-tree--file-branch
                octocat-tree--file-path)
     (user-error "Octocat: Buffer has no file context"))
-  (let ((url (format "https://github.com/%s/blob/%s/%s"
-                     octocat-tree--file-repo
-                     octocat-tree--file-branch
-                     octocat-tree--file-path)))
-    (message "Octocat: Opening %s in browser…" octocat-tree--file-path)
+  (let ((url (or (octocat-markdown-url-at)
+                 (format "https://github.com/%s/blob/%s/%s"
+                         octocat-tree--file-repo
+                         octocat-tree--file-branch
+                         octocat-tree--file-path))))
+    (message "Octocat: Opening %s in browser…" url)
     (octocat-browse-external url)))
 
-;;;; API fetch helper — file commits
-
-(defun octocat-tree--fetch-file-commits (repo ref path callback)
-  "Fetch commit history for PATH in REPO asynchronously.
-Requests up to 25 commits touching PATH, from REF back (nil for the
-default branch), using the GitHub REST commits endpoint with the
-\\='path\\=' filter.  Calls CALLBACK with a list of commit hash-tables,
-or a cons (error . MSG) on failure."
-  (octocat--run-gh
-   "file-commits"
-   (list "api"
-         (format "repos/%s/commits?per_page=25&path=%s%s"
-                 repo (url-hexify-string path)
-                 (if ref (concat "&sha=" (url-hexify-string ref)) "")))
-   #'octocat--parse-json-list
-   callback))
-
-
-(octocat-sync-define-resource file-log (repo ref path)
-  :fetch (lambda (done)
-           (octocat-tree--fetch-file-commits
-            repo ref path
-            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
-
-
-;;;; Rendering — file log mode
-
-(defun octocat-file-log--commit-line (commit)
-  "Return the log line for COMMIT, a hash-table (no trailing newline).
-The line shows the short SHA, date, author and subject.  The full SHA
-is in the `octocat-file-log--sha' property across the whole line, which
-`octocat-file-log-visit' and `octocat-file-log-browse' read: like the
-tree lines, commands read a property rather than a per-line keymap, so
-they keep working under Evil."
-  (let* ((sha     (or (gethash "sha" commit) ""))
-         (short   (substring sha 0 (min 7 (length sha))))
-         (c       (gethash "commit" commit))
-         (msg     (or (and c (gethash "message" c)) ""))
-         (subject (car (split-string msg "\n")))
-         (date-s  (or (and c
-                           (let ((a (gethash "author" c)))
-                             (and a (gethash "date" a))))
-                      ""))
-         (date    (octocat--format-ts-relative date-s))
-         (author  (octocat--commit-author commit))
-         (line    (concat
-                   "  "
-                   (propertize short 'face 'octocat-dimmed)
-                   "  "
-                   (propertize (format "%-14s" date) 'face 'octocat-dimmed)
-                   "  "
-                   (propertize (format "%-16s" (truncate-string-to-width author 16 nil ?\s "…"))
-                               'face 'octocat-pr-author)
-                   "  "
-                   (octocat--format-title subject))))
-    (add-text-properties 0 (length line)
-                         (list 'octocat-file-log--sha sha
-                               'mouse-face            'highlight)
-                         line)
-    (octocat-vui--default-help-echo
-     line "RET: open commit details  C-c C-o: browse on GitHub")))
-
-(vui-defcomponent octocat-file-log--page (repo ref path tick)
-  "The file log page: a REPO and PATH header, then the commits of PATH.
-They are those from REF back, nil for the default branch.  The header
-leaves out the commit count until they are known.  A new TICK fetches
-them again."
-  :render
-  (let* ((result  (octocat-vui-use-resource (list 'file-log repo ref path) tick))
-         (status  (octocat-vui-snapshot-status result))
-         (commits (append (plist-get result :data) nil)))
-    (vui-vstack
-     (vui-hstack :spacing 0
-       (and repo (octocat-vui-repo-heading repo))
-       (vui-text (concat
-                  "  "
-                  (propertize (or path "") 'face 'octocat-branch)
-                  (when (eq status 'ready)
-                    (concat "  "
-                            (propertize (format "(%d commits)" (length commits))
-                                        'face 'octocat-dimmed))))))
-     (pcase status
-       ('pending (vui-text (octocat-vui-line-skeleton "  ")))
-       ('error
-        (vui-text (propertize (concat "  " (octocat-vui-error-text result))
-                              'face 'error)))
-       (_ (if (null commits)
-              (vui-text (propertize "  (no commits found)" 'face 'octocat-dimmed))
-            (vui-list commits
-                      (lambda (commit) (vui-text (octocat-file-log--commit-line commit)))
-                      (lambda (commit) (gethash "sha" commit)))))))))
-
-(defun octocat-file-log--sha-at-point ()
-  "Return the full SHA of the commit on the current line, or nil."
-  (get-text-property (line-beginning-position) 'octocat-file-log--sha))
-
-
-;;;; Interactive commands — file log mode
+;;;; File history
 
 (defun octocat-file-log-open ()
-  "Open the commit log browser for the file shown in the current buffer.
-Works from an `octocat-file-mode' buffer."
+  "Open the commits page of the file shown, from its ref back.
+It is the page `[N commits]' opens, see `octocat-commits-open'."
   (interactive)
-  (unless (derived-mode-p 'octocat-file-mode)
+  (unless (and (derived-mode-p 'octocat-file-mode)
+               octocat-tree--file-repo octocat-tree--file-path)
     (user-error "Octocat: Not in a file viewer buffer"))
-  (unless (and octocat-tree--file-repo octocat-tree--file-path)
-    (user-error "Octocat: Buffer has no file context"))
-  (octocat-file-log-open-path octocat-tree--file-repo octocat-tree--file-branch
-                              octocat-tree--file-path))
-
-(defun octocat-file-log-open-path (repo ref path)
-  "Open (or switch to) the \\='*REPO:PATH log*\\=' buffer, from REF back.
-REF nil, or \"HEAD\", is the default branch."
-  (let ((buf (get-buffer-create (format "*%s:%s log*" repo path)))
-        (ref (unless (equal ref "HEAD") ref)))
-    (octocat-display-buffer buf)
-    (unless (derived-mode-p 'octocat-file-log-mode)
-      (octocat-file-log-mode))
-    (setq octocat-file-log--repo   repo
-          octocat-file-log--path   path
-          octocat-file-log--branch ref)
-    (octocat-file-log-refresh)))
-
-(defun octocat-file-log-refresh (&optional _ignore-auto _noconfirm)
-  "Refresh the file log buffer by re-fetching commits from the GitHub API."
-  (interactive)
-  (unless (and octocat-file-log--repo octocat-file-log--path)
-    (user-error "Octocat: Buffer is not associated with a file"))
-  (octocat-vui-refresh-page 'octocat-file-log--page
-                            (list octocat-file-log--repo octocat-file-log--branch
-                                  octocat-file-log--path)
-                            (list :repo octocat-file-log--repo
-                                  :ref octocat-file-log--branch
-                                  :path octocat-file-log--path)))
-
-(defun octocat-file-log-visit ()
-  "Open the commit detail view for the commit at point."
-  (interactive)
-  (when-let* ((sha (octocat-file-log--sha-at-point)))
-    (octocat-commit-open octocat-file-log--repo sha)))
-
-(defun octocat-file-log-browse ()
-  "Open the commit at point on GitHub.
-Away from a commit line, open the file's history page instead."
-  (interactive)
-  (unless (and octocat-file-log--repo octocat-file-log--path)
-    (user-error "Octocat: Buffer is not associated with a file"))
-  (let ((sha (octocat-file-log--sha-at-point)))
-    (if sha
-        (progn
-          (message "Octocat: Opening commit %s in browser…"
-                   (substring sha 0 (min 7 (length sha))))
-          (octocat-browse-external (format "https://github.com/%s/commit/%s"
-                                           octocat-file-log--repo sha)))
-      (message "Octocat: Opening file history in browser…")
-      (octocat-browse-external (format "https://github.com/%s/commits/%s/%s"
-                                       octocat-file-log--repo
-                                       (or octocat-file-log--branch "HEAD")
-                                       octocat-file-log--path)))))
-
+  (octocat-commits-open octocat-tree--file-repo
+                        (unless (equal octocat-tree--file-branch "HEAD")
+                          octocat-tree--file-branch)
+                        octocat-tree--file-path))
 
 (provide 'octocat-tree)
 ;;; octocat-tree.el ends here

@@ -124,8 +124,13 @@
         (octocat-image-show)
         (octocat-image--fontify (point-min) (point-max))
         (should (equal asked '(("o/r" "main" "docs/a.png"))))
-        (should (equal (get-text-property (match-beginning 0) 'display)
-                       '(img "BYTES")))))))
+        (let ((pos (match-beginning 0)))
+          (should (equal (get-text-property pos 'display) '(img "BYTES")))
+          ;; RET opens its github.com page, which is the file viewer's.
+          (should (eq (get-text-property pos 'keymap) octocat-markdown-link-map))
+          (should (equal (octocat--github-url-target
+                          (get-text-property pos 'octocat-markdown-url))
+                         '(blob "o/r" "main" "docs" "a.png"))))))))
 
 (ert-deftest octocat-image-test-loading ()
   "While a requested image loads, the buffer's mode line says so."

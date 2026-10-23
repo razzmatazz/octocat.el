@@ -255,6 +255,12 @@ read it, \"raw\" for its bytes; a directory's is its \"tree\"."
         (when arrow
           (put-text-property arrow (1+ arrow) 'display (if hidden "▾" "▸")))))))
 
+(defun octocat-markdown-url-at (&optional pos)
+  "Return the URL of the link or image at POS (default point), or nil.
+Only an absolute one: a link left relative has nowhere to go."
+  (let ((url (get-text-property (or pos (point)) 'octocat-markdown-url)))
+    (and url (string-match-p "\\`[a-zA-Z][a-zA-Z0-9+.-]*:" url) url)))
+
 (defun octocat-markdown-follow (&optional event)
   "Follow the link, reference or <details> summary at point (or at EVENT)."
   (interactive (list last-nonmenu-event))

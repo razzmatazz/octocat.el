@@ -274,7 +274,8 @@
                       "o/r/actions/workflows/ci.yml"
                       "o/r/pulls" "o/r/issues" "o/r/actions" "o/r/tree/main"
                       "o/r/tree" "o/r/tree/feat/x/src/a.el" "o/r/commits/main"
-                      "o/r/commits/feat/x/src/a.el" "o/r/blob/feat/x/src/a.el"))
+                      "o/r/commits/feat/x/src/a.el" "o/r/blob/feat/x/src/a.el"
+                      "o/r/raw/feat/x/img.png"))
         (octocat-browse-url (concat "https://github.com/" path))))
     (should (equal (nreverse opened)
                    '((user "octocat") (repo "o/r") (pr "o/r" 1) (pr-diff "o/r" 1) (pr-commits "o/r" 1)
@@ -285,7 +286,8 @@
                      (pr-list "o/r") (issue-list "o/r")
                      (actions "o/r") (repo "o/r" "main") (repo "o/r" nil)
                      (tree "o/r" "feat/x" "src/a.el") (commits "o/r" "main" nil)
-                     (commits "o/r" "feat/x" "src/a.el") (file "o/r" "feat/x" "src/a.el"))))))
+                     (commits "o/r" "feat/x" "src/a.el") (file "o/r" "feat/x" "src/a.el")
+                     (file "o/r" "feat/x" "img.png"))))))
 
 (ert-deftest octocat-core-test-split-ref-path ()
   "The most leading segments naming a ref are the ref, else the first."

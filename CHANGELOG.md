@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 * `RET` on an image in a README, given by a relative path, shows it in place, as it does for images uploaded to GitHub
 * The file viewer renders Markdown files, as GitHub does, with their relative links and images working as in a README; `C-c C-v` shows the source
 * The tree browser and the file viewer share a top line, `owner/repo[main ▾]:/dir/file`: the branch picker, then the path, whose directories open the tree browser at them; under it, the last commit, then a rule
+* The commits page has the same top line, with how many commits there are; a directory of the path shows its own history
+* `C-c C-l` in the file viewer opens the file's history on the commits page, as `[N commits]` does, which replaces the separate file log
+* `RET` on an image shown in a README opens its file in the file viewer, which shows image files; `C-c C-o` on a link or image opens it in the browser
 * Long branch names are cut in the middle in branch pickers, keeping both ends; hovering shows the name in full (`octocat-ref-max-width`)
 * Each branch of a file opens in a buffer of its own, named after both; `C-c C-b`, or `RET` on the picker, opens the file at another branch
 * While an image loads, a spinner turns before its link, and the mode line shows `:loading`

@@ -196,7 +196,9 @@ For `jit-lock-functions'."
                           'octocat-vui-spinner nil
                           'display (octocat-image--image data plist)
                           'keymap octocat-markdown-link-map
-                          'help-echo (format "RET: open %s" url))))
+                          'help-echo (if (plist-get plist :file)
+                                         "RET: open the image's file; C-c C-o: on GitHub"
+                                       (format "RET: open %s" url)))))
               ((eq data 'pending)
                (let ((link (octocat-image--link b e)))
                  (add-text-properties

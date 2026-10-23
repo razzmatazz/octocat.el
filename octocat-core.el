@@ -969,7 +969,8 @@ is asked first and the matching view opened."
   "Return the octocat view of github.com URL as (KIND ARGS...), or nil.
 KIND is `user', `repo', `pr', `pr-diff', `pr-commits', `issue', `commit',
 `compare', `run', `job', `workflow', `pr-list', `issue-list', `actions',
-`tree', `commits' or `blob'; nil means octocat has no view for URL.  The
+`tree', `commits' or `blob', the last for a /raw/ link too; nil means
+octocat has no view for URL.  The
 ARGS of the last three are the repo and the path segments after the
 kind, a ref and then a path: a ref may have slashes, so which segments
 are the ref takes asking GitHub, see `octocat--open-ref-path'.  A
@@ -992,7 +993,8 @@ are the ref takes asking GitHub, see `octocat--open-ref-path'.  A
              ('("actions") (list 'actions repo))
              (`(,(and kind (or "tree" "commits")) . ,segs)
               `(,(intern kind) ,repo ,@(mapcar #'url-unhex-string segs)))
-             (`("blob" ,ref ,file . ,segs)
+             ;; A file's raw bytes, as an image's, open in the viewer too.
+             (`(,(or "blob" "raw") ,ref ,file . ,segs)
               `(blob ,repo ,@(mapcar #'url-unhex-string (cons ref (cons file segs)))))
              (`("pull" ,n "commits" ,s . ,_)
               (and (funcall num n) (funcall sha s) (list 'commit repo s)))

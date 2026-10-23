@@ -1,6 +1,5 @@
-acme/rocket
-
-Commits [main ▾]
+acme/rocket[main ▾]:/  342 commits
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1a95462  Render footnotes in Markdown pages (#131)             @mchen           2 hours ago
 3f9c2a1  Cache parsed templates between builds (#128)          @srivera         6 hours ago
 a625406  Bump toml from 0.8.12 to 0.8.19                       dependabot[bot]  1 day ago

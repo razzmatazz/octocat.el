@@ -241,7 +241,11 @@
     (should (equal (gethash "message" (gethash "commit" first)) "Fix it"))
     (should (equal (octocat--commit-author first) "@ann"))
     (should (equal (octocat--commit-author (cadr commits)) "Bo"))
-    (should (equal (gethash "cursor" (cadr commits)) "abc 1")))
+    (should (equal (gethash "cursor" (cadr commits)) "abc 1"))
+    (should-not (gethash "total" first)))
+  (should (equal (gethash "total" (car (octocat-repo--parse-history
+                                        "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":7,\"edges\":[{\"cursor\":\"c\",\"node\":{\"oid\":\"abc\"}}]}}}}}")))
+                 7))
   (should-error (octocat-repo--parse-history
                  "{\"data\":{\"repository\":{\"object\":null}}}")))
 

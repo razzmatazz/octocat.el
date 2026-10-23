@@ -647,7 +647,8 @@ FIELDS, a plist, override the rest."
       ("commits" ("ref=HEAD")
        (:data (:repository
                (:object (:history
-                         (:edges ,(vconcat
+                         (:totalCount 342
+                          :edges ,(vconcat
                                    (seq-map-indexed
                                     (lambda (c i) `(:cursor ,(format "cursor-%d" i)
                                                     :node ,(octocat-screenshots--history-node c)))
