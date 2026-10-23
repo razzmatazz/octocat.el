@@ -17,6 +17,22 @@ See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as f
   Docs (`README.md`, `docs/`) must not be too short either: a reader new to the feature should get what it does, why, and how to use or extend it, in full sentences.
 - **Never modify source files through Emacs** (`emacs__eval-elisp`, buffer edits, `save-buffer`, etc.); it risks a live buffer and the file on disk drifting apart. Use the file-editing tools or any shell tool (`sed`, Python, etc.).
 
+## Screenshots
+
+[docs/screenshots](docs/screenshots/README.md) shows every page, drawn
+from the made-up data in `test/screenshots/fixtures.el`.
+
+- **After changing what a page shows, or adding one, run `make
+  screenshots`** and check the diff of the `.txt` files it rewrites:
+  they should change as you meant, and nothing else.  Read the PNGs of
+  the pages you changed too.
+- A new page or view gets a shot: add a marker to
+  `docs/screenshots/README.md`, with a line on what it shows.
+- If it fails naming a `gh` call with no fixture, add one to
+  `fixtures.el`, in the JSON `gh` prints for it.
+- Keep fixtures made up: never real repositories, people, hashes or
+  anything from the user's sync store.
+
 ## Sub-agent parallelism
 
 **Do not spawn multiple sub-agents that perform edits or run `make ci` concurrently.**

@@ -9,6 +9,15 @@ A GitHub client for Emacs, powered by the [`gh`](https://cli.github.com/) comman
 
 `octocat.el` integrates GitHub workflows directly into Emacs by leveraging the official GitHub CLI (`gh`). It provides a convenient Emacs interface for common GitHub operations without leaving your editor.
 
+A pull request, and a repository's page:
+
+![A pull request](docs/screenshots/pr.png)
+
+![A repository](docs/screenshots/repo.png)
+
+[docs/screenshots](docs/screenshots/README.md) shows every page, drawn
+from made-up data.
+
 ## Requirements
 
 - [Emacs](https://www.gnu.org/software/emacs/) 29.1 or later, built with SQLite (`(sqlite-available-p)` returns `t`); pages keep what they fetched in a SQLite store. On Emacs 29 it must also be built with JSON support, i.e. libjansson (`(json-available-p)` returns `t`); Emacs 30 and later always have it
@@ -450,6 +459,14 @@ CI runs 29.1, the oldest release octocat supports, as well as 30.2 and
 against any loaded function, while older releases check it only against
 callees that are already byte-compiled, so only 31 catches every call
 with the wrong number of arguments.
+
+### Screenshots
+
+`make screenshots` redraws [docs/screenshots](docs/screenshots/README.md)
+from the made-up data in `test/screenshots/fixtures.el`: it opens each
+page in a GUI Emacs under a virtual X display, in a container, and saves
+it as PNG and as text.  It compiles first, and takes about 15 seconds.
+See [Updating](docs/screenshots/README.md#updating) there to add a shot.
 
 ### CI
 

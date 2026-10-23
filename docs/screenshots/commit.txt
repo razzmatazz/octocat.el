@@ -1,0 +1,22 @@
+acme/rocket@3f9c2a1
+Cache parsed templates between builds (#128)
+Sam Rivera  <srivera@example.com> · @srivera · 6 hours ago
+SHA 3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f
+
+Message
+Templates were parsed again for every page.  Keep each parsed template
+in a cache keyed by its path and modification time, and those of the
+templates it includes.
+
+Closes #97
+
+Checks (4)  CI: ✓
+  ✓ lint           GitHub Actions  2m00s  6 hours ago
+  ✓ test (stable)  GitHub Actions  6m00s  6 hours ago
+  ✓ test (beta)    GitHub Actions  7m00s  6 hours ago
+  ✓ docs           GitHub Actions  3m00s  6 hours ago
+
+Files (3)  [Expand all]
+▸ A src/cache.rs  +18 -0
+▸ M src/build.rs  +5 -2
+▸ M src/main.rs  +1 -0

@@ -1,0 +1,19 @@
+acme/rocket
+
+[main ▾]  1a95462  Render footnotes in Markdown pages (#131)  2 hours ago  [342 commits]
+▸ .github/
+▸ docs/
+▸ examples/
+▾ src/
+    src/build.rs
+    src/cache.rs
+    src/main.rs
+    src/markdown.rs
+    src/serve.rs
+    src/template.rs
+  .gitignore
+  CONTRIBUTING.md
+  Cargo.lock
+  Cargo.toml
+  LICENSE
+  README.md

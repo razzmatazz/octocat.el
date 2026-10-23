@@ -1,0 +1,27 @@
+acme/rocket#97  Builds of large sites are slow: templates are parsed for every page · @pnair
+open    Assignees @srivera · Labels  performance
+        #128 · Milestone 0.10 · Fixed by #128
+
+● @pnair opened this issue  1 week ago
+│ Our docs site has about 1,200 pages and rocket build takes almost 10 seconds.
+│
+│ Profiling it, most of the time goes to Template::parse, which runs once per page even though there
+│ are only 6 templates.
+│
+│ Steps to reproduce
+│ 1. rocket new big-site
+│ 2. Generate 1,000 pages into content/
+│ 3. time rocket build
+│
+● @srivera commented  1 week ago
+│ Confirmed.  Parsing each template once per build should fix most of it; I'll take this.
+│
+○ @srivera added the  performance  label, self-assigned this and added this to the 0.10 milestone
+│ 1 week ago
+│
+● @kwong commented  1 week ago
+│ Same here with a 600-page blog: 5.5s.
+│
+○ @srivera mentioned this in #128 Cache parsed templates between builds  2 days ago
+│
+[+ Add a comment]   [Close issue]

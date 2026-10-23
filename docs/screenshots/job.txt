@@ -1,0 +1,21 @@
+acme/rocket
+✓  test (stable)  success
+Duration 6m00s · Started 1 day ago · Completed 1 day ago · Runner GitHub Actions 41 · Labels ubuntu-latest
+
+Steps (5)  [Expand all]
+  ▸ [✓] Set up job                                success  0s
+  ▸ [✓] Check out                                 success  0s
+  ▸ [✓] Install Rust                              success  1m00s
+  ▾ [✓] Run cargo                                 success  4m00s
+11:00:00    Compiling rocket v0.10.0 (/home/runner/work/rocket/rocket)
+11:00:00     Finished `test` profile [unoptimized + debuginfo] target(s) in 41.20s
+11:00:00      Running unittests src/main.rs (target/debug/deps/rocket-3a1d)
+11:00:00 running 48 tests
+11:00:00 test cache::tests::hit_when_unchanged ... ok
+11:00:00 test cache::tests::miss_when_include_changed ... ok
+11:00:00 test markdown::tests::footnotes ... ok
+11:00:00 test result: ok. 48 passed; 0 failed; 0 ignored; finished in 1.84s
+  ▸ [✓] Complete job                              success  0s
+
+Artifacts (1)
+  📦 coverage-report  470.8 KB

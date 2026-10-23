@@ -1,0 +1,36 @@
+acme/rocket  Code  [Issues (5)]  [Pull requests (6)]  [Actions]
+
+[main ▾]  1a95462  Render footnotes in Markdown pages (#131)  2 hours ago  [342 commits]
+.github/
+docs/
+examples/
+src/
+.gitignore
+CONTRIBUTING.md
+Cargo.lock
+Cargo.toml
+LICENSE
+README.md
+[Browse code]
+
+README  [Contributing]  [License]
+rocket
+A small, fast static site generator.  Write pages in Markdown, lay them
+out with templates, and rocket build turns them into a site.
+
+Install
+ cargo install rocket-ssg
+
+Usage
+┌──────────────┬────────────────────────────────────────────┐
+│ Command      │ What it does                               │
+├──────────────┼────────────────────────────────────────────┤
+│ rocket new   │ Start a site in a new directory            │
+│ rocket build │ Build the site into public/                │
+│ rocket serve │ Serve the site, rebuilding on every change │
+└──────────────┴────────────────────────────────────────────┘
+Pages live in content/, templates in templates/.  See the
+docs for the rocket.toml settings.
+
+License
+MIT

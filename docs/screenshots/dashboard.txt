@@ -1,0 +1,31 @@
+GitHub Dashboard
+Pull Requests
+open    Incremental builds: skip pages whose inputs are unchanged   performance   enhancement
+        acme/rocket#133 by @srivera · 3 hours ago · Review required · ● 2/4 · ✉ 4
+open    Cache parsed templates between builds   performance
+        acme/rocket#128 by @srivera · 2 days ago · Approved · ✓ 4/4 · ✉ 3
+open    Fix: `rocket serve` drops changes saved twice in a second   bug
+        acme/rocket#130 by @jlindqvist · 1 day ago · Changes requested · ✗ 3/4 · ✉ 6
+
+Issues
+open    Live reload doesn't pick up changes to templates   bug
+        acme/rocket#129 by @jlindqvist · 1 day ago · #130 · ✉ 3
+open    Builds of large sites are slow: templates are parsed for every page   performance
+        acme/rocket#97 by @pnair · 1 week ago · #128 · ✉ 5
+
+Recent Repositories
+  acme/rocket                          Rust            2 hours ago   A small, fast static site generator
+  acme/rocket-themes                   CSS             3 days ago    Themes for rocket sites
+  acme/launchpad                       Go              6 days ago    Deploy static sites to any CDN with one command
+  acme/orbit                           Rust            2 weeks ago   Tiny HTTP server for local previews
+  srivera/dotfiles                     Emacs Lisp      3 weeks ago   My editor and shell setup
+
+Feed
+  issue         tgarcia           acme/rocket                          opened issue #134: Build fails when a p…  1 hour ago
+  push          mchen             acme/rocket                          pushed to main (1a95462)                  2 hours ago
+  pr            srivera           acme/rocket                          opened PR #133: Incremental builds: ski…  3 hours ago
+  comment       pnair             acme/rocket                          commented on issue #129: Live reload do…  5 hours ago
+  star          kwong             acme/launchpad                       starred                                   7 hours ago
+  create        jlindqvist        acme/rocket                          created branch                            1 day ago
+  release       aokafor           acme/rocket-themes                   released v2.1.0                           3 days ago
+  fork          kwong             acme/rocket                          forked                                    4 days ago
