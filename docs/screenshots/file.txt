@@ -1,5 +1,5 @@
 acme/rocket[main ▾]:/docs/guide.md  [Browse tree]
-a625406  Bump toml from 0.8.12 to 0.8.19  committed 1 day ago  [12 commits]
+dependabot[bot]  Bump toml from 0.8.12 to 0.8.19         a625406 · committed 1 day ago  [12 commits]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Writing pages
 A page is a Markdown file in content/, with a TOML header between

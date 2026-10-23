@@ -163,7 +163,7 @@ A refresh asks GitHub again, which never answers."
             (should (derived-mode-p 'octocat-file-mode))
             (should (string-match-p
                      (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  \\[Browse tree\\]\n"
-                             "abc1234  Add the guide .*\n━+\n")
+                             "Ann  Add the guide +abc1234 · committed .*  \\[3 commits\\]\n━+\n")
                      text))
             (should-not (string-match-p "reset" text))
             ;; The root and the directories on the way open the tree.
@@ -403,7 +403,7 @@ It does not fold, however long."
               (should (derived-mode-p 'octocat-commit-list-mode))
               (should (string-match-p
                        (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  3 commits  "
-                               "\\[reset to main\\]\n━+\nabc1234  Add the guide")
+                               "\\[reset to main\\]\n━+\nAdd the guide +Ann +committed .* +abc1234$")
                        text))
               ;; A directory on the way shows its own commits.
               (let (opened)

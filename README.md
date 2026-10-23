@@ -102,8 +102,11 @@ back to the page shows the new branch.
 The `[main ▾]` picker (or `C-c C-b`) shows another branch, which the
 page then keeps to, and `[reset to main]` goes back to the branch it
 opened on: the clone's, or else the default branch.  Beside it is the
-branch's last commit, `RET` opening it; `[N commits]` opens its history
-on its own commits page (see below).
+branch's last commit, laid out as on GitHub: its author and subject,
+then, at the right edge, its SHA and when it was committed, and
+`[N commits]`, which opens its history on its own commits page (see
+below).  `RET` on the line, or on the SHA, which `TAB` reaches, opens
+the commit.
 
 The page lists the root's entries, directories first, as GitHub's
 repository page does: the first `octocat-tree-entries` (15) of them,
@@ -163,8 +166,9 @@ the directory shown, newest first, `octocat-repo-commits-page-size` (25) at a ti
 load more; `C-c C-l` in the file viewer lists a file's.  Its top line is
 the tree browser's, `owner/repo[main ▾]:/dir`, with how many commits
 there are, then a rule: the picker shows another branch's history, and
-a directory of the path its own.  The local `HEAD` commit is
-highlighted, and `RET` on a commit opens it.  A github.com
+a directory of the path its own.  Each row reads as on GitHub: the
+subject, the author, when it was committed, then the short SHA.  The
+local `HEAD` commit is highlighted, and `RET` on a commit opens it.  A github.com
 `/commits/REF` link opens it too, and `/commits/REF/PATH` the history of
 a file or directory.
 
@@ -217,7 +221,7 @@ following collapsible sections (toggle with `TAB`):
 |---------|----------|
 | **Info** | Title (editable), author, head→base branch, creation / merge / close date, diff stats |
 | **Body** | The PR description (editable) |
-| **Commits (N)** | One line per commit: short SHA · subject · author |
+| **Commits (N)** | One line per commit: subject · author · date · short SHA |
 | **Checks (N)** | CI check name, workflow, and pass/fail/pending icon |
 | **Reviews (N)** | Reviewer login and review state |
 | **Comments (N)** | Commenter login and a truncated snippet (your own comments are editable) |

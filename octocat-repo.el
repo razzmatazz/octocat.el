@@ -1017,25 +1017,29 @@ commit landed where it is, after a rebase or a merge on GitHub."
         ""
       (concat "committed " (octocat--format-ts-relative ts)))))
 
+(defun octocat-repo-vui--date-width (commits)
+  "Return the width of the date column for COMMITS: the longest date."
+  (apply #'max 0 (mapcar (lambda (c) (string-width (octocat-repo-vui--date c))) commits)))
+
 (defun octocat-repo-vui--subject-width (commits width author-w)
   "Return the width of the subject column for COMMITS: the longest subject.
 It is at least `octocat-repo-vui--subject-min-width', and at most what
-WIDTH columns leave beside the SHA, the AUTHOR-W wide author and the
-date, so the rows fill the page but do not wrap."
-  (let ((rest (+ 7 2 2 author-w 2
-                 (apply #'max 0 (mapcar (lambda (c) (string-width (octocat-repo-vui--date c)))
-                                        commits)))))
+WIDTH columns leave beside the AUTHOR-W wide author, the date and the
+SHA, so the rows fill the page but do not wrap."
+  (let ((rest (+ 2 author-w 2 (octocat-repo-vui--date-width commits) 2 7)))
     (max octocat-repo-vui--subject-min-width
          (min (- width rest)
               (apply #'max 0 (mapcar (lambda (c) (string-width (octocat-repo-vui--subject c)))
                                      commits))))))
 
-(defun octocat-repo-vui--commit-line (commit head-info author-w &optional subject-w)
-  "Return the line of COMMIT: its short SHA, subject, author and date.
-HEAD-INFO as in `octocat-repo-vui--commits-section'; the local HEAD
-commit is highlighted.  AUTHOR-W is the width of the author column, see
+(defun octocat-repo-vui--commit-line (commit head-info author-w &optional subject-w date-w)
+  "Return the line of COMMIT: its subject, author, date and short SHA.
+As GitHub's commit list has them, the SHA at the end.  HEAD-INFO as in
+`octocat-repo-vui--commits-section'; the local HEAD commit is
+highlighted.  AUTHOR-W is the width of the author column, see
 `octocat-repo-vui--author-width'; SUBJECT-W that of the subject column,
-`octocat-title-width' by default."
+`octocat-title-width' by default; DATE-W that of the date column, see
+`octocat-repo-vui--date-width', which lines the SHAs up."
   (let* ((subject-w (or subject-w octocat-title-width))
          (head-hash (and head-info (plist-get head-info :hash)))
          (sha       (or (gethash "sha" commit) ""))
@@ -1047,9 +1051,6 @@ commit is highlighted.  AUTHOR-W is the width of the author column, see
          (author    (octocat--commit-author commit))
          (date      (octocat-repo-vui--date commit)))
     (concat
-     (propertize (format "%-7s" short)
-                 'face (if is-head 'octocat-branch-current 'octocat-commit-sha))
-     "  "
      (if is-head
          (let* ((text (truncate-string-to-width subject subject-w nil nil "…"))
                 (pad  (make-string (- subject-w (string-width text)) ?\s)))
@@ -1059,12 +1060,15 @@ commit is highlighted.  AUTHOR-W is the width of the author column, see
      (propertize (truncate-string-to-width author author-w nil ?\s "…")
                  'face 'octocat-pr-author)
      "  "
-     (propertize date 'face 'octocat-dimmed))))
+     (propertize date 'face 'octocat-dimmed)
+     (make-string (max 0 (- (or date-w 0) (string-width date))) ?\s)
+     "  "
+     (propertize short 'face (if is-head 'octocat-branch-current 'octocat-commit-sha)))))
 
-(defun octocat-repo-vui--commit-row (repo commit head-info author-w &optional subject-w)
+(defun octocat-repo-vui--commit-row (repo commit head-info author-w &optional subject-w date-w)
   "Return a row vnode for COMMIT in REPO, RET opening it.
 The other arguments are as for `octocat-repo-vui--commit-line'."
-  (octocat-vui-row (octocat-repo-vui--commit-line commit head-info author-w subject-w)
+  (octocat-vui-row (octocat-repo-vui--commit-line commit head-info author-w subject-w date-w)
                    (lambda () (octocat-repo-vui--open-commit repo commit))
                    "RET: view commit"))
 
@@ -1226,11 +1230,12 @@ pinned to the head shown."
              ;; Columns from all loaded commits, so they hold as more show.
              (let* ((author-w  (octocat-repo-vui--author-width commits))
                     (subject-w (octocat-repo-vui--subject-width
-                                commits (octocat-vui-window-width) author-w)))
+                                commits (octocat-vui-window-width) author-w))
+                    (date-w    (octocat-repo-vui--date-width commits)))
                (octocat-vui-reveal-list
                 shown
                 (lambda (c)
-                  (octocat-repo-vui--commit-row repo c head-info author-w subject-w))
+                  (octocat-repo-vui--commit-row repo c head-info author-w subject-w date-w))
                 (lambda (c) (gethash "sha" c)))))
            (when (and shown (or (> (length commits) limit) (not done)))
              (octocat-vui-load-more-button
@@ -1262,24 +1267,34 @@ the history it pages through cannot shift under it."
 (defun octocat-repo-vui--head-row (repo ref path commit picker picker-w width)
   "Return the line atop the files: PICKER, then COMMIT, of PATH at REF.
 COMMIT is the last that touched PATH, nil for the root.  PICKER is the
-ref picker, PICKER-W columns wide, or nil.  COMMIT shows its short SHA,
-a TAB stop, subject and date, RET opening it, and ends in a button to
-the commits page of PATH at REF of REPO, with the count of its history.
-The subject is cut so the line fits WIDTH columns."
+ref picker, PICKER-W columns wide, or nil.  As GitHub's, COMMIT shows
+its author and subject, then, at the right of WIDTH columns, its short
+SHA, a TAB stop, and date, RET opening it, and a button to the commits
+page of PATH at REF of REPO, with the count of its history.  The
+subject is cut so the line fits."
   (let* ((sha       (or (gethash "sha" commit) ""))
          (subject   (octocat-repo-vui--subject commit))
+         (author    (octocat--commit-author commit))
+         (login     (octocat--commit-author-login commit))
          (date      (octocat-repo-vui--date commit))
          (count     (format "[%s commits]" (gethash "total" commit)))
-         (rest      (+ (if picker (+ picker-w 2) 0) 7 2 2 (string-width date)
-                       2 (string-width count)))
-         (subject-w (max 1 (min (string-width subject) (- width rest))))
+         (lead      (+ (if picker (+ picker-w 2) 0)
+                       (if (string-empty-p author) 0 (+ (string-width author) 2))))
+         (tail      (+ 7 3 (string-width date) 2 (string-width count)))
+         (subject-w (max 1 (min (string-width subject) (- width lead tail 2))))
+         (gap       (max 2 (- width lead subject-w tail)))
          (open      (lambda () (octocat-repo-vui--open-commit repo commit))))
     (octocat-vui-row
      (append (and picker (list picker "  "))
-             (list (octocat-repo-vui--link (substring sha 0 (min 7 (length sha)))
+             (cond (login (list (octocat-repo-vui--login-link (substring login 1)) "  "))
+                   ((not (string-empty-p author))
+                    (list (propertize author 'face 'octocat-pr-author) "  ")))
+             (list (octocat--format-title subject subject-w)
+                   (make-string gap ?\s)
+                   (octocat-repo-vui--link (substring sha 0 (min 7 (length sha)))
                                            'octocat-commit-sha open "RET: view commit")
-                   (concat "  " (octocat--format-title subject subject-w)
-                           "  " (propertize date 'face 'octocat-dimmed))
+                   (concat (propertize " · " 'face 'octocat-dimmed)
+                           (propertize date 'face 'octocat-dimmed))
                    "  "
                    (vui-button count
                                :no-decoration t

@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Commits are laid out as on GitHub: the last commit atop the files shows its author and subject, then its SHA, date and `[N commits]` at the right edge; commit lists show the subject, author and date, with the SHA last
 * Fix relative links in a repository's README opening a local file, in an outside program: they open the linked file, at the branch shown, in octocat's file viewer
 * `RET` on an image in a README, given by a relative path, shows it in place, as it does for images uploaded to GitHub
 * The file viewer renders Markdown files, as GitHub does, with their relative links and images working as in a README; `C-c C-v` shows the source

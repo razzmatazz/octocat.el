@@ -59,7 +59,8 @@
 (declare-function octocat-issue-new "octocat-issue" ())
 (declare-function octocat-repo-vui--milestone "octocat-repo" (item))
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
-                  (repo commit head-info author-w &optional subject-w))
+                  (repo commit head-info author-w &optional subject-w date-w))
+(declare-function octocat-repo-vui--date-width "octocat-repo" (commits))
 (declare-function octocat-repo-vui--subject-width "octocat-repo" (commits width author-w))
 (declare-function octocat-repo-vui--author-width "octocat-repo" (commits))
 
@@ -1026,12 +1027,13 @@ A new TICK fetches them again."
      :render
      (lambda (_)
        (let* ((author-w  (octocat-repo-vui--author-width commits))
-              (subject-w (octocat-repo-vui--subject-width commits width author-w)))
+              (subject-w (octocat-repo-vui--subject-width commits width author-w))
+              (date-w    (octocat-repo-vui--date-width commits)))
          (apply #'vui-vstack
                 (append
                  (delq nil (octocat-pr--header repo pr (octocat--label-background) width 'commits))
                  (mapcar (lambda (c)
-                           (octocat-repo-vui--commit-row repo c nil author-w subject-w))
+                           (octocat-repo-vui--commit-row repo c nil author-w subject-w date-w))
                          commits))))))))
 
 

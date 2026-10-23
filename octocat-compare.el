@@ -46,7 +46,8 @@
 (require 'vui)
 
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
-                  (repo commit head-info author-w &optional subject-w))
+                  (repo commit head-info author-w &optional subject-w date-w))
+(declare-function octocat-repo-vui--date-width "octocat-repo" (commits))
 (declare-function octocat-repo-vui--author-width "octocat-repo" (commits))
 (declare-function octocat-repo-vui--subject-width "octocat-repo" (commits width author-w))
 
@@ -112,10 +113,11 @@ have diverged gets a note that the three-dot one is shown."
   "Return the vnodes of COMMITS of REPO, a REST commits vector, fitted to WIDTH."
   (let* ((commits   (append commits nil))
          (author-w  (octocat-repo-vui--author-width commits))
-         (subject-w (octocat-repo-vui--subject-width commits width author-w)))
+         (subject-w (octocat-repo-vui--subject-width commits width author-w))
+         (date-w    (octocat-repo-vui--date-width commits)))
     (and commits
          (append (mapcar (lambda (c)
-                           (octocat-repo-vui--commit-row repo c nil author-w subject-w))
+                           (octocat-repo-vui--commit-row repo c nil author-w subject-w date-w))
                          commits)
                  (list (vui-newline))))))
 
