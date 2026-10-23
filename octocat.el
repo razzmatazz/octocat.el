@@ -7,7 +7,7 @@
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1") (consult "1.0") (vui "0.1"))
 ;; Keywords: tools, vc, github
-;; URL: https://github.com/octocat.el/octocat.el
+;; URL: https://github.com/razzmatazz/octocat.el
 
 ;; This file is NOT part of GNU Emacs.
 
