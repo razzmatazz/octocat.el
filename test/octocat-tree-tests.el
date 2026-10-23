@@ -400,14 +400,14 @@ It does not fold, however long."
         (octocat-file-log-open)
         (unwind-protect
             (let ((text (buffer-substring-no-properties (point-min) (point-max))))
-              (should (derived-mode-p 'octocat-commits-mode))
+              (should (derived-mode-p 'octocat-commit-list-mode))
               (should (string-match-p
                        (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  3 commits  "
                                "\\[reset to main\\]\n━+\nabc1234  Add the guide")
                        text))
               ;; A directory on the way shows its own commits.
               (let (opened)
-                (cl-letf (((symbol-function 'octocat-commits-open)
+                (cl-letf (((symbol-function 'octocat-commit-list-open)
                            (lambda (&rest args) (push args opened))))
                   (goto-char (point-min))
                   (search-forward ":/docs")

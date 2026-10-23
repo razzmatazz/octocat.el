@@ -351,8 +351,8 @@ as it would in its own buffer.  Decoration (headings, comment boxes) may indent.
 
 Git has no markup: a commit message is plain text its author wrapped by
 hand, and `*`, `#` or `_` in it mean nothing special.  GitHub itself shows
-commit messages verbatim, so octocat does too: the commit page's Message
-section is the text below the subject, as written, never passed through
+commit messages verbatim, so octocat does too: the commit page shows the
+message as `git show` does, indented four columns, as written, never passed through
 `octocat--markdown-string`.  `C-c C-v` therefore leaves it alone; it only
 toggles the markdown in comments, which GitHub does render.
 

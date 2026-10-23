@@ -26,7 +26,7 @@
 ;; with its last commit, the root's first files (octocat-tree.el) and
 ;; its README.  Two pages of their own are here too: the whole tree,
 ;; `octocat-tree-mode', which RET on a directory opens, and the history
-;; of the ref or of a path, `octocat-commits-mode'.
+;; of the ref or of a path, `octocat-commit-list-mode'.
 ;; The PR, issue and workflow/run lists live on their own pages; this
 ;; file still holds their shared row builders and fetchers.
 ;; The `M-x octocat-repo' entry point is defined in octocat.el (see
@@ -279,7 +279,7 @@ failure."
    callback))
 
 (defconst octocat-repo--history-query
-  "query($owner:String!,$name:String!,$ref:String!,$limit:Int!,$after:String,$path:String){repository(owner:$owner,name:$name){object(expression:$ref){...on Commit{history(first:$limit,after:$after,path:$path){totalCount edges{cursor node{oid messageHeadline authoredDate author{name email user{login}}}}}}}}}"
+  "query($owner:String!,$name:String!,$ref:String!,$limit:Int!,$after:String,$path:String){repository(owner:$owner,name:$name){object(expression:$ref){...on Commit{history(first:$limit,after:$after,path:$path){totalCount edges{cursor node{oid messageHeadline authoredDate committedDate author{name email user{login}}}}}}}}}"
   "GraphQL query behind `octocat-repo--list-commits'.
 Only what a row shows: the REST commits endpoint sends ~15 times as much.")
 
@@ -308,19 +308,23 @@ a list of commits from `octocat-repo--parse-history', or a cons
 (defun octocat-repo--history-commit (node)
   "Return the commit NODE of a GraphQL history shaped as REST has it.
 That is what the rows read: \"sha\"; \"commit\", with the \"message\"
-\(its headline only) and the git \"author\" (name, email, date); and
+\(its headline only), the git \"author\" (name, email, date) and the
+\"committer\" (date); and
 \"author\", the GitHub user or :null."
   (let* ((a      (gethash "author" node))
          (user   (and (hash-table-p a) (gethash "user" a)))
          (git    (make-hash-table :test #'equal))
+         (by     (make-hash-table :test #'equal))
          (c      (make-hash-table :test #'equal))
          (commit (make-hash-table :test #'equal)))
     (when (hash-table-p a)
       (puthash "name" (gethash "name" a) git)
       (puthash "email" (gethash "email" a) git))
     (puthash "date" (gethash "authoredDate" node) git)
+    (puthash "date" (gethash "committedDate" node) by)
     (puthash "message" (gethash "messageHeadline" node) c)
     (puthash "author" git c)
+    (puthash "committer" by c)
     (puthash "sha" (gethash "oid" node) commit)
     (puthash "commit" c commit)
     (puthash "author" (if (hash-table-p user) user :null) commit)
@@ -343,7 +347,7 @@ for the page after it, and \"total\", the commits of the whole history."
               (gethash "edges" history)))))
 
 (defconst octocat-repo--head-query
-  "query($owner:String!,$name:String!,$expr:String!,$dir:String!,$path:String){repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate author{name email user{login}}}}}} dir:object(expression:$dir){__typename oid}}}"
+  "query($owner:String!,$name:String!,$expr:String!,$dir:String!,$path:String){repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate committedDate author{name email user{login}}}}}} dir:object(expression:$dir){__typename oid}}}"
   "GraphQL query behind `octocat-repo--fetch-head'.")
 
 (defun octocat-repo--parse-head (json-string ref path)
@@ -1005,10 +1009,13 @@ line up with no more padding than the different names require."
   "Narrowest subject column, so short subjects still leave a gap before the author.")
 
 (defun octocat-repo-vui--date (commit)
-  "Return the relative author date of COMMIT, as on its row."
-  (let* ((c  (gethash "commit" commit))
-         (ca (and c (gethash "author" c))))
-    (octocat--format-ts-relative (or (and ca (gethash "date" ca)) ""))))
+  "Return when COMMIT was committed, \"committed 2 days ago\", as on its row.
+The commit date, not the author's, as GitHub shows: it is when the
+commit landed where it is, after a rebase or a merge on GitHub."
+  (let ((ts (octocat--commit-date commit)))
+    (if (string-empty-p ts)
+        ""
+      (concat "committed " (octocat--format-ts-relative ts)))))
 
 (defun octocat-repo-vui--subject-width (commits width author-w)
   "Return the width of the subject column for COMMITS: the longest subject.
@@ -1201,7 +1208,7 @@ pinned to the head shown."
     (vui-vstack
      (octocat-repo-vui--top-line
       repo label path current-branch nil
-      (lambda (dir) (octocat-commits-open repo ref (octocat--nonempty dir)))
+      (lambda (dir) (octocat-commit-list-open repo ref (octocat--nonempty dir)))
       (when-let* ((total (and first (gethash "total" (car first)))))
         (vui-text (format "%d commit%s" total (if (= total 1) "" "s"))
                   :face 'octocat-dimmed))
@@ -1256,9 +1263,9 @@ the history it pages through cannot shift under it."
   "Return the line atop the files: PICKER, then COMMIT, of PATH at REF.
 COMMIT is the last that touched PATH, nil for the root.  PICKER is the
 ref picker, PICKER-W columns wide, or nil.  COMMIT shows its short SHA,
-subject and date, RET opening it, and ends in a button to the commits
-page of PATH at REF of REPO, with the count of its history.  The subject
-is cut so the line fits WIDTH columns."
+a TAB stop, subject and date, RET opening it, and ends in a button to
+the commits page of PATH at REF of REPO, with the count of its history.
+The subject is cut so the line fits WIDTH columns."
   (let* ((sha       (or (gethash "sha" commit) ""))
          (subject   (octocat-repo-vui--subject commit))
          (date      (octocat-repo-vui--date commit))
@@ -1266,19 +1273,20 @@ is cut so the line fits WIDTH columns."
          (rest      (+ (if picker (+ picker-w 2) 0) 7 2 2 (string-width date)
                        2 (string-width count)))
          (subject-w (max 1 (min (string-width subject) (- width rest))))
-         (line      (concat (propertize (substring sha 0 (min 7 (length sha)))
-                                        'face 'octocat-commit-sha)
-                            "  " (octocat--format-title subject subject-w)
-                            "  " (propertize date 'face 'octocat-dimmed))))
+         (open      (lambda () (octocat-repo-vui--open-commit repo commit))))
     (octocat-vui-row
      (append (and picker (list picker "  "))
-             (list line "  "
+             (list (octocat-repo-vui--link (substring sha 0 (min 7 (length sha)))
+                                           'octocat-commit-sha open "RET: view commit")
+                   (concat "  " (octocat--format-title subject subject-w)
+                           "  " (propertize date 'face 'octocat-dimmed))
+                   "  "
                    (vui-button count
                                :no-decoration t
                                :face 'octocat-dimmed
                                :help-echo "RET: list the commits"
-                               :on-click (lambda () (octocat-commits-open repo ref path)))))
-     (lambda () (octocat-repo-vui--open-commit repo commit))
+                               :on-click (lambda () (octocat-commit-list-open repo ref path)))))
+     open
      "RET: view commit")))
 
 ;;;; Docs
@@ -1633,11 +1641,11 @@ commits page its commits."
     (user-error "Octocat: Buffer is not associated with a repository"))
   (let* ((repo   octocat-repo--repo)
          (ref    (or octocat-repo--ref octocat-repo--tracked))
-         (path   (and (derived-mode-p 'octocat-commits-mode) octocat-repo--path))
+         (path   (and (derived-mode-p 'octocat-commit-list-mode) octocat-repo--path))
          (branch (or ref octocat-repo--default-branch "HEAD"))
          (type   (octocat-tree--type-at-point))
          (url    (cond ((octocat-markdown-url-at))
-                       ((derived-mode-p 'octocat-commits-mode)
+                       ((derived-mode-p 'octocat-commit-list-mode)
                         (concat "https://github.com/" repo "/commits"
                                 (cond (path (concat "/" branch "/" path))
                                       (ref  (concat "/" ref)))))
@@ -1720,13 +1728,18 @@ The tree browser stays in its directory, as GitHub's does."
   (setq-local revert-buffer-function #'octocat-tree-refresh)
   (setq-local octocat--refresh-fn #'octocat-tree-refresh))
 
-(define-derived-mode octocat-commits-mode octocat-repo-mode "Octocat-Commits"
+;; Named as the PR and issue lists are; 0.1.0 had the old names.
+(define-obsolete-variable-alias 'octocat-commits-mode-hook 'octocat-commit-list-mode-hook "0.2.0")
+(define-obsolete-variable-alias 'octocat-commits-mode-map 'octocat-commit-list-mode-map "0.2.0")
+(define-obsolete-function-alias 'octocat-commits-mode #'octocat-commit-list-mode "0.2.0")
+
+(define-derived-mode octocat-commit-list-mode octocat-repo-mode "Octocat-Commits"
   "Major mode for the commits of a repository's branch, tag or commit.
 
-\\{octocat-commits-mode-map}"
+\\{octocat-commit-list-mode-map}"
   :group 'octocat
-  (setq-local revert-buffer-function #'octocat-commits-refresh)
-  (setq-local octocat--refresh-fn #'octocat-commits-refresh))
+  (setq-local revert-buffer-function #'octocat-commit-list-refresh)
+  (setq-local octocat--refresh-fn #'octocat-commit-list-refresh))
 
 
 ;;;; Async refresh
@@ -1774,21 +1787,21 @@ PATH, a directory or file, is the one the tree opens down to, with point on it."
                                   :reveal octocat-repo--reveal
                                   :focus octocat-repo--focus)))
 
-(defun octocat-commits-open (repo &optional ref path)
+(defun octocat-commit-list-open (repo &optional ref path)
   "Open (or switch to) the commits page of REPO, from REF back.
 REF is a branch, tag or SHA, nil to follow the local clone's branch.
 PATH, a file or directory, keeps the commits that touched it."
   (let ((buf (get-buffer-create (format "*%s commits*" repo))))
     (octocat-display-buffer buf)
-    (unless (derived-mode-p 'octocat-commits-mode)
-      (octocat-commits-mode))
+    (unless (derived-mode-p 'octocat-commit-list-mode)
+      (octocat-commit-list-mode))
     (setq octocat-repo--repo      repo
           octocat-repo--local-dir (octocat-repo--local-dir-for repo)
           octocat-repo--ref       ref
           octocat-repo--path      path)
-    (octocat-commits-refresh)))
+    (octocat-commit-list-refresh)))
 
-(defun octocat-commits-refresh (&optional _ignore-auto _noconfirm)
+(defun octocat-commit-list-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current commits page, in place."
   (interactive)
   (unless octocat-repo--repo

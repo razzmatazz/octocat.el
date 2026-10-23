@@ -49,10 +49,10 @@ buffer of its own.
 
 `[342 commits]` lists the history of the branch:
 
-<!-- screenshot: (commits "acme/rocket") -->
-![commits](commits.png)
+<!-- screenshot: (commit-list "acme/rocket") -->
+![commit-list](commit-list.png)
 
-[As text](commits.txt)
+[As text](commit-list.txt)
 <!-- /screenshot -->
 
 ## Pull requests
@@ -103,7 +103,8 @@ An issue, and the pull request that will close it:
 
 ## Commit
 
-A commit: its message, its checks and its files.
+A commit: who wrote and committed it and when, as `git show` prints
+them, its message, its checks and its files.
 
 <!-- screenshot: (commit "acme/rocket" "3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f") -->
 ![commit](commit.png)

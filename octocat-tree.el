@@ -66,7 +66,7 @@
 (defvar octocat-repo--tracked)
 
 (declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
-(declare-function octocat-commits-open "octocat-repo" (repo &optional ref path))
+(declare-function octocat-commit-list-open "octocat-repo" (repo &optional ref path))
 (declare-function octocat-user-open "octocat-user" (login))
 (declare-function octocat-vui-repo-heading "octocat-vui" (repo))
 
@@ -632,12 +632,12 @@ On a link or image of rendered markdown, open what it links to."
 
 (defun octocat-file-log-open ()
   "Open the commits page of the file shown, from its ref back.
-It is the page `[N commits]' opens, see `octocat-commits-open'."
+It is the page `[N commits]' opens, see `octocat-commit-list-open'."
   (interactive)
   (unless (and (derived-mode-p 'octocat-file-mode)
                octocat-tree--file-repo octocat-tree--file-path)
     (user-error "Octocat: Not in a file viewer buffer"))
-  (octocat-commits-open octocat-tree--file-repo
+  (octocat-commit-list-open octocat-tree--file-repo
                         (unless (equal octocat-tree--file-branch "HEAD")
                           octocat-tree--file-branch)
                         octocat-tree--file-path))

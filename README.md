@@ -156,7 +156,7 @@ not buttons, so `TAB` does not step from file to file.  The repo name
 on the top line leads back to the repo page.  A github.com link to a
 path (`/tree/main/src/parser`) opens the browser at it.
 
-#### Commits page (`octocat-commits-mode`)
+#### Commits page (`octocat-commit-list-mode`)
 
 `[N commits]` on the repo page lists the history of the ref shown, or of
 the directory shown, newest first, `octocat-repo-commits-page-size` (25) at a time with a button to
@@ -254,17 +254,24 @@ it directly in your browser.
 
 ### Commit detail view (`octocat-commit-mode`)
 
-Navigate to a commit from the PR detail view (press `RET` on a commit row).
-The commit buffer:
+Navigate to a commit from the PR detail view, the commits page, or the
+last-commit line atop the repository's files (`RET` on the line, or `TAB`
+to its SHA).  Below a top line like the tree browser's, the commit
+reads as `git show --format=fuller` prints it:
 
 ```
-owner/repo@a1b2c3d  [Code]  [Issues]  [Pull requests]  [Actions]
-Commit subject line
-Jane Doe  <jane@example.com> · @jane · 3 days ago
-SHA a1b2c3d…
+owner/repo@a1b2c3d4e5f6…  [Browse files]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Author:     Jane Doe <jane@example.com> @jane
+AuthorDate: Mon Oct 19 10:00:00 2026 +0300  (3 days ago)
+Commit:     GitHub <noreply@github.com> @web-flow
+CommitDate: Mon Oct 19 11:00:00 2026 +0300  (3 days ago)
+Parent:     9f84ad6
+Branch:     main
 
-Message
-  <optional multi-line commit body>
+    Commit subject line
+
+    <optional multi-line commit body>
 
 Checks (2)
   ✓  build                github-actions        1m 2s
@@ -282,8 +289,15 @@ Comments (1)
 ```
 
 Each file is collapsible.  The Comments section shows only when the
-commit has comments.  `RET` on the top line opens the repo, on a
-check opens the commit's checks.
+commit has comments.  `[Browse files]` opens the tree browser at the
+commit; the parent opens its own commit page, `@login` the user's page.
+`Branch` names the default branch when it holds the commit, as GitHub
+does, and is left out when it does not; it opens the tree at that
+branch.  `RET` on a check opens the commit's checks.
+
+Elsewhere, lists and last-commit lines show when a commit was
+*committed*, as GitHub does ("committed 2 days ago"): after a rebase or a
+merge on GitHub, that is when it landed, which its author date is not.
 
 ---
 

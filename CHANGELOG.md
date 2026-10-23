@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 * While an image loads, a spinner turns before its link, and the mode line shows `:loading`
 * Image links have a face of their own, so they stand apart from other links
 * Fix a blue line drawn across the middle of an image shown in place
+* The commit page reads as `git show --format=fuller`: its author and committer with both dates, its parents and whether the default branch holds it, then its message; the top line, like the tree browser's, shows the full SHA and `[Browse files]`
+* The commits page's mode is `octocat-commit-list-mode`, named as the PR and issue lists are; `octocat-commits-mode` and its hook and map remain as obsolete aliases
+* Commit lists and last-commit lines show when a commit was committed, as "committed 2 days ago", not when it was written
+* The SHA of the last commit atop the repository's files is a `TAB` stop
 * `g`/`gr` also resets the page's view: images shown in place are links again, and `<details>`, folds and expanded entries are back as first drawn; an image shown again comes from memory, without fetching it again
 
 ## [0.1.0] - 2026-10-23

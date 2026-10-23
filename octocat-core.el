@@ -444,6 +444,16 @@ line.  For compact list rows where horizontal space is constrained, use
      (email            (format "<%s>" email))
      (t                ""))))
 
+(defun octocat--commit-date (commit)
+  "Return the timestamp COMMIT was committed at, as GitHub's lists show.
+COMMIT is shaped as the REST commits endpoint has it.  Its author date
+when it has none, as a commit stored before octocat asked for both."
+  (let* ((c   (gethash "commit" commit))
+         (get (lambda (role)
+                (let ((who (and (hash-table-p c) (gethash role c))))
+                  (and (hash-table-p who) (octocat--nonempty (gethash "date" who)))))))
+    (or (funcall get "committer") (funcall get "author") "")))
+
 (defun octocat--commit-author-login (commit)
   "Return \\\"@login\\\" for the GitHub account linked to COMMIT, or nil.
 COMMIT is a hash-table from the GitHub REST commits endpoint.
@@ -950,7 +960,7 @@ is asked first and the matching view opened."
 (declare-function octocat-job-open      "octocat-job"      (repo run-id job-id name))
 (declare-function octocat-workflow-open "octocat-workflow" (repo id name path))
 (declare-function octocat-user-open     "octocat-user"     (login))
-(declare-function octocat-commits-open  "octocat-repo"     (repo &optional ref path))
+(declare-function octocat-commit-list-open  "octocat-repo"     (repo &optional ref path))
 (declare-function octocat-tree-open     "octocat-repo"     (repo &optional ref path))
 (declare-function octocat-tree--open-file-by-path "octocat-tree" (repo branch path))
 (declare-function octocat-issue-list    "octocat"          (&optional repo))
@@ -969,7 +979,7 @@ is asked first and the matching view opened."
   "Return the octocat view of github.com URL as (KIND ARGS...), or nil.
 KIND is `user', `repo', `pr', `pr-diff', `pr-commits', `issue', `commit',
 `compare', `run', `job', `workflow', `pr-list', `issue-list', `actions',
-`tree', `commits' or `blob', the last for a /raw/ link too; nil means
+`tree', `commit-list' or `blob', the last for a /raw/ link too; nil means
 octocat has no view for URL.  The
 ARGS of the last three are the repo and the path segments after the
 kind, a ref and then a path: a ref may have slashes, so which segments
@@ -991,8 +1001,10 @@ are the ref takes asking GitHub, see `octocat--open-ref-path'.  A
              ('("pulls") (list 'pr-list repo))
              ('("issues") (list 'issue-list repo))
              ('("actions") (list 'actions repo))
-             (`(,(and kind (or "tree" "commits")) . ,segs)
-              `(,(intern kind) ,repo ,@(mapcar #'url-unhex-string segs)))
+             (`("tree" . ,segs)
+              `(tree ,repo ,@(mapcar #'url-unhex-string segs)))
+             (`("commits" . ,segs)
+              `(commit-list ,repo ,@(mapcar #'url-unhex-string segs)))
              ;; A file's raw bytes, as an image's, open in the viewer too.
              (`(,(or "blob" "raw") ,ref ,file . ,segs)
               `(blob ,repo ,@(mapcar #'url-unhex-string (cons ref (cons file segs)))))
@@ -1093,8 +1105,8 @@ The handler `octocat-open-github-urls' adds to `browse-url-handlers'."
                                (if path
                                    (octocat-tree-open repo ref path)
                                  (octocat-visit-repo repo ref)))))
-    (`(commits ,repo . ,segs)
-     (octocat--open-ref-path repo segs (lambda (ref path) (octocat-commits-open repo ref path))))
+    (`(commit-list ,repo . ,segs)
+     (octocat--open-ref-path repo segs (lambda (ref path) (octocat-commit-list-open repo ref path))))
     (`(blob ,repo . ,segs)
      (octocat--open-ref-path repo segs
                              (lambda (ref path)

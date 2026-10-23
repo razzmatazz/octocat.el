@@ -1,5 +1,5 @@
 acme/rocket[main ▾]:/src
-1a95462  Render footnotes in Markdown pages (#131)  2 hours ago  [342 commits]
+1a95462  Render footnotes in Markdown pages (#131)  committed 2 hours ago  [342 commits]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ▸ .github/
 ▸ docs/

@@ -96,6 +96,7 @@
   "Return COMMIT, of `octocat-screenshots--commits', as a GraphQL history node."
   (pcase-let ((`(,sha ,headline ,login ,name ,ago) commit))
     `(:oid ,sha :messageHeadline ,headline :authoredDate ,(octocat-screenshots--ago ago)
+      :committedDate ,(octocat-screenshots--ago ago)
       :author (:name ,name :email ,(format "%s@example.com" (or login "bot"))
                :user ,(if login `(:login ,login) :null)))))
 
@@ -419,7 +420,9 @@ Profiling it, most of the time goes to `Template::parse`, which runs once per pa
 ;;;; Commit
 
 (defconst octocat-screenshots--commit-rest
-  (let ((at (octocat-screenshots--ago (* 6 octocat-screenshots--h))))
+  (let ((at (octocat-screenshots--ago (* 6 octocat-screenshots--h)))
+        ;; Merged an hour after it was written, so the two dates differ.
+        (merged (octocat-screenshots--ago (* 5 octocat-screenshots--h))))
     `(:sha ,octocat-screenshots--commit
       :html_url ,(format "https://github.com/acme/rocket/commit/%s" octocat-screenshots--commit)
       :commit (:message "Cache parsed templates between builds (#128)
@@ -430,7 +433,7 @@ templates it includes.
 
 Closes #97"
                :author (:name "Sam Rivera" :email "srivera@example.com" :date ,at)
-               :committer (:name "GitHub" :email "noreply@github.com" :date ,at))
+               :committer (:name "GitHub" :email "noreply@github.com" :date ,merged))
       :author ,(octocat-screenshots--user "srivera")
       :committer ,(octocat-screenshots--user "web-flow")
       :parents [(:sha ,(octocat-screenshots--sha "c3"))]
@@ -692,6 +695,7 @@ FIELDS, a plist, override the rest."
                      ,(octocat-screenshots--check-run 27100200312 "test (beta)" "success" (* 6 h) 7)
                      ,(octocat-screenshots--check-run 27100200313 "docs" "success" (* 6 h) 3)]))
       ("commit-comments" () [])
+      ("commit-branch" () (:data (:repository (:defaultBranchRef (:name "main" :compare (:status "BEHIND"))))))
 
       ;; Actions
       ("workflows" ()
