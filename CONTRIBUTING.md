@@ -146,3 +146,71 @@ installed by `octocat-evil-setup`.
 Each mode's map gets its bindings with `evil-define-key*`.  Rows bind RET
 themselves (a `keymap` text property, see `octocat-vui-row`), so only the
 mode-wide commands go there.
+
+## Versioning and releases
+
+octocat follows [semantic versioning](https://semver.org/).  While it is
+below 1.0, a release that adds a feature or changes behaviour (a key
+binding, a command's name, a customisation) bumps the minor version, e.g.
+0.1.0 to 0.2.0, and a release with only fixes bumps the patch version, e.g.
+0.1.0 to 0.1.1.
+
+The version lives in two places, which must always agree: the `;; Version:`
+header of `octocat.el` and the version in `Eask`.  The other files carry no
+version of their own.
+
+### Changelog
+
+Every significant change adds a line under `## [Unreleased]` in
+`CHANGELOG.md` as it lands, not at release time: anything a user would
+notice, such as a feature, a key binding or a fixed bug, and any change to
+the Emacs versions octocat supports or is tested on.  Word entries for
+users, not for developers.
+
+### Cutting a release
+
+1. Make sure CI is green on `main`.
+2. Bump the version in `octocat.el` and `Eask`.
+3. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`
+   and add a fresh, empty `## [Unreleased]` above it.
+4. Commit this as `Release X.Y.Z`.
+5. Tag that commit and push both:
+
+   ```bash
+   git tag -a vX.Y.Z -m "octocat X.Y.Z"
+   git push origin main vX.Y.Z
+   ```
+
+Never move or delete a pushed tag; if a release is broken, release a fixed
+one with the next patch version instead.
+
+### MELPA and MELPA Stable
+
+[MELPA](https://melpa.org/) builds a snapshot from every commit on `main`,
+versioned by date, e.g. `20261023.559`.  [MELPA
+Stable](https://stable.melpa.org/) builds only from tags, versioned by the
+tag: `v0.1.0` becomes `0.1.0`, as MELPA drops the `v` and parses the rest
+with `version-to-list`.  So a tag is what publishes a release.
+
+MELPA installs only the top-level `*.el` files, so `README.md`,
+`CHANGELOG.md`, `docs/` and `test/` stay in the repository, as MELPA asks.
+
+To check what MELPA will build before tagging, build the recipe in a clone
+of [melpa/melpa](https://github.com/melpa/melpa) and install the result
+into a clean Emacs:
+
+```bash
+make recipes/octocat                  # snapshot, into packages/
+make recipes/octocat CHANNEL=stable   # latest tag, into packages-stable/
+emacs -Q --eval '(progn
+  (add-to-list (quote package-archives) (quote ("melpa" . "https://melpa.org/packages/")))
+  (package-refresh-contents)
+  (package-install-file "packages/octocat-VERSION.tar"))'
+```
+
+Watch `*Compile-Log*` for warnings: the install byte-compiles the package
+with the Emacs you run, so it can catch what CI's compile does not.
+
+Building may end with a "Could not determine string width" error from
+the badge image step when ImageMagick is missing; the package itself is
+already built by then.
