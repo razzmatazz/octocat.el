@@ -289,6 +289,19 @@ From the store at once when there, else once fetched."
                                             r
                                           (octocat-tree--blob-content r))))))
 
+(defun octocat-tree--image-file (repo ref path callback)
+  "Call CALLBACK with the bytes of file PATH of REPO at REF, or nil.
+For `octocat-image-file-function': the blob is stored, so an image is
+fetched once."
+  (octocat-tree--fetch-blob-sha
+   repo ref path
+   (lambda (sha)
+     (if (eq (car-safe sha) 'error)
+         (funcall callback nil)
+       (octocat-tree--load-blob
+        repo sha (lambda (r) (funcall callback (and (stringp r) r))))))))
+
+(setq octocat-image-file-function #'octocat-tree--image-file)
 
 ;;;; Syntax highlighting
 

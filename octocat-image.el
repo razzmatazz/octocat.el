@@ -26,7 +26,9 @@
 ;; opens it in the browser.  Nothing is fetched until asked for.
 ;;
 ;; Only images uploaded to GitHub can be fetched, see
-;; `octocat-image-allowed-p': any other URL in a comment would let its
+;; `octocat-image-allowed-p', and those of the repository a README
+;; is in, which `octocat-image-file-function' fetches through `gh': any
+;; other URL in a comment would let its
 ;; author learn who reads the page, and when, and feed Emacs's image
 ;; decoders whatever they like.  `url-retrieve' would follow a redirect
 ;; anywhere, so redirects are followed here instead, one hop at a time,
@@ -66,6 +68,11 @@
 github.com/user-attachments/assets/ redirects to S3 when fetched
 without a session.")
 
+(defvar octocat-image-file-function nil
+  "Function that fetches a file of a repository, for a relative image.
+Called with REPO, REF, PATH and a callback, which it calls with the
+file's bytes, or nil if they cannot be had.")
+
 (defvar octocat-image--cache (make-hash-table :test #'equal)
   "URL to its image's bytes, `pending' while fetched, or `failed'.")
 
@@ -92,6 +99,13 @@ signed private-user-images.githubusercontent.com links."
     ("github.com"
      (string-prefix-p "/user-attachments/assets/"
                       (url-filename (url-generic-parse-url url))))))
+
+(defun octocat-image--fetchable-p (plist)
+  "Return non-nil if the image of PLIST can be fetched.
+PLIST is its `octocat-markdown-image'."
+  (if (plist-get plist :file)
+      octocat-image-file-function
+    (octocat-image-allowed-p (plist-get plist :url))))
 
 (defun octocat-image--redirect-allowed-p (url)
   "Return non-nil if an upload's URL may redirect to URL."
@@ -168,7 +182,7 @@ For `jit-lock-functions'."
   (when (display-images-p)
     (pcase-dolist (`(,b ,e ,plist) (octocat-image--spans beg end))
       (let* ((url  (plist-get plist :url))
-             (data (and (octocat-image-allowed-p url)
+             (data (and (octocat-image--fetchable-p plist)
                         (gethash url octocat-image--cache 'absent))))
         (cond ((stringp data)
                (add-text-properties
@@ -200,13 +214,18 @@ For `jit-lock-functions'."
         (with-current-buffer buf (octocat-image--refontify url))))
     (remhash url octocat-image--waiting)))
 
-(defun octocat-image--request (url buffer)
-  "Fetch URL, to show it in BUFFER once it arrives.  A failed fetch is retried."
-  (cl-pushnew buffer (gethash url octocat-image--waiting))
-  (unless (memq (gethash url octocat-image--cache) '(pending))
-    (puthash url 'pending octocat-image--cache)
-    (octocat-image--fetch url octocat-image--max-hops
-                          (lambda (data) (octocat-image--arrived url data)))))
+(defun octocat-image--request (plist buffer)
+  "Fetch the image of PLIST, to show it in BUFFER once it arrives.
+A failed fetch is retried."
+  (let* ((url  (plist-get plist :url))
+         (file (plist-get plist :file))
+         (done (lambda (data) (octocat-image--arrived url data))))
+    (cl-pushnew buffer (gethash url octocat-image--waiting))
+    (unless (memq (gethash url octocat-image--cache) '(pending))
+      (puthash url 'pending octocat-image--cache)
+      (if file
+          (apply octocat-image-file-function (append file (list done)))
+        (octocat-image--fetch url octocat-image--max-hops done)))))
 
 (defun octocat-image-show (&optional event)
   "Fetch and show the image whose link is at point (or at EVENT)."
@@ -216,10 +235,10 @@ For `jit-lock-functions'."
                   (current-buffer)))
          (plist (with-current-buffer buf (get-text-property pos 'octocat-markdown-image)))
          (url   (plist-get plist :url)))
-    (unless (and url (octocat-image-allowed-p url))
+    (unless (and url (octocat-image--fetchable-p plist))
       (user-error "Octocat: no image to show here"))
     (with-current-buffer buf
-      (octocat-image--request url buf)
+      (octocat-image--request plist buf)
       (octocat-image--refontify url))))
 
 (defun octocat-image-enable ()

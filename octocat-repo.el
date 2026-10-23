@@ -1264,18 +1264,20 @@ SHOWN is the kind of the one shown.  See `octocat-vui-tab-row' for WIDTH."
            docs)
    width))
 
-(defun octocat-repo--doc-text (name content raw width)
+(defun octocat-repo--doc-text (repo ref name content raw width)
   "Return the rows of file NAME's CONTENT, rendered when it is markdown.
+NAME is its path in REPO at REF, which its relative links point into.
 RAW and WIDTH are as for `octocat--markdown-string'.  Not indented, so
 it copies as from the file."
-  (let ((text (decode-coding-string content 'utf-8)))
+  (let ((text (decode-coding-string content 'utf-8))
+        (octocat-markdown-base (list repo ref (or (file-name-directory name) ""))))
     (string-remove-suffix
      "\n" (if (octocat-repo--markdown-file-p name)
               (octocat--markdown-string text "" raw width)
             (octocat-markdown-render-verbatim text "")))))
 
-(vui-defcomponent octocat-repo-vui--docs-section (repo tree raw)
-  "The README of REPO at root TREE, and a selector of its other documents.
+(vui-defcomponent octocat-repo-vui--docs-section (repo ref tree raw)
+  "The README of REPO at REF, root TREE, and a selector of its other documents.
 They are those of `octocat-repo--doc-kinds' among the files of TREE,
 the root tree of the commit shown; while its listing loads, grey bars
 stand in for the section.  RAW shows markdown verbatim.  A long
@@ -1292,9 +1294,9 @@ stays put no request is made."
          (oid   (and entry (gethash "sha" entry)))
          (blob  (octocat-vui-use-resource (list 'blob repo oid) nil))
          (width (octocat--markdown-width))
-         (text  (vui-use-memo ((plist-get blob :data) raw width)
+         (text  (vui-use-memo ((plist-get blob :data) ref raw width)
                   (and entry (plist-get blob :data)
-                       (octocat-repo--doc-text (gethash "path" entry)
+                       (octocat-repo--doc-text repo ref (gethash "path" entry)
                                                (octocat-tree--blob-content
                                                 (plist-get blob :data))
                                                raw width)))))
@@ -1397,7 +1399,8 @@ one summary resource and the rest from the root's `repo-head' at REF."
        (vui-text (octocat-tree--skeleton)))
      (if tree
          (vui-component 'octocat-repo-vui--docs-section
-                        :key shown :repo repo :tree tree :raw raw)
+                        :key shown :repo repo :ref (or shown default-branch "HEAD")
+                        :tree tree :raw raw)
        (octocat-repo-vui--docs-skeleton)))))
 
 (vui-defcomponent octocat-repo-vui--tree-page (repo ref tracked reveal focus tick)

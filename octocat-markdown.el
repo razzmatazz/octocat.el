@@ -43,7 +43,8 @@
 ;; Links, #123 and commit references and <details> summaries are
 ;; interactive: they carry a `keymap' text property binding RET and
 ;; mouse-1 to `octocat-markdown-follow', which works in any buffer the
-;; rendered string is inserted into.
+;; rendered string is inserted into.  Relative links and images, as in
+;; a README, point into the repository `octocat-markdown-base' names.
 ;;
 ;; Entry points: `octocat-markdown-render' and
 ;; `octocat-markdown-render-verbatim'.  `octocat-markdown-font-lock-keywords'
@@ -54,6 +55,7 @@
 (require 'cl-lib)
 (require 'seq)
 (require 'subr-x)
+(require 'url-util)
 (require 'octocat-mermaid)
 
 ;;;; Faces
@@ -156,11 +158,50 @@ and Evil state maps, so RET works in every buffer a rendered string lands in.")
                          s)
     s))
 
+(defvar octocat-markdown-base nil
+  "Where the markdown being rendered is, for its relative links, or nil.
+A list (REPO REF DIR): directory DIR, \"\" for the root, of REPO at REF,
+as for a README.  Bound around `octocat-markdown-render'.")
+
+(defun octocat-markdown--relative-path (url)
+  "Return the path in the repository that relative URL names, or nil.
+It is resolved against `octocat-markdown-base', a leading slash from
+the root; nil when there is none, or URL is absolute or a #fragment.
+A link to a directory keeps its trailing slash."
+  (when (and octocat-markdown-base
+             (not (string-match-p "\\`\\(?:[a-zA-Z][a-zA-Z0-9+.-]*:\\|#\\|//\\)" url)))
+    (let* ((path  (car (split-string url "[?#]")))
+           (full  (if (string-prefix-p "/" path)
+                      path
+                    (concat (nth 2 octocat-markdown-base) "/" path)))
+           parts)
+      (dolist (seg (split-string full "/" t))
+        (pcase seg
+          ("." nil)
+          (".." (pop parts))
+          (_ (push seg parts))))
+      (concat (string-join (nreverse parts) "/")
+              (and (string-suffix-p "/" path) parts "/")))))
+
+(defun octocat-markdown--absolute (url kind)
+  "Return URL, or its github.com page when it is relative.
+See `octocat-markdown-base'.  KIND is the page of a file: \"blob\" to
+read it, \"raw\" for its bytes; a directory's is its \"tree\"."
+  (if-let* ((path (octocat-markdown--relative-path url)))
+      (format "https://github.com/%s/%s/%s/%s%s"
+              (nth 0 octocat-markdown-base)
+              (if (string-suffix-p "/" path) "tree" kind)
+              (nth 1 octocat-markdown-base)
+              (string-remove-suffix "/" path)
+              (if (string-match "#.*\\'" url) (match-string 0 url) ""))
+    url))
+
 (defun octocat-markdown--link (label url)
-  "Return LABEL as a link to URL."
-  (octocat-markdown--interactive
-   (octocat-markdown--face label 'octocat-markdown-link)
-   (format "RET: open %s" url) 'octocat-markdown-url url))
+  "Return LABEL as a link to URL, made absolute if it is relative."
+  (let ((url (octocat-markdown--absolute url "blob")))
+    (octocat-markdown--interactive
+     (octocat-markdown--face label 'octocat-markdown-link)
+     (format "RET: open %s" url) 'octocat-markdown-url url)))
 
 (defun octocat-markdown--ref (label kind repo id)
   "Return LABEL as a reference to KIND (`issue' or `commit') ID in REPO."
@@ -218,6 +259,9 @@ and Evil state maps, so RET works in every buffer a rendered string lands in.")
     (cond (ref (if octocat-markdown-ref-function
                    (apply octocat-markdown-ref-function ref)
                  (user-error "Octocat: no way to open %s" (nth 2 ref))))
+          ;; `browse-url' would take a relative link for a local file.
+          ((and url (not (string-match-p "\\`[a-zA-Z][a-zA-Z0-9+.-]*:" url)))
+           (user-error "Octocat: no way to open %s" url))
           (url (browse-url url))
           ((get-text-property pos 'octocat-markdown-details)
            (octocat-markdown-toggle-details pos))
@@ -375,12 +419,21 @@ like \"defaced\" and numbers like 1234567 are not taken for hashes."
 (defun octocat-markdown--image (alt src &optional width)
   "Return the image of SRC as a link labelled by ALT.
 It carries its SRC and WIDTH, in pixels, as `octocat-markdown-img', for
-`octocat-markdown--image-row' to tell an image alone on its line."
-  (let ((s (octocat-markdown--link
-            (format "[image%s]" (if (string-empty-p (or alt "")) "" (concat ": " alt)))
-            src)))
+`octocat-markdown--image-row' to tell an image alone on its line.  A
+relative SRC is a file of the repository, which it carries as :file,
+\(REPO REF PATH), see `octocat-markdown-base'."
+  (let* ((path (octocat-markdown--relative-path src))
+         (url  (octocat-markdown--absolute src "raw"))
+         (s    (octocat-markdown--link
+                (format "[image%s]" (if (string-empty-p (or alt "")) "" (concat ": " alt)))
+                url)))
     (put-text-property 0 (length s) 'octocat-markdown-img
-                       (list :url src :width width) s)
+                       (append (list :url url :width width)
+                               (and path (not (string-suffix-p "/" path))
+                                    (list :file (list (nth 0 octocat-markdown-base)
+                                                      (nth 1 octocat-markdown-base)
+                                                      (url-unhex-string path)))))
+                       s)
     s))
 
 (defun octocat-markdown--img (tag)

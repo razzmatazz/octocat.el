@@ -269,6 +269,14 @@
     (should (equal (gethash "path" (nth 2 (assq 'readme docs))) "readme.md"))
     (should (equal (gethash "path" (nth 2 (assq 'license docs))) "LICENSE"))))
 
+(ert-deftest octocat-repo-test-doc-relative-links ()
+  "A document's relative links open its repository's files at the ref shown."
+  (let ((text (octocat-repo--doc-text "o/r" "dev" "docs/GUIDE.md"
+                                      "[shots](shots/README.md)" nil 80)))
+    (should (equal (get-text-property (string-search "shots" text)
+                                      'octocat-markdown-url text)
+                   "https://github.com/o/r/blob/dev/docs/shots/README.md"))))
+
 (ert-deftest octocat-repo-test-parse-head ()
   "A directory at a ref has its last commit, its tree and its history count."
   (let ((head (octocat-repo--parse-head

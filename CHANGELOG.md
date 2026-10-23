@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Fix relative links in a repository's README opening a local file, in an outside program: they open the linked file, at the branch shown, in octocat's file viewer
+* `RET` on an image in a README, given by a relative path, shows it in place, as it does for images uploaded to GitHub
 
 ## [0.1.0] - 2026-10-23
 * First release, and the first on MELPA Stable

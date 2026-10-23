@@ -267,6 +267,39 @@ the window's point; mid-render that scrambled the page."
     (should (equal browsed "http://u"))
     (should (equal opened '(issue nil 7)))))
 
+(ert-deftest octocat-markdown-test-relative-links ()
+  "Relative links and images point into the repository of `octocat-markdown-base'."
+  (let* ((octocat-markdown-base '("o/r" "feat/x" "docs/"))
+         (out (octocat-markdown-render
+               (concat "[a](shots/README.md) [b](../LICENSE#mit) [c](/src/) "
+                       "[d](#usage) [e](https://x.org/y)\n\n![p](shots/a%20b.png)")
+               "")))
+    (should (equal (octocat-markdown-tests--prop out "a" 'octocat-markdown-url)
+                   "https://github.com/o/r/blob/feat/x/docs/shots/README.md"))
+    (should (equal (octocat-markdown-tests--prop out "b" 'octocat-markdown-url)
+                   "https://github.com/o/r/blob/feat/x/LICENSE#mit"))
+    (should (equal (octocat-markdown-tests--prop out "c" 'octocat-markdown-url)
+                   "https://github.com/o/r/tree/feat/x/src"))
+    (should (equal (octocat-markdown-tests--prop out "d" 'octocat-markdown-url) "#usage"))
+    (should (equal (octocat-markdown-tests--prop out "e" 'octocat-markdown-url)
+                   "https://x.org/y"))
+    (should (equal (octocat-markdown-tests--prop out "[image: p]" 'octocat-markdown-img)
+                   '(:url "https://github.com/o/r/raw/feat/x/docs/shots/a%20b.png"
+                     :width nil :file ("o/r" "feat/x" "docs/shots/a b.png")))))
+  (let ((out (octocat-markdown-render "[a](docs/README.md)" "")))
+    (should (equal (octocat-markdown-tests--prop out "a" 'octocat-markdown-url)
+                   "docs/README.md"))))
+
+(ert-deftest octocat-markdown-test-follow-relative ()
+  "A link left relative is not handed to `browse-url', which takes it for a file."
+  (let ((out (octocat-markdown-render "[a](docs/README.md)" "")) browsed)
+    (cl-letf (((symbol-function 'browse-url) (lambda (u) (setq browsed u))))
+      (with-temp-buffer
+        (insert out)
+        (goto-char (point-min))
+        (should-error (octocat-markdown-follow) :type 'user-error)))
+    (should-not browsed)))
+
 (ert-deftest octocat-markdown-test-open-ref ()
   "A number is opened as a PR or an issue, as GitHub says; a hash as a commit."
   (let (opened (answer "true"))

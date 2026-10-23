@@ -99,5 +99,32 @@
           (should (equal (funcall at "[image: a]" 'display) '(img "BYTES")))
           (should (equal fetched (list url))))))))
 
+(ert-deftest octocat-image-test-repo-file ()
+  "A README's relative image is fetched by `octocat-image-file-function' alone."
+  (let* ((asked nil)
+         (octocat-image--cache (make-hash-table :test #'equal))
+         (octocat-image--waiting (make-hash-table :test #'equal))
+         (octocat-image-file-function
+          (lambda (repo ref path cb) (push (list repo ref path) asked) (funcall cb "BYTES")))
+         (octocat-markdown-base '("o/r" "main" "")))
+    (cl-letf (((symbol-function 'display-images-p) #'always)
+              ((symbol-function 'image-type-from-data) (lambda (_) 'png))
+              ((symbol-function 'image-type-available-p) #'always)
+              ((symbol-function 'octocat-image--image) (lambda (data _plist) (list 'img data)))
+              ((symbol-function 'octocat-image--fetch)
+               (lambda (&rest _) (error "Fetched over http"))))
+      (with-temp-buffer
+        (insert (octocat--markdown-string "![a](docs/a.png)" "" nil 80))
+        (octocat-image--fontify (point-min) (point-max))
+        (goto-char (point-min))
+        (search-forward "[image: a]")
+        (should (eq (get-text-property (match-beginning 0) 'keymap) octocat-image-map))
+        (backward-char)
+        (octocat-image-show)
+        (octocat-image--fontify (point-min) (point-max))
+        (should (equal asked '(("o/r" "main" "docs/a.png"))))
+        (should (equal (get-text-property (match-beginning 0) 'display)
+                       '(img "BYTES")))))))
+
 (provide 'octocat-image-tests)
 ;;; octocat-image-tests.el ends here
