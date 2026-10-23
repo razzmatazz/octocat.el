@@ -42,5 +42,24 @@
     (should-not (funcall max-age "abc1234" "main"))
     (should-not (funcall max-age "v1.0" "v1.1"))))
 
+(ert-deftest octocat-compare-test-page-renders-files ()
+  "A loaded comparison shows its commits and its files."
+  (let ((data (octocat-compare-tests--json
+               "{\"status\":\"ahead\",\"total_commits\":0,\"behind_by\":0,\"commits\":[],
+                 \"files\":[{\"filename\":\"a.el\",\"status\":\"modified\",
+                             \"patch\":\"@@ -1 +1 @@\\n-old\\n+new\"}]}"))
+        (vui-render-delay nil))
+    (cl-letf (((symbol-function 'octocat-vui-use-resource)
+               (lambda (_spec _tick) (list :data data))))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'octocat-compare--page
+                                      :repo "o/r" :base "main" :dots "..." :head "topic"
+                                      :raw nil :tick 0)
+                       "*octocat-compare-test*")
+            (with-current-buffer "*octocat-compare-test*"
+              (should (string-search "Files (1)" (buffer-string)))))
+        (kill-buffer "*octocat-compare-test*")))))
+
 (provide 'octocat-compare-tests)
 ;;; octocat-compare-tests.el ends here

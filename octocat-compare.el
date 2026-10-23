@@ -157,7 +157,7 @@ new TICK fetches it again."
                 (list (vui-newline))
                 (octocat-compare--commits repo (or (gethash "commits" data) []) width)
                 (list (octocat-diff-files-section
-                       (or (gethash "files" data) []) nil raw width)))))))))
+                       (or (gethash "files" data) []) nil nil raw width)))))))))
 
 
 ;;;; Major mode
