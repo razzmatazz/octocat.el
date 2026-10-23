@@ -121,6 +121,83 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
         (octocat-tree--image-file "o/r" "main" "b.png" (lambda (r) (setq got (list r))))
         (should (equal got '(nil)))))))
 
+(defun octocat-tree-tests--json (json)
+  "Return JSON parsed as the store keeps it."
+  (json-parse-string json))
+
+(defun octocat-tree-tests--store-file (ref path content)
+  "Store owner/repo, main by default, and file PATH at REF holding CONTENT."
+  (octocat-tree-tests--store '(repo-summary "owner/repo")
+                             (octocat-tree-tests--json "{\"default-branch\":\"main\"}"))
+  (let ((head (octocat-repo--history-commit
+               (octocat-tree-tests--json
+                "{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}")))
+        (blob (make-hash-table :test #'equal)))
+    (puthash "tree" (concat "blob-" ref) head)
+    (puthash "kind" "blob" head)
+    (puthash "total" 3 head)
+    (octocat-tree-tests--store (list 'repo-head "owner/repo" ref path) head)
+    (puthash "base64" (base64-encode-string content) blob)
+    (octocat-tree-tests--store (list 'blob "owner/repo" (concat "blob-" ref)) blob)))
+
+(defmacro octocat-tree-tests--with-file-page (&rest body)
+  "Run BODY from the store, the local clone on no branch.
+A refresh asks GitHub again, which never answers."
+  (declare (indent 0))
+  `(octocat-tree-tests--with-store
+     (cl-letf (((symbol-function 'octocat--run-gh) #'ignore)
+               ((symbol-function 'octocat--head-info) #'ignore)
+               ((symbol-function 'octocat-display-buffer) #'set-buffer))
+       ,@body)))
+
+(ert-deftest octocat-tree-test-file-page ()
+  "The file viewer starts as the tree browser does, and renders markdown."
+  (octocat-tree-tests--with-file-page
+    (octocat-tree-tests--store-file "dev" "docs/GUIDE.md"
+                                    "# Guide\n\nSee [shots](shots/README.md).\n")
+    (save-current-buffer
+      (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md")
+      (unwind-protect
+          (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+            (should (equal (buffer-name) "*owner/repo@dev:docs/GUIDE.md*"))
+            (should (derived-mode-p 'octocat-file-mode))
+            (should (string-match-p "\\`owner/repo\n\n\\[dev ▾\\]  abc1234  Add the guide" text))
+            (should-not (string-match-p "reset" text))
+            (should (string-match-p "^docs/GUIDE.md  \\[Browse tree\\]$" text))
+            (should (string-match-p "^Guide$" text))
+            (should-not (string-match-p "# Guide" text))
+            (goto-char (point-min))
+            (search-forward "shots")
+            (should (equal (get-text-property (match-beginning 0) 'octocat-markdown-url)
+                           "https://github.com/owner/repo/blob/dev/docs/shots/README.md"))
+            ;; C-c C-v shows the source.
+            (octocat-toggle-markdown)
+            (should (string-match-p "^# Guide$" (buffer-string))))
+        (kill-buffer)))))
+
+(ert-deftest octocat-tree-test-file-branches ()
+  "Each ref of a file has a buffer, the default branch by its name; picking another opens it."
+  (octocat-tree-tests--with-file-page
+    (octocat-tree-tests--store-file "main" "a.el" "(a)\n")
+    (octocat-tree-tests--store-file "dev" "a.el" "(b)\n")
+    (let (bufs)
+      (unwind-protect
+          (save-current-buffer
+            (octocat-tree--open-file-by-path "owner/repo" "HEAD" "a.el")
+            (push (current-buffer) bufs)
+            (should (equal (buffer-name) "*owner/repo@main:a.el*"))
+            (should (string-match-p "\\[main ▾\\]" (buffer-string)))
+            (cl-letf (((symbol-function 'octocat--read-branch)
+                       (lambda (repo default _local shown)
+                         (should (equal (list repo default shown) '("owner/repo" "main" "main")))
+                         "dev")))
+              (octocat-file-switch-branch))
+            (push (current-buffer) bufs)
+            (should (equal (buffer-name) "*owner/repo@dev:a.el*"))
+            (should (string-match-p "^(b)$" (buffer-string)))
+            (should (string-match-p "^(a)$" (with-current-buffer (cadr bufs) (buffer-string)))))
+        (mapc #'kill-buffer bufs)))))
+
 (ert-deftest octocat-tree-test-render-entries-empty ()
   "An empty root says so."
   (octocat-tree-tests--with-store

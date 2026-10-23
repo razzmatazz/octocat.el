@@ -319,12 +319,22 @@ link with one ref, where github.com picks the base, opens in the browser.
 
 #### File viewer (`octocat-file-mode`)
 
-`RET` on a file of the repo page's tree, or a github.com `/blob/REF/PATH`
-link, opens a read-only buffer showing the raw file content
-with syntax highlighting inferred from the file extension.  Press
-`C-c C-o` to open the file on GitHub, `C-c C-l` to open the file's commit
-history, and `gr` to reload.  `[Browse tree]` on its top line opens the tree
-browser at the file's branch, opened down to the file.
+`RET` on a file of the repo page's tree, a github.com `/blob/REF/PATH`
+link, or a relative link in a README, opens a read-only buffer showing
+the file at that ref.  A Markdown file is rendered, as on GitHub: its
+relative links open the files they name at the same ref, and `RET` on a
+relative image shows it in place.  `C-c C-v` shows the Markdown source
+instead.  Any other file is shown with the syntax highlighting of its
+major mode.
+
+The top of the page continues the tree browser's: the repository, then
+the ref picker with the file's last commit and a `[N commits]` button to
+its history, then the file's path, with `[Browse tree]` to open the tree
+browser down to it.  Each ref of a file has a buffer of its own, named
+`*owner/repo@ref:path*`; `C-c C-b`, or `RET` on the picker, opens the
+file at another branch, in another buffer, so the two can be read side
+by side.  Press `C-c C-o` to open the file on GitHub, `C-c C-l` to open
+the file's commit history, and `gr` to reload.
 
 #### File commit log (`octocat-file-log-mode`)
 
@@ -381,8 +391,8 @@ fetched.
 | `C-c C-n` | Write a new issue (PR and issue lists and detail views): the first line is the title, the rest the body; `C-c C-c` creates it and opens its page |
 | `C-c C-m` | Merge the PR (all PR pages): edit the commit message, `C-c C-t` picks Merge / Squash / Rebase (starting on the one last used in the repo, if still allowed), `C-c C-d` toggles deleting the branch, `C-c C-c` merges |
 | `C-c C-j` | Jump to something in the repository: its PRs, issues, commits and files.  Those octocat has seen before that match show at once, with the commits `git log` finds in a local clone, when there is one; GitHub's search results then take the lead as they arrive, without repeating any.  With `C-u`, or on a page with no repository, jump to another repository instead, or to a user with `@`, matched the same way |
-| `C-c C-v` | Alternative view of the page (see below): raw markdown on the repo page and the PR, commit and issue pages; the review comments in the diff on the PR's files changed page; one line per item on the PR and issue lists |
-| `C-c C-b` | Pick the branch shown (repo page, commits page); `[reset to main]` goes back to the clone's branch, or the default |
+| `C-c C-v` | Alternative view of the page (see below): raw markdown on the repo page, the file viewer and the PR, commit and issue pages; the review comments in the diff on the PR's files changed page; one line per item on the PR and issue lists |
+| `C-c C-b` | Pick the branch shown (repo page, commits page); `[reset to main]` goes back to the clone's branch, or the default.  In the file viewer, open the file at another branch, in a buffer of its own |
 | `C-c C-f` | Open fuzzy file finder — `completing-read` over the full recursive file list of the commit shown; works from the repo page and the file viewer (the list is fetched once per commit) |
 | `C-c C-l` | Open file commit log — shows the commit history for the file currently open in `octocat-file-mode` |
 | `g` / `gr` | Refresh current buffer |

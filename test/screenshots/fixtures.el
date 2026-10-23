@@ -148,6 +148,19 @@ MIT
 "
   "The README of acme/rocket.")
 
+(defconst octocat-screenshots--guide
+  "# Writing pages
+
+A page is a Markdown file in `content/`, with a TOML header between
+`+++` lines that names its title and template.
+
+![A page and the site it builds](images/page.png)
+
+`rocket serve` rebuilds a page as soon as you save it.  The header's
+settings are in [the configuration](configuration.md).
+"
+  "The docs/guide.md of acme/rocket.")
+
 (defconst octocat-screenshots--src
   `[,(octocat-screenshots--tree-entry "src/build.rs" "blob" 8120)
     ,(octocat-screenshots--tree-entry "src/cache.rs" "blob" 2304)
@@ -639,6 +652,12 @@ FIELDS, a plist, override the rest."
                                     (lambda (c i) `(:cursor ,(format "cursor-%d" i)
                                                     :node ,(octocat-screenshots--history-node c)))
                                     octocat-screenshots--commits))))))))
+      ("repo-head" ("dir=main:docs/guide.md")
+       (:data (:repository (:object (:history (:totalCount 12 :nodes [,(octocat-screenshots--history-node
+                                                                        (nth 2 octocat-screenshots--commits))]))
+                            :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/guide.md"))))))
+      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "docs/guide.md") 0 8)) ()
+       ,(octocat-screenshots--base64 octocat-screenshots--guide))
       (,(format "tree-dir-%s" (substring (octocat-screenshots--sha "root") 0 8)) ()
        (:sha ,(octocat-screenshots--sha "root") :tree ,octocat-screenshots--root :truncated :false))
       (,(format "tree-dir-%s" (substring (octocat-screenshots--sha "src") 0 8)) ()

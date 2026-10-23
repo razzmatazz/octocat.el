@@ -1,0 +1,13 @@
+acme/rocket
+
+[main ▾]  a625406  Bump toml from 0.8.12 to 0.8.19  1 day ago  [12 commits]
+docs/guide.md  [Browse tree]
+
+Writing pages
+A page is a Markdown file in content/, with a TOML header between
++++ lines that names its title and template.
+
+[image: A page and the site it builds]
+
+rocket serve rebuilds a page as soon as you save it.  The header's
+settings are in the configuration.

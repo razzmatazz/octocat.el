@@ -586,8 +586,8 @@ map inherits the shared keys through its parent:
   page's keymap.  It adds the keys only vui pages share, `q` and `g`, and
   inherits `octocat-common-map` and `vui-mode-map` through
   `make-composed-keymap`.
-- A page that is not a vui page, such as the file viewer, composes
-  `octocat-common-map` with its own base map, here `special-mode-map`.
+- A page that is not a vui page composes `octocat-common-map` with its
+  own base map, such as `special-mode-map`.
 
 A mode binds a shared key itself only when it means something else
 there, as `gr` does in the file viewer.  Evil's normal-state bindings
@@ -792,8 +792,7 @@ On a page's first line the owner links to the owner's user or
 organization page, so one can walk up to it.  The repo name is plain on
 every page: it is where the page sits, and the repository page is a
 `C-u C-c C-j` or the Code tab away.  Build the heading with
-`octocat-vui-repo-heading`; the file viewer, which is not a vui page,
-inserts the same with `octocat-tree--insert-repo-heading`.
+`octocat-vui-repo-heading`.
 
 ```
 octocat/hello#42  Fix the greeting · @alice  ← only "octocat" (and @alice) link

@@ -50,7 +50,7 @@
 (declare-function octocat-issue-open             "octocat-issue"  (repo number))
 (declare-function octocat-commit-open            "octocat-commit" (repo sha))
 (declare-function octocat-tree--fetch-all-files  "octocat-tree"   (repo sha callback))
-(declare-function octocat-tree--open-file-by-path "octocat-tree"  (repo branch path sha))
+(declare-function octocat-tree--open-file-by-path "octocat-tree"  (repo branch path))
 (declare-function octocat-repo--local-dir-for    "octocat-repo"   (repo))
 (defvar octocat-repo--local-dir)
 
@@ -148,8 +148,7 @@ FILE is a (PATH . BLOB-SHA) cons."
         (repo (plist-get item :repo)))
     (pcase type
       ('file
-       (octocat-tree--open-file-by-path
-        repo "HEAD" (plist-get item :path) (plist-get item :sha)))
+       (octocat-tree--open-file-by-path repo "HEAD" (plist-get item :path)))
       ('pr
        (octocat-pr-open repo (plist-get item :number)))
       ('issue

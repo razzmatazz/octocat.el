@@ -96,6 +96,11 @@
   "Face for the lines of a fenced code block."
   :group 'octocat-markdown)
 
+(defface octocat-markdown-image
+  '((t :inherit octocat-markdown-link :slant italic :weight bold))
+  "Face for the link of an image, apart from other links."
+  :group 'octocat-markdown)
+
 (defface octocat-markdown-link
   '((t :inherit link))
   "Face for markdown links."
@@ -425,7 +430,9 @@ relative SRC is a file of the repository, which it carries as :file,
   (let* ((path (octocat-markdown--relative-path src))
          (url  (octocat-markdown--absolute src "raw"))
          (s    (octocat-markdown--link
-                (format "[image%s]" (if (string-empty-p (or alt "")) "" (concat ": " alt)))
+                (octocat-markdown--face
+                 (format "[image%s]" (if (string-empty-p (or alt "")) "" (concat ": " alt)))
+                 'octocat-markdown-image)
                 url)))
     (put-text-property 0 (length s) 'octocat-markdown-img
                        (append (list :url url :width width)

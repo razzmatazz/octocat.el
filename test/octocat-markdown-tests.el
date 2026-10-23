@@ -283,6 +283,8 @@ the window's point; mid-render that scrambled the page."
     (should (equal (octocat-markdown-tests--prop out "d" 'octocat-markdown-url) "#usage"))
     (should (equal (octocat-markdown-tests--prop out "e" 'octocat-markdown-url)
                    "https://x.org/y"))
+    (should (memq 'octocat-markdown-image
+                  (ensure-list (octocat-markdown-tests--prop out "[image: p]" 'face))))
     (should (equal (octocat-markdown-tests--prop out "[image: p]" 'octocat-markdown-img)
                    '(:url "https://github.com/o/r/raw/feat/x/docs/shots/a%20b.png"
                      :width nil :file ("o/r" "feat/x" "docs/shots/a b.png")))))

@@ -26,7 +26,7 @@
 ;; one file:
 ;;
 ;;   `octocat-tree--dir'     — one directory of the repo page, as on GitHub
-;;   octocat-file-mode     — read-only file content viewer with syntax highlighting
+;;   octocat-file-mode     — one file at one ref, highlighted, or rendered if markdown
 ;;   octocat-file-log-mode — commit log for a single file (git log -- <path>)
 ;;
 ;; Entry points:
@@ -35,7 +35,10 @@
 ;;   `octocat-tree-find-file' — pick any file of the ref shown (C-c C-f)
 ;;   `octocat-file-log-open'  — open the file commit log (C-c C-l in file mode)
 ;;
-;; octocat-file-mode derives from `special-mode'.
+;; octocat-file-mode derives from `vui-mode' and is rendered by
+;; `octocat-repo-vui--file-page', in octocat-repo.el: its top is the
+;; tree browser's, so one reads on from the other.  Each ref of a file
+;; has a buffer of its own, and picking another ref opens another.
 ;; octocat-file-log-mode derives from `vui-mode' and is rendered by
 ;; `octocat-file-log--page': one line per commit, carrying the commit's
 ;; SHA in the `octocat-file-log--sha' text property, which RET
@@ -92,32 +95,35 @@ The rest expands on RET.  Nil never folds."
 (defvar-local octocat-tree--file-path nil
   "Relative file path being displayed in the file viewer buffer.")
 
-(defvar-local octocat-tree--file-sha nil
-  "Blob SHA for the file being displayed, or nil when unknown.")
-
 (defvar-local octocat-tree--file-branch nil
-  "Branch/ref name for the file being displayed.")
+  "Branch/ref name for the file being displayed, \"HEAD\" for the default.")
 
 
 ;;;; Mode: octocat-file-mode
 
 (defvar octocat-file-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map (make-composed-keymap octocat-common-map special-mode-map))
+    (set-keymap-parent map octocat-vui-page-map)
     map)
   "Keymap for `octocat-file-mode'.")
 (define-key octocat-file-mode-map (kbd "C-c C-o") #'octocat-file-browse)
 (define-key octocat-file-mode-map (kbd "C-c C-f") #'octocat-tree-find-file)
 (define-key octocat-file-mode-map (kbd "C-c C-l") #'octocat-file-log-open)
+(define-key octocat-file-mode-map (kbd "C-c C-b") #'octocat-file-switch-branch)
+(define-key octocat-file-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
 (define-key octocat-file-mode-map (kbd "gr")      #'octocat-file-refresh)
 
-(define-derived-mode octocat-file-mode special-mode "Octocat-File"
-  "Major mode for viewing a GitHub file with syntax highlighting.
+(define-derived-mode octocat-file-mode vui-mode "Octocat-File"
+  "Major mode for viewing a GitHub file: highlighted, or rendered if markdown.
 
 \\{octocat-file-mode-map}"
   :group 'octocat
+  (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
-  (setq-local revert-buffer-function #'octocat-file-refresh))
+  (setq-local revert-buffer-function #'octocat-file-refresh)
+  (setq-local octocat--refresh-fn #'octocat-file-refresh)
+  (octocat-markdown--ensure-invisibility)
+  (octocat--ts-eldoc-setup))
 
 
 ;;;; Buffer-local variables — file log mode
@@ -415,15 +421,14 @@ ON-BROWSE, for the whole tree."
         (vui-list
          shown
          (lambda (entry)
-           (let ((name (gethash "path" entry))
-                 (sha  (gethash "sha" entry)))
+           (let ((name (gethash "path" entry)))
              (if (equal (gethash "type" entry) "tree")
                  (octocat-tree--entry-line "" (concat name "/") 'octocat-branch 'dir entry name
                                            (lambda () (funcall on-dir name)))
                (octocat-tree--entry-line "" name 'default 'file entry name
                                          (lambda ()
                                            (octocat-tree--open-file-by-path
-                                            repo branch name sha))))))
+                                            repo branch name))))))
          (lambda (entry) (gethash "path" entry)))
         (vui-button (if (> more 0)
                         (format "[Browse code (%d more %s)]" more (if (= more 1) "entry" "entries"))
@@ -489,59 +494,11 @@ The other arguments are as for `octocat-tree--subtree'."
       (octocat-tree--entry-line
        indent (concat "  " name) 'default
        'file entry path
-       (lambda () (octocat-tree--open-file-by-path repo branch path sha))))))
+       (lambda () (octocat-tree--open-file-by-path repo branch path))))))
 
 (defun octocat-tree--skeleton (&optional indent)
   "Return grey bars shaped like a few tree entries, each after INDENT."
   (octocat-vui-skeleton (mapcar (lambda (n) (list (or indent "") n)) '(14 22 10 18))))
-
-
-;;;; Rendering — file mode
-
-(defun octocat-tree--insert-repo-heading (repo)
-  "Insert REPO as `octocat-vui-repo-heading' draws it, in a plain buffer."
-  (pcase-let ((`(,owner ,name) (split-string repo "/")))
-    (insert-text-button owner 'face '(link octocat-repo)
-                        'help-echo "RET: open owner page" 'follow-link t
-                        'action (lambda (_) (octocat-user-open owner)))
-    (insert (propertize (concat "/" name) 'face 'octocat-repo))))
-
-(defun octocat-tree--insert-file-header (path)
-  "Insert the top of the viewer of file PATH, a rule under it.
-Its line ends in a button to the repo page's tree, opened down to PATH."
-  (let ((repo   octocat-tree--file-repo)
-        (branch octocat-tree--file-branch))
-    (when repo
-      (octocat-tree--insert-repo-heading repo))
-    (insert "  "
-            (propertize (or branch "") 'face 'octocat-branch)
-            "  "
-            (or path "")
-            "  ")
-    (insert-text-button "[Browse tree]"
-                        'face 'octocat-dimmed
-                        'help-echo "RET: browse the repository's tree at this file"
-                        'follow-link t
-                        'action (lambda (_)
-                                  (octocat-tree-open
-                                   repo (unless (equal branch "HEAD") branch) path)))
-    (insert "\n" (propertize (make-string 60 ?━) 'face 'octocat-dimmed) "\n")))
-
-(defun octocat-tree--render-file-loading (path)
-  "Render a loading skeleton for file PATH in the current file buffer."
-  (let ((inhibit-read-only t))
-    (erase-buffer)
-    (octocat-tree--insert-file-header path)
-    (insert (octocat-vui-skeleton '((30) (46) ("  " 38) ("  " 24) (12))))))
-
-(defun octocat-tree--render-file (path content)
-  "Render file PATH with fontified CONTENT in the current file buffer."
-  (let* ((inhibit-read-only t)
-         (fontified (octocat-tree--fontify path content)))
-    (erase-buffer)
-    (octocat-tree--insert-file-header path)
-    (insert fontified)
-    (goto-char (point-min))))
 
 
 ;;;; Point navigation helpers
@@ -594,20 +551,38 @@ binding outranks the button's own."
     (when-let* ((activate (octocat-tree--activate-at-point)))
       (funcall activate))))
 
-(defun octocat-tree--open-file-by-path (repo branch path sha)
-  "Open the file viewer buffer for PATH (blob SHA) in REPO on BRANCH.
-With SHA nil, as from a github.com link, it is looked up first."
-  (let* ((buf-name (format "*%s:%s*" repo path))
-         (buf      (get-buffer-create buf-name)))
+(defun octocat-tree--file-ref (repo branch)
+  "Return the name the file viewer gives BRANCH of REPO.
+\"HEAD\", nil or \"\", the default branch, is named when it is known."
+  (if (member branch '(nil "" "HEAD"))
+      (let ((summary (plist-get (octocat-sync-read (list 'repo-summary repo)) :data)))
+        (or (and summary (gethash "default-branch" summary)) "HEAD"))
+    branch))
+
+(defun octocat-tree--open-file-by-path (repo branch path)
+  "Open the file viewer of PATH in REPO at BRANCH.
+Each ref of a file has a buffer of its own, named after both."
+  (let* ((branch (octocat-tree--file-ref repo branch))
+         (buf    (get-buffer-create (format "*%s@%s:%s*" repo branch path))))
     (octocat-display-buffer buf)
     (unless (derived-mode-p 'octocat-file-mode)
       (octocat-file-mode))
     (setq octocat-tree--file-repo   repo
           octocat-tree--file-path   path
-          octocat-tree--file-sha    sha
           octocat-tree--file-branch branch)
-    (octocat-tree--render-file-loading path)
     (octocat-file-refresh)))
+
+(defun octocat-file-switch-branch ()
+  "Open this file at another branch, in a buffer of its own."
+  (interactive)
+  (unless (and octocat-tree--file-repo octocat-tree--file-path)
+    (user-error "Octocat: Buffer is not associated with a file"))
+  (let* ((repo    octocat-tree--file-repo)
+         (default (octocat-tree--file-ref repo nil))
+         (picked  (octocat--read-branch repo (unless (equal default "HEAD") default)
+                                        (plist-get (octocat--head-info) :branch)
+                                        octocat-tree--file-branch)))
+    (octocat-tree--open-file-by-path repo picked octocat-tree--file-path)))
 
 (defun octocat-tree--load-files (repo ref callback)
   "Call CALLBACK with every file of REPO at REF, nil for the default branch.
@@ -648,8 +623,7 @@ commit.  Works from the repo page and from a file viewer."
            (if (eq (car-safe files) 'error)
                (message "Octocat: Error loading file list: %s" (cdr files))
              (let ((path (completing-read "Find file: " files nil t)))
-               (octocat-tree--open-file-by-path
-                repo label path (gethash path files))))))))))
+               (octocat-tree--open-file-by-path repo label path)))))))))
 
 (defun octocat-tree--entry-url (repo ref type path)
   "Return the github.com URL of the tree entry at PATH of REPO at REF.
@@ -661,48 +635,17 @@ TYPE is `file' or `dir'."
 ;;;; Interactive commands — file mode
 
 (defun octocat-file-refresh (&optional _ignore-auto _noconfirm)
-  "Refresh the file viewer buffer from its blob.
-The blob is fixed by its SHA, so a stored copy is shown without a fetch."
+  "Refresh the file viewer, in place."
   (interactive)
   (unless (and octocat-tree--file-repo octocat-tree--file-path)
     (user-error "Octocat: Buffer is not associated with a file"))
-  (let ((buf    (current-buffer))
-        (repo   octocat-tree--file-repo)
-        (sha    octocat-tree--file-sha)
-        (path   octocat-tree--file-path))
-    (when (and sha (not (plist-get (octocat-sync-read (list 'blob repo sha)) :data)))
-      (octocat-tree--render-file-loading path)
-      (setq mode-line-process (octocat-vui-mode-line-busy ":loading")))
-    (if sha
-        (octocat-tree--load-blob
-         repo sha
-         (lambda (result)
-           (when (buffer-live-p buf)
-             (with-current-buffer buf
-               (setq mode-line-process nil)
-               (if (eq (car-safe result) 'error)
-                   (let ((inhibit-read-only t))
-                     (erase-buffer)
-                     (insert (propertize
-                              (format "Error loading file: %s\n" (cdr result))
-                              'face 'error)))
-                 (octocat-tree--render-file path result))))))
-      ;; Known only by path, as from a link: look the blob up.
-      (octocat-tree--render-file-loading path)
-      (setq mode-line-process (octocat-vui-mode-line-busy ":loading"))
-      (octocat-tree--fetch-blob-sha
-       repo (or octocat-tree--file-branch "HEAD") path
-       (lambda (result)
-         (when (buffer-live-p buf)
-           (with-current-buffer buf
-             (setq mode-line-process nil)
-             (if (eq (car-safe result) 'error)
-                 (let ((inhibit-read-only t))
-                   (erase-buffer)
-                   (insert (propertize (format "Error loading file: %s\n" (cdr result))
-                                       'face 'error)))
-               (setq octocat-tree--file-sha result)
-               (octocat-file-refresh)))))))))
+  (octocat-vui-refresh-page
+   'octocat-repo-vui--file-page
+   (list octocat-tree--file-repo octocat-tree--file-branch octocat-tree--file-path)
+   (list :repo octocat-tree--file-repo
+         :ref (unless (equal octocat-tree--file-branch "HEAD") octocat-tree--file-branch)
+         :path octocat-tree--file-path
+         :raw octocat--markdown-raw)))
 
 (defun octocat-file-browse ()
   "Open the current file on GitHub in the browser."

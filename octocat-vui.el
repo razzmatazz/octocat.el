@@ -781,6 +781,13 @@ takes precedence over \":loading\"."
       (setq octocat-vui--action label)
       (octocat-vui--show-busy))))
 
+(defun octocat-vui--image-loading (buf loading)
+  "Show \":loading\" in BUF's mode line while an image it asked for is LOADING.
+For `octocat-image-loading-function'."
+  (octocat-vui--add-loading buf (if loading 1 -1)))
+
+(setq octocat-image-loading-function #'octocat-vui--image-loading)
+
 (defmacro octocat-vui-use-mode-line-loading (loading)
   "Show \":loading\" in the mode line while LOADING, a variable, is true.
 That is `mode-line-process', after the mode name, where Emacs shows that

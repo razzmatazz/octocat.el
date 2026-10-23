@@ -952,7 +952,7 @@ is asked first and the matching view opened."
 (declare-function octocat-user-open     "octocat-user"     (login))
 (declare-function octocat-commits-open  "octocat-repo"     (repo &optional ref path))
 (declare-function octocat-tree-open     "octocat-repo"     (repo &optional ref path))
-(declare-function octocat-tree--open-file-by-path "octocat-tree" (repo branch path sha))
+(declare-function octocat-tree--open-file-by-path "octocat-tree" (repo branch path))
 (declare-function octocat-issue-list    "octocat"          (&optional repo))
 (declare-function octocat-pr-list       "octocat"          (&optional repo))
 (declare-function octocat-actions       "octocat"          (&optional repo))
@@ -1096,7 +1096,7 @@ The handler `octocat-open-github-urls' adds to `browse-url-handlers'."
     (`(blob ,repo . ,segs)
      (octocat--open-ref-path repo segs
                              (lambda (ref path)
-                               (octocat-tree--open-file-by-path repo ref path nil))))
+                               (octocat-tree--open-file-by-path repo ref path))))
     (_ (user-error "Octocat: no view for %s" url))))
 
 ;; So `browse-url-with-browser-kind' skips it when asked for a browser.

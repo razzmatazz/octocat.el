@@ -285,7 +285,7 @@
                      (pr-list "o/r") (issue-list "o/r")
                      (actions "o/r") (repo "o/r" "main") (repo "o/r" nil)
                      (tree "o/r" "feat/x" "src/a.el") (commits "o/r" "main" nil)
-                     (commits "o/r" "feat/x" "src/a.el") (file "o/r" "feat/x" "src/a.el" nil))))))
+                     (commits "o/r" "feat/x" "src/a.el") (file "o/r" "feat/x" "src/a.el"))))))
 
 (ert-deftest octocat-core-test-split-ref-path ()
   "The most leading segments naming a ref are the ref, else the first."

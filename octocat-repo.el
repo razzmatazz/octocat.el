@@ -1108,21 +1108,23 @@ LABEL, RESET and DEFAULT are as for it."
 The default branch named, as by a link to it, is not."
   (and ref (not (equal ref default))))
 
-(defun octocat-repo-vui--ref-picker (label current-branch reset default)
+(defun octocat-repo-vui--ref-picker (label current-branch reset default &optional switch)
   "Return the picker of the ref named LABEL, as GitHub's branch dropdown.
 It is highlighted when it is the local CURRENT-BRANCH.  RESET non-nil
-adds a button back to the DEFAULT branch.  Nil while LABEL is unknown."
+adds a button back to the DEFAULT branch.  SWITCH is the command that
+picks another, `octocat-repo-switch-branch' when nil.  Nil while LABEL
+is unknown."
   (when (and (stringp label) (not (string-empty-p label)))
-    (pcase-let ((`(,pick ,back) (octocat-repo-vui--picker-labels label reset default)))
+    (pcase-let ((`(,pick ,back) (octocat-repo-vui--picker-labels label reset default))
+                (switch (or switch #'octocat-repo-switch-branch)))
       (apply #'vui-hstack :spacing 1
              (vui-button pick
                          :no-decoration t
                          :face (if (equal label current-branch)
                                    'octocat-branch-current
                                  'octocat-branch)
-                         :help-echo (octocat--key-help #'octocat-repo-switch-branch
-                                                       "show another branch")
-                         :on-click #'octocat-repo-switch-branch)
+                         :help-echo (octocat--key-help switch "show another branch")
+                         :on-click switch)
              (when back
                (list (vui-button back
                                  :no-decoration t
@@ -1325,13 +1327,18 @@ stays put no request is made."
 
 ;;;; Root
 
-(defun octocat-repo-vui--head-line (repo ref path head-snap default-branch current-branch)
+(defun octocat-repo-vui--head-line (repo ref path head-snap default-branch current-branch
+                                          &optional switch)
   "Return the line of the picker of REF and the last commit of PATH of REPO.
 HEAD-SNAP is the snapshot of PATH's `repo-head'; DEFAULT-BRANCH and
-CURRENT-BRANCH are as for `octocat-repo-vui--ref-picker'."
+CURRENT-BRANCH are as for `octocat-repo-vui--ref-picker'.  SWITCH, a
+command, picks another ref instead of `octocat-repo-switch-branch'; a
+page with one has no button back to the default branch, as it shows
+one ref for good."
   (let* ((label  (or ref default-branch))
-         (reset  (octocat-repo--resettable-p ref default-branch))
-         (picker (octocat-repo-vui--ref-picker label current-branch reset default-branch))
+         (reset  (and (not switch) (octocat-repo--resettable-p ref default-branch)))
+         (picker (octocat-repo-vui--ref-picker label current-branch reset default-branch
+                                               switch))
          (beside (lambda (node)
                    (if picker (vui-hstack :spacing 2 picker node) node))))
     (pcase (octocat-vui-snapshot-status head-snap)
@@ -1438,6 +1445,68 @@ branch."
                         :sha (gethash "tree" root)
                         :depth 0 :path "" :reveal reveal :focus focus)
        (vui-text (octocat-tree--skeleton))))))
+
+(defun octocat-repo--file-text (repo ref path content raw width)
+  "Return file PATH's CONTENT as the file viewer shows it.
+Markdown is rendered, unless RAW, its relative links into REPO at REF,
+to fit WIDTH; anything else is highlighted as its major mode would."
+  (if (and (not raw) (octocat-repo--markdown-file-p path))
+      (octocat-repo--doc-text repo ref path content nil width)
+    (octocat-tree--fontify path (decode-coding-string content 'utf-8))))
+
+(vui-defcomponent octocat-repo-vui--file-content (repo ref path blob raw)
+  "The content of file PATH, BLOB, of REPO at REF.  RAW shows markdown as is."
+  :render
+  (let* ((snap  (octocat-vui-use-resource (list 'blob repo blob) nil))
+         (width (octocat--markdown-width))
+         (text  (vui-use-memo ((plist-get snap :data) raw width)
+                  (and (plist-get snap :data)
+                       (octocat-repo--file-text repo ref path
+                                                (octocat-tree--blob-content
+                                                 (plist-get snap :data))
+                                                raw width)))))
+    (pcase (octocat-vui-snapshot-status snap)
+      ('pending (vui-text (octocat-tree--skeleton)))
+      ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
+      (_        (vui-text (string-remove-suffix "\n" (or text "")))))))
+
+(vui-defcomponent octocat-repo-vui--file-page (repo ref path raw tick)
+  "Root component of the file viewer: file PATH of REPO at REF.
+REF is a branch, tag or SHA, nil for the default branch.  Its top is
+the tree browser's, so one reads on from the other: the repo heading,
+and the picker of REF with the last commit of PATH, then PATH with a
+button back to the tree.  Picking another ref opens the file at it in
+its own buffer, see `octocat-file-switch-branch'.  RAW shows markdown
+as is."
+  :render
+  (let* ((current-branch (plist-get (octocat--head-info) :branch))
+         (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
+                                    :data))
+         (default-branch (and summary (gethash "default-branch" summary)))
+         (head-snap      (octocat-vui-use-resource (list 'repo-head repo ref path) tick))
+         (head           (plist-get head-snap :data))
+         (blob           (and head (equal (gethash "kind" head) "blob")
+                              (gethash "tree" head))))
+    (vui-vstack
+     (octocat-vui-repo-heading repo)
+     (vui-newline)
+     (octocat-repo-vui--head-line repo ref path head-snap default-branch current-branch
+                                  #'octocat-file-switch-branch)
+     (vui-hstack :spacing 2
+                 (vui-text path)
+                 (vui-button "[Browse tree]"
+                             :no-decoration t
+                             :face 'octocat-dimmed
+                             :help-echo "RET: browse the repository's tree at this file"
+                             :on-click (lambda () (octocat-tree-open repo ref path))))
+     (vui-newline)
+     (cond (blob
+            (vui-component 'octocat-repo-vui--file-content
+                           :key blob :repo repo :ref (or ref default-branch "HEAD")
+                           :path path :blob blob :raw raw))
+           ;; The head line says why there is none.
+           ((eq (octocat-vui-snapshot-status head-snap) 'pending)
+            (vui-text (octocat-tree--skeleton)))))))
 
 (vui-defcomponent octocat-repo-vui--commits-page (repo ref tracked path tick)
   "Root component of the commits page: the history of REF of REPO.

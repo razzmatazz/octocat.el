@@ -73,6 +73,11 @@ without a session.")
 Called with REPO, REF, PATH and a callback, which it calls with the
 file's bytes, or nil if they cannot be had.")
 
+(defvar octocat-image-loading-function nil
+  "Function that shows whether a buffer waits for an image.
+Called with the BUFFER and LOADING, t when it starts waiting for one,
+nil when that one arrived or failed.")
+
 (defvar octocat-image--cache (make-hash-table :test #'equal)
   "URL to its image's bytes, `pending' while fetched, or `failed'.")
 
@@ -186,15 +191,28 @@ For `jit-lock-functions'."
                         (gethash url octocat-image--cache 'absent))))
         (cond ((stringp data)
                (add-text-properties
-                b e (list 'display (octocat-image--image data plist)
+                ;; The link's underline would be drawn under the image.
+                b e (list 'face nil
+                          'display (octocat-image--image data plist)
                           'keymap octocat-markdown-link-map
                           'help-echo (format "RET: open %s" url))))
+              ((eq data 'pending)
+               (add-text-properties
+                b e (list 'display (octocat-image--loading-label b e)
+                          'keymap octocat-image-map
+                          'help-echo "Loading image…")))
               (data
+               (remove-text-properties b e '(display nil))
                (add-text-properties
                 b e (list 'keymap octocat-image-map
-                          'help-echo (if (eq data 'pending) "Loading image…"
-                                       "RET: show image"))))))))
+                          'help-echo "RET: show image")))))))
   nil)
+
+(defun octocat-image--loading-label (beg end)
+  "Return the link from BEG to END, saying its image is loading."
+  (let ((link (buffer-substring beg end)))
+    (remove-text-properties 0 (length link) '(display nil) link)
+    (concat link (propertize " loading…" 'face 'shadow))))
 
 (defun octocat-image--refontify (url)
   "Have the current buffer's images of URL shown afresh."
@@ -211,6 +229,8 @@ For `jit-lock-functions'."
     (unless ok (message "Octocat: could not load %s" url))
     (dolist (buf (gethash url octocat-image--waiting))
       (when (buffer-live-p buf)
+        (when octocat-image-loading-function
+          (funcall octocat-image-loading-function buf nil))
         (with-current-buffer buf (octocat-image--refontify url))))
     (remhash url octocat-image--waiting)))
 
@@ -220,7 +240,10 @@ A failed fetch is retried."
   (let* ((url  (plist-get plist :url))
          (file (plist-get plist :file))
          (done (lambda (data) (octocat-image--arrived url data))))
-    (cl-pushnew buffer (gethash url octocat-image--waiting))
+    (unless (memq buffer (gethash url octocat-image--waiting))
+      (push buffer (gethash url octocat-image--waiting))
+      (when octocat-image-loading-function
+        (funcall octocat-image-loading-function buffer t)))
     (unless (memq (gethash url octocat-image--cache) '(pending))
       (puthash url 'pending octocat-image--cache)
       (if file

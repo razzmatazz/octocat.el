@@ -71,6 +71,7 @@
 (declare-function octocat-file-refresh       "octocat-tree"      (&optional _ignore-auto _noconfirm))
 (declare-function octocat-file-browse        "octocat-tree"      ())
 (declare-function octocat-file-log-open      "octocat-tree"      ())
+(declare-function octocat-file-switch-branch "octocat-tree"      ())
 (declare-function octocat-file-log-refresh   "octocat-tree"      (&optional _ignore-auto _noconfirm))
 (declare-function octocat-file-log-visit     "octocat-tree"      ())
 (declare-function octocat-file-log-browse    "octocat-tree"      ())
@@ -322,10 +323,13 @@ Off an entry, such as on the header, move left."
     (kbd "q")       #'octocat-quit-window)
 
   ;; ── octocat-file-mode ─────────────────────────────────────────────────
+  ;; vui.el-rendered like octocat-repo-mode: links and buttons bind RET.
   (evil-define-key* 'normal octocat-file-mode-map
     (kbd "C-c C-o") #'octocat-file-browse
     (kbd "C-c C-f") #'octocat-tree-find-file
     (kbd "C-c C-l") #'octocat-file-log-open
+    (kbd "C-c C-b") #'octocat-file-switch-branch
+    (kbd "C-c C-v") #'octocat-toggle-markdown
     (kbd "q")       #'octocat-quit-window
     (kbd "gr")      #'octocat-file-refresh)
   (evil-define-key* 'motion octocat-file-mode-map

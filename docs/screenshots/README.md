@@ -37,6 +37,16 @@ The tree browser, opened at `src/`:
 [As text](tree.txt)
 <!-- /screenshot -->
 
+A file, from the tree, here a Markdown one, rendered: the top is the
+tree browser's, and `[main ▾]` opens the file at another branch, in a
+buffer of its own.
+
+<!-- screenshot: (tree--open-file-by-path "acme/rocket" "main" "docs/guide.md") :name "file" -->
+![file](file.png)
+
+[As text](file.txt)
+<!-- /screenshot -->
+
 `[342 commits]` lists the history of the branch:
 
 <!-- screenshot: (commits "acme/rocket") -->
