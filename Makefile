@@ -1,4 +1,8 @@
-LOCAL_IMAGE := octocat-test
+# The Emacs major version to run, 30 or 31, see the Dockerfile.  Emacs 30
+# checks a call's argument count only against byte-compiled callees,
+# Emacs 31 against any, so CI runs both.
+EMACS       ?= 31
+LOCAL_IMAGE := octocat-test:emacs-$(EMACS)
 SRC         := /src
 
 DOCKER := $(shell command -v docker 2>/dev/null || command -v podman 2>/dev/null)
@@ -13,14 +17,20 @@ DOCKER_RUN = $(DOCKER) run --rm \
 
 .PHONY: image deps compile lint test ci clean
 
+# CI sets SKIP_IMAGE, as it builds the image itself, with a layer cache.
 image:
-	$(DOCKER) build -t $(LOCAL_IMAGE) .
+ifndef SKIP_IMAGE
+	$(DOCKER) build --build-arg EMACS=$(EMACS) -t $(LOCAL_IMAGE) .
+endif
 
-# Installing dependencies is slow, so only do it when Eask changes.
-.eask/deps: Eask | image
-	$(DOCKER_RUN) sh -c "eask install-deps --dev && touch .eask/deps"
+# Installing dependencies is slow, so only do it when Eask changes.  Eask
+# keeps them per Emacs version, so the stamp is too.
+DEPS_STAMP := .eask/deps-$(EMACS)
 
-deps: .eask/deps
+$(DEPS_STAMP): Eask | image
+	$(DOCKER_RUN) sh -c "eask install-deps --dev && touch $(DEPS_STAMP)"
+
+deps: $(DEPS_STAMP)
 
 clean:
 	find . -maxdepth 1 -name '*.elc' -delete

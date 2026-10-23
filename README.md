@@ -426,29 +426,35 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for code conventions and guidelines.
 
 ## Development
 
-### Running the linter
+### Compiling, linting and testing
 
-The `test` Makefile target runs `checkdoc` and
-[`package-lint`](https://github.com/purcell/package-lint) inside an
-Emacs 29 Docker container — no local Emacs install required.
-
-```bash
-make test
-```
-
-> **Requires:** Docker
-
-The image used is [`silex/emacs:29.4`](https://hub.docker.com/r/silex/emacs).
-Override it with `EMACS_IMAGE` if you need a different version:
+`make ci` byte-compiles every file, runs `checkdoc` and
+[`package-lint`](https://github.com/purcell/package-lint), and runs the ERT
+tests, all inside a Docker (or Podman) container based on Ubuntu 26.04, so
+no local Emacs install is required.
 
 ```bash
-make test EMACS_IMAGE=silex/emacs:29.1
+make ci
 ```
+
+It runs Emacs 31 by default, built from the GNU release since Ubuntu does
+not package it.  Pass `EMACS=30` to run Ubuntu's own Emacs 30 instead:
+
+```bash
+make ci EMACS=30
+```
+
+Both are worth running: Emacs 30 checks a call's argument count only
+against callees that are already byte-compiled, while Emacs 31 checks it
+against any loaded function, so it catches calls with the wrong number of
+arguments that Emacs 30 lets through.
 
 ### CI
 
-GitHub Actions runs `make test` automatically on every push and pull request.
-See [`.github/workflows/test.yml`](.github/workflows/test.yml).
+GitHub Actions runs compile, lint and test on Emacs 30 and 31 on every push
+and pull request, caching the Docker layers (the Emacs 31 build takes
+minutes) and the Eask dependencies between runs.  See
+[`.github/workflows/test.yml`](.github/workflows/test.yml).
 
 ## License
 
