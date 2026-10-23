@@ -1,5 +1,8 @@
 ;;; octocat-mermaid-tests.el --- ERT tests for the mermaid renderer  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-opus-5-5
+;; Assisted-by: Claude:claude-sonnet-5-5
+
 ;;; Commentary:
 
 ;; Tests for octocat-mermaid.el and its use by the markdown renderer.  Run via:

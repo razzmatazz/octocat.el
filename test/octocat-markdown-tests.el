@@ -1,5 +1,8 @@
 ;;; octocat-markdown-tests.el --- ERT tests for the markdown renderer  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-opus-5-5
+;; Assisted-by: Claude:claude-sonnet-5-5
+
 ;;; Commentary:
 
 ;; Tests for octocat-markdown.el and the glue around it in octocat-core.el

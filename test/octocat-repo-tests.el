@@ -1,5 +1,7 @@
 ;;; octocat-repo-tests.el --- ERT tests for octocat-repo.el  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-opus-5-5
+
 ;;; Commentary:
 
 ;; Run via:

@@ -1,5 +1,7 @@
 ;;; octocat-pr-tests.el --- ERT tests for octocat-pr.el  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-opus-5-5
+
 ;;; Commentary:
 
 ;; Run via:

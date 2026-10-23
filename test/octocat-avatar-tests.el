@@ -1,5 +1,7 @@
 ;;; octocat-avatar-tests.el --- ERT tests for octocat-avatar.el  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-sonnet-5-5
+
 ;;; Commentary:
 
 ;; Run via:

@@ -1,5 +1,7 @@
 ;;; octocat-commit-tests.el --- ERT tests for octocat-commit.el  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-opus-5-5
+
 ;;; Commentary:
 
 ;; Run via:

@@ -2,6 +2,7 @@
 
 ;; Copyright (C) 2026 Saulius Menkevicius
 ;; Assisted-by: Claude:claude-sonnet-5-5
+;; Assisted-by: Claude:claude-opus-5-5
 
 ;; This file is NOT part of GNU Emacs.
 

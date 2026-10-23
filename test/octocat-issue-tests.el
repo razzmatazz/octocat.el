@@ -1,5 +1,7 @@
 ;;; octocat-issue-tests.el --- ERT tests for octocat-issue.el  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-opus-5-5
+
 ;;; Commentary:
 
 ;; Run via:

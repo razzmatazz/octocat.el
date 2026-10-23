@@ -4,6 +4,8 @@
 
 ;; Author: Saulius Menkevicius <sauliusmenkevicius@fastmail.com>
 ;; Assisted-by: Claude:claude-sonnet-4-6
+;; Assisted-by: Claude:claude-opus-5-5
+;; Assisted-by: Claude:claude-sonnet-5-5
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1") (consult "1.0") (vui "0.1"))
 ;; Keywords: tools, vc, github

@@ -1,5 +1,7 @@
 ;;; octocat-workflow-tests.el --- ERT tests for octocat-workflow.el  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-opus-5-5
+
 ;;; Commentary:
 
 ;; Run via:

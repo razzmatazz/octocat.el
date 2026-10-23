@@ -1,5 +1,8 @@
 ;;; octocat-evil-repo-tests.el --- Regression test: entry points funnel through octocat.el  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-opus-5-5
+;; Assisted-by: Claude:claude-sonnet-5-5
+
 ;;; Commentary:
 
 ;; Regression test for the bug documented in

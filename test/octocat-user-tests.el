@@ -1,5 +1,7 @@
 ;;; octocat-user-tests.el --- ERT tests for octocat-user.el  -*- lexical-binding: t; -*-
 
+;; Assisted-by: Claude:claude-opus-5-5
+
 ;;; Commentary:
 
 ;; Run via:
