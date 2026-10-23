@@ -66,9 +66,37 @@
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map (make-composed-keymap octocat-common-map vui-mode-map))
     (define-key map (kbd "q") #'octocat-quit-window)
-    (define-key map (kbd "g") #'revert-buffer)
+    (define-key map (kbd "g") #'octocat-vui-refresh)
     map)
   "Parent keymap of every vui-rendered octocat page, for the keys all share.")
+
+(defvar-local octocat-vui--view-generation 0
+  "Bumped by each `octocat-vui-refresh', see `octocat-vui-use-view-reset'.")
+
+(defun octocat-vui-refresh ()
+  "Refresh the page, and show it as it opens, every view toggle reset.
+Images shown in place are links again, and <details>, folds and
+expanded entries are as first drawn.  Point, filters, the ref shown
+and what \"load more\" added stay.  A page refreshed by itself, as
+after an action, keeps its view: only this command resets it."
+  (interactive)
+  (cl-incf octocat-vui--view-generation)
+  (octocat-image-reset)
+  (octocat-markdown-reset-details)
+  (revert-buffer))
+
+(defun octocat-vui-use-view-reset (reset)
+  "Call RESET once the page is refreshed by `octocat-vui-refresh'.
+RESET, made by `vui-async-callback' during render, puts the calling
+component's view state back as it was when it mounted.  Must be called
+during render, like any hook."
+  (let ((seen (vui-use-ref octocat-vui--view-generation))
+        (gen  octocat-vui--view-generation))
+    (vui-use-effect (gen)
+      (unless (eql (car seen) gen)
+        (setcar seen gen)
+        (funcall reset))
+      nil)))
 
 (defun octocat-vui-row (line on-visit &optional help-echo)
   "Build a RET-able row vnode from already-propertized LINE.
@@ -472,7 +500,12 @@ folds.  RET on the marker unfolds the rest, easing out, and then
 folds it back."
   :state ((shown nil) (open nil) (closing nil))
   :render
-  (let* ((folds   (and limit (> total limit)))
+  (let* ((_ (octocat-vui-use-view-reset
+             (vui-async-callback ()
+               (vui-set-state :shown nil)
+               (vui-set-state :open nil)
+               (vui-set-state :closing nil))))
+         (folds   (and limit (> total limit)))
          (visible (if folds (min total (or shown limit)) total))
          (done    (>= visible total))
          (unfolding (and open (not done) (not closing))))
@@ -583,7 +616,11 @@ is nil or (GENERATION . OPEN): each new value unfolds or folds it.  A
 fold that mounts while BULK says open starts open, without animating."
   :state ((open (cdr bulk)) (shown (if (cdr bulk) most-positive-fixnum 0)))
   :render
-  (let* ((active (or open (> shown 0)))
+  (let* ((_ (octocat-vui-use-view-reset
+             (vui-async-callback ()
+               (vui-set-state :open (cdr bulk))
+               (vui-set-state :shown (if (cdr bulk) most-positive-fixnum 0)))))
+         (active (or open (> shown 0)))
          (body   (vui-use-memo (deps active) (and active (funcall prepare))))
          (total  (or (car body) 0))
          (toggle (vui-async-callback () (vui-set-state :open (not open))))

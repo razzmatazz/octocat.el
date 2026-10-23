@@ -50,6 +50,19 @@ Returning to an open page, as from its tab, is not a refresh: see
 `octocat-vui-revisit-page`.  A handler that must remount
 defers it, e.g. `(run-at-time 0 nil ...)`.
 
+The user's refresh, `octocat-vui-refresh` (`g`, `gr`), also resets the
+page's view: the user asked to see the page afresh, so what they
+unfolded or expanded goes back as first drawn.  A refresh after an
+action does not, since the user is still looking at what they opened.
+A component with view state, such as a fold's open flag, takes part by
+calling `octocat-vui-use-view-reset` during render, as the first
+binding of its `let*`, with a `vui-async-callback` that sets that
+state back to its initial value.  The hook runs the callback once for
+each `octocat-vui-refresh`, after the re-render.  State that is not a
+view toggle, such as a filter, the branch shown, or what "load more"
+added, stays.  Text outside vui's state, such as images shown in place
+and `<details>` in markdown, is reset by `octocat-vui-refresh` itself.
+
 ## Reading the sync store
 
 Pages don't fetch their data: they read it from the sync layer

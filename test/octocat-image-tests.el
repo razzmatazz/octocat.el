@@ -132,6 +132,38 @@
                           (get-text-property pos 'octocat-markdown-url))
                          '(blob "o/r" "main" "docs" "a.png"))))))))
 
+(ert-deftest octocat-image-test-reset ()
+  "A reset shows a shown image as its link again; asking again shows it from memory."
+  (let* ((octocat-image--cache (make-hash-table :test #'equal))
+         (octocat-image--waiting (make-hash-table :test #'equal))
+         (fetched 0)
+         (octocat-image-file-function
+          (lambda (_repo _ref _path cb) (cl-incf fetched) (funcall cb "BYTES")))
+         (octocat-markdown-base '("o/r" "main" "")))
+    (cl-letf (((symbol-function 'display-images-p) #'always)
+              ((symbol-function 'image-type-from-data) (lambda (_) 'png))
+              ((symbol-function 'image-type-available-p) #'always)
+              ((symbol-function 'octocat-image--image) (lambda (data _plist) (list 'img data))))
+      (with-temp-buffer
+        (insert (octocat--markdown-string "![a](a.png)" "" nil 80))
+        (goto-char (point-min))
+        (search-forward "[image: a]")
+        (let ((pos (match-beginning 0))
+              (face (get-text-property (match-beginning 0) 'face)))
+          (goto-char pos)
+          (octocat-image-show)
+          (octocat-image--fontify (point-min) (point-max))
+          (should (equal (get-text-property pos 'display) '(img "BYTES")))
+          (octocat-image-reset)
+          (octocat-image--fontify (point-min) (point-max))
+          (should-not (get-text-property pos 'display))
+          (should (equal (get-text-property pos 'face) face))
+          (should (eq (get-text-property pos 'keymap) octocat-image-map))
+          (octocat-image-show)
+          (octocat-image--fontify (point-min) (point-max))
+          (should (equal (get-text-property pos 'display) '(img "BYTES")))
+          (should (= fetched 1)))))))
+
 (ert-deftest octocat-image-test-loading ()
   "While a requested image loads, the buffer's mode line says so."
   (let* ((done nil)

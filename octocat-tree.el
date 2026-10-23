@@ -106,7 +106,7 @@ The rest expands on RET.  Nil never folds."
 (define-key octocat-file-mode-map (kbd "C-c C-l") #'octocat-file-log-open)
 (define-key octocat-file-mode-map (kbd "C-c C-b") #'octocat-file-switch-branch)
 (define-key octocat-file-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
-(define-key octocat-file-mode-map (kbd "gr")      #'octocat-file-refresh)
+(define-key octocat-file-mode-map (kbd "gr")      #'octocat-vui-refresh)
 
 (define-derived-mode octocat-file-mode vui-mode "Octocat-File"
   "Major mode for viewing a GitHub file: highlighted, or rendered if markdown.
@@ -433,7 +433,12 @@ The other arguments are as for `octocat-tree--subtree'."
                      (octocat-tree--join parent (or (gethash "path" entry) ""))
                      reveal)))
   :render
-  (let* ((name   (or (gethash "path" entry) ""))
+  (let* ((_ (octocat-vui-use-view-reset
+             (vui-async-callback ()
+               (vui-set-state :expanded (octocat-tree--reveals-p
+                                         (octocat-tree--join parent (or (gethash "path" entry) ""))
+                                         reveal)))))
+         (name   (or (gethash "path" entry) ""))
          (path   (octocat-tree--join parent name))
          (sha    (or (gethash "sha" entry) ""))
          (indent (make-string (* depth 2) ?\s)))

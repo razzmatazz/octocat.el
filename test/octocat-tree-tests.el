@@ -332,7 +332,13 @@ It does not fold, however long."
       (vui-flush-sync)
       (should (string-match-p "▸ src/" (buffer-string)))
       (should-not (string-match-p "x\\.el" (buffer-string)))
-      (should-not (string-match-p "more entries" (buffer-string)))))))
+      (should-not (string-match-p "more entries" (buffer-string)))
+      ;; g shows the tree as it opened.
+      (setq-local revert-buffer-function
+                  (lambda (&rest _) (octocat-tree-tests--mount-full-tree "src" "src")))
+      (octocat-vui-refresh)
+      (vui-flush-sync)
+      (should (string-match-p "▾ src/\n    x\\.el" (buffer-string)))))))
 
 (ert-deftest octocat-tree-test-up ()
   "Up moves point to the directory holding the entry, not past the root's."

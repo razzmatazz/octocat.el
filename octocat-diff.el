@@ -242,7 +242,9 @@ unfolds or folds every file, and its \"Show comments (N)\" button, there
 when the diff shows some comment, runs `octocat-diff-toggle-comments'."
   :state ((bulk (and fits (cons 0 t))))
   :render
-  (let* ((heading (vui-text (propertize (format "Files (%d)" (length files))
+  (let* ((_ (octocat-vui-use-view-reset
+             (vui-async-callback () (vui-set-state :bulk (and fits (cons 0 t))))))
+         (heading (vui-text (propertize (format "Files (%d)" (length files))
                                         'face 'octocat-section-heading)))
          ;; Only those the diff places: an outdated comment's line is gone.
          (placed  (vui-use-memo (files by-path)

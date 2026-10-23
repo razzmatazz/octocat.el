@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 * While an image loads, a spinner turns before its link, and the mode line shows `:loading`
 * Image links have a face of their own, so they stand apart from other links
 * Fix a blue line drawn across the middle of an image shown in place
+* `g`/`gr` also resets the page's view: images shown in place are links again, and `<details>`, folds and expanded entries are back as first drawn; an image shown again comes from memory, without fetching it again
 
 ## [0.1.0] - 2026-10-23
 * First release, and the first on MELPA Stable

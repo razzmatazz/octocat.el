@@ -497,6 +497,24 @@ Text replaced by a `display' string shows as that string."
     (octocat-markdown-follow)
     (should (equal (octocat-markdown-tests--visible) "▸ A|"))))
 
+(ert-deftest octocat-markdown-test-details-reset ()
+  "Each <details> goes back to how it was first rendered, open or closed."
+  (with-temp-buffer
+    (insert (octocat-markdown-render
+             "<details open><summary>A</summary>\nx\n</details>\n\n<details><summary>B</summary>\ny\n</details>"
+             ""))
+    (setq buffer-invisibility-spec '((other . t)))
+    (octocat-markdown--ensure-invisibility)
+    (should (equal (octocat-markdown-tests--visible) "▾ A|x|▸ B|"))
+    (goto-char (point-min))
+    (octocat-markdown-follow)
+    (search-forward "▸ B")
+    (goto-char (match-beginning 0))
+    (octocat-markdown-follow)
+    (should (equal (octocat-markdown-tests--visible) "▸ A|▾ B|y|"))
+    (octocat-markdown-reset-details)
+    (should (equal (octocat-markdown-tests--visible) "▾ A|x|▸ B|"))))
+
 (ert-deftest octocat-markdown-test-details-without-summary ()
   "A <details> without a summary is titled \"Details\"."
   (should (string-prefix-p "▸ Details\n"

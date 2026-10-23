@@ -261,6 +261,19 @@ Only an absolute one: a link left relative has nowhere to go."
   (let ((url (get-text-property (or pos (point)) 'octocat-markdown-url)))
     (and url (string-match-p "\\`[a-zA-Z][a-zA-Z0-9+.-]*:" url) url)))
 
+(defun octocat-markdown-reset-details ()
+  "Open or close every <details> of the current buffer as first rendered."
+  (let ((pos (point-min)))
+    (while (setq pos (text-property-any pos (point-max) 'octocat-markdown-arrow t))
+      (let ((open  (equal (get-text-property pos 'display) "▾"))
+            (first (save-excursion
+                     (goto-char pos)
+                     (forward-line 1)
+                     (eq (get-text-property (point) 'octocat-markdown-fold) 'open))))
+        (unless (eq open first)
+          (octocat-markdown-toggle-details pos))
+        (setq pos (1+ pos))))))
+
 (defun octocat-markdown-follow (&optional event)
   "Follow the link, reference or <details> summary at point (or at EVENT)."
   (interactive (list last-nonmenu-event))
@@ -1359,7 +1372,8 @@ lines of a collapsed <details> body are invisible, newline included."
                  (when fold
                    (add-text-properties
                     0 (length full)
-                    (append '(octocat-markdown-fold t)
+                    ;; FOLD, not t: `octocat-markdown-reset-details' reads it.
+                    (append (list 'octocat-markdown-fold fold)
                             (and (eq fold 'closed) '(invisible octocat-markdown-details)))
                     full))
                  full))

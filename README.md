@@ -382,7 +382,7 @@ fetched.
 | `C-c C-b` | Pick the branch shown (repo page, commits page); `[reset to main]` goes back to the clone's branch, or the default.  In the file viewer, open the file at another branch, in a buffer of its own |
 | `C-c C-f` | Open fuzzy file finder — `completing-read` over the full recursive file list of the commit shown; works from the repo page and the file viewer (the list is fetched once per commit) |
 | `C-c C-l` | Open the history of the file shown in `octocat-file-mode`, on the commits page |
-| `g` / `gr` | Refresh current buffer |
+| `g` / `gr` | Refresh current buffer, and show it as when it opened: images shown in place are links again, and `<details>`, folds and expanded entries are back as first drawn.  Point, filters, the branch shown and what "load more" added stay |
 | `q` | Back to the previous page, or out of octocat (see below) |
 | `TAB` | Expand / collapse section at point |
 | `S-TAB` | Cycle visibility of all sections |

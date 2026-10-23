@@ -78,6 +78,10 @@ file's bytes, or nil if they cannot be had.")
 Called with the BUFFER and LOADING, t when it starts waiting for one,
 nil when that one arrived or failed.")
 
+(defvar-local octocat-image--shown nil
+  "URLs of the images asked for here, to show once fetched.
+`octocat-image-reset' forgets them.")
+
 (defvar octocat-image--cache (make-hash-table :test #'equal)
   "URL to its image's bytes, `pending' while fetched, or `failed'.")
 
@@ -188,8 +192,13 @@ For `jit-lock-functions'."
     (pcase-dolist (`(,b ,e ,plist) (octocat-image--spans beg end))
       (let* ((url  (plist-get plist :url))
              (data (and (octocat-image--fetchable-p plist)
-                        (gethash url octocat-image--cache 'absent))))
+                        (gethash url octocat-image--cache 'absent)))
+             ;; Fetched, but not asked for here since the last reset.
+             (data (if (and data (not (member url octocat-image--shown))) 'absent data)))
         (cond ((stringp data)
+               (unless (get-text-property b 'octocat-image--face)
+                 (put-text-property b e 'octocat-image--face
+                                    (list (get-text-property b 'face))))
                (add-text-properties
                 ;; The link's underline would be drawn under the image.
                 b e (list 'face nil
@@ -209,7 +218,10 @@ For `jit-lock-functions'."
                             'keymap octocat-image-map
                             'help-echo "Loading image…"))))
               (data
-               (remove-text-properties b e '(display nil octocat-vui-spinner nil))
+               (when-let* ((face (get-text-property b 'octocat-image--face)))
+                 (put-text-property b e 'face (car face)))
+               (remove-text-properties
+                b e '(display nil octocat-vui-spinner nil octocat-image--face nil))
                (add-text-properties
                 b e (list 'keymap octocat-image-map
                           'help-echo "RET: show image")))))))
@@ -250,16 +262,19 @@ For `jit-lock-functions'."
 A failed fetch is retried."
   (let* ((url  (plist-get plist :url))
          (file (plist-get plist :file))
-         (done (lambda (data) (octocat-image--arrived url data))))
-    (unless (memq buffer (gethash url octocat-image--waiting))
-      (push buffer (gethash url octocat-image--waiting))
-      (when octocat-image-loading-function
-        (funcall octocat-image-loading-function buffer t)))
-    (unless (memq (gethash url octocat-image--cache) '(pending))
-      (puthash url 'pending octocat-image--cache)
-      (if file
-          (apply octocat-image-file-function (append file (list done)))
-        (octocat-image--fetch url octocat-image--max-hops done)))))
+         (done (lambda (data) (octocat-image--arrived url data)))
+         (have (gethash url octocat-image--cache)))
+    ;; Fetched already, as for an image shown again after a reset.
+    (unless (stringp have)
+      (unless (memq buffer (gethash url octocat-image--waiting))
+        (push buffer (gethash url octocat-image--waiting))
+        (when octocat-image-loading-function
+          (funcall octocat-image-loading-function buffer t)))
+      (unless (eq have 'pending)
+        (puthash url 'pending octocat-image--cache)
+        (if file
+            (apply octocat-image-file-function (append file (list done)))
+          (octocat-image--fetch url octocat-image--max-hops done))))))
 
 (defun octocat-image-show (&optional event)
   "Fetch and show the image whose link is at point (or at EVENT)."
@@ -272,8 +287,16 @@ A failed fetch is retried."
     (unless (and url (octocat-image--fetchable-p plist))
       (user-error "Octocat: no image to show here"))
     (with-current-buffer buf
+      (cl-pushnew url octocat-image--shown :test #'equal)
       (octocat-image--request plist buf)
       (octocat-image--refontify url))))
+
+(defun octocat-image-reset ()
+  "Show the current buffer's images as their links again.
+Those fetched stay kept, so asking again shows them at once."
+  (setq octocat-image--shown nil)
+  (when (bound-and-true-p jit-lock-mode)
+    (jit-lock-refontify)))
 
 (defun octocat-image-enable ()
   "Show fetched images, and offer the others, in the current buffer's markdown."

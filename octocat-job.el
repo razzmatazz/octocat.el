@@ -535,7 +535,8 @@ A new TICK refetches the job, keeping what is shown, and which steps are
 unfolded, until the fresh data replaces it."
   :state ((bulk nil))
   :render
-  (let* ((result  (octocat-vui-use-resource (list 'job repo run-id job-id) tick))
+  (let* ((_ (octocat-vui-use-view-reset (vui-async-callback () (vui-set-state :bulk nil))))
+         (result  (octocat-vui-use-resource (list 'job repo run-id job-id) tick))
          (data    (plist-get result :data))
          (raw     (and data (gethash "log" data)))
          (log     (vui-use-memo (raw)
