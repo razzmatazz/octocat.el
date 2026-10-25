@@ -137,9 +137,10 @@ GitHub's sidebar, opened down to the directory or file it was opened
 at, with point on it:
 
 ```
-owner/repo
+owner/repo[main ▾]:/
 
-[main ▾]  a9fc167  Show open issue and PR counts …  [62 commits]
+@alice  Show open issue and PR counts …  a9fc167 · committed 1 day ago  [62 commits]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ▸ .github/
 ▾ docs/
     user-interface-conventions.md
@@ -349,8 +350,8 @@ major mode.
 The top of the page is the tree browser's: `owner/repo[main ▾]:/dir/file`,
 the branch picker and the path, whose directories open the tree browser
 down to them, and `[Browse tree]`, which opens it down to the file.
-Under it are the file's last commit and a `[N commits]` button to its
-history, then a rule.  A branch name longer than `octocat-ref-max-width`
+Under it, after a blank line, are the file's last commit and a
+`[N commits]` button to its history, then a rule.  A branch name longer than `octocat-ref-max-width`
 is cut in its middle, there and in every branch picker; hovering over
 it shows it in full, as does picking a branch.  Each ref of a file has a buffer of its own, named
 `*owner/repo@ref:path*`; `C-c C-b`, or `RET` on the picker, opens the

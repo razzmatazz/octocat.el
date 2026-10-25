@@ -1538,6 +1538,7 @@ branch."
       (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir)))
       (and (octocat-repo--resettable-p ref (or tracked default-branch))
            (octocat-repo-vui--reset-button (or tracked default-branch))))
+     (vui-newline)
      (octocat-repo-vui--head-line repo ref nil head-snap (or tracked default-branch)
                                   current-branch t)
      (octocat-repo-vui--rule)
@@ -1639,6 +1640,7 @@ RAW shows markdown as is.  A file too large to show unasked, see
                   :face 'octocat-dimmed
                   :help-echo "RET: browse the repository's tree at this file"
                   :on-click (lambda () (octocat-tree-open repo ref path))))
+     (vui-newline)
      (octocat-repo-vui--head-line repo ref path head-snap default-branch current-branch t)
      (octocat-repo-vui--rule)
      (cond (notice

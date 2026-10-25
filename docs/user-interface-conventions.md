@@ -828,6 +828,12 @@ strip, so the name stands apart from it.
 
 A new page starts the same way, using `octocat-vui-repo-heading`.
 
+### The last commit stands apart from the top line
+
+On the repository page, the tree browser and the file viewer a blank
+line sets the last commit's line apart from the top line, so it reads
+as content, not as part of the page's name.
+
 ### The owner links, the repo name does not
 
 On a page's first line the owner links to the owner's user or
