@@ -695,8 +695,8 @@ lines.  Tags in code spans are skipped unless HTML (inside <pre>)."
 ;;;; Blocks
 ;;
 ;; Blocks render to a list of lines, each (STRING . HANG): the text of
-;; the row and the number of extra columns its wrapped continuation
-;; lines are indented by.
+;; the row and the prefix its wrapped continuation lines start with,
+;; spaces under a list item's text, a quote's bars to carry them on.
 
 (defconst octocat-markdown--fence-re "^ \\{0,3\\}\\(`\\{3,\\}\\|~\\{3,\\}\\)\\(.*\\)$")
 (defconst octocat-markdown--hr-re "^ \\{0,3\\}\\([-*_]\\)\\(?: *\\1\\)\\{2,\\} *$")
@@ -866,7 +866,7 @@ text onto several lines, with a rule between rows to keep them apart."
                                             " ")))
                                 specs (funcall bar "│"))
                                (funcall bar "│")))))))
-    (mapcar (lambda (s) (cons (propertize s 'octocat-markdown-table t) 0))
+    (mapcar (lambda (s) (cons (propertize s 'octocat-markdown-table t) ""))
             (append
              (list (funcall rule "┌" "┬" "┐"))
              (funcall row head 'bold)
@@ -962,12 +962,12 @@ draw it, the source is shown, labelled as such."
      (when (and (equal lang "mermaid") (not diagram))
        (list (cons (octocat-markdown--face "mermaid diagram (source)"
                                            'octocat-markdown-dimmed 'italic)
-                   0)))
+                   "")))
      (mapcar (lambda (l)
                (let ((s (concat " " l (make-string (max 0 (- width (string-width l))) ?\s) " ")))
                  (add-face-text-property 0 (length s) 'octocat-markdown-code-block t s)
                  (put-text-property 0 (length s) 'octocat-markdown-code t s)
-                 (cons s 0)))
+                 (cons s "")))
              (or code '(""))))))
 
 (defun octocat-markdown--alert (label)
@@ -995,11 +995,14 @@ draw it, the source is shown, labelled as such."
       (string-match-p octocat-markdown--pre-re line)))
 
 (defun octocat-markdown--lazy-p (prev next)
-  "Return non-nil if NEXT continues, unindented, the list item line PREV."
+  "Return non-nil if NEXT continues, unindented, the paragraph line PREV.
+PREV is a list item's or quote's line, its markers taken off."
   (and prev
        (not (octocat-markdown--blank-p prev))
        (not (octocat-markdown--blank-p next))
        (not (string-match-p octocat-markdown--fence-re prev))
+       (not (string-match-p octocat-markdown--heading-re prev))
+       (not (string-match-p octocat-markdown--hr-re prev))
        (not (octocat-markdown--block-start-p next))))
 
 (defun octocat-markdown--heading-row (text level)
@@ -1010,7 +1013,7 @@ draw it, the source is shown, labelled as such."
                      (pcase level (1 'octocat-markdown-heading-1)
                             (2 'octocat-markdown-heading-2)
                             (_ 'octocat-markdown-heading)))
-                    0))))
+                    ""))))
     (put-text-property 0 (length (car row)) 'octocat-markdown-heading t (car row))
     row))
 
@@ -1061,7 +1064,7 @@ and start collapsed unless the tag has `open'."
                        (octocat-markdown--blocks (split-string body "\n") depth)))))
         (cons
          (if octocat-markdown--in-details
-             (cons (octocat-markdown--standout (cons title 0)) rows)
+             (cons (octocat-markdown--standout (cons title "")) rows)
            (cons
             (octocat-markdown--standout
              (cons (octocat-markdown--interactive
@@ -1069,7 +1072,7 @@ and start collapsed unless the tag has `open'."
                                         'display (and open "▾"))
                             " " title)
                     "RET: expand or collapse" 'octocat-markdown-details t)
-                   0))
+                   ""))
             (mapcar (lambda (r)
                       (let ((s (copy-sequence (if (string-empty-p (car r)) " " (car r)))))
                         (put-text-property 0 (length s) 'octocat-markdown-fold
@@ -1117,7 +1120,7 @@ DEPTH is the list nesting depth, which picks the bullet."
         (setq open nil)
         (cond
          ((octocat-markdown--blank-p line)
-          (push (cons "" 0) out))
+          (push (cons "" "") out))
          ;; HTML comment, possibly spanning lines.
          ((string-match-p "\\`[ \t]*<!--" line)
           (while (and (not (string-match-p "-->" line)) lines)
@@ -1160,7 +1163,7 @@ DEPTH is the list nesting depth, which picks the bullet."
             (setq lines rest)))
          ((string-match-p octocat-markdown--hr-re line)
           (push (octocat-markdown--standout
-                 (cons (propertize (make-string 40 ?─) 'face 'octocat-markdown-dimmed) 0))
+                 (cons (propertize (make-string 40 ?─) 'face 'octocat-markdown-dimmed) ""))
                 out))
          ((string-match octocat-markdown--heading-re line)
           (push (octocat-markdown--heading-row (or (match-string 2 line) "")
@@ -1168,7 +1171,13 @@ DEPTH is the list nesting depth, which picks the bullet."
                 out))
          ((string-match-p octocat-markdown--quote-re line)
           (let ((quoted (list line)))
-            (while (and lines (string-match-p octocat-markdown--quote-re (car lines)))
+            (while (and lines
+                        (or (string-match-p octocat-markdown--quote-re (car lines))
+                            ;; Lazy continuation: a paragraph in the
+                            ;; quote runs on into a line with fewer `>'.
+                            (octocat-markdown--lazy-p
+                             (replace-regexp-in-string "\\`\\(?: \\{0,3\\}> ?\\)+" "" (car quoted))
+                             (car lines))))
               (push (pop lines) quoted))
             (setq quoted (mapcar (lambda (l) (replace-regexp-in-string "^ \\{0,3\\}> ?" "" l))
                                  (nreverse quoted)))
@@ -1181,7 +1190,7 @@ DEPTH is the list nesting depth, which picks the bullet."
                            (octocat-markdown--tidy
                             (octocat-markdown--blocks quoted depth))))
                 (push (octocat-markdown--standout
-                       (cons (concat bar (car l)) (+ 2 (cdr l))))
+                       (cons (concat bar (car l)) (concat bar (cdr l))))
                       out)))))
          ((string-match octocat-markdown--item-re line)
           (let* ((indent  (length (match-string 1 line)))
@@ -1218,14 +1227,14 @@ DEPTH is the list nesting depth, which picks the bullet."
                             (octocat-markdown--blocks
                              (if task (cons (substring first (cdr task)) (cdr content)) content)
                              (1+ depth))))))
-              (when (null rows) (setq rows (list (cons "" 0))))
+              (when (null rows) (setq rows (list (cons "" ""))))
               (let ((firstp t))
                 (dolist (r rows)
                   (push (octocat-markdown--standout
                          (cons (if firstp
                                    (concat label " " (car r))
                                  (concat (make-string pad ?\s) (car r)))
-                               (+ pad (cdr r))))
+                               (concat (make-string pad ?\s) (cdr r))))
                         out)
                   (setq firstp nil))))
             ;; Items of one list sit together: no blank row between them.
@@ -1249,7 +1258,7 @@ DEPTH is the list nesting depth, which picks the bullet."
          (t
           (pcase-let ((`(,l . ,o) (octocat-markdown--balance (string-trim line) carry)))
             (setq open o)
-            (push (cons (octocat-markdown--image-row (octocat-markdown--inline l)) 0)
+            (push (cons (octocat-markdown--image-row (octocat-markdown--inline l)) "")
                   out))))))
     (nreverse out)))
 
@@ -1288,7 +1297,7 @@ sections are easy to tell apart."
         (let ((r (pop out)))
           (when (and tight (octocat-markdown--heading-p r)
                      (not (string-empty-p (caar tight))))
-            (push (cons "" 0) tight))
+            (push (cons "" "") tight))
           (unless (and (string-empty-p (car r))
                        (or (octocat-markdown--standout-p prev)
                            (octocat-markdown--standout-p (car out))))
@@ -1322,13 +1331,19 @@ sections are easy to tell apart."
 
 (defun octocat-markdown-wrap-hung (string width hang)
   "Return STRING broken at spaces into lines of at most WIDTH columns.
-Its leading spaces are kept, and the lines after the first indented by
-HANG columns, as a `wrap-prefix' of HANG spaces would show them."
-  (let* ((lead  (- (length string) (length (string-trim-left string " +"))))
-         (lines (octocat-markdown--wrap (substring string lead)
-                                        (max 1 (- width (max lead hang))))))
-    (cons (concat (substring string 0 lead) (car lines))
-          (mapcar (lambda (l) (concat (make-string hang ?\s) l)) (cdr lines)))))
+Its leading spaces are kept, and the lines after the first start with
+HANG, a string, or that many spaces, as a `wrap-prefix' would show it."
+  (let* ((lead   (- (length string) (length (string-trim-left string " +"))))
+         (prefix (if (stringp hang) hang (make-string hang ?\s)))
+         (text   (substring string lead))
+         ;; The first line has no prefix, so it gets the whole width.
+         (first  (car (octocat-markdown--wrap text (max 1 (- width lead)))))
+         (rest   (string-trim-left (substring text (length first)) " +")))
+    (cons (concat (substring string 0 lead) first)
+          (unless (string-empty-p rest)
+            (mapcar (lambda (l) (concat prefix l))
+                    (octocat-markdown--wrap
+                     rest (max 1 (- width (max lead (string-width prefix))))))))))
 
 (defun octocat-markdown--fill (rows width)
   "Return ROWS with those wider than WIDTH columns broken to fit it.
@@ -1350,14 +1365,14 @@ they can be.  A nil WIDTH leaves ROWS as they are."
            (list row))
           ((funcall has 'octocat-markdown-code)
            (let* ((head  (car (octocat-markdown--cut s width)))
-                  (room  (max 1 (- width hang 2)))
-                  (arrow (concat (make-string hang ?\s)
-                                 (propertize "↪ " 'face 'octocat-markdown-dimmed)))
+                  (room  (max 1 (- width (string-width hang) 2)))
+                  (arrow (propertize "↪ " 'face 'octocat-markdown-dimmed))
                   (code  (lambda (str)
                            (add-face-text-property 0 (length str) 'octocat-markdown-code-block t str)
                            (put-text-property 0 (length str) 'octocat-markdown-code t str)
                            str)))
-             (funcall code arrow)
+             ;; Only the arrow joins the box: HANG lies outside it.
+             (setq arrow (concat hang (funcall code arrow)))
              ;; Pad each piece, the last above all, so the block's
              ;; background reaches the column like its other lines.
              (cons (cons head hang)
@@ -1383,7 +1398,7 @@ lines of a collapsed <details> body are invisible, newline included."
                      (fold (octocat-markdown--row-fold row)))
                  (put-text-property
                   0 (length full) 'wrap-prefix
-                  (concat indent (make-string (cdr row) ?\s)
+                  (concat indent (cdr row)
                           (and (text-property-not-all 0 (length (car row))
                                                       'octocat-markdown-code nil (car row))
                                (propertize "↪ " 'face 'octocat-markdown-dimmed)))
@@ -1427,7 +1442,7 @@ Link definitions go to `octocat-markdown--definitions' and footnotes to
   "Return the rows listing the footnotes referenced by the text, or nil."
   (when octocat-markdown--footnote-order
     (cons (octocat-markdown--standout
-           (cons (propertize (make-string 20 ?─) 'face 'octocat-markdown-dimmed) 0))
+           (cons (propertize (make-string 20 ?─) 'face 'octocat-markdown-dimmed) ""))
           (cl-loop for label in (reverse octocat-markdown--footnote-order)
                    for n from 1
                    collect (cons (concat (octocat-markdown--face
@@ -1436,7 +1451,7 @@ Link definitions go to `octocat-markdown--definitions' and footnotes to
                                          " "
                                          (octocat-markdown--inline
                                           (cdr (assoc label octocat-markdown--footnotes))))
-                                 2)))))
+                                 "  ")))))
 
 (defun octocat-markdown-render-verbatim (text &optional indent)
   "Return markdown TEXT unrendered, one line per row.
@@ -1444,7 +1459,7 @@ Each line is prefixed with INDENT (a string, default \"  \") and ends in
 a newline; INDENT is also repeated on the wrapped continuation lines of
 long lines.  Windows-style CR characters are stripped first."
   (octocat-markdown--finish
-   (mapcar (lambda (l) (cons l 0)) (octocat-markdown--lines text))
+   (mapcar (lambda (l) (cons l "")) (octocat-markdown--lines text))
    (or indent "  ")))
 
 (defun octocat-markdown-render (text &optional indent width)
@@ -1475,7 +1490,7 @@ Markup is replaced by faces; see the Commentary for what is understood."
     (octocat-markdown--finish
      (octocat-markdown--fill
       (or (octocat-markdown--tidy (append rows (octocat-markdown--footnote-rows)))
-          (list (cons "" 0)))
+          (list (cons "" "")))
       octocat-markdown--avail)
      indent)))
 

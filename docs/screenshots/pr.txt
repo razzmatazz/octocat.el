@@ -15,8 +15,8 @@ Conversation  [Commits (2)]  [Files changed (3)]
 │
 ○ @srivera committed dc0c893 Cache parsed templates by path  2 days ago
 │
-○ @srivera added the  performance  label, added this to the 0.10 milestone, requested a review
-│ from @jlindqvist and self-assigned this  1 day ago
+○ @srivera added the  performance  label, added this to the 0.10 milestone, requested a review from
+│ @jlindqvist and self-assigned this  1 day ago
 │
 ● @pnair commented  1 day ago
 │ Tried it on our docs site: 9.4s → 2.0s here too.  Lovely.

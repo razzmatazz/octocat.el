@@ -16,8 +16,8 @@ open    Assignees @srivera · Labels  performance
 ● @srivera commented  1 week ago
 │ Confirmed.  Parsing each template once per build should fix most of it; I'll take this.
 │
-○ @srivera added the  performance  label, self-assigned this and added this to the 0.10 milestone
-│ 1 week ago
+○ @srivera added the  performance  label, self-assigned this and added this to the 0.10 milestone  1
+│ week ago
 │
 ● @kwong commented  1 week ago
 │ Same here with a 600-page blog: 5.5s.

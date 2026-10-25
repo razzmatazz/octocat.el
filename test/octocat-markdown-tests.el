@@ -431,6 +431,27 @@ the window's point; mid-render that scrambled the page."
   ;; After a blank row it is a paragraph of its own.
   (should (equal (octocat-markdown-tests--md "- a\n\nb") "• a\nb\n")))
 
+(ert-deftest octocat-markdown-test-quote-lazy-continuation ()
+  "A paragraph in a quote runs on into lines with fewer `>', as on GitHub."
+  (should (equal (octocat-markdown-tests--md "> a\nb") "│ a\n│ b\n"))
+  (should (equal (octocat-markdown-tests--md "> > a\n> b\nc") "│ │ a\n│ │ b\n│ │ c\n"))
+  (should (equal (octocat-markdown-tests--md "> - a\nb") "│ • a\n│   b\n"))
+  ;; A heading or blank line ends the paragraph, and a block the quote.
+  (should (equal (octocat-markdown-tests--md "> # h\nb") "│ h\nb\n"))
+  (should (equal (octocat-markdown-tests--md "> > a\n>\n> b") "│ │ a\n│ b\n"))
+  (should (equal (octocat-markdown-tests--md "> a\n- b") "│ a\n• b\n")))
+
+(ert-deftest octocat-markdown-test-nested-quote-wraps ()
+  "A wrapped line of a nested quote carries every bar, at full width."
+  (should (equal (octocat-markdown-tests--md "> > one two three four five" 16)
+                 "│ │ one two\n│ │ three four\n│ │ five\n"))
+  (should (equal (octocat-markdown-tests--md "> > > - one two three four" 16)
+                 "│ │ │ • one two\n│ │ │   three\n│ │ │   four\n"))
+  ;; Unfilled, Emacs's own wrapping repeats the bars.
+  (let ((out (octocat-markdown-render "> > > a" "  ")))
+    (should (equal (substring-no-properties (get-text-property 0 'wrap-prefix out))
+                   "  │ │ │ "))))
+
 (ert-deftest octocat-markdown-test-table ()
   "Tables are drawn with aligned columns."
   (should (equal (octocat-markdown-tests--md "| a | b |\n|---|--:|\n| 1 | 22 |")
