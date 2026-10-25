@@ -1695,9 +1695,11 @@ commits page its commits."
   (unless octocat-repo--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
   (let* ((repo   octocat-repo--repo)
-         (ref    (or octocat-repo--ref octocat-repo--tracked))
+         (shown  (or octocat-repo--ref octocat-repo--tracked))
+         (branch (or shown octocat-repo--default-branch "HEAD"))
+         ;; The default branch is what the bare repository URL shows.
+         (ref    (unless (equal shown octocat-repo--default-branch) shown))
          (path   (and (derived-mode-p 'octocat-commit-list-mode) octocat-repo--path))
-         (branch (or ref octocat-repo--default-branch "HEAD"))
          (type   (octocat-tree--type-at-point))
          (url    (cond ((octocat-markdown-url-at))
                        ((derived-mode-p 'octocat-commit-list-mode)

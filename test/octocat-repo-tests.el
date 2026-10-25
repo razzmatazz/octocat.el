@@ -324,5 +324,22 @@
     (puthash "isDraft" :false pr)
     (should (string-prefix-p "#7  Wip" (octocat-repo-vui--pr-compact-line "o/r" pr nil t)))))
 
+(ert-deftest octocat-repo-browse-default-branch-opens-repo ()
+  "Off an entry, C-c C-o opens the bare repo URL on the default branch."
+  (with-temp-buffer
+    (octocat-repo-mode)
+    (setq octocat-repo--repo "o/r"
+          octocat-repo--default-branch "main")
+    (let (browsed)
+      (cl-letf (((symbol-function 'octocat-browse-external)
+                 (lambda (url) (push url browsed)))
+                ((symbol-function 'message) #'ignore))
+        (dolist (tracked '("main" "dev"))
+          (setq octocat-repo--tracked tracked)
+          (octocat-repo-browse)))
+      (should (equal (nreverse browsed)
+                     '("https://github.com/o/r"
+                       "https://github.com/o/r/tree/dev"))))))
+
 (provide 'octocat-repo-tests)
 ;;; octocat-repo-tests.el ends here

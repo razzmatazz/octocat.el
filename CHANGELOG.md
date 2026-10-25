@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `C-c C-o` on a repository on its default branch opens the repository's page
 * Long lines in diffs, logs and files are cut, with a button to show the rest
 * The file viewer asks before showing a large file, and does not show binary files
 * HTML tables in Markdown are drawn as tables, as on GitHub
