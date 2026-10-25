@@ -4,34 +4,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
-* HTML tables in Markdown (`<table>`, `<tr>`, `<td>`) are drawn as tables, as GitHub draws them: with headers, `colspan`, `align`, and lists or other Markdown in cells after a blank line; one too wide for the window lists each row's cells under their headers instead
-* A table of images, as screenshots before and after a change, shows them side by side, under their captions, when `RET` shows them
-* Fix long lines in Markdown quotes, nested ones above all, wrapping without their `│` bars; a quote's text runs on into a following line with fewer `>`, or none, as on GitHub
-* Resting point on a link in rendered Markdown shows where it goes in the echo area, as hovering does: a link's URL, or a `#123` or commit reference's repository and full SHA
-* Fix `RET` on a link whose text holds `#123`, a commit SHA or an `@mention` opening that issue, commit or profile instead of the link's target
-* Commits are laid out as on GitHub: the last commit atop the files shows its author and subject, then its SHA, date and `[N commits]` at the right edge; commit lists show the subject, author and date, with the SHA last
-* Fix relative links in a repository's README opening a local file, in an outside program: they open the linked file, at the branch shown, in octocat's file viewer
-* `RET` on an image in a README, given by a relative path, shows it in place, as it does for images uploaded to GitHub
-* The file viewer renders Markdown files, as GitHub does, with their relative links and images working as in a README; `C-c C-v` shows the source
-* The tree browser and the file viewer share a top line, `owner/repo[main ▾]:/dir/file`: the branch picker, then the path, whose directories open the tree browser at them; under it, the last commit, then a rule
-* The commits page has the same top line, with how many commits there are; a directory of the path shows its own history
-* `C-c C-l` in the file viewer opens the file's history on the commits page, as `[N commits]` does, which replaces the separate file log
-* `RET` on an image shown in a README opens its file in the file viewer, which shows image files; `C-c C-o` on a link or image opens it in the browser
-* Long branch names are cut in the middle in branch pickers, keeping both ends; hovering shows the name in full (`octocat-ref-max-width`)
-* Each branch of a file opens in a buffer of its own, named after both; `C-c C-b`, or `RET` on the picker, opens the file at another branch
-* While an image loads, a spinner turns before its link, and the mode line shows `:loading`
-* Image links have a face of their own, so they stand apart from other links
-* Fix a blue line drawn across the middle of an image shown in place
-* The commit page reads as `git show --format=fuller`: its author and committer with both dates, its parents and whether the default branch holds it, then its message; the top line, like the tree browser's, shows the full SHA and `[Browse files]`
-* The commits page's mode is `octocat-commit-list-mode`, named as the PR and issue lists are; `octocat-commits-mode` and its hook and map remain as obsolete aliases
-* Commit lists and last-commit lines show when a commit was committed, as "committed 2 days ago", not when it was written
-* The SHA of the last commit atop the repository's files is a `TAB` stop
-* `g`/`gr` also resets the page's view: images shown in place are links again, and `<details>`, folds and expanded entries are back as first drawn; an image shown again comes from memory, without fetching it again
+* HTML tables in Markdown are drawn as tables, as on GitHub
+* A table of images, such as before-and-after screenshots, shows them side by side
+* Fix wrapped lines in Markdown quotes losing their `│` bars
+* Resting point on a link in Markdown shows where it goes in the echo area
+* Fix `RET` on a link whose text holds `#123`, a SHA or an `@mention` opening that instead
+* Commits are laid out as on GitHub: subject, author and date first, the SHA last
+* Fix relative links in a README opening a local file: they open in the file viewer
+* `RET` on an image given by a relative path in a README shows it in place
+* The file viewer renders Markdown files as GitHub does; `C-c C-v` shows the source
+* The tree browser and file viewer share a top line: branch picker, path, last commit
+* The commits page has the same top line, and shows how many commits there are
+* `C-c C-l` in the file viewer opens the file's history, replacing the separate file log
+* `RET` on an image in a README opens it in the file viewer; `C-c C-o` opens it in the browser
+* Long branch names are cut in the middle in branch pickers (`octocat-ref-max-width`)
+* Each branch of a file opens in its own buffer; `C-c C-b` switches to another branch
+* A spinner shows while an image loads
+* Image links have a face of their own
+* Fix a blue line drawn across images shown in place
+* The commit page reads like `git show --format=fuller`, with author, committer and parents
+* The commits page's mode is now `octocat-commit-list-mode`; the old names still work
+* Commit lists show when a commit was committed, not when it was written
+* The SHA of the last commit above a repository's files is a `TAB` stop
+* `g`/`gr` also resets the page's view: images, folds and `<details>` as first drawn
 
 ## [0.1.0] - 2026-10-23
 * First release, and the first on MELPA Stable
 * Fix the compare page failing to render its files with a wrong-number-of-arguments error
 * Test on Emacs 29.1, the oldest release octocat supports, as well as 30.2 and 31.1
-* `C-c C-j` (`octocat-jump`) now searches the current repository's PRs, issues, commits and files; `C-u C-c C-j` jumps to another repository, or to a user with `@`, as `C-c C-j` did before. On a page with no repository, `C-c C-j` jumps to another repository or user
+* `C-c C-j` searches the current repository; `C-u C-c C-j` jumps to another repository or user
 * Drop `C-c C-s`: plain `C-c C-j` searches the repository now
-* Repository search (`C-c C-j`) on the PR, issue and actions lists now searches the list's repository, also when there is no local clone of it
+* `C-c C-j` on the PR, issue and actions lists searches their repository, even without a clone
