@@ -46,10 +46,14 @@ clean:
 	find . -maxdepth 1 -name '*.elc' -delete
 
 # Compile a copy, so the .elc files do not land next to the sources while
-# lint and test run alongside.  The screenshot driver is compiled too,
-# but not run: that is `make screenshots'.
+# lint and test run alongside.  Only what compiling reads: copying .git
+# fails when git rewrites its index meanwhile.  The screenshot driver is
+# compiled too, but not run: that is `make screenshots'.
 compile:
-	$(RUN) sh -c "cp -a /src /tmp/build && cd /tmp/build && eask compile --strict \
+	$(RUN) sh -c "mkdir -p /tmp/build/.eask \
+	  && cp -a /src/Eask /src/*.el /src/test /tmp/build \
+	  && cp -a /src/.eask/$(EMACS) /tmp/build/.eask \
+	  && cd /tmp/build && eask compile --strict \
 	  && eask compile --strict test/screenshots/fixtures.el test/screenshots/screenshots.el"
 
 # checkdoc only prints its findings, so fail on any FILE:LINE: message.
