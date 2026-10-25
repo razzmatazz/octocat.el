@@ -942,6 +942,58 @@ point is saved around it."
       (min width octocat-max-width)
     width))
 
+;;;; Long lines and large content
+;;
+;; Emacs draws long lines fast since 29.1, but highlighting or
+;; rendering a large file takes seconds, and a long line is unreadable
+;; anyway.  See "Long lines and large content" in
+;; docs/user-interface-conventions.md.
+
+(defconst octocat--max-line-length 1000
+  "Most characters of a line of a file, diff or log shown before a button.")
+
+(defconst octocat--max-file-size (* 256 1024)
+  "Largest file, in bytes, fetched, highlighted or rendered unasked.")
+
+(defun octocat--show-hidden ()
+  "Show the rest of the line that the button at point stands for."
+  (interactive)
+  (let ((inhibit-read-only t)
+        (beg (if (get-text-property (1- (point)) 'octocat-hidden)
+                 (previous-single-property-change (point) 'octocat-hidden nil (pos-bol))
+               (point))))
+    (remove-text-properties
+     beg (next-single-property-change (point) 'octocat-hidden nil (pos-eol))
+     '(octocat-hidden nil display nil keymap nil mouse-face nil help-echo nil))))
+
+(defvar octocat--hidden-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "RET") #'octocat--show-hidden)
+    (define-key map [mouse-2] #'octocat--show-hidden)
+    map)
+  "Keymap of the button standing for the rest of a long line.")
+
+(defun octocat--clip-line (line max)
+  "Return LINE with all past MAX characters drawn as a button to reveal them.
+As `compilation-max-output-line-length' does: the text stays, so it is
+copied and searched whole, and keeps its faces when shown."
+  (if (<= (length line) max)
+      line
+    (concat (substring line 0 max)
+            (propertize (substring line max)
+                        'octocat-hidden t
+                        'display (propertize (format "[… %d more characters]"
+                                                     (- (length line) max))
+                                             'face 'octocat-dimmed)
+                        'keymap octocat--hidden-map
+                        'mouse-face 'highlight
+                        'help-echo "RET: show the whole line"))))
+
+(defun octocat--clip-lines (text max)
+  "Return TEXT with its lines past MAX characters clipped.
+See `octocat--clip-line'."
+  (mapconcat (lambda (l) (octocat--clip-line l max)) (split-string text "\n") "\n"))
+
 (defun octocat--markdown-open-ref (kind repo id)
   "Open the reference of KIND (`issue' or `commit') ID in REPO.
 A nil REPO means the repository of the current buffer.  An issue number

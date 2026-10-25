@@ -707,6 +707,35 @@ it runs, the user may be reading or typing somewhere else.
 
 ---
 
+## Long lines and large content
+
+Since Emacs 29, drawing long lines is fast.  What still freezes it is
+Lisp work on large texts: highlighting a 1 MiB file with its major mode
+takes about half a second, all of it blocking.  So pages keep that work
+small, borrowing from `compilation-mode` and Magit:
+
+- **A long line is cut, with a button for the rest**, as
+  `compilation-max-output-line-length` does: past
+  `octocat--max-line-length` (1000) characters, `octocat--clip-line`
+  draws the rest as `[… N more characters]`, and `RET` on it shows it.
+  The text stays in the buffer, so it is copied and searched whole.
+  Diffs, logs and the file viewer clip their lines.
+- **Large content is built only when asked**, as Magit collapses diffs
+  it cannot show quickly.  A diff file and a log step are folds whose
+  body is built once unfolded (see "Folds").  The file viewer does not
+  fetch a file larger than `octocat--max-file-size` (256 KiB), learning
+  its size from the `repo-head` query; it says so, with a `[Show
+  anyway]` button that shows it as plain text, neither highlighted nor
+  rendered.  A larger README is shown as it is, not rendered.
+- **Say why something is missing.**  A binary file is not shown, and
+  has no button.  GitHub leaves out the patch of a binary file, or one
+  too large to diff; that diff file's heading says `binary, or too
+  large to show`.
+
+A new page that shows a file, a diff or a log does the same.
+
+---
+
 ## Revealing more rows ("Load N more…")
 
 Rows that a `[+] Load N more…` button brings in **unfold** one frame at a

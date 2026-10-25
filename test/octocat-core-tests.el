@@ -448,5 +448,20 @@ Other links, and an explicit request for an external browser, skip it;
     (funcall wait)
     (should (eq (car-safe (car answers)) 'error))))
 
+(ert-deftest octocat-core-test-clip-line ()
+  "A long line keeps its text, its tail drawn as a button that shows it."
+  (should (equal (octocat--clip-line "short" 10) "short"))
+  (let ((line (octocat--clip-line (propertize "abcdefghij" 'face 'bold) 4)))
+    (should (equal (substring-no-properties line) "abcdefghij"))
+    (should (equal (get-text-property 4 'display line) "[… 6 more characters]"))
+    (with-temp-buffer
+      (insert line "\n")
+      (setq buffer-read-only t)
+      (goto-char 7)
+      (octocat--show-hidden)
+      (should-not (text-property-not-all (point-min) (point-max) 'display nil))
+      ;; The tail keeps its face.
+      (should (eq (get-text-property 7 'face) 'bold)))))
+
 (provide 'octocat-core-tests)
 ;;; octocat-core-tests.el ends here

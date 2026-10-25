@@ -297,6 +297,20 @@
                  "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":0,\"nodes\":[]}},\"dir\":null}}}"
                  "main" "missing")))
 
+(ert-deftest octocat-repo-test-file-notice ()
+  "A binary or large file is not shown unasked; an image or small file is."
+  (let ((head (octocat-repo--parse-head
+               "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":1,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Add\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Blob\",\"oid\":\"b1\",\"byteSize\":2000000,\"isBinary\":false}}}}"
+               "main" "dist/app.min.js")))
+    (should (equal (gethash "size" head) 2000000))
+    (should (string-match-p "too large" (octocat-repo--file-notice "dist/app.min.js" head)))
+    (should-not (octocat-repo--file-notice "docs/a.png" head))
+    (puthash "binary" t head)
+    (should (string-match-p "binary" (octocat-repo--file-notice "a.bin" head)))
+    (puthash "binary" nil head)
+    (puthash "size" 100 head)
+    (should-not (octocat-repo--file-notice "src/a.el" head))))
+
 (ert-deftest octocat-repo-test-compact-pr-row-marks-draft ()
   "Without the state column, a compact draft PR row says (draft) before its title."
   (let ((pr (make-hash-table :test #'equal)))

@@ -285,9 +285,11 @@ Uses bracket-checkbox glyphs to distinguish steps from job-level icons."
 
 (defun octocat-job--log-line (entry)
   "Return log ENTRY, a plist from `octocat--job-parse-log-line', as a line.
-It is not indented, so the log copies out as it is.  Commands are dimmed."
+It is not indented, so the log copies out as it is.  Commands are dimmed.
+A line is cut at `octocat--max-line-length', see `octocat--clip-line'."
   (let ((ts   (plist-get entry :ts))
-        (text (or (plist-get entry :text) "")))
+        (text (octocat--clip-line (or (plist-get entry :text) "")
+                                  octocat--max-line-length)))
     (concat (if ts (propertize (concat ts " ") 'face 'octocat-dimmed) "")
             (if (eq (plist-get entry :kind) 'command)
                 (propertize text 'face 'octocat-dimmed)

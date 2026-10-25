@@ -163,13 +163,16 @@ on no line of PATCH, as an outdated one, is placed nowhere."
   "Return the unified diff PATCH as a propertized string, without final newline.
 INDEX is the comment index of the file, see `octocat-diff--index'.  RAW
 and WIDTH are as for `octocat-diff--comment-lines'.  Each comment is
-placed right after the diff line it is on, see `octocat-diff--walk'."
+placed right after the diff line it is on, see `octocat-diff--walk'.
+A line is cut at `octocat--max-line-length', see `octocat--clip-line'."
   (let (out)
     ;; Diff lines are not indented, so they copy out as a valid patch.
     (octocat-diff--walk
      patch index
      (lambda (line face placed)
-       (push (if face (propertize line 'face face) line) out)
+       (push (octocat--clip-line (if face (propertize line 'face face) line)
+                                 octocat--max-line-length)
+             out)
        (dolist (c placed)
          (dolist (l (octocat-diff--comment-lines c raw width))
            (push l out)))))
@@ -181,8 +184,9 @@ placed right after the diff line it is on, see `octocat-diff--walk'."
 (defun octocat-diff--file (file comments bulk raw width)
   "Return one changed FILE (a files-endpoint hash-table) with its inline COMMENTS.
 It is folded unless BULK, as for `octocat-vui-fold', says otherwise; a
-file without a patch (binary, or too large for GitHub to show) is just
-its heading.  RAW and WIDTH are as for `octocat-diff--comment-lines'."
+file without a patch is just its heading, which says why when the file
+changed: it is binary, or too large for GitHub to show.  RAW and WIDTH
+are as for `octocat-diff--comment-lines'."
   (let* ((filename (or (gethash "filename" file) ""))
          (status   (or (gethash "status" file) "modified"))
          (patch    (let ((p (gethash "patch" file)))
@@ -195,7 +199,12 @@ its heading.  RAW and WIDTH are as for `octocat-diff--comment-lines'."
                                                (or (gethash "deletions" file) 0))
                                        'face 'octocat-dimmed))))
     (if (null patch)
-        (vui-text (concat "  " title))
+        (vui-text (concat "  " title
+                          ;; Not a rename alone, which has no diff.
+                          (unless (and (equal status "renamed")
+                                       (eql (gethash "changes" file) 0))
+                            (propertize "  binary, or too large to show"
+                                        'face 'octocat-dimmed))))
       (vui-component
        'octocat-vui-fold
        :key (intern filename)

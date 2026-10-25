@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Long lines in diffs, logs and files are cut, with a button to show the rest
+* The file viewer asks before showing a large file, and does not show binary files
 * HTML tables in Markdown are drawn as tables, as on GitHub
 * A table of images, such as before-and-after screenshots, shows them side by side
 * Fix wrapped lines in Markdown quotes losing their `│` bars

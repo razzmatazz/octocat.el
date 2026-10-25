@@ -347,7 +347,7 @@ for the page after it, and \"total\", the commits of the whole history."
               (gethash "edges" history)))))
 
 (defconst octocat-repo--head-query
-  "query($owner:String!,$name:String!,$expr:String!,$dir:String!,$path:String){repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate committedDate author{name email user{login}}}}}} dir:object(expression:$dir){__typename oid}}}"
+  "query($owner:String!,$name:String!,$expr:String!,$dir:String!,$path:String){repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate committedDate author{name email user{login}}}}}} dir:object(expression:$dir){__typename oid ...on Blob{byteSize isBinary}}}}"
   "GraphQL query behind `octocat-repo--fetch-head'.")
 
 (defun octocat-repo--parse-head (json-string ref path)
@@ -355,7 +355,8 @@ for the page after it, and \"total\", the commits of the whole history."
 It is for PATH, nil for the root, at REF.  Return the last commit that
 touched PATH, as `octocat-repo--history-commit' shapes it, with
 \"tree\", the SHA of PATH's tree, or its blob's when \"kind\" is
-\"blob\", and \"total\", the commits that touched PATH."
+\"blob\", and \"total\", the commits that touched PATH.  Of a blob,
+\"size\" is its bytes and \"binary\" t when it is not text."
   (let* ((repo   (gethash "repository" (gethash "data" (json-parse-string json-string))))
          (obj    (and (hash-table-p repo) (gethash "object" repo)))
          (dir    (and (hash-table-p repo) (gethash "dir" repo)))
@@ -370,6 +371,8 @@ touched PATH, as `octocat-repo--history-commit' shapes it, with
       (puthash "tree" (gethash "oid" dir) commit)
       (puthash "kind" (if (equal (gethash "__typename" dir) "Blob") "blob" "tree") commit)
       (puthash "total" (gethash "totalCount" hist) commit)
+      (puthash "size" (gethash "byteSize" dir) commit)
+      (puthash "binary" (eq (gethash "isBinary" dir) t) commit)
       commit)))
 
 (defun octocat-repo--fetch-head (repo ref path callback)
@@ -1321,13 +1324,18 @@ SHOWN is the kind of the one shown.  See `octocat-vui-tab-row' for WIDTH."
   "Return the rows of file NAME's CONTENT, rendered when it is markdown.
 NAME is its path in REPO at REF, which its relative links point into.
 RAW and WIDTH are as for `octocat--markdown-string'.  Not indented, so
-it copies as from the file."
+it copies as from the file.  Markdown larger than
+`octocat--max-file-size' is shown as it is, its long lines clipped,
+see `octocat--clip-line'."
   (let ((text (decode-coding-string content 'utf-8))
         (octocat-markdown-base (list repo (or ref "HEAD") (or (file-name-directory name) ""))))
     (string-remove-suffix
-     "\n" (if (octocat-repo--markdown-file-p name)
+     "\n" (if (and (octocat-repo--markdown-file-p name)
+                   (<= (length content) octocat--max-file-size))
               (octocat--markdown-string text "" raw width)
-            (octocat-markdown-render-verbatim text "")))))
+            (octocat-markdown-render-verbatim
+             (octocat--clip-lines text octocat--max-line-length)
+             "")))))
 
 (vui-defcomponent octocat-repo-vui--docs-section (repo ref tree raw)
   "The README of REPO at REF, root TREE, and a selector of its other documents.
@@ -1547,12 +1555,32 @@ branch."
   "Return file PATH's CONTENT as the file viewer is to show it.
 Markdown is rendered, unless RAW, its relative links into REPO at REF,
 to fit WIDTH; an image is shown, see `octocat-repo--image-text';
-anything else is highlighted as its major mode would."
-  (cond ((and (not raw) (octocat-repo--markdown-file-p path))
-         (octocat-repo--doc-text repo ref path content nil width))
-        ((octocat-repo--image-file-p path)
-         (octocat-repo--image-text content width))
-        (t (octocat-tree--fontify path (decode-coding-string content 'utf-8)))))
+anything else is highlighted as its major mode would.  A file larger
+than `octocat--max-file-size', shown when asked, is plain text.  Long
+lines are clipped, see `octocat--clip-line'."
+  (let ((large (> (length content) octocat--max-file-size)))
+    (cond ((and (not raw) (not large) (octocat-repo--markdown-file-p path))
+           (octocat-repo--doc-text repo ref path content nil width))
+          ((octocat-repo--image-file-p path)
+           (octocat-repo--image-text content width))
+          (t (let ((text (decode-coding-string content 'utf-8)))
+               (octocat--clip-lines (if large text (octocat-tree--fontify path text))
+                                    octocat--max-line-length))))))
+
+(defun octocat-repo--file-notice (path head)
+  "Return why the file viewer does not show file PATH unasked, or nil.
+HEAD is PATH's `repo-head'.  A file that is not text, or is larger than
+`octocat--max-file-size', is not fetched; an image always is."
+  (let ((size (gethash "size" head)))
+    (unless (octocat-repo--image-file-p path)
+      (cond ((gethash "binary" head)
+             (format "A binary file%s; C-c C-o opens it on GitHub."
+                     (if (integerp size)
+                         (concat " of " (file-size-human-readable size))
+                       "")))
+            ((and (integerp size) (> size octocat--max-file-size))
+             (format "A file of %s, too large to show at once; C-c C-o opens it on GitHub."
+                     (file-size-human-readable size)))))))
 
 (defun octocat-repo--image-text (content width)
   "Return a line showing image CONTENT, no wider than WIDTH columns.
@@ -1589,7 +1617,9 @@ the tree browser's, so one reads on from the other: the picker of REF
 and PATH, its directories RET-able, and a button to the tree, then the
 last commit of PATH, and a rule above the content.  Picking another ref
 opens the file at it in its own buffer, see `octocat-file-switch-branch'.
-RAW shows markdown as is."
+RAW shows markdown as is.  A file too large to show unasked, see
+`octocat-repo--file-notice', has a button to show it ANYWAY."
+  :state ((anyway nil))
   :render
   (let* ((current-branch (plist-get (octocat--head-info) :branch))
          (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
@@ -1598,7 +1628,8 @@ RAW shows markdown as is."
          (head-snap      (octocat-vui-use-resource (list 'repo-head repo ref path) tick))
          (head           (plist-get head-snap :data))
          (blob           (and head (equal (gethash "kind" head) "blob")
-                              (gethash "tree" head))))
+                              (gethash "tree" head)))
+         (notice         (and blob (not anyway) (octocat-repo--file-notice path head))))
     (vui-vstack
      (octocat-repo-vui--top-line
       repo (or ref default-branch) path current-branch #'octocat-file-switch-branch
@@ -1610,7 +1641,16 @@ RAW shows markdown as is."
                   :on-click (lambda () (octocat-tree-open repo ref path))))
      (octocat-repo-vui--head-line repo ref path head-snap default-branch current-branch t)
      (octocat-repo-vui--rule)
-     (cond (blob
+     (cond (notice
+            (apply #'vui-hstack :spacing 2
+                   (vui-text notice :face 'octocat-dimmed)
+                   ;; Not a binary file: it would show as garbage.
+                   (unless (gethash "binary" head)
+                     (list (vui-button "[Show anyway]"
+                                       :no-decoration t
+                                       :help-echo "RET: fetch the file and show it as plain text"
+                                       :on-click (lambda () (vui-set-state :anyway t)))))))
+           (blob
             (vui-component 'octocat-repo-vui--file-content
                            :key blob :repo repo :ref (or ref default-branch "HEAD")
                            :path path :blob blob :raw raw))
