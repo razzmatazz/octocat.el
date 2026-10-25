@@ -159,6 +159,14 @@ A page is a Markdown file in `content/`, with a TOML header between
 
 `rocket serve` rebuilds a page as soon as you save it.  The header's
 settings are in [the configuration](configuration.md).
+
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>title</code></td><td>file name</td><td>The page's title</td></tr>
+  <tr><td><code>template</code></td><td><code>page.html</code></td><td>How it is laid out</td></tr>
+  <tr><td colspan=\"3\"><b>Optional</b></td></tr>
+  <tr><td><code>draft</code></td><td><code>false</code></td><td>Left out of the build</td></tr>
+</table>
 "
   "The docs/guide.md of acme/rocket.")
 

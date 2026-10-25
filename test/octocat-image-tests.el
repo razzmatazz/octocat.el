@@ -35,6 +35,14 @@
            "https://github-production-user-asset-6210df.s3.amazonaws.com/1/a.jpg?X-Amz=1"))
   (should-not (octocat-image--redirect-allowed-p "https://s3.amazonaws.com/other/a.jpg")))
 
+(ert-deftest octocat-image-test-fill-margin ()
+  "An image filling its columns, as in a table, is centred by its margin."
+  ;; 19 columns of 10 pixels around an image 100 wide.
+  (should (= (octocat-image--fill-margin 100 19 10) 45))
+  (should (= (octocat-image--fill-margin 190 19 10) 0))
+  ;; Never negative, though the image should not be wider than its columns.
+  (should (= (octocat-image--fill-margin 300 19 10) 0)))
+
 (ert-deftest octocat-image-test-fetched-redirect ()
   "A redirect is followed only to an allowed host, and only so many times."
   (let (calls result)

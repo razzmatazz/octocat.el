@@ -21,9 +21,10 @@
 ;;; Commentary:
 
 ;; In a graphical frame, `RET' on an image that `octocat-markdown-render'
-;; marks as alone on its line (`octocat-markdown-image') fetches it and
-;; shows it in place of its "[image: ...]" link; `RET' on the image then
-;; opens it in the browser.  Nothing is fetched until asked for.
+;; marks as alone on its line, or in a table's row of images
+;; (`octocat-markdown-image'), fetches it and shows it in place of its
+;; "[image: ...]" link; `RET' on the image then opens it in the browser.
+;; Nothing is fetched until asked for.
 ;;
 ;; Only images uploaded to GitHub can be fetched, see
 ;; `octocat-image-allowed-p', and those of the repository a README
@@ -45,10 +46,14 @@
 
 (require 'cl-lib)
 (require 'subr-x)
+(require 'image)
 (require 'jit-lock)
 (require 'url)
 (require 'url-http)
 (require 'octocat-markdown)
+
+;; Only in builds that can show images, the only ones that call it.
+(declare-function image-size "image.c" (spec &optional pixels frame))
 
 (defcustom octocat-image-max-lines 20
   "The most lines of text an image may be as tall as."
@@ -169,14 +174,26 @@ where it reaches past BEG or END."
         (setq pos next)))
     (nreverse spans)))
 
+(defun octocat-image--fill-margin (width cols char-width)
+  "Return the margin either side of an image WIDTH pixels wide filling COLS.
+A column is CHAR-WIDTH pixels wide."
+  (max 0 (/ (- (* cols char-width) width) 2)))
+
 (defun octocat-image--image (data plist)
-  "Return the image of DATA, sized to fit PLIST's :cols and :width."
-  (let ((cols  (plist-get plist :cols))
-        (width (plist-get plist :width)))
-    (apply #'create-image data nil t
-           :max-height (* octocat-image-max-lines (frame-char-height))
-           (when-let* ((max (delq nil (list width (and cols (* cols (frame-char-width)))))))
-             (list :max-width (apply #'min max))))))
+  "Return the image of DATA, sized to fit PLIST's :cols and :width.
+With :fill, as in a table's row of images, it is centred in its :cols,
+so the text after it stays in its column."
+  (let* ((cols  (plist-get plist :cols))
+         (width (plist-get plist :width))
+         (image (apply #'create-image data nil t
+                       :max-height (* octocat-image-max-lines (frame-char-height))
+                       (when-let* ((max (delq nil (list width (and cols (* cols (frame-char-width)))))))
+                         (list :max-width (apply #'min max))))))
+    (when (and cols (plist-get plist :fill))
+      (setf (image-property image :margin)
+            (cons (octocat-image--fill-margin (car (image-size image t)) cols (frame-char-width))
+                  0)))
+    image))
 
 (defvar octocat-image-map
   (let ((map (make-sparse-keymap)))

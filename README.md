@@ -370,8 +370,12 @@ or README to itself can be shown there: `RET` (or a click) on its
 scaled down to fit the window and at most `octocat-image-max-lines`
 lines tall.  `RET` on the image then opens it in the browser.  Nothing
 is downloaded until asked for, and a fetched image stays shown, across
-refreshes, for the rest of the session.  Images within text or tables,
-and every image in a terminal, are plain links to the browser.
+refreshes, for the rest of the session.  An HTML table of images, as
+pull requests use to set screenshots before and after a change side by
+side, keeps them side by side: each image fits its column, under its
+caption, and when the window is too narrow for them they are stacked
+one under another instead.  Images within text or among a table's
+text, and every image in a terminal, are plain links to the browser.
 
 Only images uploaded to GitHub can be fetched: those on
 `user-images.githubusercontent.com` (uploads before 2023),

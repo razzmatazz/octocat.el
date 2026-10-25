@@ -9,3 +9,13 @@ A page is a Markdown file in content/, with a TOML header between
 
 rocket serve rebuilds a page as soon as you save it.  The header's
 settings are in the configuration.
+┌──────────┬───────────┬───────────────────────┐
+│ Setting  │ Default   │ Meaning               │
+├──────────┼───────────┼───────────────────────┤
+│ title    │ file name │ The page's title      │
+│ template │ page.html │ How it is laid out    │
+├──────────┴───────────┴───────────────────────┤
+│ Optional                                     │
+├──────────┬───────────┬───────────────────────┤
+│ draft    │ false     │ Left out of the build │
+└──────────┴───────────┴───────────────────────┘

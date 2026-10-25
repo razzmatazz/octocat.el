@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* HTML tables in Markdown (`<table>`, `<tr>`, `<td>`) are drawn as tables, as GitHub draws them: with headers, `colspan`, `align`, and lists or other Markdown in cells after a blank line; one too wide for the window lists each row's cells under their headers instead
+* A table of images, as screenshots before and after a change, shows them side by side, under their captions, when `RET` shows them
 * Fix long lines in Markdown quotes, nested ones above all, wrapping without their `│` bars; a quote's text runs on into a following line with fewer `>`, or none, as on GitHub
 * Resting point on a link in rendered Markdown shows where it goes in the echo area, as hovering does: a link's URL, or a `#123` or commit reference's repository and full SHA
 * Fix `RET` on a link whose text holds `#123`, a commit SHA or an `@mention` opening that issue, commit or profile instead of the link's target

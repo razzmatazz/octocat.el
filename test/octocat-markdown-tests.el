@@ -483,6 +483,248 @@ the window's point; mid-render that scrambled the page."
     (should (equal (octocat-markdown-render md "" 200)
                    (octocat-markdown-render md "")))))
 
+
+;;; HTML tables
+;;
+;; Expected results follow what GitHub's renderer (POST /markdown) makes
+;; of the same source.
+
+(defun octocat-markdown-tests--lines (&rest lines)
+  "Return LINES as rendered text: each ended by a newline."
+  (mapconcat (lambda (l) (concat l "\n")) lines ""))
+
+(ert-deftest octocat-markdown-test-html-table-needs-table ()
+  "Rows and cells outside a <table> are stripped, their text run together."
+  (should (equal (octocat-markdown-tests--md "x <tr><td>alpha</td><td>beta</td></tr> y")
+                 "x alphabeta y\n"))
+  ;; Indented four spaces, it is code.
+  (should (string-match-p "<table><tr><td>a</td></tr></table>"
+                          (octocat-markdown-tests--md
+                           "    <table><tr><td>a</td></tr></table>"))))
+
+(ert-deftest octocat-markdown-test-html-table ()
+  "A <table> is drawn as a grid; a leading row of <th> is its header."
+  (should (equal (octocat-markdown-tests--md "<table><td>a</td><td>b</td></table>")
+                 (octocat-markdown-tests--lines
+                  "┌───┬───┐"
+                  "│ a │ b │"
+                  "└───┴───┘")))
+  ;; <th> straight under <table>, as browsers allow: it starts a row.
+  (let ((out (octocat-markdown-render
+              "<table>\n<th>Name</th><th>Age</th>\n<tr><td>Ann</td><td>7</td></tr>\n</table>"
+              "" 40)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    "┌──────┬─────┐"
+                    "│ Name │ Age │"
+                    "├──────┼─────┤"
+                    "│ Ann  │ 7   │"
+                    "└──────┴─────┘")))
+    (should (memq 'bold (ensure-list (octocat-markdown-tests--prop out "Name" 'face)))))
+  ;; Tags in any case; <thead> and <tbody> are looked through; <br>
+  ;; breaks the line in its cell.
+  (should (equal (octocat-markdown-tests--md
+                  (concat "<TABLE><THEAD><TR><TH>h</TH></TR></THEAD>"
+                          "<TBODY><TR><TD>one<BR>two</TD></TR></TBODY></TABLE>"))
+                 (octocat-markdown-tests--lines
+                  "┌─────┐"
+                  "│ h   │"
+                  "├─────┤"
+                  "│ one │"
+                  "│ two │"
+                  "└─────┘"))))
+
+(ert-deftest octocat-markdown-test-html-table-cells ()
+  "Cells align as their align says; a bold first row of <td> is no header."
+  (let ((out (octocat-markdown-render
+              (concat "<table>\n"
+                      "<tr><td align=\"center\"><strong>Before</strong></td>"
+                      "<td align=\"center\"><strong>After</strong></td></tr>\n"
+                      "<tr><td align=\"center\">ab</td><td align=\"right\">n</td></tr>\n"
+                      "</table>")
+              "" 40)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    "┌────────┬───────┐"
+                    "│ Before │ After │"
+                    "│   ab   │     n │"
+                    "└────────┴───────┘")))
+    (should (memq 'bold (ensure-list (octocat-markdown-tests--prop out "Before" 'face))))))
+
+(ert-deftest octocat-markdown-test-html-table-colspan ()
+  "A table on one line, as tools write it: colspan, entities, a stray </td>."
+  (let ((out (octocat-markdown-render
+              (concat "<table width='100%' align='center'>"
+                      "<tr><td>Tool version</td><td>1.2</td></tr>"
+                      "<tr><td colspan=\"2\">&nbsp;</td></tr>"
+                      "<tr><td colspan=\"2\"><b>Libraries</b></td></tr>"
+                      "<tr><td>Widget</td><td><a href=\"https://example.com/w\">3.4</a></td></td></tr>"
+                      "</table>")
+              "" 40)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    "┌──────────────┬─────┐"
+                    "│ Tool version │ 1.2 │"
+                    "├──────────────┴─────┤"
+                    "│                    │"
+                    "│ Libraries          │"
+                    "├──────────────┬─────┤"
+                    "│ Widget       │ 3.4 │"
+                    "└──────────────┴─────┘")))
+    ;; A spanning first row has no divider to meet; one wider than its
+    ;; columns widens the last.
+    (should (equal (octocat-markdown-tests--md
+                    "<table><tr><th colspan=\"2\">Versions</th></tr><tr><td>a</td><td>1</td></tr></table>")
+                   (octocat-markdown-tests--lines
+                    "┌──────────┐"
+                    "│ Versions │"
+                    "├───┬──────┤"
+                    "│ a │ 1    │"
+                    "└───┴──────┘")))
+    (should (memq 'bold (ensure-list (octocat-markdown-tests--prop out "Libraries" 'face))))
+    (should (equal (octocat-markdown-tests--prop out "3.4" 'octocat-markdown-url)
+                   "https://example.com/w"))))
+
+(ert-deftest octocat-markdown-test-html-table-markdown-in-cells ()
+  "A cell is markdown only after a blank line, as on GitHub; else HTML alone."
+  (should (equal (octocat-markdown-tests--md "<table><tr><td>**b** `c`</td></tr></table>")
+                 (octocat-markdown-tests--lines
+                  "┌───────────┐"
+                  "│ **b** `c` │"
+                  "└───────────┘")))
+  (should (memq 'octocat-markdown-code
+                (ensure-list (octocat-markdown-tests--prop
+                              (octocat-markdown-render "<table><tr><td><code>c</code></td></tr></table>" "")
+                              "c" 'face))))
+  (let ((out (octocat-markdown-render
+              "<table><tr><td>\n\n- one\n- **two**\n\n</td><td>x</td></tr></table>" "" 40)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    "┌───────┬───┐"
+                    "│ • one │ x │"
+                    "│ • two │   │"
+                    "└───────┴───┘")))
+    (should (memq 'bold (ensure-list (octocat-markdown-tests--prop out "two" 'face)))))
+  ;; The cell may close on the markdown's last line.
+  (let ((out (octocat-markdown-render "<table><tr><td>\n\n**b** text</td></tr></table>" "" 40)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    "┌────────┐"
+                    "│ b text │"
+                    "└────────┘")))
+    (should (memq 'bold (ensure-list (octocat-markdown-tests--prop out "b" 'face))))))
+
+(ert-deftest octocat-markdown-test-html-table-surroundings ()
+  "A table ends at </table>, or at the end of the text if it never closes."
+  ;; The rest of its last line is HTML, as on GitHub: no markdown.
+  (should (equal (octocat-markdown-tests--md
+                  "<table><tr><td>a</td></tr></table> trailing **b**")
+                 (octocat-markdown-tests--lines
+                  "┌───┐" "│ a │" "└───┘" "trailing **b**")))
+  ;; Text in a table but in no cell follows it.  (GitHub's browser puts
+  ;; it before the table instead.)
+  (should (equal (octocat-markdown-tests--md "<table><tr><td>a</td></tr>\n\nafter")
+                 (octocat-markdown-tests--lines "┌───┐" "│ a │" "└───┘" "after")))
+  ;; It may interrupt a paragraph, and sit in a list item.
+  (should (equal (octocat-markdown-tests--md "para\n<table><tr><td>a</td></tr></table>")
+                 (octocat-markdown-tests--lines "para" "┌───┐" "│ a │" "└───┘")))
+  (should (equal (octocat-markdown-tests--md "- item\n\n  <table><tr><td>a</td></tr></table>")
+                 (octocat-markdown-tests--lines "• item" "  ┌───┐" "  │ a │" "  └───┘"))))
+
+(ert-deftest octocat-markdown-test-html-table-stacks ()
+  "A table too narrow for its columns lists each row's cells by header."
+  (let* ((md  (concat "<table><tr><th>Name</th><th>Role</th><th>Since</th></tr>"
+                      "<tr><td>Ann</td><td>maintainer</td><td>2019</td></tr>"
+                      "<tr><td>Bo</td><td>triage</td><td>2024</td></tr></table>"))
+         (out (octocat-markdown-render md "" 20)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    "Name: Ann" "Role: maintainer" "Since: 2019"
+                    (make-string 20 ?─)
+                    "Name: Bo" "Role: triage" "Since: 2024")))
+    (should (memq 'bold (ensure-list (octocat-markdown-tests--prop out "Name" 'face))))
+    (should (string-prefix-p "┌" (octocat-markdown-tests--md md 80)))))
+
+(defun octocat-markdown-tests--image-span (rendered alt)
+  "Return (PLIST . LENGTH) of the image mark on ALT's link in RENDERED."
+  (let ((pos (string-match (regexp-quote (format "[image: %s]" alt)) rendered)))
+    (cons (get-text-property pos 'octocat-markdown-image rendered)
+          (- (next-single-property-change pos 'octocat-markdown-image rendered
+                                          (length rendered))
+             pos))))
+
+(ert-deftest octocat-markdown-test-html-table-images ()
+  "A table of images and captions lays the images side by side.
+Each image's mark spans its column, so the image can fill it."
+  (let* ((u   "https://github.com/user-attachments/assets/")
+         (out (octocat-markdown-render
+               (concat "<table>\n  <tr>\n    <th>Before</th>\n    <th>After</th>\n  </tr>\n"
+                       "  <tr>\n    <td><img width=\"400\" alt=\"old\" src=\"" u "old\" /></td>\n"
+                       "    <td><img width=\"400\" alt=\"new\" src=\"" u "new\" /></td>\n"
+                       "  </tr>\n</table>")
+               "" 40)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    (concat "Before" (make-string 15 ?\s) "After")
+                    (concat "[image: old]" (make-string 9 ?\s)
+                            "[image: new]" (make-string 7 ?\s)))))
+    (should (memq 'bold (ensure-list (octocat-markdown-tests--prop out "Before" 'face))))
+    (should (equal (octocat-markdown-tests--image-span out "old")
+                   (cons (list :url (concat u "old") :width 400 :cols 19 :fill t) 19)))
+    (should (equal (octocat-markdown-tests--image-span out "new")
+                   (cons (list :url (concat u "new") :width 400 :cols 19 :fill t) 19))))
+  ;; Captions in bold <td>s, centred over their images.
+  (should (equal (octocat-markdown-tests--md
+                  (concat "<table>\n<tr><td align=\"center\"><strong>Before</strong></td>"
+                          "<td align=\"center\"><strong>After</strong></td></tr>\n"
+                          "<tr><td><img alt=\"old\" src=\"https://x/old.png\" /></td>"
+                          "<td><img alt=\"new\" src=\"https://x/new.png\" /></td></tr>\n"
+                          "</table>")
+                  40)
+                 (octocat-markdown-tests--lines
+                  (concat (make-string 6 ?\s) "Before" (make-string 16 ?\s) "After")
+                  (concat "[image: old]" (make-string 9 ?\s)
+                          "[image: new]" (make-string 7 ?\s)))))
+  ;; No captions, rows of images, a missing cell.
+  (let ((out (octocat-markdown-render
+              (concat "<table>\n<tr>\n<td>\n<img alt=\"a\" src=\"https://x/a.png\" />\n</td>\n"
+                      "<td>\n<img alt=\"b\" src=\"https://x/b.png\" />\n</td>\n</tr>\n"
+                      "<tr>\n<td>\n<img alt=\"c\" src=\"https://x/c.png\" />\n</td>\n</tr>\n"
+                      "</table>")
+              "" 40)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    (concat "[image: a]" (make-string 11 ?\s) "[image: b]" (make-string 9 ?\s))
+                    (concat "[image: c]" (make-string 9 ?\s)))))
+    (should (equal (cdr (octocat-markdown-tests--image-span out "c")) 19))))
+
+(ert-deftest octocat-markdown-test-html-table-images-stack ()
+  "Images too wide to sit side by side stack, each alone on its line."
+  (let ((out (octocat-markdown-render
+              (concat "<table><tr><th>Before</th><th>After</th></tr>"
+                      "<tr><td><img alt=\"old\" src=\"https://x/old.png\"></td>"
+                      "<td><img alt=\"new\" src=\"https://x/new.png\"></td></tr></table>")
+              "" 20)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    "Before:" "  [image: old]" "After:" "  [image: new]")))
+    (should (equal (octocat-markdown-tests--image-span out "old")
+                   (cons (list :url "https://x/old.png" :width nil :cols 18) 12)))))
+
+(ert-deftest octocat-markdown-test-html-table-images-among-text ()
+  "An image in a row of text stays a link in the grid, not shown in place."
+  (let ((out (octocat-markdown-render
+              "<table><tr><td><img alt=\"a\" src=\"https://x/a.png\"></td><td>text</td></tr></table>"
+              "" 40)))
+    (should (equal (substring-no-properties out)
+                   (octocat-markdown-tests--lines
+                    "┌────────────┬──────┐"
+                    "│ [image: a] │ text │"
+                    "└────────────┴──────┘")))
+    (should (equal (octocat-markdown-tests--prop out "[image" 'octocat-markdown-url)
+                   "https://x/a.png"))
+    (should-not (text-property-not-all 0 (length out) 'octocat-markdown-image nil out))))
+
 (ert-deftest octocat-markdown-test-wrap-prefix ()
   "List continuation lines hang under the item text."
   (let ((out (octocat-markdown-render "- item" "> ")))
