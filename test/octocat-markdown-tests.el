@@ -267,6 +267,19 @@ the window's point; mid-render that scrambled the page."
     (should (equal browsed "http://u"))
     (should (equal opened '(issue nil 7)))))
 
+(ert-deftest octocat-markdown-test-link-label-is-not-a-reference ()
+  "A #123 or @mention in a link's label opens the link, as on GitHub."
+  (dolist (md '("<a href=\"https://x.org/a\">#42 by @bob</a>"
+                "[#42 by @bob](https://x.org/a)"))
+    (let ((out (octocat-markdown-render md "")))
+      (should-not (octocat-markdown-tests--prop out "#42" 'octocat-markdown-ref))
+      (should (equal (octocat-markdown-tests--prop out "#42" 'octocat-markdown-url)
+                     "https://x.org/a"))
+      (should (equal (octocat-markdown-tests--prop out "@bob" 'octocat-markdown-url)
+                     "https://x.org/a"))
+      (should (equal (ensure-list (octocat-markdown-tests--prop out "#42" 'face))
+                     '(octocat-markdown-link))))))
+
 (ert-deftest octocat-markdown-test-relative-links ()
   "Relative links and images point into the repository of `octocat-markdown-base'."
   (let* ((octocat-markdown-base '("o/r" "feat/x" "docs/"))

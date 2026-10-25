@@ -384,6 +384,23 @@ Other links, and an explicit request for an external browser, skip it;
         (octocat-dashboard-browse)))
     (should (equal urls '("https://github.com/o/r/pull/5")))))
 
+(ert-deftest octocat-core-test-link-eldoc ()
+  "ElDoc shows where a link or reference goes, unless its text says it."
+  (cl-letf (((symbol-function 'octocat--search-repo--current-repo) (lambda () "o/r")))
+    (with-temp-buffer
+      (insert (octocat-markdown-render
+               "<a href=\"https://x.org/a\">#42</a> #7 octo/cat#3 abc1234 <https://y.org> plain"
+               ""))
+      (cl-flet ((at (needle) (goto-char (point-min))
+                    (search-forward needle) (backward-char 1)
+                    (octocat--link-eldoc)))
+        (should (equal (at "#42") "https://x.org/a"))
+        (should (equal (at "#7") "o/r#7"))
+        (should-not (at "cat#3"))
+        (should (equal (at "abc1234") "o/r@abc1234"))
+        (should-not (at "y.org"))
+        (should-not (at "plain"))))))
+
 (ert-deftest octocat-core-test-key-help ()
   "A button's hint names its command's key, and only then shows in ElDoc."
   (with-temp-buffer

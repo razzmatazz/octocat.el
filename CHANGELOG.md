@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Resting point on a link in rendered Markdown shows where it goes in the echo area, as hovering does: a link's URL, or a `#123` or commit reference's repository and full SHA
+* Fix `RET` on a link whose text holds `#123`, a commit SHA or an `@mention` opening that issue, commit or profile instead of the link's target
 * Commits are laid out as on GitHub: the last commit atop the files shows its author and subject, then its SHA, date and `[N commits]` at the right edge; commit lists show the subject, author and date, with the SHA last
 * Fix relative links in a repository's README opening a local file, in an outside program: they open the linked file, at the branch shown, in octocat's file viewer
 * `RET` on an image in a README, given by a relative path, shows it in place, as it does for images uploaded to GitHub

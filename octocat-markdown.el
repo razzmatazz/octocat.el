@@ -201,11 +201,30 @@ read it, \"raw\" for its bytes; a directory's is its \"tree\"."
               (if (string-match "#.*\\'" url) (match-string 0 url) ""))
     url))
 
+(defun octocat-markdown--unlink (label)
+  "Return LABEL without the #123, SHA and @mention links in it.
+As on GitHub, a link's label links only to the link's target."
+  (let ((s (copy-sequence label)) (i 0))
+    (remove-text-properties 0 (length s)
+                            '(octocat-markdown-ref nil octocat-markdown-url nil)
+                            s)
+    (while (< i (length s))
+      (let ((next (next-single-property-change i 'face s (length s)))
+            (face (get-text-property i 'face s)))
+        (when (memq 'octocat-markdown-mention (ensure-list face))
+          (let ((rest (remq 'octocat-markdown-mention (ensure-list face))))
+            (if rest
+                (put-text-property i next 'face (if (cdr rest) rest (car rest)) s)
+              (remove-text-properties i next '(face nil) s))))
+        (setq i next)))
+    s))
+
 (defun octocat-markdown--link (label url)
   "Return LABEL as a link to URL, made absolute if it is relative."
   (let ((url (octocat-markdown--absolute url "blob")))
     (octocat-markdown--interactive
-     (octocat-markdown--face label 'octocat-markdown-link)
+     (octocat-markdown--face (octocat-markdown--unlink label)
+                             'octocat-markdown-link)
      (format "RET: open %s" url) 'octocat-markdown-url url)))
 
 (defun octocat-markdown--ref (label kind repo id)

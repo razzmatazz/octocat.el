@@ -251,6 +251,19 @@ would show on every line point crosses, and add nothing to what the
 line already shows.  The hook is added by `octocat--ts-eldoc-setup`,
 which every octocat major mode already calls.
 
+### Show what the text hides
+
+Put what text stands for but doesn't show in its `help-echo`, for the
+mouse, and in a property an ElDoc function in `octocat--ts-eldoc-setup`
+reads, for point; RET should never be the only way to find it out:
+
+| Text | Hidden detail | Property |
+|---|---|---|
+| `3 days ago` | Exact time | `octocat-ts` |
+| A cut title | Whole title | `octocat-full-text` |
+| A markdown link | Its URL, unless the text shows it | `octocat-markdown-url` |
+| `#123`, a short SHA | Repository, full SHA | `octocat-markdown-ref` |
+
 ---
 
 ## Users are `@login`

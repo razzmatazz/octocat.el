@@ -848,14 +848,36 @@ An `eldoc-documentation-functions' member; see `octocat--key-help'."
          (get-text-property 0 'octocat-key-help help)
          help)))
 
+(defun octocat--link-eldoc (&rest _)
+  "Return the target of the link or reference at point, or nil.
+That is a link's URL, or a #123 or commit reference with its repository
+and full SHA; nil when the link's text already says it.  An
+`eldoc-documentation-functions' member."
+  (let* ((ref    (get-text-property (point) 'octocat-markdown-ref))
+         (prop   (if ref 'octocat-markdown-ref 'octocat-markdown-url))
+         (target (if ref
+                     (pcase-let* ((`(,kind ,repo ,id) ref)
+                                  (repo (or repo (octocat--search-repo--current-repo))))
+                       (if (eq kind 'issue)
+                           (format "%s#%d" (or repo "") id)
+                         (concat repo (and repo "@") id)))
+                   (get-text-property (point) prop))))
+    (when target
+      (let ((text (buffer-substring-no-properties
+                   (previous-single-property-change (1+ (point)) prop nil (point-min))
+                   (next-single-property-change (point) prop nil (point-max)))))
+        (unless (string-search target text)
+          target)))))
+
 (defun octocat--ts-eldoc-setup ()
   "Show what point rests on in the echo area.
-That is the exact time of a timestamp, the whole of a cut title, or the
-key of a button that has
+That is the exact time of a timestamp, the whole of a cut title, where a
+link goes (see `octocat--link-eldoc'), or the key of a button that has
 one (see `octocat--key-help').  Call from a major-mode body.  ElDoc
 shows it after `eldoc-idle-delay' when `global-eldoc-mode' is on (the
 default)."
   (add-hook 'eldoc-documentation-functions #'octocat--ts-eldoc nil t)
+  (add-hook 'eldoc-documentation-functions #'octocat--link-eldoc nil t)
   (add-hook 'eldoc-documentation-functions #'octocat--key-help-eldoc nil t)
   ;; vui motions, so ElDoc reacts to them like to `next-line'.
   (eldoc-add-command-completions "vui-forward" "vui-backward"))
