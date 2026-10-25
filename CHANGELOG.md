@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Runs are laid out as on GitHub: status and title first, then workflow, branch, date
 * A blank line sets the last commit apart in the tree browser and file viewer
 * `C-c C-o` on a repository on its default branch opens the repository's page
 * Long lines in diffs, logs and files are cut, with a button to show the rest

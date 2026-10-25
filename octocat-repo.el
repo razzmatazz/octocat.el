@@ -970,21 +970,22 @@ of the branch, `octocat-branch-max-width' by default."
          (date       (octocat--format-ts-relative created))
          (icon       (octocat--workflow-run-icon status conclusion))
          (line
+          ;; GitHub's order: what the run is about first, then where.
           (concat
-           (let* ((branch-w (or branch-w octocat-branch-max-width))
-                  (name (truncate-string-to-width branch branch-w nil nil "…"))
-                  (pad  (make-string (- branch-w (string-width name)) ?\s)))
-             (concat (propertize name 'face b-face) pad))
+           icon
            "  "
-           (propertize (format "%-11s" (number-to-string run-id))
-                       'face 'octocat-pr-number)
+           (octocat--format-title title title-w)
            "  "
            (propertize (truncate-string-to-width wf-name wf-w nil ?\s "…")
                        'face 'octocat-dimmed)
            "  "
-           icon
+           (propertize (format "%-11s" (number-to-string run-id))
+                       'face 'octocat-pr-number)
            "  "
-           (octocat--format-title title title-w)
+           (let* ((branch-w (or branch-w octocat-branch-max-width))
+                  (name (truncate-string-to-width branch branch-w nil nil "…"))
+                  (pad  (make-string (- branch-w (string-width name)) ?\s)))
+             (concat (propertize name 'face b-face) pad))
            "  "
            (propertize date 'face 'octocat-dimmed))))
     (octocat-vui-row (propertize line 'octocat-sync-prefetch
