@@ -5,7 +5,7 @@
 ;;; Commentary:
 
 ;; Run via:
-;;   eask test ert test/octocat-issue-tests.el
+;;   eldev test test/octocat-issue-tests.el
 
 ;;; Code:
 

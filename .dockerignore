@@ -1,3 +1,4 @@
 # Only what an image build reads: the Dockerfiles copy nothing else.
 *
-!Eask
+!Eldev
+!octocat.el

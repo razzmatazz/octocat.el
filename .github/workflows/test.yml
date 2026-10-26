@@ -34,11 +34,17 @@ jobs:
           cache-from: type=gha,scope=emacs-${{ matrix.emacs }}
           cache-to: type=gha,mode=max,scope=emacs-${{ matrix.emacs }}
 
-      - name: Cache Eask dependencies
+      # The dependencies are named by Eldev and octocat.el's
+      # Package-Requires header, not by the rest of octocat.el.
+      - name: Find the dependencies
+        id: deps
+        run: echo "hash=$(grep '^;; Package-Requires:' octocat.el | cat - Eldev | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Eldev dependencies
         uses: actions/cache@v4
         with:
-          path: .eask
-          key: eask-${{ matrix.emacs }}-${{ hashFiles('Eask') }}
+          path: .eldev
+          key: eldev-${{ matrix.emacs }}-${{ steps.deps.outputs.hash }}
 
       - name: Install dependencies
         run: make deps

@@ -6,7 +6,7 @@
 ;;; Commentary:
 
 ;; Tests for octocat-mermaid.el and its use by the markdown renderer.  Run via:
-;;   eask test ert test/octocat-mermaid-tests.el
+;;   eldev test test/octocat-mermaid-tests.el
 
 ;;; Code:
 

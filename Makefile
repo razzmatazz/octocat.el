@@ -9,7 +9,9 @@ ifeq ($(DOCKER),)
   $(error Neither docker nor podman found on PATH)
 endif
 
-RUN = $(DOCKER) run --rm -v "$(CURDIR)":/src -w /src $(IMAGE)
+# CI, as GitHub Actions sets it, turns on Eldev's retrying of failed
+# package archive fetches.
+RUN = $(DOCKER) run --rm -e CI -v "$(CURDIR)":/src -w /src $(IMAGE)
 
 .PHONY: ci ci-all image deps clean compile lint test screenshots
 
@@ -22,7 +24,7 @@ ci: clean
 	$(MAKE) -j3 compile lint test
 
 # ci on every release CI runs, at once: each has its own image, and its
-# own .eask/VERSION.  Each run's output goes to .ci/VERSION.log; a failed
+# own .eldev/VERSION.  Each run's output goes to .ci/VERSION.log; a failed
 # one's end is printed.
 ci-all:
 	@mkdir -p .ci
@@ -39,33 +41,33 @@ ci-all:
 image:
 	$(DOCKER) build --build-arg EMACS=$(EMACS) -t $(IMAGE) .
 
+# The linters too, as lint and test run at once, against the same .eldev.
 deps:
-	$(RUN) eask install-deps --dev
+	$(RUN) eldev prepare build test lint
 
 clean:
 	find . -maxdepth 1 -name '*.elc' -delete
 
 # Compile a copy, so the .elc files do not land next to the sources while
 # lint and test run alongside.  Only what compiling reads: copying .git
-# fails when git rewrites its index meanwhile.  The screenshot driver is
-# compiled too, but not run: that is `make screenshots'.
+# fails when git rewrites its index meanwhile.  The tests are compiled
+# too, and the screenshot driver, which only `make screenshots' runs.
 compile:
-	$(RUN) sh -c "mkdir -p /tmp/build/.eask \
-	  && cp -a /src/Eask /src/*.el /src/test /tmp/build \
-	  && cp -a /src/.eask/$(EMACS) /tmp/build/.eask \
-	  && cd /tmp/build && eask compile --strict \
-	  && eask compile --strict test/screenshots/fixtures.el test/screenshots/screenshots.el"
+	$(RUN) sh -c "mkdir -p /tmp/build/.eldev \
+	  && cp -a /src/Eldev /src/*.el /src/test /tmp/build \
+	  && cp -a /src/.eldev/$(EMACS) /tmp/build/.eldev \
+	  && cd /tmp/build && eldev compile --warnings-as-errors --set all"
 
-# checkdoc only prints its findings, so fail on any FILE:LINE: message.
+# checkdoc and package-lint, as the Eldev file says.
 lint:
-	$(RUN) sh -c 'eask lint checkdoc 2>&1 | tee /tmp/checkdoc.log && ! grep -E "\.el:[0-9]+: " /tmp/checkdoc.log > /dev/null && eask lint package'
+	$(RUN) eldev lint
 
-# Each eask start takes seconds, so the tests share one process, but for
-# the evil one, which must load octocat itself (see its Commentary).
+# The tests share one process, but for the evil one, which must load
+# octocat itself (see its Commentary).
 EVIL_TEST := test/octocat-evil-repo-tests.el
 
 test:
-	$(RUN) sh -c 'eask test ert $(EVIL_TEST) && eask test ert $(filter-out $(EVIL_TEST),$(wildcard test/*-tests.el))'
+	$(RUN) sh -c 'eldev test $(EVIL_TEST) && eldev test $(filter-out $(EVIL_TEST),$(wildcard test/*-tests.el))'
 
 SCREENSHOTS_IMAGE := octocat-screenshots
 

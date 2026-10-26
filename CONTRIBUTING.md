@@ -124,8 +124,8 @@ window in `save-excursion`.
 ### Dependencies
 
 Runtime dependencies are exactly those in the `Package-Requires` header of
-`octocat.el`, and the `Eask` file must list the same set.  Only call functions
-from declared dependencies.
+`octocat.el`, from which Eldev takes them too.  Only call functions from
+declared dependencies.
 
 `vui` comes from MELPA; `Package-Requires` declares `(vui "0.1")`.  Treat
 it as a young, fast-moving library: re-test when bumping it, and keep
@@ -155,9 +155,8 @@ binding, a command's name, a customisation) bumps the minor version, e.g.
 0.1.0 to 0.2.0, and a release with only fixes bumps the patch version, e.g.
 0.1.0 to 0.1.1.
 
-The version lives in two places, which must always agree: the `;; Version:`
-header of `octocat.el` and the version in `Eask`.  The other files carry no
-version of their own.
+The version lives only in the `;; Version:` header of `octocat.el`.  The
+other files carry no version of their own.
 
 ### Changelog
 
@@ -170,7 +169,7 @@ users, not for developers.
 ### Cutting a release
 
 1. Make sure CI is green on `main`.
-2. Bump the version in `octocat.el` and `Eask`.
+2. Bump the version in `octocat.el`.
 3. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`
    and add a fresh, empty `## [Unreleased]` above it.
 4. Commit this as `Release X.Y.Z`.

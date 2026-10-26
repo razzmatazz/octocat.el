@@ -28,11 +28,14 @@ FROM ubuntu:26.04
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      curl git ca-certificates unzip \
+      curl git ca-certificates \
       libgnutls30t64 libjansson4 libncurses6 libsqlite3-0 libxml2-16 zlib1g && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/emacs /opt/emacs
 ENV PATH="/opt/emacs/bin:/root/.local/bin:$PATH"
 
-RUN curl -fsSL https://raw.githubusercontent.com/emacs-eask/cli/master/webinstall/install.sh | sh
+# Eldev fetches itself on its first run, so that is done here, not on
+# every `docker run'.
+RUN curl -fsSL https://raw.githubusercontent.com/emacs-eldev/eldev/master/webinstall/eldev | sh && \
+    eldev --version

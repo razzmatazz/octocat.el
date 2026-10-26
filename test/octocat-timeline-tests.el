@@ -5,7 +5,7 @@
 ;;; Commentary:
 
 ;; Run via:
-;;   eask test ert test/octocat-timeline-tests.el
+;;   eldev test test/octocat-timeline-tests.el
 
 ;;; Code:
 

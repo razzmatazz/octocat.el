@@ -35,8 +35,9 @@
   (expand-file-name "../../" (file-name-directory (or load-file-name buffer-file-name)))
   "The octocat.el checkout.")
 
-;; The dependencies, as Eask would load them: the image's, else the checkout's.
-(let ((package-user-dir (expand-file-name (format ".eask/%s/elpa" emacs-version)
+;; The dependencies, as Eldev would load them: the image's, else the checkout's.
+(let ((package-user-dir (expand-file-name (format ".eldev/%s.%s/packages"
+                                                  emacs-major-version emacs-minor-version)
                                           (or (getenv "OCTOCAT_DEPS")
                                               octocat-screenshots-root))))
   (when (file-directory-p package-user-dir)

@@ -5,7 +5,7 @@
 ;;; Commentary:
 
 ;; Run via:
-;;   eask test ert test/octocat-image-tests.el
+;;   eldev test test/octocat-image-tests.el
 ;;
 ;; Batch Emacs cannot display images, so `display-images-p' and the
 ;; image itself are stubbed.

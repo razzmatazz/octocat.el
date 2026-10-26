@@ -26,7 +26,7 @@
 ;; Makefile runs this file in its own process, the others in another.
 ;;
 ;; Run via:
-;;   eask test ert test/octocat-evil-repo-tests.el
+;;   eldev test test/octocat-evil-repo-tests.el
 
 ;;; Code:
 
@@ -42,7 +42,7 @@
 (require 'octocat-repo)
 
 ;; NOTE: both phases below MUST live in a single `ert-deftest' body, in this
-;; order.  `eask test ert' fully loads this file -- executing every
+;; order.  `eldev test' fully loads this file -- executing every
 ;; top-level form -- before running any test.  A top-level `(require
 ;; 'octocat)' placed "between" two separate `ert-deftest' forms would
 ;; therefore already have executed by the time either test body runs,

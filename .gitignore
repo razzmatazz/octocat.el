@@ -1,3 +1,4 @@
-.eask/
+.eldev/
+Eldev-local
 *.elc
 .ci/

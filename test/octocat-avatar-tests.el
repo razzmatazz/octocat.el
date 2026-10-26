@@ -1,11 +1,12 @@
 ;;; octocat-avatar-tests.el --- ERT tests for octocat-avatar.el  -*- lexical-binding: t; -*-
 
 ;; Assisted-by: Claude:claude-sonnet-5-5
+;; Assisted-by: Claude:claude-opus-5-5
 
 ;;; Commentary:
 
 ;; Run via:
-;;   eask test ert test/octocat-avatar-tests.el
+;;   eldev test test/octocat-avatar-tests.el
 ;;
 ;; The fixtures are 16x16 images of four flat quadrants: red (top left),
 ;; green #20c040 (top right), blue #3050f0 (bottom left) and white

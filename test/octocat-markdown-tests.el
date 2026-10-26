@@ -7,7 +7,7 @@
 
 ;; Tests for octocat-markdown.el and the glue around it in octocat-core.el
 ;; and octocat-edit.el.  Run via:
-;;   eask test ert test/octocat-markdown-tests.el
+;;   eldev test test/octocat-markdown-tests.el
 
 ;;; Code:
 

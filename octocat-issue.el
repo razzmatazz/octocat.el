@@ -51,6 +51,9 @@
 (declare-function octocat-pr-open "octocat-pr" (repo number))
 (declare-function octocat-repo-vui--milestone "octocat-repo" (item))
 
+(defvar octocat--issue-repo)
+(defvar octocat--issue-number)
+
 
 ;;;; Edit / comment commands — submit helpers
 

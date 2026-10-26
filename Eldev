@@ -1,0 +1,22 @@
+; -*- mode: emacs-lisp; lexical-binding: t -*-
+
+;; The dependencies are those of `octocat.el''s Package-Requires header,
+;; from where users get them: GNU ELPA releases, MELPA snapshots.
+(eldev-use-package-archive 'gnu)
+(eldev-use-package-archive 'melpa-unstable)
+
+(setf eldev-project-main-file "octocat.el")
+
+;; evil is an optional runtime integration (see octocat-evil.el), so not in
+;; Package-Requires, but `test/octocat-evil-repo-tests.el' exercises the
+;; real Evil keymap machinery.
+(eldev-add-extra-dependencies '(build test) 'evil)
+
+(setf eldev-lint-default '(doc package))
+;; So `eldev prepare lint' installs it up front: `make ci' lints and tests
+;; at once, and a lint installing it meanwhile would race the test.
+(eldev-add-extra-dependencies 'lint 'package-lint)
+
+;; Every run rewrites .eldev/ever-initialized, and `make ci-all' runs
+;; several at once: with lock files, one would wait for good on another's.
+(setf create-lockfiles nil)

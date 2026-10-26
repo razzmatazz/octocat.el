@@ -5,7 +5,7 @@
 ;;; Commentary:
 
 ;; Run via:
-;;   eask test ert test/octocat-tree-tests.el
+;;   eldev test test/octocat-tree-tests.el
 
 ;;; Code:
 
@@ -48,8 +48,8 @@
 
 (defun octocat-tree-tests--mount-tree ()
   "List the root, tree \"rootsha\", of owner/repo here, as the repo page does.
-Moving into a directory is recorded in `octocat-tree-tests--visited'.  A listing not in the store is an error,
-so no gh call is made."
+Moving into a directory is recorded in `octocat-tree-tests--visited'.
+A listing not in the store is an error, so no gh call is made."
   (unless (derived-mode-p 'octocat-repo-mode)
     (octocat-repo-mode))
   (setq octocat-tree-tests--visited nil)

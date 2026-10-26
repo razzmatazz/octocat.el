@@ -463,10 +463,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for code conventions and guidelines.
 
 ### Compiling, linting and testing
 
-`make ci` byte-compiles every file, runs `checkdoc` and
+`make ci` byte-compiles every file, tests included, runs `checkdoc` and
 [`package-lint`](https://github.com/purcell/package-lint), and runs the ERT
 tests, all inside a Docker (or Podman) container based on Ubuntu 26.04, so
-no local Emacs install is required.
+no local Emacs install is required.  The targets run
+[Eldev](https://github.com/emacs-eldev/eldev), configured in `Eldev`; it
+takes the dependencies from the `Package-Requires` header of `octocat.el`
+and keeps them in `.eldev/VERSION/`.
 
 ```bash
 make ci
@@ -488,6 +491,13 @@ against any loaded function, while older releases check it only against
 callees that are already byte-compiled, so only 31 catches every call
 with the wrong number of arguments.
 
+With Eldev installed locally, its commands run against your own Emacs,
+without a container, which is quicker while working on a test.  For
+example, `eldev test core` runs the tests whose names contain `core`, and
+`eldev test :failed` reruns the ones that failed last time.  Run the evil
+test on its own, as `make test` does, since it must load octocat itself:
+`eldev test test/octocat-evil-repo-tests.el`.
+
 ### Screenshots
 
 `make screenshots` redraws [docs/screenshots](docs/screenshots/README.md)
@@ -500,7 +510,7 @@ See [Updating](docs/screenshots/README.md#updating) there to add a shot.
 
 GitHub Actions runs compile, lint and test on Emacs 29.1, 30.2 and 31.1
 on every push and pull request, caching the Docker layers (building Emacs
-takes minutes) and the Eask dependencies between runs.  See
+takes minutes) and the Eldev dependencies between runs.  See
 [`.github/workflows/test.yml`](.github/workflows/test.yml).
 
 ## License

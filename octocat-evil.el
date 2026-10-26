@@ -46,6 +46,7 @@
 (defvar octocat-repo-mode-map)
 (defvar octocat-user-mode-map)
 (declare-function octocat-user-browse "octocat-user" ())
+(declare-function octocat-search-repo "octocat-search" ())
 (defvar octocat-pr-list-mode-map)
 (defvar octocat-issue-list-mode-map)
 (defvar octocat-run-list-mode-map)
