@@ -32,6 +32,10 @@
   ;; As Emacs 31 declares it, so a value on the next line indents the
   ;; same on every release; before, it is 2, which indents it two more.
   (setf elisp-lint-indent-specs '((defvar-local . defun)))
+  ;; The indent check reindents the file's buffer, then diffs it with
+  ;; the file, which `make lint' mounts read-only.
+  (advice-add 'elisp-lint--indent :around
+              (lambda (indent) (let ((inhibit-read-only t)) (funcall indent))))
   ;; Indent as an Emacs with octocat and Evil loaded does, by their and
   ;; vui's `indent' declarations.
   (require 'evil)
