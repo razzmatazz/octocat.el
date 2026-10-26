@@ -34,9 +34,13 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/emacs /opt/emacs
-ENV PATH="/opt/emacs/bin:/root/.local/bin:$PATH"
+ENV PATH="/opt/emacs/bin:$PATH"
 
 # Eldev fetches itself on its first run, so that is done here, not on
-# every `docker run'.
+# every `docker run'.  Not in root's home: the checks run as the host's
+# user, see the Makefile.  A run's writes stay in its container.
+ENV ELDEV_DIR=/opt/eldev
 RUN curl -fsSL https://raw.githubusercontent.com/emacs-eldev/eldev/master/webinstall/eldev | sh && \
-    eldev --version
+    mv /root/.local/bin/eldev /usr/local/bin/ && \
+    eldev --version && \
+    chmod -R a+rwX /opt/eldev

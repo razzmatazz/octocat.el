@@ -468,6 +468,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for code conventions and guidelines.
 [`elisp-lint`](https://github.com/gonewest818/elisp-lint) and
 `check-declare`, and runs the ERT tests, all inside a Docker (or Podman)
 container based on Ubuntu 26.04, so no local Emacs install is required.
+Each container runs as your user, with no capabilities and no network but
+where it fetches dependencies, and sees the tree read-only, but for
+`.eldev/` (Eldev's packages and test results) and, for `make
+screenshots`, `docs/screenshots/`.
 elisp-lint checks that every line of the package's files is indented as
 stock Emacs indents it (with octocat, vui and Evil loaded, for their
 `indent` declarations), uses no tabs, has no trailing whitespace, and

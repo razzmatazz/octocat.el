@@ -9,9 +9,21 @@ ifeq ($(DOCKER),)
   $(error Neither docker nor podman found on PATH)
 endif
 
+# Every container runs as the host's user, with no capabilities nor
+# privileges to gain, and no network but where it fetches something.  The
+# tree is read-only but for what a check writes: .eldev, where Eldev keeps
+# the packages and test results.  Rootless podman's root is the host's
+# user already (`--userns=keep-id' races when several containers start).
+ROOTLESS := $(if $(findstring podman,$(DOCKER)),$(shell $(DOCKER) info --format '{{.Host.Security.Rootless}}' 2>/dev/null))
+CONTAINER_USER = $(if $(filter true,$(ROOTLESS)),,--user $$(id -u):$$(id -g))
+ISOLATED = --rm --cap-drop all --security-opt=no-new-privileges --pids-limit=200 \
+  $(CONTAINER_USER) -e HOME=/tmp
 # CI, as GitHub Actions sets it, turns on Eldev's retrying of failed
 # package archive fetches.
-RUN = $(DOCKER) run --rm -e CI -v "$(CURDIR)":/src -w /src $(IMAGE)
+RUN_ONLINE = $(DOCKER) run $(ISOLATED) -e CI \
+  -v "$(CURDIR)":/src:ro -v "$(CURDIR)/.eldev":/src/.eldev -w /src $(IMAGE)
+RUN = $(DOCKER) run $(ISOLATED) --network=none \
+  -v "$(CURDIR)":/src:ro -v "$(CURDIR)/.eldev":/src/.eldev -w /src $(IMAGE)
 
 .PHONY: ci ci-all image deps clean compile lint test melpazoid screenshots
 
@@ -51,7 +63,8 @@ image:
 
 # The linters too, as lint and test run at once, against the same .eldev.
 deps:
-	$(RUN) eldev prepare build test lint exec
+	@mkdir -p .eldev
+	$(RUN_ONLINE) eldev prepare build test lint exec
 
 clean:
 	find . -maxdepth 1 -name '*.elc' -delete
@@ -92,23 +105,19 @@ test:
 # -j, would warn of the jobserver.
 MELPAZOID_COMMIT := fcf5d883c6ced74ba16963d48c9e9e0bf0a1ff37
 MELPAZOID_RECIPE := (octocat :fetcher github :repo "razzmatazz/octocat.el")
-# As the host's user, as without capabilities root cannot write to its
-# directory; rootless podman maps the container's users to others.
-MELPAZOID_USER = $(if $(findstring podman,$(DOCKER)),--userns=keep-id,--user $$(id -u):$$(id -g))
 MELPAZOID_MAKE = MAKEFLAGS= MFLAGS= $(MAKE) -s -C .ci/melpazoid-build DOCKER="$(DOCKER)" \
   DOCKER_OUTPUT=--quiet PACKAGE_MAIN="$$(cat .ci/melpazoid-out/package-main)"
 
 melpazoid:
-	@if [ ! -d .ci/melpazoid/.git ]; then \
-	  git clone -q https://github.com/riscy/melpazoid .ci/melpazoid; fi
-	@git -C .ci/melpazoid cat-file -e $(MELPAZOID_COMMIT) 2>/dev/null \
-	  || git -C .ci/melpazoid fetch -q origin
-	@git -C .ci/melpazoid checkout -q $(MELPAZOID_COMMIT)
+	@mkdir -p .ci/melpazoid
+	@$(DOCKER) run $(ISOLATED) -v "$(CURDIR)/.ci/melpazoid:/melpazoid" -w /melpazoid $(IMAGE) \
+	  sh -c 'if [ ! -d .git ]; then git clone -q https://github.com/riscy/melpazoid .; fi; \
+	    git cat-file -e $(MELPAZOID_COMMIT) 2>/dev/null || git fetch -q origin; \
+	    git checkout -q $(MELPAZOID_COMMIT)'
 	@rm -rf .ci/melpazoid-src .ci/melpazoid-out .ci/melpazoid-build
 	@mkdir -p .ci/melpazoid-src/octocat .ci/melpazoid-out
 	@cp -p *.el LICENSE .ci/melpazoid-src/octocat
-	@$(DOCKER) run --rm --cap-drop all --security-opt=no-new-privileges --pids-limit=100 \
-	  $(MELPAZOID_USER) -e HOME=/tmp \
+	@$(DOCKER) run $(ISOLATED) \
 	  -v "$(CURDIR)/.ci/melpazoid:/melpazoid:ro" \
 	  -v "$(CURDIR)/.ci/melpazoid-src/octocat:/octocat:ro" \
 	  -v "$(CURDIR)/tools/melpazoid.py:/melpazoid-checks.py:ro" \
@@ -131,5 +140,6 @@ SCREENSHOTS_IMAGE := octocat-screenshots
 # Emacs failing to load it would wait for good.
 screenshots: compile
 	$(DOCKER) build -q -t $(SCREENSHOTS_IMAGE) -f test/screenshots/Dockerfile .
-	$(DOCKER) run --rm --init -v "$(CURDIR)":/src -w /src $(SCREENSHOTS_IMAGE) \
+	$(DOCKER) run $(ISOLATED) --init --network=none -v "$(CURDIR)":/src:ro \
+	  -v "$(CURDIR)/docs/screenshots":/src/docs/screenshots -w /src $(SCREENSHOTS_IMAGE) \
 	  test/screenshots/run.sh
