@@ -117,6 +117,35 @@
     (should (eq (get-text-property (1- (length entry)) 'octocat-timeline-target entry)
                 comment))))
 
+(ert-deftest octocat-timeline-test-reactions ()
+  "The post, comments and a PR's reviews show their reactions after the date."
+  (let* ((rg (lambda (content n)
+               (format "\"reactionGroups\":[{\"content\":\"%s\",\"users\":{\"totalCount\":%d}}]"
+                       content n)))
+         (pr (json-parse-string
+              (concat "{\"body\":\"b\",\"createdAt\":\"2026-01-01T10:00:00Z\","
+                      "\"author\":{\"login\":\"ann\"}," (funcall rg "HOORAY" 2) ","
+                      "\"comments\":[{\"author\":{\"login\":\"bob\"},\"body\":\"c\","
+                      "\"createdAt\":\"2026-01-02T10:00:00Z\"," (funcall rg "EYES" 1) "}],"
+                      "\"reviews\":[{\"author\":{\"login\":\"cy\"},\"body\":\"r\","
+                      "\"state\":\"APPROVED\",\"submittedAt\":\"2026-01-03T10:00:00Z\","
+                      (funcall rg "ROCKET" 4) "}]}")))
+         (items (octocat-pr--items "o/r" pr nil nil)))
+    (should (equal (mapcar (lambda (i) (substring-no-properties (plist-get i :reactions)))
+                           items)
+                   '("🎉 2" "👀 1" "🚀 4")))
+    (let ((heading (car (split-string (substring-no-properties
+                                       (octocat-timeline--entry-string (car items) t 80))
+                                      "\n"))))
+      (should (string-match-p "opened this pull request  .*  🎉 2\\'" heading))))
+  ;; None: the heading ends at the date.
+  (should-not (string-match-p
+               "[[:space:]]\n" (substring-no-properties
+                                 (octocat-timeline--entry-string
+                                  (list :time "2026-01-04T10:00:00Z" :kind 'comment
+                                        :actor "@bob" :verb "commented" :body "hi")
+                                  t 80)))))
+
 (ert-deftest octocat-timeline-test-event-line-wraps ()
   "An event line wider than WIDTH breaks, hung under its actor on the rail."
   (let ((entry (substring-no-properties

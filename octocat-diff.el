@@ -97,11 +97,13 @@ Its body is markdown, rendered unless RAW, to fit WIDTH columns."
          (body   (string-trim (or (gethash "body" comment) "")))
          (date   (octocat--format-ts-relative
                   (or (octocat--nonempty (gethash "created_at" comment)) "")))
+         (reactions (octocat--reactions-string comment))
          (bar    (propertize "  │ " 'face 'octocat-dimmed)))
     (append
      (list (concat (propertize "  ┌─ " 'face 'octocat-dimmed)
                    (propertize author 'face 'octocat-pr-author)
-                   (propertize (concat "  " date) 'face 'octocat-dimmed)))
+                   (propertize (concat "  " date) 'face 'octocat-dimmed)
+                   (if reactions (concat "  " reactions) "")))
      (if (string-empty-p body)
          (list (concat bar (propertize "(empty)" 'face 'octocat-dimmed)))
        (list (string-remove-suffix

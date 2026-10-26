@@ -25,3 +25,8 @@ Files (3)  [Expand all]
 ▸ A src/cache.rs  +18 -0
 ▸ M src/build.rs  +5 -2
 ▸ M src/main.rs  +1 -0
+
+Comments (1)
+  ┌─ @pnair  4 hours ago  🎉 2
+  │ Released in 0.10: the docs site builds in 2s now.
+  └─

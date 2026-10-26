@@ -12,6 +12,21 @@
 (require 'ert)
 (require 'octocat)
 
+(ert-deftest octocat-core-test-reactions ()
+  "Reactions read from `gh' and from REST, in GitHub's order, none left out."
+  (let ((gh (json-parse-string
+             (concat "{\"reactionGroups\":[{\"content\":\"HEART\",\"users\":{\"totalCount\":1}},"
+                     "{\"content\":\"THUMBS_UP\",\"users\":{\"totalCount\":3}},"
+                     "{\"content\":\"EYES\",\"users\":{\"totalCount\":0}}]}")))
+        (rest (json-parse-string
+               "{\"reactions\":{\"total_count\":2,\"+1\":0,\"rocket\":2,\"url\":\"\"}}")))
+    (should (equal (octocat--reaction-counts gh) '(("👍" . 3) ("❤️" . 1))))
+    (should (equal (octocat--reaction-counts rest) '(("🚀" . 2))))
+    (should (equal (substring-no-properties (octocat--reactions-string gh)) "👍 3  ❤️ 1"))
+    (should-not (octocat--reactions-string (json-parse-string "{\"reactionGroups\":[]}")))
+    (should-not (octocat--reactions-string (json-parse-string "{\"reactionGroups\":null}")))
+    (should-not (octocat--reactions-string (json-parse-string "{}")))))
+
 (ert-deftest octocat-core-test-settings ()
   "Settings survive a reload of the file; nil removes one."
   (let* ((dir (make-temp-file "octocat-settings" t))

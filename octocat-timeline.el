@@ -48,6 +48,8 @@
 ;;            the edit and browse commands read at point
 ;;   :pending what is being done to a box, such as "posting…", shown
 ;;            behind a spinner in place of its date
+;;   :reactions  a box's reactions, from `octocat--reactions-string',
+;;            shown after its date
 ;;   :on-visit  function to call when RET is pressed on a single line
 ;;   :help    its `help-echo'
 ;;
@@ -201,7 +203,8 @@ PR's reviews and commits."
                        :body (or (octocat--get obj "body") "")
                        :empty "(no description)"
                        :target 'body
-                       :pending (octocat--get obj octocat-timeline--pending)))
+                       :pending (octocat--get obj octocat-timeline--pending)
+                       :reactions (octocat--reactions-string obj)))
            (mapcar (lambda (comment)
                      (list :time (or (gethash "createdAt" comment) "")
                            :kind 'comment
@@ -210,7 +213,8 @@ PR's reviews and commits."
                            :body (or (gethash "body" comment) "")
                            :empty "(empty)"
                            :target comment
-                           :pending (octocat--get comment octocat-timeline--pending)))
+                           :pending (octocat--get comment octocat-timeline--pending)
+                           :reactions (octocat--reactions-string comment)))
                    (octocat--get obj "comments"))
            extra
            (if events
@@ -447,6 +451,9 @@ under its actor.  The text carries ITEM's target in the
               (concat bullet " " actor " "
                       (propertize (plist-get item :verb) 'face 'octocat-dimmed)
                       "  " date
+                      (if-let* ((reactions (plist-get item :reactions)))
+                          (concat "  " reactions)
+                        "")
                       (cond
                        ((not (string-empty-p (string-trim body)))
                         (concat "\n" (string-remove-suffix

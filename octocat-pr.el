@@ -707,7 +707,7 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                                           "changedFiles,"
                                           "labels,reviewDecision,reviews,"
                                           "comments,statusCheckRollup,url,commits,"
-                                          "assignees,milestone,latestReviews,"
+                                          "assignees,milestone,latestReviews,reactionGroups,"
                                           "reviewRequests,closingIssuesReferences"))
                    (lambda (output) (json-parse-string (string-trim output)))
                    callback))
@@ -804,7 +804,8 @@ the CI status."
                      ("DISMISSED"         "had a review dismissed")
                      (_                   "reviewed"))
              :body (or (octocat--get review "body") "")
-             :state (downcase state))))
+             :state (downcase state)
+             :reactions (octocat--reactions-string review))))
    (or (octocat--get pr "reviews") [])))
 
 (defun octocat-pr--items (repo pr events bg)

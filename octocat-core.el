@@ -622,6 +622,40 @@ Treats the JSON null sentinel `:null' and empty strings as absent values."
        (not (string-empty-p value))
        value))
 
+(defconst octocat--reactions
+  '(("THUMBS_UP" "+1" "👍") ("THUMBS_DOWN" "-1" "👎") ("LAUGH" "laugh" "😄")
+    ("HOORAY" "hooray" "🎉") ("CONFUSED" "confused" "😕") ("HEART" "heart" "❤️")
+    ("ROCKET" "rocket" "🚀") ("EYES" "eyes" "👀"))
+  "GitHub's reactions, in the order it shows them.
+Each is (CONTENT KEY EMOJI): its name in GraphQL and in the REST API.")
+
+(defun octocat--reaction-counts (obj)
+  "Return the reactions to OBJ as ((EMOJI . COUNT) ...), in GitHub's order.
+OBJ is an issue, PR, comment or review from `gh ... view', which has
+\"reactionGroups\", or a comment from the REST API, which has
+\"reactions\".  Reactions nobody gave are left out."
+  (let ((groups (octocat--get obj "reactionGroups"))
+        (rest   (octocat--get obj "reactions")))
+    (delq nil
+          (mapcar (pcase-lambda (`(,content ,key ,emoji))
+                    (let ((n (if (hash-table-p rest)
+                                 (gethash key rest)
+                               (seq-some (lambda (g)
+                                           (and (equal (octocat--get g "content") content)
+                                                (octocat--get g "users" "totalCount")))
+                                         (and (sequencep groups) groups)))))
+                      (and (natnump n) (> n 0) (cons emoji n))))
+                  octocat--reactions))))
+
+(defun octocat--reactions-string (obj)
+  "Return the reactions to OBJ as \"👍 2  🎉 1\", or nil when it has none.
+OBJ is as for `octocat--reaction-counts'."
+  (when-let* ((counts (octocat--reaction-counts obj)))
+    (mapconcat (lambda (c)
+                 (concat (car c) " "
+                         (propertize (number-to-string (cdr c)) 'face 'octocat-dimmed)))
+               counts "  ")))
+
 (defun octocat--run-icon (status conclusion)
   "Return a propertized status icon for STATUS and CONCLUSION strings.
 STATUS takes priority over CONCLUSION for in-progress detection."

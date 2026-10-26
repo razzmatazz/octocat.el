@@ -5,7 +5,7 @@ open    Assignees @srivera · Labels  performance
         template-cache → main · Approved · Milestone 0.10 · Closes #97
 
 Conversation  [Commits (2)]  [Files changed (3)]
-● @srivera opened this pull request  2 days ago
+● @srivera opened this pull request  2 days ago  👍 4  🚀 2
 │ Templates were parsed again for every page, which is most of the build time on large sites.  This
 │ keeps each parsed template in a cache keyed by its path and modification time.
 │
@@ -18,7 +18,7 @@ Conversation  [Commits (2)]  [Files changed (3)]
 ○ @srivera added the  performance  label, added this to the 0.10 milestone, requested a review from
 │ @jlindqvist and self-assigned this  1 day ago
 │
-● @pnair commented  1 day ago
+● @pnair commented  1 day ago  🎉 3
 │ Tried it on our docs site: 9.4s → 2.0s here too.  Lovely.
 │
 ○ @srivera changed the title Template cache → Cache parsed templates between builds  1 day ago
@@ -31,7 +31,7 @@ Conversation  [Commits (2)]  [Files changed (3)]
 │
 ○ @srivera committed 8ee9a2c Invalidate a template when one it includes changes  1 day ago  CI: ✓
 │
-● @mchen approved these changes  5 hours ago
+● @mchen approved these changes  5 hours ago  ❤️ 1
 │
 [+ Add a comment]   [Close pull request]
 

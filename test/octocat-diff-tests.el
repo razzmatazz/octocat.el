@@ -40,6 +40,13 @@
     (should (equal (nth 1 (octocat-diff--comment-lines c nil 80)) "  │ hi"))
     (should (equal (nth 1 (octocat-diff--comment-lines c t 80)) "  │ **hi**"))))
 
+(ert-deftest octocat-diff-test-comment-reactions ()
+  "An inline comment's reactions follow the date in its heading."
+  (let ((c (json-parse-string
+            (concat "{\"user\":{\"login\":\"me\"},\"body\":\"hi\",\"created_at\":\"\","
+                    "\"reactions\":{\"total_count\":1,\"heart\":1}}"))))
+    (should (string-suffix-p "  ❤️ 1" (car (octocat-diff--comment-lines c nil 80))))))
+
 (ert-deftest octocat-diff-test-comments-section ()
   "General comments are boxed; inline ones only counted.
 The comments come as a sync snapshot."

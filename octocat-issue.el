@@ -277,7 +277,7 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
                          "--repo" repo
                          "--json" (concat "number,title,author,state,body,"
                                           "createdAt,closedAt,"
-                                          "labels,comments,url,assignees,milestone,"
+                                          "labels,comments,url,assignees,milestone,reactionGroups,"
                                           "closedByPullRequestsReferences"))
                    (lambda (output) (json-parse-string (string-trim output)))
                    callback))

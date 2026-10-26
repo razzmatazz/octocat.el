@@ -51,6 +51,11 @@
     :html_url ,(format "https://github.com/%s" login)
     ,@(and name (list :name name))))
 
+(defun octocat-screenshots--reactions (&rest counts)
+  "Return COUNTS, alternating GraphQL content and count, as `gh' gives them."
+  (vconcat (seq-map (pcase-lambda (`(,content ,n)) `(:content ,content :users (:totalCount ,n)))
+                    (seq-partition counts 2))))
+
 (defun octocat-screenshots--label (name color)
   "Return label NAME of COLOR, a hex string."
   `(:name ,name :color ,color :description ""))
@@ -282,19 +287,22 @@ TITLE, AUTHOR and AGO are its own; FIELDS, a plist, override the rest."
       :url "https://github.com/acme/rocket/pull/128"
       :labels [,(assoc-default "performance" octocat-screenshots--label-colors)]
       :reviewDecision "APPROVED"
+      :reactionGroups ,(octocat-screenshots--reactions "THUMBS_UP" 4 "ROCKET" 2)
       :body "Templates were parsed again for every page, which is most of the build time on large sites.  This keeps each parsed template in a cache keyed by its path and modification time.
 
 On the docs site (1,200 pages) a build goes from 9.8s to 2.1s.
 
 Closes #97"
       :comments [(:id "IC_1" :author (:login "pnair") :createdAt ,(octocat-screenshots--ago (+ d (* 20 h)))
-                  :body "Tried it on our docs site: 9.4s → 2.0s here too.  Lovely." :url "")
+                  :body "Tried it on our docs site: 9.4s → 2.0s here too.  Lovely." :url ""
+                  :reactionGroups ,(octocat-screenshots--reactions "HOORAY" 3))
                  (:id "IC_2" :author (:login "mchen") :createdAt ,(octocat-screenshots--ago (+ d (* 2 h)))
                   :body "Does the cache notice a template that includes another one which changed?" :url "")
                  (:id "IC_3" :author (:login "srivera") :createdAt ,(octocat-screenshots--ago (+ d h))
                   :body "It does now: an entry also keeps the times of the templates it includes.  Added a test for it." :url "")]
       :reviews [(:id "R_1" :author (:login "mchen") :state "APPROVED" :body ""
-                 :submittedAt ,(octocat-screenshots--ago (* 5 h)))]
+                 :submittedAt ,(octocat-screenshots--ago (* 5 h))
+                 :reactionGroups ,(octocat-screenshots--reactions "HEART" 1))]
       :latestReviews [(:id "R_1" :author (:login "mchen") :state "APPROVED" :body ""
                        :submittedAt ,(octocat-screenshots--ago (* 5 h)))]
       :reviewRequests [(:__typename "User" :login "jlindqvist")]
@@ -384,7 +392,8 @@ Closes #97"
   `[(:id 501 :path "src/cache.rs" :line 16 :original_line 16 :side "RIGHT" :position 16
      :diff_hunk "@@ -0,0 +1,18 @@" :commit_id ,octocat-screenshots--pr-head
      :user ,(octocat-screenshots--user "mchen") :created_at ,(octocat-screenshots--ago (* 30 octocat-screenshots--h))
-     :body "Comparing modification times is enough here: a build never runs while a template is half written.")]
+     :body "Comparing modification times is enough here: a build never runs while a template is half written."
+     :reactions (:total_count 1 :+1 1 :-1 0 :laugh 0 :hooray 0 :confused 0 :heart 0 :rocket 0 :eyes 0))]
   "The review comments of pull request #128.")
 
 ;;;; Issue #97
@@ -400,6 +409,7 @@ Closes #97"
       :milestone (:number 4 :title "0.10" :description "" :dueOn :null)
       :closedByPullRequestsReferences [(:number 128 :url "https://github.com/acme/rocket/pull/128"
                                         :repository (:name "rocket" :owner (:login "acme")))]
+      :reactionGroups ,(octocat-screenshots--reactions "THUMBS_UP" 7 "EYES" 1)
       :body "Our docs site has about 1,200 pages and `rocket build` takes almost 10 seconds.
 
 Profiling it, most of the time goes to `Template::parse`, which runs once per page even though there are only 6 templates.
@@ -412,7 +422,8 @@ Profiling it, most of the time goes to `Template::parse`, which runs once per pa
       :comments [(:id "IC_10" :author (:login "srivera") :createdAt ,(octocat-screenshots--ago (* 8 d))
                   :body "Confirmed.  Parsing each template once per build should fix most of it; I'll take this." :url "")
                  (:id "IC_11" :author (:login "kwong") :createdAt ,(octocat-screenshots--ago (+ (* 7 d) (* 3 h)))
-                  :body "Same here with a 600-page blog: 5.5s." :url "")]))
+                  :body "Same here with a 600-page blog: 5.5s." :url ""
+                  :reactionGroups ,(octocat-screenshots--reactions "THUMBS_UP" 2))]))
   "Issue #97, as `gh issue view' gives it.")
 
 (defconst octocat-screenshots--issue-97-events
@@ -708,7 +719,11 @@ FIELDS, a plist, override the rest."
                      ,(octocat-screenshots--check-run 27100200311 "test (stable)" "success" (* 6 h) 6)
                      ,(octocat-screenshots--check-run 27100200312 "test (beta)" "success" (* 6 h) 7)
                      ,(octocat-screenshots--check-run 27100200313 "docs" "success" (* 6 h) 3)]))
-      ("commit-comments" () [])
+      ("commit-comments" ()
+       [(:id 701 :path :null :line :null :position :null
+         :user ,(octocat-screenshots--user "pnair") :created_at ,(octocat-screenshots--ago (* 4 h))
+         :body "Released in 0.10: the docs site builds in 2s now."
+         :reactions (:total_count 2 :+1 0 :-1 0 :laugh 0 :hooray 2 :confused 0 :heart 0 :rocket 0 :eyes 0))])
       ("commit-branch" () (:data (:repository (:defaultBranchRef (:name "main" :compare (:status "BEHIND"))))))
 
       ;; Actions

@@ -2,7 +2,7 @@ acme/rocket#97  Builds of large sites are slow: templates are parsed for every p
 open    Assignees @srivera · Labels  performance
         #128 · Milestone 0.10 · Fixed by #128
 
-● @pnair opened this issue  1 week ago
+● @pnair opened this issue  1 week ago  👍 7  👀 1
 │ Our docs site has about 1,200 pages and rocket build takes almost 10 seconds.
 │
 │ Profiling it, most of the time goes to Template::parse, which runs once per page even though there
@@ -19,7 +19,7 @@ open    Assignees @srivera · Labels  performance
 ○ @srivera added the  performance  label, self-assigned this and added this to the 0.10 milestone  1
 │ week ago
 │
-● @kwong commented  1 week ago
+● @kwong commented  1 week ago  👍 2
 │ Same here with a 600-page blog: 5.5s.
 │
 ○ @srivera mentioned this in #128 Cache parsed templates between builds  2 days ago
