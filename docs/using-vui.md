@@ -96,7 +96,9 @@ shows it before GitHub answers.  While it runs, the snapshot's
 `:mutating` holds its label under its slot, such as `merge`, and the
 page draws it there: in the merge box, or in place of the buttons.  On success the change is stored and the resources it made
 outdated (its timeline, the lists it may leave) are refetched if on
-screen; on failure it is dropped.
+screen; on failure it is dropped and what it acts on refetched.  A
+change to a page's own data, such as its comments, is an `:edits`
+function of the resource's body instead.
 
 List rows name what they open in an `octocat-sync-prefetch` text
 property.  When point rests on a row for `octocat-sync-prefetch-delay`,

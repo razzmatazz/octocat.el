@@ -648,11 +648,12 @@ any dialog at once and show the action on the page itself, as
 github.com does.
 
 Every such action is a sync **mutation** (`octocat-sync-define-mutation`).
-One whose result is known, such as a rename, closing or marking a draft
-ready, is **optimistic**: the change shows at once on every page that
+One whose result is known, such as a rename, closing, marking a draft
+ready or posting a comment, is **optimistic**: the change shows at once on every page that
 shows the item, and is undone if GitHub refuses it.  Every mutation
 shows **in progress** where it acts until GitHub answers, then the pages
-refetch what it changed; on failure the error goes to the echo area.
+refetch what it changed; on failure the error goes to the echo area
+and the pages refetch, as GitHub may have made the change anyway.
 
 A mutation names its **slot**, where its page draws it.  The page reads
 it from its snapshot's `:mutating`, so a refresh (`g`) while it runs

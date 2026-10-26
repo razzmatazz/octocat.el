@@ -410,6 +410,60 @@ retry, and never once cancelled."
           (funcall (nth 0 sent) nil)
           (should (equal (title) "Two")))))))
 
+(defmacro octocat-sync-tests--with-edit (&rest body)
+  "Run BODY with resource (thing 1) stored and mutation `add' defined.
+`add' appends \"N?\" to its \"items\" while it runs, and what GitHub
+answers once it is accepted.  Its sends are pushed to `sent', and the
+keys invalidated set `invalidated'; `items' and `stored' read the
+items as pages see them and as stored."
+  (declare (indent 0))
+  `(octocat-sync-tests--with-sync
+     (let ((sent nil) (invalidated nil))
+       (add-hook 'octocat-sync-invalidate-functions (lambda (keys) (setq invalidated keys)))
+       (octocat-sync-define-mutation add (n)
+         :label "Adding…"
+         :resources (lambda () '((thing 1)))
+         :edits (lambda (answered answer)
+                  (list (cons '(thing 1)
+                              (lambda (data)
+                                (puthash "items"
+                                         (vconcat (gethash "items" data)
+                                                  (vector (if answered answer (format "%s?" n))))
+                                         data)
+                                data))))
+         :send (lambda (done) (push done sent)))
+       (octocat-sync--write octocat-sync--db "(thing 1)"
+                            (octocat-sync-tests--table "items" ["a"]) (float-time))
+       (cl-flet ((items () (gethash "items" (plist-get (octocat-sync-read '(thing 1)) :data)))
+                 (stored () (gethash "items" (car (octocat-sync--read octocat-sync--db
+                                                                       "(thing 1)")))))
+         ,@body))))
+
+(ert-deftest octocat-sync-test-mutation-edits ()
+  "A resource edit shows at once, unstored; on success GitHub's answer is stored."
+  (octocat-sync-tests--with-edit
+    (octocat-sync-submit '(add "b"))
+    (should (equal (items) ["a" "b?"]))
+    (should (member "(thing 1)" (car notified)))
+    (should (equal (stored) ["a"]))
+    (funcall (car sent) "b")
+    (should (equal (items) ["a" "b"]))
+    (should (equal (stored) ["a" "b"]))
+    (should-not invalidated)))
+
+(ert-deftest octocat-sync-test-mutation-failure-refetches ()
+  "A failed mutation drops its edit and outdates what it acts on.
+GitHub may have made the change anyway, so the page refetches it."
+  (octocat-sync-tests--with-edit
+    (octocat-sync-submit '(add "b"))
+    (should-not (octocat-sync--wanted-p '(thing 1) nil))
+    (let ((inhibit-message t))
+      (funcall (car sent) '(error . "nope")))
+    (should (equal (items) ["a"]))
+    (should (equal (stored) ["a"]))
+    (should (equal invalidated '("(thing 1)")))
+    (should (octocat-sync--wanted-p '(thing 1) nil))))
+
 (ert-deftest octocat-sync-test-failed-gh-stops-loading ()
   "A `gh' that hangs past the timeout, or is missing, ends the loading.
 The resource keeps the error, and the fetch's slot is free again."

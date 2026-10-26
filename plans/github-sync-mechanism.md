@@ -455,8 +455,11 @@ process start-up show as lag, only this function changes.
 - **On failure**, the overlay is dropped, so pages show the old values
   again.  The error goes to the echo area, and a draft stays open in its
   `octocat-edit` buffer.
-- Mutations with no sensible prediction (adding a comment, merging)
-  leave `:optimistic` out; they show only `:mutating`.
+- A change to what is no entity's, such as a new comment, is given by
+  `:edits`, functions changing a resource's body, applied on read; on
+  success they get GitHub's answer, and what they give is written.
+- Mutations with no sensible prediction (merging) leave `:optimistic`
+  out; they show only `:mutating`.
 - Two pending mutations on one field apply in submit order; a failed
   one drops only its own overlay entry.
 

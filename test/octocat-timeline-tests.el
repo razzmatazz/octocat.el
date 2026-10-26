@@ -273,5 +273,113 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
       (octocat-timeline-edit-values "issue" "o/r" 3 "assignee"))
     (should (equal submitted '(edit-values "issue" "o/r" 3 "assignee" ("cy") ("ann"))))))
 
+(defconst octocat-timeline-tests--mine-json
+  (concat "{\"number\":7,\"state\":\"OPEN\",\"body\":\"opening\","
+          "\"createdAt\":\"2026-01-01T10:00:00Z\",\"author\":{\"login\":\"me\"},\"labels\":[],"
+          "\"comments\":[{\"author\":{\"login\":\"me\"},\"body\":\"mine\","
+          "\"createdAt\":\"2026-01-02T10:00:00Z\",\"viewerDidAuthor\":true,"
+          "\"url\":\"https://github.com/o/r/issues/7#issuecomment-5\"}]}")
+  "An open issue by \"me\", with one comment of mine.")
+
+(defmacro octocat-timeline-tests--with-issue (&rest body)
+  "Run BODY with issue o/r#7 of `octocat-timeline-tests--mine-json' stored.
+The viewer is \"me\".  `gh' is not run: each call is pushed to `calls'
+as (ARGS PARSE CALLBACK).  `issue' reads the issue as its page does."
+  (declare (indent 0))
+  `(let ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
+         (octocat-sync--pending nil)
+         (octocat-sync-change-functions nil)
+         (octocat-sync-invalidate-functions nil)
+         (calls nil))
+     (octocat-sync--write octocat-sync--db (octocat-sync-spec-key '(issue "o/r" 7))
+                          (octocat-sync-detail
+                           (json-parse-string octocat-timeline-tests--mine-json) '("comments")
+                           (lambda (f) (octocat-sync-item 'issue "o/r" f)))
+                          (float-time))
+     (octocat-sync--write octocat-sync--db (octocat-sync-spec-key '(viewer))
+                          (let ((h (make-hash-table :test #'equal))) (puthash "login" "me" h) h)
+                          (float-time))
+     (cl-letf (((symbol-function 'octocat--run-gh)
+                (lambda (_name args parse callback) (push (list args parse callback) calls))))
+       (cl-flet ((issue () (octocat-sync-detail-read '(issue "o/r" 7))))
+         ,@body))))
+
+(defun octocat-timeline-tests--answer (call output)
+  "Answer the `gh' CALL with OUTPUT, what it printed or (error . MESSAGE).
+CALL is as `octocat-timeline-tests--with-issue' pushes it."
+  (funcall (nth 2 call) (if (stringp output) (funcall (nth 1 call) output) output)))
+
+(ert-deftest octocat-timeline-test-post-comment ()
+  "A comment shows at once, behind a spinner, and GitHub's takes its place."
+  (octocat-timeline-tests--with-issue
+    (octocat-sync-submit '(comment "issue" "o/r" 7 "new"))
+    (should (equal (car (car calls))
+                   '("api" "repos/o/r/issues/7/comments" "-f" "body=new")))
+    (let* ((items (octocat-timeline-items (issue) "opened this issue" nil nil))
+           (new   (car (last items))))
+      (should (= (length items) 3))
+      (should (equal (plist-get new :actor) "@me"))
+      (should (equal (plist-get new :body) "new"))
+      (should (equal (plist-get new :pending) "posting…"))
+      (with-temp-buffer
+        (let ((entry (octocat-timeline--entry-string new nil 80)))
+          (should (string-match-p "@me commented  . posting…" (substring-no-properties entry)))
+          (should (text-property-any 0 (length entry) 'octocat-vui-spinner t entry)))))
+    ;; Not stored before GitHub accepts it.
+    (should (= (length (gethash "comments"
+                                (car (octocat-sync--read octocat-sync--db
+                                                         "(issue \"o/r\" 7)"))))
+               1))
+    (octocat-timeline-tests--answer
+     (car calls)
+     (concat "{\"id\":9,\"node_id\":\"IC_9\",\"user\":{\"login\":\"me\"},\"body\":\"new\","
+             "\"created_at\":\"2026-01-05T10:00:00Z\",\"author_association\":\"OWNER\","
+             "\"html_url\":\"https://github.com/o/r/issues/7#issuecomment-9\"}"))
+    (let ((comments (gethash "comments" (issue))))
+      (should (= (length comments) 2))
+      (should (equal (octocat--comment-numeric-id (aref comments 1)) "9"))
+      (should (equal (gethash "createdAt" (aref comments 1)) "2026-01-05T10:00:00Z"))
+      (should-not (gethash octocat-timeline--pending (aref comments 1))))
+    ;; Stored as GitHub has it, so the refetch finds no gap to fill.
+    (should (= (length (gethash "comments"
+                                (car (octocat-sync--read octocat-sync--db
+                                                         "(issue \"o/r\" 7)"))))
+               2))))
+
+(ert-deftest octocat-timeline-test-post-comment-failure ()
+  "A comment GitHub refused is gone again, and the page refetched."
+  (octocat-timeline-tests--with-issue
+    (octocat-sync-submit '(comment "issue" "o/r" 7 "new"))
+    (should (= (length (gethash "comments" (issue))) 2))
+    (let ((inhibit-message t))
+      (octocat-timeline-tests--answer (car calls) '(error . "boom")))
+    (should (= (length (gethash "comments" (issue))) 1))
+    (should-not (plist-get (octocat-sync-read '(issue "o/r" 7)) :mutating))
+    (should (plist-get (octocat-sync-read '(issue "o/r" 7)) :outdated))))
+
+(ert-deftest octocat-timeline-test-edit-comment ()
+  "An edited comment shows its new body at once, behind a spinner."
+  (octocat-timeline-tests--with-issue
+    (octocat-sync-submit '(edit-comment "issue" "o/r" 7 "5" "changed"))
+    (let ((comment (aref (gethash "comments" (issue)) 0)))
+      (should (equal (gethash "body" comment) "changed"))
+      (should (equal (gethash octocat-timeline--pending comment) "saving…")))
+    (octocat-timeline-tests--answer (car calls) "{}")
+    (let ((comment (aref (gethash "comments" (issue)) 0)))
+      (should (equal (gethash "body" comment) "changed"))
+      (should-not (gethash octocat-timeline--pending comment)))))
+
+(ert-deftest octocat-timeline-test-edit-body ()
+  "An edited opening post shows its new body at once, behind a spinner."
+  (octocat-timeline-tests--with-issue
+    (octocat-sync-submit '(edit-body "issue" "o/r" 7 "new body"))
+    (let ((post (car (octocat-timeline-items (issue) "opened this issue" nil nil))))
+      (should (equal (plist-get post :body) "new body"))
+      (should (equal (plist-get post :pending) "saving…")))
+    (octocat-timeline-tests--answer (car calls) "")
+    (let ((post (car (octocat-timeline-items (issue) "opened this issue" nil nil))))
+      (should (equal (plist-get post :body) "new body"))
+      (should-not (plist-get post :pending)))))
+
 (provide 'octocat-timeline-tests)
 ;;; octocat-timeline-tests.el ends here

@@ -94,6 +94,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (unless (and octocat--issue-repo octocat--issue-number)
     (user-error "Octocat: Buffer is not associated with an issue"))
   (octocat-timeline-ensure-idle (list 'issue octocat--issue-repo octocat--issue-number))
+  (octocat-timeline-prepare-comment)
   (octocat--open-edit-buffer
    (format "New comment on issue #%d" octocat--issue-number)
    #'octocat-issue--submit-comment
@@ -144,9 +145,10 @@ On a field such as Labels: pick its values."
              (body       (octocat--nonempty (gethash "body" target))))
         (unless authored
           (user-error "Octocat: You can't edit someone else's comment"))
+        ;; A comment being posted has no URL yet.
+        (octocat-timeline-ensure-idle (list 'issue octocat--issue-repo octocat--issue-number))
         (unless comment-id
           (user-error "Octocat: Could not determine comment ID from URL"))
-        (octocat-timeline-ensure-idle (list 'issue octocat--issue-repo octocat--issue-number))
         (octocat--open-edit-buffer
          (format "Edit comment on issue #%d" octocat--issue-number)
          #'octocat-issue--submit-edit-comment

@@ -46,6 +46,8 @@
 ;;   :state   event name or review state, picks the colour of the bullet
 ;;   :target  value of the `octocat-timeline-target' text property, which
 ;;            the edit and browse commands read at point
+;;   :pending what is being done to a box, such as "posting…", shown
+;;            behind a spinner in place of its date
 ;;   :on-visit  function to call when RET is pressed on a single line
 ;;   :help    its `help-echo'
 ;;
@@ -96,6 +98,10 @@ not known; SNAPSHOT is the `timeline-events' resource's, as from
 
 
 ;;;; Model
+
+(defconst octocat-timeline--pending "octocatPending"
+  "Key of what is being done to a comment, or to an item's opening post.
+Only the edits of a pending mutation set it, so it is never stored.")
 
 (defun octocat-timeline--actor (event)
   "Return \"@LOGIN\" for the actor of timeline EVENT, or \"\"."
@@ -194,7 +200,8 @@ PR's reviews and commits."
                        :verb post-verb
                        :body (or (octocat--get obj "body") "")
                        :empty "(no description)"
-                       :target 'body))
+                       :target 'body
+                       :pending (octocat--get obj octocat-timeline--pending)))
            (mapcar (lambda (comment)
                      (list :time (or (gethash "createdAt" comment) "")
                            :kind 'comment
@@ -202,7 +209,8 @@ PR's reviews and commits."
                            :verb "commented"
                            :body (or (gethash "body" comment) "")
                            :empty "(empty)"
-                           :target comment))
+                           :target comment
+                           :pending (octocat--get comment octocat-timeline--pending)))
                    (octocat--get obj "comments"))
            extra
            (if events
@@ -417,8 +425,10 @@ under its actor.  The text carries ITEM's target in the
 `octocat-timeline-target' property."
   (let* ((line  (memq (plist-get item :kind) '(event commit)))
          (actor (propertize (plist-get item :actor) 'face 'octocat-pr-author))
-         (date  (propertize (octocat--format-ts-relative (plist-get item :time))
-                            'face 'octocat-dimmed))
+         (date  (if-let* ((pending (plist-get item :pending)))
+                    (concat (octocat-vui-spinner) " " (propertize pending 'face 'octocat-dimmed))
+                  (propertize (octocat--format-ts-relative (plist-get item :time))
+                              'face 'octocat-dimmed)))
          (bullet (propertize (if line "○" "●")
                              'face (octocat-timeline--bullet-face (plist-get item :state))))
          (text
@@ -583,6 +593,79 @@ lost."
   "Return the spec of the page resource of issue or PR (KIND) NUMBER of REPO."
   (list (if (equal kind "pr") 'pr 'issue) repo number))
 
+;; The login a comment being posted shows as its author.
+(octocat-sync-define-resource viewer ()
+  :max-age 86400
+  :fetch (lambda (done)
+           (octocat--run-gh "viewer" (list "api" "user")
+                            (lambda (output)
+                              (let ((user (json-parse-string (string-trim output)))
+                                    (tree (make-hash-table :test #'equal)))
+                                (puthash "login" (gethash "login" user) tree)
+                                tree))
+                            done)))
+
+(defun octocat-timeline-prepare-comment ()
+  "Fetch your login, for a comment being posted, unless the store has it."
+  (octocat-sync-request '(viewer)))
+
+(defun octocat-timeline--pending-comment (body login now)
+  "Return the comment of BODY being posted by LOGIN (or nil) at NOW.
+NOW is an ISO 8601 time.  It has no id or URL until GitHub answers."
+  (let ((comment (make-hash-table :test #'equal))
+        (author  (make-hash-table :test #'equal)))
+    (puthash "login" login author)
+    (puthash "author" (and login author) comment)
+    (puthash "body" body comment)
+    (puthash "createdAt" now comment)
+    (puthash "viewerDidAuthor" t comment)
+    (puthash octocat-timeline--pending "posting…" comment)
+    comment))
+
+(defun octocat-timeline--rest-comment (comment)
+  "Return COMMENT, from GitHub's REST API, in the fields `gh ... view' gives."
+  (let ((h      (make-hash-table :test #'equal))
+        (author (make-hash-table :test #'equal)))
+    (puthash "login" (octocat--get comment "user" "login") author)
+    (puthash "id" (octocat--get comment "node_id") h)
+    (puthash "author" author h)
+    (puthash "authorAssociation" (octocat--get comment "author_association") h)
+    (puthash "body" (or (octocat--get comment "body") "") h)
+    (puthash "createdAt" (octocat--get comment "created_at") h)
+    (puthash "url" (octocat--get comment "html_url") h)
+    (puthash "viewerDidAuthor" t h)
+    h))
+
+(defun octocat-timeline--put-comment (data comment)
+  "Return DATA, a page resource's body, with COMMENT added to its comments.
+A comment of the same id, as a refetch may already have, is replaced."
+  (let* ((id       (gethash "id" comment))
+         (comments (append (gethash "comments" data) nil))
+         (old      (and id (seq-find (lambda (c) (equal (gethash "id" c) id)) comments))))
+    (puthash "comments"
+             (vconcat (if old
+                          (mapcar (lambda (c) (if (eq c old) comment c)) comments)
+                        (append comments (list comment))))
+             data)
+    data))
+
+(defun octocat-timeline--set-comment-body (data comment-id body pending)
+  "Return DATA, a page resource's body, with comment COMMENT-ID's BODY set.
+COMMENT-ID is the numeric REST id.  PENDING, if non-nil, is shown as
+what is being done to it, such as \"saving…\"."
+  (puthash "comments"
+           (cl-map 'vector
+                   (lambda (c)
+                     (if (not (equal (octocat--comment-numeric-id c) comment-id))
+                         c
+                       (let ((c (copy-hash-table c)))
+                         (puthash "body" body c)
+                         (when pending (puthash octocat-timeline--pending pending c))
+                         c)))
+                   (gethash "comments" data))
+           data)
+  data)
+
 (octocat-sync-define-mutation set-state (kind verb repo number)
   :label (format "%s %s…" (if (equal verb "close") "Closing" "Reopening")
                  (if (equal kind "pr") "pull request" "issue"))
@@ -618,11 +701,25 @@ lost."
 (octocat-sync-define-mutation comment (kind repo number body)
   :label "Posting comment…"
   :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
+  ;; GitHub answers with the comment, which takes the place of the one
+  ;; shown, so it is never gone in between.
+  :edits (lambda (answered answer)
+           (let ((comment
+                  (if answered
+                      (octocat-timeline--rest-comment answer)
+                    (octocat-timeline--pending-comment
+                     body
+                     (octocat--get (plist-get (octocat-sync-read '(viewer)) :data) "login")
+                     (format-time-string "%Y-%m-%dT%H:%M:%SZ" nil t)))))
+             (list (cons (octocat-timeline--detail-spec kind repo number)
+                         (lambda (data) (octocat-timeline--put-comment data comment))))))
   :send (lambda (done)
           (octocat--run-gh "comment"
-                           (list kind "comment" (number-to-string number) "--repo" repo
-                                 "--body" body)
-                           #'ignore done))
+                           (list "api" (format "repos/%s/issues/%d/comments" repo number)
+                                 "-f" (concat "body=" body))
+                           (lambda (output) (json-parse-string (string-trim output)))
+                           done))
+  ;; The comment count, on the entity.
   :invalidates (lambda () (list (octocat-timeline--detail-spec kind repo number))))
 
 (octocat-sync-define-mutation edit-body (kind repo number body)
@@ -631,6 +728,13 @@ lost."
   :optimistic (lambda ()
                 `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
                    ("body" . ,body))))
+  ;; Only the spinner: the body is the entity's.
+  :edits (lambda (answered _)
+           (unless answered
+             (list (cons (octocat-timeline--detail-spec kind repo number)
+                         (lambda (data)
+                           (puthash octocat-timeline--pending "saving…" data)
+                           data)))))
   :send (lambda (done)
           (octocat--run-gh "edit-body"
                            (list kind "edit" (number-to-string number) "--repo" repo
@@ -640,13 +744,16 @@ lost."
 (octocat-sync-define-mutation edit-comment (kind repo number comment-id body)
   :label "Saving comment…"
   :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
+  :edits (lambda (answered _)
+           (list (cons (octocat-timeline--detail-spec kind repo number)
+                       (lambda (data)
+                         (octocat-timeline--set-comment-body
+                          data comment-id body (unless answered "saving…"))))))
   :send (lambda (done)
           (octocat--run-gh "edit-comment"
                            (list "api" (format "repos/%s/issues/comments/%s" repo comment-id)
                                  "--method" "PATCH" "-f" (format "body=%s" body))
-                           #'ignore done))
-  ;; The comments are the page resource's, not an entity's.
-  :invalidates (lambda () (list (octocat-timeline--detail-spec kind repo number))))
+                           #'ignore done)))
 
 (octocat-sync-define-mutation edit-values (kind repo number flag add remove)
   :label (format "Saving %ss…" flag)

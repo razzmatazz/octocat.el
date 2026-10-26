@@ -30,8 +30,9 @@
 ;; leaving {"__ref": KEY} in the resource's body.  Reading puts the
 ;; entity's fields back in place of each ref.
 ;;
-;; A mutation changes the entities it will change at once, in memory,
-;; and writes them once GitHub accepts it; see "Mutations" below.
+;; A mutation changes the entities and resources it will change at
+;; once, in memory, and writes them once GitHub accepts it; see
+;; "Mutations" below.
 ;;
 ;; Still to come, from the plan: retry delays and collection.
 
@@ -401,10 +402,12 @@ cycle ends in nil."
     (octocat-sync--map-tree (lambda (v) (octocat-sync--resolve v entities db seen overlays))
                             value)))
 
-(defun octocat-sync--read (db key &optional overlays)
+(defun octocat-sync--read (db key &optional overlays edits)
   "Return resource KEY of DB as (DATA FETCHED-AT ERROR KIND OUTDATED), or nil.
 KIND is the error's, a symbol; OUTDATED is when it was marked outdated.
-OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read."
+OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read,
+and EDITS, a list of (KEY . FUNCTION), change the body of KEY (see
+`octocat-sync-define-mutation')."
   (when-let* ((row (car (sqlite-select
                          db "SELECT body, fetched_at, error, error_kind, invalidated_at
                              FROM resource WHERE key = ?"
@@ -417,12 +420,22 @@ OVERLAYS, as for `octocat-sync--overlay', change entities' fields as read."
                                     (list key)))
         (puthash k (octocat-sync--overlay (octocat-sync--parse fields) k overlays) entities))
       (list (and (nth 0 row)
-                 (octocat-sync--resolve (octocat-sync--parse (nth 0 row))
+                 (octocat-sync--resolve (octocat-sync--edit (octocat-sync--parse (nth 0 row))
+                                                            key edits)
                                         entities db nil overlays))
             (nth 1 row)
             (nth 2 row)
             (and (nth 3 row) (intern (nth 3 row)))
             (nth 4 row)))))
+
+(defun octocat-sync--edit (body key edits)
+  "Return BODY, the stored body of resource KEY, with EDITS applied in order.
+EDITS is a list of (KEY . FUNCTION); each FUNCTION of KEY returns the
+body it is given, changed.  BODY may be changed."
+  (dolist (edit edits)
+    (when (equal (car edit) key)
+      (setq body (funcall (cdr edit) body))))
+  body)
 
 (defun octocat-sync--linked (db entities)
   "Return the keys of the resources in DB linked to any of ENTITIES."
@@ -540,7 +553,7 @@ of the pending mutations of SPEC, see `octocat-sync-define-mutation'."
   (let ((key (octocat-sync-spec-key spec))
         (db  (octocat-sync--db)))
     (pcase-let ((`(,data ,fetched-at ,error ,kind ,outdated)
-                 (octocat-sync--read db key (octocat-sync--overlays))))
+                 (octocat-sync--read db key (octocat-sync--overlays) (octocat-sync--edits))))
       (list :data data
             :partial (and (null data)
                           (when-let* ((entity (plist-get (octocat-sync--props spec) :entity)))
@@ -825,14 +838,17 @@ when no other prefetch runs."
 ;; A mutation's optimistic change is an overlay in memory that reads
 ;; apply over the stored fields, so every page showing the entity shows
 ;; it at once.  It is never written to SQLite before GitHub accepts it.
+;; A change to what is no entity's, such as an issue's comments, is an
+;; edit of a resource's body instead, applied the same way.
 
 (defvar octocat-sync--mutations (make-hash-table :test #'eq)
   "Mutation name to a function of the spec's arguments returning its plist.")
 
 (defvar octocat-sync--pending nil
   "Mutations sent and not yet answered, oldest first.
-Each is a plist (:changes ALIST :resources KEYS :label LABEL :slot SLOT),
-where ALIST holds (ENTITY-KEY . FIELDS).")
+Each is a plist (:changes ALIST :edits EDITS :resources KEYS :specs SPECS
+:label LABEL :slot SLOT), where ALIST holds (ENTITY-KEY . FIELDS), EDITS
+\(RESOURCE-KEY . FUNCTION) and SPECS the specs of KEYS.")
 
 (defmacro octocat-sync-define-mutation (name args &rest props)
   "Define the mutation NAME, whose spec is (NAME . ARGS).
@@ -845,8 +861,14 @@ PROPS are evaluated with ARGS bound:
               it runs;
 :optimistic   optional, a function returning a list of (ENTITY-KEY .
               FIELDS), FIELDS an alist of the values it will set;
-:send         a function of DONE that sends it and calls DONE with nil,
-              or with (error . MESSAGE);
+:edits        optional, a function of ANSWERED and ANSWER returning a
+              list of (SPEC . FUNCTION): FUNCTION returns the stored
+              body of resource SPEC, entities left as refs, changed; it
+              must add no entity.  ANSWERED is nil for the change shown
+              while it runs, and t for the one written, ANSWER then
+              being what GitHub answered;
+:send         a function of DONE that sends it and calls DONE with
+              GitHub's answer, or with (error . MESSAGE);
 :invalidates  optional, a function returning the specs, `_' matching
               anything, of resources it makes outdated."
   (declare (indent 2))
@@ -855,6 +877,10 @@ PROPS are evaluated with ARGS bound:
 (defun octocat-sync--overlays ()
   "Return the optimistic overlays of the pending mutations, in order."
   (mapcan (lambda (m) (copy-sequence (plist-get m :changes))) octocat-sync--pending))
+
+(defun octocat-sync--edits ()
+  "Return the resource edits of the pending mutations, in order."
+  (mapcan (lambda (m) (copy-sequence (plist-get m :edits))) octocat-sync--pending))
 
 (defun octocat-sync--mutating (key)
   "Return the pending mutations of resource KEY as an alist (SLOT . LABEL).
@@ -866,16 +892,23 @@ The newest of a slot comes first."
 (defun octocat-sync--touched (db mutation)
   "Return the keys of the resources in DB that MUTATION is visible on."
   (delete-dups (append (plist-get mutation :resources)
+                       (mapcar #'car (plist-get mutation :edits))
                        (octocat-sync--linked db (mapcar #'car (plist-get mutation :changes))))))
+
+(defun octocat-sync--keyed (edits)
+  "Return EDITS, a list of (SPEC . FUNCTION), keyed by store key instead."
+  (mapcar (lambda (e) (cons (octocat-sync-spec-key (car e)) (cdr e))) edits))
 
 (defun octocat-sync-submit (spec &optional on-done)
   "Send the mutation SPEC, applying its optimistic change at once.
-ON-DONE, if given, is called with nil on success, or (error . MESSAGE).
-On failure the change is dropped and the error shown in the echo area."
+ON-DONE, if given, is called with GitHub's answer, or (error . MESSAGE).
+On failure the change is dropped, the error shown in the echo area, and
+the resources it acts on refetched: GitHub may have made it anyway."
   (let* ((props (apply (or (gethash (car spec) octocat-sync--mutations)
                            (error "Octocat: Unknown mutation `%s'" (car spec)))
                        (cdr spec)))
          (db    (octocat-sync--db))
+         (specs (and (plist-get props :resources) (funcall (plist-get props :resources))))
          (mutation
           (list :changes (mapcar (lambda (change)
                                    (let ((fields (make-hash-table :test #'equal)))
@@ -884,9 +917,10 @@ On failure the change is dropped and the error shown in the echo area."
                                      (cons (car change) fields)))
                                  (and (plist-get props :optimistic)
                                       (funcall (plist-get props :optimistic))))
-                :resources (mapcar #'octocat-sync-spec-key
-                                   (and (plist-get props :resources)
-                                        (funcall (plist-get props :resources))))
+                :edits (and (plist-get props :edits)
+                            (octocat-sync--keyed (funcall (plist-get props :edits) nil nil)))
+                :resources (mapcar #'octocat-sync-spec-key specs)
+                :specs specs
                 :label (plist-get props :label)
                 :slot (or (plist-get props :slot) 'action))))
     (setq octocat-sync--pending (append octocat-sync--pending (list mutation)))
@@ -895,14 +929,17 @@ On failure the change is dropped and the error shown in the echo area."
              (lambda (result)
                (octocat-sync--answered
                 mutation result
+                (and (plist-get props :edits) (not (eq (car-safe result) 'error))
+                     (octocat-sync--keyed (funcall (plist-get props :edits) t result)))
                 (and (plist-get props :invalidates)
                      (funcall (plist-get props :invalidates))))
                (when on-done (funcall on-done result))))))
 
-(defun octocat-sync--answered (mutation result patterns)
+(defun octocat-sync--answered (mutation result edits patterns)
   "Settle MUTATION once GitHub answered RESULT; outdate PATTERNS on success.
-On success its changes are written to the store, as GitHub now has
-them."
+On success its changes, and EDITS, a list of (KEY . FUNCTION) as
+`octocat-sync--edit' takes, are written to the store, as GitHub now has
+them.  On failure the resources it acts on are outdated instead."
   (let ((db (octocat-sync--db)))
     (setq octocat-sync--pending (delq mutation octocat-sync--pending))
     (if (eq (car-safe result) 'error)
@@ -913,11 +950,19 @@ them."
             (pcase-dolist (`(,key . ,fields) (plist-get mutation :changes))
               (when-let* ((type (caar (sqlite-select db "SELECT type FROM entity WHERE key = ?"
                                                      (list key)))))
-                (octocat-sync--merge db key (intern type) fields (float-time)))))
+                (octocat-sync--merge db key (intern type) fields (float-time))))
+            (dolist (key (delete-dups (mapcar #'car edits)))
+              (when-let* ((body (caar (sqlite-select db "SELECT body FROM resource WHERE key = ?"
+                                                     (list key)))))
+                (let ((json (octocat-sync--json
+                             (octocat-sync--edit (octocat-sync--parse body) key edits))))
+                  (sqlite-execute db "UPDATE resource SET body = ?, hash = ? WHERE key = ?"
+                                  (list json (secure-hash 'sha1 json) key))))))
         (error (octocat--debug-log "sync mutation write failed" (error-message-string err)))))
     (octocat-sync--notify (octocat-sync--touched db mutation))
-    (unless (eq (car-safe result) 'error)
-      (octocat-sync--invalidate db patterns))))
+    (octocat-sync--invalidate db (if (eq (car-safe result) 'error)
+                                     (plist-get mutation :specs)
+                                   patterns))))
 
 
 ;;;; GitHub entities

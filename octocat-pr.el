@@ -132,6 +132,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (unless (and octocat--pr-repo octocat--pr-number)
     (user-error "Octocat: Buffer is not associated with a pull request"))
   (octocat-timeline-ensure-idle (list 'pr octocat--pr-repo octocat--pr-number))
+  (octocat-timeline-prepare-comment)
   (octocat--open-edit-buffer
    (format "New comment on PR #%d" octocat--pr-number)
    #'octocat-pr--submit-comment
@@ -182,9 +183,10 @@ On a field such as Labels: pick its values."
              (body       (octocat--nonempty (gethash "body" target))))
         (unless authored
           (user-error "Octocat: You can't edit someone else's comment"))
+        ;; A comment being posted has no URL yet.
+        (octocat-timeline-ensure-idle (list 'pr octocat--pr-repo octocat--pr-number))
         (unless comment-id
           (user-error "Octocat: Could not determine comment ID from URL"))
-        (octocat-timeline-ensure-idle (list 'pr octocat--pr-repo octocat--pr-number))
         (octocat--open-edit-buffer
          (format "Edit comment on PR #%d" octocat--pr-number)
          #'octocat-pr--submit-edit-comment

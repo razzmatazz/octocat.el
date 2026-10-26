@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* New and edited comments and descriptions show at once, with a spinner until saved
 * Expanding a long comment no longer scrolls the window; RET still folds it back
 * octocat passes melpazoid, the checks of MELPA's review, which `make ci` now runs
 * A workflow's runs are listed as on the run list; `octocat-workflow-runs-limit` is gone
