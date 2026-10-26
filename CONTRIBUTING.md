@@ -77,10 +77,10 @@ run and job detail views (`octocat-pr-mode`, `octocat-issue-mode`,
 `octocat-job-mode`; PR diff, commit and compare share `octocat-diff.el`), the tree browser and the commits page
 (`octocat-tree-mode`, `octocat-commits-mode`, in `octocat-repo.el`), the file viewer and file log (`octocat-tree.el`,
 `octocat-file-mode`, `octocat-file-log-mode`) and the PR and issue list
-pages and the Actions page (`octocat-pr-list-mode`,
-`octocat-issue-list-mode`, defined next to the matching detail views, and
-`octocat-actions-mode` in `octocat-actions.el`; all derive from
-`octocat-vui-list-mode`).  The issue and PR views are GitHub-style
+pages and the Actions pages (`octocat-pr-list-mode`,
+`octocat-issue-list-mode`, `octocat-run-list-mode` and
+`octocat-workflow-list-mode`, defined next to the matching detail
+views; all derive from `octocat-vui-list-mode`).  The issue and PR views are GitHub-style
 timelines of the opening post, comments and events; what point is on is
 carried by a text property (e.g. `octocat-issue-target`).  The repo
 overview is a dashboard of independent sections, each reading its own

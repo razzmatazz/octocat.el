@@ -23,9 +23,10 @@
 ;;; Commentary:
 
 ;; A GitHub Actions workflow run: `octocat-run-mode', a vui.el page
-;; opened from a workflow, the Actions page or a check.  It shows the
-;; run's metadata, its jobs (RET opens one, see octocat-job.el), its
-;; artifacts and the annotations of all its jobs.
+;; opened from a workflow, the run list or a check.  It shows the run's
+;; metadata, its jobs (RET opens one, see octocat-job.el), its artifacts
+;; and the annotations of all its jobs.  Also the run list,
+;; `octocat-run-list-mode', the first page of the Actions tab.
 ;;
 ;; Depends on octocat-core.el.  Must not depend on octocat.el to avoid a
 ;; circular require.
@@ -39,6 +40,8 @@
 (require 'vui)
 
 (declare-function octocat-workflow-open "octocat-workflow" (repo id name path))
+(declare-function octocat-run-list      "octocat" (&optional repo))
+(declare-function octocat-workflow-list "octocat" (&optional repo))
 
 
 
@@ -333,6 +336,302 @@ content up until the fresh data arrives, for following a running job."
     (setq octocat--run-repo repo
           octocat--run-id   run-id)
     (octocat-run-refresh)))
+
+;;;; Run list
+;;
+;; `octocat-run-list-mode': a repository's recent runs across all its
+;; workflows, as GitHub's Actions tab, filtered by a query.  A tab row
+;; under the header leads to the workflow list (octocat-workflow.el),
+;; whose workflow pages list their runs with the same section,
+;; `octocat-run-list--runs'.
+
+(defcustom octocat-run-list-page-size 30
+  "Number of runs the run list and a workflow's page show, and load, at a time."
+  :type 'integer
+  :group 'octocat)
+
+(defun octocat-run--list-runs (repo limit callback &optional args)
+  "Fetch the LIMIT most recent workflow run entries across all workflows in REPO.
+ARGS are more `gh run list' options, filtering the runs, such as
+\\=(\"--branch\" \"main\").  Call CALLBACK with a list of run hash-tables
+\(each including a \\='workflowName\\=' key), or a cons \\=(error . MSG) on
+failure."
+  (octocat--run-gh
+   "recent-runs"
+   (append
+    (list "run" "list"
+          "--repo"  repo
+          "--limit" (number-to-string limit)
+          "--json"  (concat "databaseId,displayTitle,status,conclusion,createdAt,"
+                            "headBranch,workflowName,workflowDatabaseId"))
+    args)
+   #'octocat--parse-json-list
+   callback))
+
+(octocat-sync-define-resource runs (repo limit args)
+  ;; ARGS are `gh run list' options filtering the runs.
+  :fetch (lambda (done)
+           (octocat-run--list-runs
+            repo limit
+            (lambda (r)
+              (funcall done (if (eq (car-safe r) 'error)
+                                r
+                              (let ((tree (make-hash-table :test #'equal)))
+                                (puthash "nodes" (vconcat (mapcar (lambda (run) (octocat-sync-run repo run))
+                                                                  r))
+                                         tree)
+                                tree))))
+            args)))
+
+;;;; Run list filters
+;;
+;; The runs are filtered by a query of qualifiers, edited as a PR list's
+;; (see "List filters" in octocat-vui.el).  `gh run list' takes no search
+;; query, only one option per qualifier, so each becomes its option; a
+;; repeated qualifier keeps its last value, as gh would.
+
+(defconst octocat-run-list--qualifiers
+  '(("branch:"   . "--branch")
+    ("status:"   . "--status")
+    ("workflow:" . "--workflow")
+    ("actor:"    . "--user")
+    ("event:"    . "--event")
+    ("commit:"   . "--commit"))
+  "Run query qualifiers and the `gh run list' option each becomes.")
+
+(defconst octocat-run-list--statuses
+  '("success" "failure" "in_progress" "queued" "completed" "cancelled"
+    "skipped" "timed_out" "action_required" "waiting" "pending"
+    "requested" "neutral" "stale" "startup_failure")
+  "Values `gh run list --status' takes, the common ones first.")
+
+(defun octocat-run-list--args (query)
+  "Return the `gh run list' options of QUERY, and its other tokens.
+That is (ARGS . IGNORED): ARGS a list of options and values, IGNORED the
+tokens of QUERY that are no qualifier of `octocat-run-list--qualifiers'."
+  (let (opts ignored)
+    (dolist (token (octocat-vui-list--tokenize (or query "")))
+      (if-let* ((q (seq-find (lambda (q) (string-prefix-p (car q) token))
+                             octocat-run-list--qualifiers))
+                (value (string-replace "\"" "" (substring token (length (car q)))))
+                ((not (string-empty-p value))))
+          (setf (alist-get (cdr q) opts nil nil #'equal) value)
+        (push token ignored)))
+    (cons (mapcan (lambda (o) (list (car o) (cdr o))) (nreverse opts))
+          (nreverse ignored))))
+
+(defun octocat-run-list--static-candidates (values)
+  "Return a fetch function of `octocat-vui-list--edit-facet' giving VALUES."
+  (lambda (_repo callback) (funcall callback values)))
+
+(defun octocat-run-list-filter-branch ()
+  "Filter by the branch of a run."
+  (interactive)
+  (octocat-vui-list--edit-facet "branch:" "Branch" nil #'octocat--list-branches nil))
+
+(defun octocat-run-list-filter-status ()
+  "Filter by the status or conclusion of a run."
+  (interactive)
+  (octocat-vui-list--edit-facet
+   "status:" "Status" nil
+   (octocat-run-list--static-candidates octocat-run-list--statuses) nil))
+
+(defun octocat-run-list-filter-workflow ()
+  "Filter by the workflow of a run."
+  (interactive)
+  (octocat-vui-list--edit-facet "workflow:" "Workflow" nil
+                                (octocat-vui-list--stored
+                                 'workflows (lambda (wf) (gethash "name" wf)))
+                                nil))
+
+(defun octocat-run-list-filter-actor ()
+  "Filter by who triggered a run."
+  (interactive)
+  (octocat-vui-list--edit-facet "actor:" "Actor" nil #'octocat--list-people nil))
+
+(defun octocat-run-list--filter-setup ()
+  "Give the current list buffer the filter of the run list."
+  (setq-local octocat-vui-list--states octocat-run-list--statuses
+              octocat-vui-list--default-query ""
+              octocat-vui-list--qualifiers
+              (append (mapcar #'car octocat-run-list--qualifiers)
+                      (mapcar (lambda (s) (concat "status:" s))
+                              octocat-run-list--statuses)
+                      '("event:push" "event:pull_request" "event:schedule"
+                        "event:workflow_dispatch"))
+              octocat-vui-list--facets
+              '(("Branch"   . octocat-run-list-filter-branch)
+                ("Status"   . octocat-run-list-filter-status)
+                ("Workflow" . octocat-run-list-filter-workflow)
+                ("Actor"    . octocat-run-list-filter-actor))))
+
+;;;; Run list page
+
+(defconst octocat-run-list--title-min-width 24
+  "Narrowest title column of a run row.")
+
+(defun octocat-run-list--title-width (runs width wf-w &optional branch-w)
+  "Return the title column's width, that of the longest title.
+The titles are those of RUNS.  It is at least
+`octocat-run-list--title-min-width', and at most what WIDTH columns
+leave beside the other columns of `octocat-run-list--row', the
+workflow name WF-W wide, or none when nil, and the branch BRANCH-W."
+  (let ((rest (+ (or branch-w octocat-branch-max-width) 2 11 2 (if wf-w (+ wf-w 2) 0)
+                 1 2 2 1
+                 (apply #'max 0 (mapcar (lambda (r)
+                                          (string-width (octocat--format-ts-relative
+                                                         (or (gethash "createdAt" r) ""))))
+                                        runs)))))
+    (max octocat-run-list--title-min-width
+         (min (- width rest)
+              (apply #'max 0 (mapcar (lambda (r) (string-width (or (gethash "displayTitle" r) "")))
+                                     runs))))))
+
+(defun octocat-run-list--row (repo run current-branch wf-w &optional title-w branch-w)
+  "Return a RET-able row for RUN of REPO, laid out as on GitHub.
+CURRENT-BRANCH, when non-nil, highlights a matching run branch.  WF-W
+is the width to cut or pad the workflow name to, nil for no workflow
+column, as on a workflow's own page.  TITLE-W is that of the title,
+`octocat-title-width' by default, and BRANCH-W that of the branch,
+`octocat-branch-max-width' by default."
+  (let* ((run-id     (or (gethash "databaseId" run) 0))
+         (status     (downcase (or (gethash "status" run) "")))
+         (conclusion (let ((c (gethash "conclusion" run)))
+                       (and (octocat--nonempty c) (downcase c))))
+         (branch     (or (gethash "headBranch" run) ""))
+         (branch-w   (or branch-w octocat-branch-max-width))
+         (name       (truncate-string-to-width branch branch-w nil nil "…")))
+    (octocat-vui-row
+     (propertize
+      ;; GitHub's order: what the run is about first, then where.
+      (concat
+       (octocat--run-icon status conclusion)
+       "  "
+       (octocat--format-title (or (gethash "displayTitle" run) "") title-w)
+       "  "
+       (when wf-w
+         (concat (propertize (truncate-string-to-width
+                              (or (gethash "workflowName" run) "") wf-w nil ?\s "…")
+                             'face 'octocat-dimmed)
+                 "  "))
+       (propertize (format "%-11s" (number-to-string run-id)) 'face 'octocat-pr-number)
+       "  "
+       (propertize name 'face (if (and current-branch (string= branch current-branch))
+                                  'octocat-branch-current
+                                'octocat-branch))
+       (make-string (- branch-w (string-width name)) ?\s)
+       "  "
+       (propertize (octocat--format-ts-relative (or (gethash "createdAt" run) ""))
+                   'face 'octocat-dimmed))
+      'octocat-sync-prefetch `((run ,repo ,run-id) (run-artifacts ,repo ,run-id)))
+     (lambda () (octocat-run-open repo run-id))
+     "RET: open workflow run")))
+
+(vui-defcomponent octocat-run-list--runs (repo current-branch tick query workflow)
+  "The recent runs of REPO matching QUERY, laid out as GitHub lists them.
+See `octocat-run-list--args' for QUERY.  WORKFLOW, an ID or file
+name, keeps to that workflow's runs, as on its own page, and leaves the
+workflow column out.  TICK is the page's refresh tick."
+  :state ((limit octocat-run-list-page-size))
+  :render
+  (let* ((size    octocat-run-list-page-size)
+         (parsed  (octocat-run-list--args query))
+         (args    (append (car parsed)
+                          (and workflow (list "--workflow" (format "%s" workflow)))))
+         (snap    (octocat-vui-use-resource (list 'runs repo limit args) tick))
+         (shown   (vui-use-ref nil))
+         (data    (plist-get snap :data))
+         (loading (plist-get snap :loading)))
+    ;; Each limit is its own resource: keep the shorter list while the
+    ;; longer one loads.
+    (when data (setcar shown (append (gethash "nodes" data) nil)))
+    (pcase (if (car shown) 'ready (octocat-vui-snapshot-status snap))
+       ('pending (vui-text (octocat-vui-line-skeleton)))
+       ('error   (vui-text (concat (octocat-vui-error-text snap) "\n") :face 'octocat-dimmed))
+       ('ready
+        (let* ((runs (car shown))
+               (wf-w (cond (workflow nil)
+                           (runs (min 25 (apply #'max 1
+                                                (mapcar (lambda (r)
+                                                          (length (or (gethash "workflowName" r) "")))
+                                                        runs))))
+                           (t 1)))
+               (branch-w (octocat--branch-column-width runs "headBranch"))
+               (title-w (octocat-run-list--title-width
+                         runs (octocat-vui-window-width) wf-w branch-w)))
+          (vui-fragment
+           (when (cdr parsed)
+             (vui-text (format "Ignored, not a run filter: %s\n"
+                               (string-join (cdr parsed) " "))
+                       :face 'octocat-dimmed))
+           (if (null runs)
+               (vui-text (if (car parsed)
+                             "(no workflow runs match the filters)\n"
+                           "(no workflow runs)\n")
+                         :face 'octocat-dimmed)
+             (octocat-vui-reveal-list
+              runs
+              (lambda (r)
+                (octocat-run-list--row
+                 repo r current-branch wf-w title-w branch-w))
+              (lambda (r) (gethash "databaseId" r))))
+           (when (and runs (or (>= (length runs) limit)
+                               (and loading (> limit size))))
+             (octocat-vui-load-more-button
+              'load-more-runs size
+              "RET: load more runs"
+              (lambda () (vui-set-state :limit (+ limit size)))
+              (and loading (< (length runs) limit)) 0
+              (octocat-vui-line-skeleton)))))))))
+
+(defun octocat-run-list--tab-row (repo current workflows)
+  "Return the tab row of REPO's Actions pages.
+CURRENT is the page shown, `runs' or `workflows'; the other tab opens
+its page.  WORKFLOWS, their sync snapshot, gives their count."
+  (let ((count (and (plist-get workflows :data) (length (plist-get workflows :data)))))
+    (octocat-vui-tab-row
+     (list (list "Runs" "RET: list the recent runs"
+                 (unless (eq current 'runs) (lambda () (octocat-run-list repo))))
+           (list (if count (format "Workflows (%d)" count) "Workflows")
+                 "RET: list the workflows"
+                 (unless (eq current 'workflows) (lambda () (octocat-workflow-list repo)))))
+     (octocat-vui-window-width))))
+
+(vui-defcomponent octocat-run-list--page (repo current-branch tick query)
+  "The page of REPO's recent runs, those matching QUERY, filtered above them.
+The workflows are fetched too, for the count on their tab.  A new TICK
+refetches, keeping what is shown up until the fresh data replaces it."
+  :render
+  (vui-vstack
+   (vui-component 'octocat-vui-list-header :repo repo :tab 'actions :tick tick)
+   (octocat-run-list--tab-row repo 'runs
+                             (octocat-vui-use-resource (list 'workflows repo) tick))
+   (vui-newline)
+   (octocat-vui-list-filter-bar query)
+   (vui-component 'octocat-run-list--runs
+                  :key query
+                  :repo repo :current-branch current-branch :tick tick
+                  :query query)))
+
+(defun octocat-run-list-refresh (&optional _ignore-auto _noconfirm)
+  "Refresh the current run list buffer.
+The page paints from the sync store at once and fetches the runs in the
+background; a refresh keeps the old content up meanwhile."
+  (interactive)
+  (unless octocat-vui-list--repo
+    (user-error "Octocat: Buffer is not associated with a repository"))
+  (octocat-vui-refresh-page 'octocat-run-list--page octocat-vui-list--repo
+                            (list :repo octocat-vui-list--repo
+                                  :current-branch (plist-get (octocat--head-info) :branch)
+                                  :query (octocat-vui-list-query))))
+
+(define-derived-mode octocat-run-list-mode octocat-vui-list-mode "Octocat-Runs"
+  "Major mode for the list of a repository's recent workflow runs.
+
+\\{octocat-run-list-mode-map}"
+  :group 'octocat
+  (octocat-run-list--filter-setup)
+  (setq-local revert-buffer-function #'octocat-run-list-refresh))
 
 (provide 'octocat-run)
 ;;; octocat-run.el ends here

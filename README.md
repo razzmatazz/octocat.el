@@ -196,13 +196,15 @@ your teams.
 The Actions tab has two pages, each its own buffer and major mode, so
 either can be opened directly: `M-x octocat-run-list` lists the
 repository's recent workflow runs across all workflows,
-`octocat-actions-runs-page-size` (30) at a time with a button to load
+`octocat-run-list-page-size` (30) at a time with a button to load
 more; `M-x octocat-workflow-list` lists its workflows and whether they
 are enabled.  `M-x octocat-actions`, and the Actions tab of any page,
 open the runs.  A **Runs** / **Workflows** tab row under the header
 switches between the two pages, with the count of workflows on its tab,
-and `RET` on a row opens that run or workflow.  A workflow can also be
-reached from anywhere with `C-c C-j`, by its name or file.
+and `RET` on a row opens that run or workflow.  A workflow's own page
+lists its runs as the run list does, without the workflow column.  A
+workflow can also be reached from anywhere with `C-c C-j`, by its name
+or file.
 
 The runs are filtered as the pull request list is: a query in the field
 above them, such as `branch:main status:failure`, edited by hand (with

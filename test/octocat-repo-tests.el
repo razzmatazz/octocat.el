@@ -115,13 +115,13 @@
                           (puthash "displayTitle" title r)
                           r))
                       (list (make-string 30 ?t) "short"))))
-    (should (= (octocat-repo-vui--run-title-width runs 200 4) 30))
-    (should (= (octocat-repo-vui--run-title-width runs 60 4)
-               octocat-repo-vui--subject-min-width))
+    (should (= (octocat-run-list--title-width runs 200 4) 30))
+    (should (= (octocat-run-list--title-width runs 60 4)
+               octocat-run-list--title-min-width))
     ;; The other columns: branch 10, id 11, workflow 4, icon, date and gaps.
     (let ((octocat-branch-max-width 10)
           (date-w (string-width (octocat--format-ts-relative ""))))
-      (should (= (octocat-repo-vui--run-title-width runs (+ 37 date-w 27) 4) 27)))))
+      (should (= (octocat-run-list--title-width runs (+ 37 date-w 27) 4) 27)))))
 
 (ert-deftest octocat-repo-test-workflow-columns ()
   "Workflow rows give the name the room the state and file name leave."
@@ -133,11 +133,11 @@
                          wf))
                      '(("Test" ".github/workflows/test.yml")
                        ("Release builds" ".github/workflows/release.yml")))))
-    (should (equal (octocat-repo-vui--workflow-file (car wfs)) "test.yml"))
-    (should (= (octocat-repo-vui--workflow-name-width wfs 200 6) 14))
+    (should (equal (octocat-workflow--file (car wfs)) "test.yml"))
+    (should (= (octocat-workflow-list--name-width wfs 200 6) 14))
     ;; 30 columns leave 8 beside the state and release.yml: the floor wins.
-    (should (= (octocat-repo-vui--workflow-name-width wfs 30 6) 10))
-    (should (= (octocat-repo-vui--workflow-name-width (list (car wfs)) 200 6) 4))))
+    (should (= (octocat-workflow-list--name-width wfs 30 6) 10))
+    (should (= (octocat-workflow-list--name-width (list (car wfs)) 200 6) 4))))
 
 (ert-deftest octocat-repo-test-item-lines ()
   "Item lines put the labels on the title line and cut only given a width."

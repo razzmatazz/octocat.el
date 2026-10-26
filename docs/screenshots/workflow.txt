@@ -1,11 +1,10 @@
 acme/rocket  CI  .github/workflows/ci.yml
 active  Created 1 year ago · Updated 1 month ago
 
-7 workflow runs
-  9100200310   incremental       ●  Incremental builds: skip pages whose in…  4 minutes ago
-  9100200308   main              ✓  Render footnotes in Markdown pages (#13…  2 hours ago
-  9100200307   feeds             ✓  Add RSS and Atom feeds for each section   9 hours ago
-  9100200306   serve-debounce    ✗  Fix: `rocket serve` drops changes saved…  1 day ago
-  9100200300   template-cache    ✓  Cache parsed templates between builds     1 day ago
-  9100200298   dependabot/carg…  ✓  Bump toml from 0.8.12 to 0.8.19           1 day ago
-  9100200297   theme-guide       ✗  Docs: a guide to writing your first the…  5 days ago
+●  Incremental builds: skip pages whose inputs are u…  9100200310   incremental       4 minutes ago
+✓  Render footnotes in Markdown pages (#131)           9100200308   main              2 hours ago
+✓  Add RSS and Atom feeds for each section             9100200307   feeds             9 hours ago
+✗  Fix: `rocket serve` drops changes saved twice in …  9100200306   serve-debounce    1 day ago
+✓  Cache parsed templates between builds               9100200300   template-cache    1 day ago
+✓  Bump toml from 0.8.12 to 0.8.19                     9100200298   dependabot/carg…  1 day ago
+✗  Docs: a guide to writing your first theme           9100200297   theme-guide       5 days ago

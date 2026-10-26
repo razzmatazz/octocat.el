@@ -120,7 +120,7 @@ GitHub's results lead once in, the stored ones it lacks after them."
   (octocat-search-tests--with-store
     (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
                (lambda (_repo _sha callback) (funcall callback '(error . "no files"))))
-              ((symbol-function 'octocat-repo--list-workflows)
+              ((symbol-function 'octocat-workflow--list)
                (lambda (_repo callback) (funcall callback '(error . "no workflows")))))
       (octocat-sync--write octocat-sync--db
                            (octocat-sync-spec-key '(object-search "o/r" "issues" "crash"))
@@ -188,7 +188,7 @@ item once."
                            (- now 2))
       (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
                  (lambda (_repo _sha callback) (funcall callback '(error . "no files"))))
-                ((symbol-function 'octocat-repo--list-workflows)
+                ((symbol-function 'octocat-workflow--list)
                  (lambda (_repo callback) (funcall callback '(error . "no workflows"))))
                 ((symbol-function 'octocat--search-git)
                  (lambda (_dir args callback) (push (cons args callback) git-calls) #'ignore)))

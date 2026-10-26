@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A workflow's runs are listed as on the run list; `octocat-workflow-runs-limit` is gone
+* `octocat-actions-runs-page-size` is now `octocat-run-list-page-size`
 * Run, job and workflow pages open with a header like a PR's, linking up to the workflow
 * `M-x octocat-run-list` and `M-x octocat-workflow-list` open the Actions pages
 * `C-c C-j` finds a repository's workflows, by name or file

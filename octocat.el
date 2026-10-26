@@ -49,7 +49,6 @@
 (require 'octocat-issue)
 (require 'octocat-timeline)
 (require 'octocat-workflow)
-(require 'octocat-actions)
 (require 'octocat-run)
 (require 'octocat-job)
 (require 'octocat-checks)

@@ -23,8 +23,9 @@
 ;;; Commentary:
 
 ;; A workflow and its runs: `octocat-workflow-mode', a vui.el page
-;; opened from the workflow list (octocat-actions.el) or `C-c C-j'.  RET on a run opens
-;; it (octocat-run.el).
+;; opened from the workflow list, a run or `C-c C-j'.  Its runs are the
+;; run list's section (octocat-run.el).  Also the workflow list,
+;; `octocat-workflow-list-mode', the second page of the Actions tab.
 ;;
 ;; Depends on octocat-core.el.  Must not depend on octocat.el to avoid a
 ;; circular require.
@@ -36,15 +37,8 @@
 (require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)
+(require 'vui-components) ; vui-list
 
-
-
-;;;; Customisation
-
-(defcustom octocat-workflow-runs-limit 20
-  "Default number of runs to display in the workflow detail view."
-  :type 'integer
-  :group 'octocat)
 
 
 ;;;; Buffer-local declarations
@@ -64,57 +58,17 @@
 
 ;;;; Data fetching
 
-(defun octocat--fetch-workflow (repo id limit callback)
-  "Fetch detail for workflow ID in REPO asynchronously.
-LIMIT controls how many run entries are requested.
-Calls CALLBACK with a cons (WORKFLOW . RUNS) where WORKFLOW is a
-hash-table of metadata and RUNS is a list of run hash-tables, or a
-cons \\=(error . MSG) on failure."
-  (let ((workflow-result 'pending)
-        (runs-result 'pending))
-    (cl-labels
-        ((maybe-done ()
-           (unless (or (eq workflow-result 'pending)
-                       (eq runs-result 'pending))
-             (cond
-              ((eq (car-safe workflow-result) 'error)
-               (funcall callback workflow-result))
-              ((eq (car-safe runs-result) 'error)
-               (funcall callback runs-result))
-              (t
-               (funcall callback (cons workflow-result runs-result)))))))
-      (octocat--run-gh
-       "workflow-detail"
-       (list "api" (format "repos/%s/actions/workflows/%s" repo id))
-       (lambda (output) (json-parse-string (string-trim output)))
-       (lambda (result) (setq workflow-result result) (maybe-done)))
-      (octocat--run-gh
-       "workflow-runs"
-       (list "run" "list"
-             "--repo"     repo
-             "--workflow" (format "%s" id)
-             "--limit"    (number-to-string limit)
-             "--json"     (concat "databaseId,displayTitle,status,conclusion,createdAt,"
-                                  "headBranch,workflowName,workflowDatabaseId"))
-       #'octocat--parse-json-list
-       (lambda (result) (setq runs-result result) (maybe-done))))))
+(defun octocat--fetch-workflow (repo id callback)
+  "Fetch workflow ID of REPO asynchronously.
+Calls CALLBACK with a hash-table of it, or a cons \\=(error . MSG)."
+  (octocat--run-gh
+   "workflow-detail"
+   (list "api" (format "repos/%s/actions/workflows/%s" repo id))
+   (lambda (output) (json-parse-string (string-trim output)))
+   callback))
 
 
 ;;;; Rendering helpers
-
-(defun octocat--workflow-run-icon (status conclusion)
-  "Return a propertized status icon for a run with STATUS and CONCLUSION."
-  (let ((st (or status ""))
-        (co (octocat--nonempty conclusion)))
-    (cond
-     ((equal st "in_progress")
-      (propertize "●" 'face 'octocat-ci-pending))
-     ((equal co "success")
-      (propertize "✓" 'face 'octocat-ci-success))
-     ((member co '("failure" "timed_out" "startup_failure" "cancelled"))
-      (propertize "✗" 'face 'octocat-ci-failure))
-     (t
-      (propertize "●" 'face 'octocat-ci-pending)))))
 
 (defun octocat--workflow-state-face (state)
   "Return the face for workflow STATE string."
@@ -128,30 +82,6 @@ GitHub names it by its file, the last part of PATH, when known."
 
 
 ;;;; Page
-
-(defun octocat-workflow--run-row (repo run branch-w)
-  "Return a RET-able row for RUN of REPO; BRANCH-W is the branch column width."
-  (let ((status     (downcase (or (gethash "status" run) "")))
-        (conclusion (let ((c (gethash "conclusion" run)))
-                      (and (octocat--nonempty c) (downcase c))))
-        (id         (gethash "databaseId" run)))
-    (octocat-vui-row
-     (propertize
-      (concat "  "
-              (propertize (format "%-11s" (or (gethash "databaseId" run) 0))
-                          'face 'octocat-pr-number)
-              "  "
-              (octocat--format-branch (or (gethash "headBranch" run) "") branch-w)
-              "  "
-              (octocat--workflow-run-icon status conclusion)
-              "  "
-              (octocat--format-title (or (gethash "displayTitle" run) ""))
-              "  "
-              (propertize (octocat--format-ts-relative (or (gethash "createdAt" run) ""))
-                          'face 'octocat-dimmed))
-      'octocat-sync-prefetch `((run ,repo ,id) (run-artifacts ,repo ,id)))
-     (lambda () (octocat-run-open repo id))
-     "RET: open workflow run")))
 
 (defun octocat-workflow--crumbs (name path)
   "Return the crumb of workflow NAME, with its file PATH when known.
@@ -176,74 +106,32 @@ The top row names it and its file; under it its state and dates."
      (list (list (cons "Created" (and created (octocat--format-ts-relative created)))
                  (cons "Updated" (and updated (octocat--format-ts-relative updated))))))))
 
-(defun octocat-workflow--runs (repo runs more on-more loading)
-  "Return the vnodes of the section listing each workflow run of REPO.
-RUNS is the list of them.  MORE says a further page may exist, loaded
-by ON-MORE; LOADING is non-nil while that page is fetched."
-  (cons
-   (vui-text (propertize (format "%d workflow runs" (length runs))
-                         'face 'octocat-section-heading))
-   (if (null runs)
-       (list (vui-text "  (no runs)" :face 'octocat-dimmed))
-     (let ((branch-w (octocat--branch-column-width runs "headBranch")))
-       (list (vui-fragment
-              (octocat-vui-reveal-list
-               runs
-               (lambda (run) (octocat-workflow--run-row repo run branch-w))
-               (lambda (run) (gethash "databaseId" run)))
-              (when more
-                (octocat-vui-load-more-button
-                 'load-more-runs octocat-workflow-runs-limit
-                 "RET: load more runs" on-more loading nil
-                 (octocat-vui-line-skeleton)))))))))
 
-(octocat-sync-define-resource workflow (repo id limit)
-  :fetch (lambda (done)
-           (octocat--fetch-workflow
-            repo id limit
-            (lambda (r)
-              (funcall done
-                       (if (eq (car-safe r) 'error)
-                           r
-                         (let ((tree (make-hash-table :test #'equal)))
-                           (puthash "workflow" (car r) tree)
-                           (puthash "runs" (vconcat (mapcar (lambda (run) (octocat-sync-run repo run))
-                                                            (cdr r)))
-                                    tree)
-                           tree)))))))
+(octocat-sync-define-resource workflow (repo id)
+  :fetch (lambda (done) (octocat--fetch-workflow repo id done)))
 
 (vui-defcomponent octocat-workflow--page (repo id name path tick)
-  "Workflow ID of REPO and its runs; NAME and PATH, its file or nil, show
-while it loads.  A new TICK fetches them again."
-  :state ((limit octocat-workflow-runs-limit))
+  "Workflow ID of REPO and its runs, as the run list shows them.
+NAME and PATH, its file or nil, show while it loads.  A new TICK
+fetches them again."
   :render
-  (let* ((width   (octocat-vui-window-width))
-         (snap    (octocat-vui-use-resource (list 'workflow repo id limit) tick))
-         (shown   (vui-use-ref nil))
-         (loading (plist-get snap :loading)))
-    ;; Each limit is its own resource: keep the shorter list while the
-    ;; longer one loads.
-    (when (plist-get snap :data) (setcar shown (plist-get snap :data)))
+  (let* ((width (octocat-vui-window-width))
+         (local-branch (vui-use-memo () (octocat--current-branch)))
+         (snap  (octocat-vui-use-resource (list 'workflow repo id) tick))
+         (data  (plist-get snap :data)))
     (apply #'vui-vstack
-           (pcase (if (car shown) 'ready (octocat-vui-snapshot-status snap))
-             ('pending (append (octocat-vui-actions-header
-                                repo (octocat-workflow--crumbs name path) width)
-                               (list (vui-newline)
-                                     (vui-text (octocat-vui-line-skeleton)))))
-             ('error   (append (octocat-vui-actions-header
-                                repo (octocat-workflow--crumbs name path) width)
-                               (list (vui-newline)
-                                     (vui-text (concat "  " (octocat-vui-error-text snap))
-                                               :face 'error))))
-             (_ (let ((runs (append (gethash "runs" (car shown)) nil)))
-                  (append (octocat-workflow--header repo (gethash "workflow" (car shown)) width)
-                          (list (vui-newline))
-                          (octocat-workflow--runs
-                           repo runs
-                           (or (>= (length runs) limit)
-                               (and loading (> limit octocat-workflow-runs-limit)))
-                           (lambda () (vui-set-state :limit (+ limit octocat-workflow-runs-limit)))
-                           (and loading (< (length runs) limit))))))))))
+           (append
+            (if data
+                (octocat-workflow--header repo data width)
+              (octocat-vui-actions-header repo (octocat-workflow--crumbs name path) width))
+            (list
+             (vui-newline)
+             (if (eq (octocat-vui-snapshot-status snap) 'error)
+                 (vui-text (concat "  " (octocat-vui-error-text snap)) :face 'error)
+               (vui-component 'octocat-run-list--runs
+                              :repo repo
+                              :current-branch local-branch
+                              :tick tick :query "" :workflow id)))))))
 
 
 ;;;; Major mode
@@ -304,6 +192,112 @@ NAME is its display name and PATH its file, or nil."
           octocat--workflow-name name
           octocat--workflow-path path)
     (octocat-workflow-refresh)))
+
+;;;; Workflow list
+;;
+;; `octocat-workflow-list-mode': a repository's workflows and whether
+;; each is enabled, the second page of the Actions tab (see the run list
+;; in octocat-run.el).
+
+(defun octocat-workflow--list (repo callback)
+  "Fetch workflows for REPO asynchronously and call CALLBACK with results.
+CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MSG)."
+  (octocat--run-gh "workflows"
+                   (list "workflow" "list"
+                         "--repo" repo
+                         "--json" "id,name,state,path")
+                   #'octocat--parse-json-list
+                   callback))
+
+(octocat-sync-define-resource workflows (repo)
+  :fetch (lambda (done)
+           (octocat-workflow--list
+            repo (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
+
+(defun octocat-workflow--state (workflow)
+  "Return the state of WORKFLOW as shown on its row, such as \"active\"."
+  (downcase (or (gethash "state" workflow) "")))
+
+(defun octocat-workflow--file (workflow)
+  "Return the file name of WORKFLOW, such as \"test.yml\"."
+  (file-name-nondirectory (or (gethash "path" workflow) "")))
+
+(defun octocat-workflow-list--name-width (workflows width state-w)
+  "Return the width of the name column of WORKFLOWS: the longest name.
+It is at most what WIDTH columns leave beside the STATE-W wide state and
+the longest file name, but cuts no name shorter than 10."
+  (let ((longest (lambda (f) (apply #'max 0 (mapcar (lambda (wf) (string-width (funcall f wf)))
+                                                    workflows)))))
+    (min (funcall longest (lambda (wf) (or (gethash "name" wf) "")))
+         (max 10 (- width 1 state-w 2 2
+                    (funcall longest #'octocat-workflow--file))))))
+
+(defun octocat-workflow-list--row (repo workflow &optional state-w name-w)
+  "Return a row vnode for WORKFLOW in REPO: its state, name and file name.
+The state is padded to STATE-W columns and the name to NAME-W, cut to
+it when longer (40 by default), so the columns line up."
+  (let* ((name       (or (gethash "name"  workflow) ""))
+         (state      (octocat-workflow--state workflow))
+         (state-face (if (equal state "active") 'success 'octocat-dimmed))
+         (line
+          (concat
+           (propertize (string-pad state (max (or state-w 0) (string-width state)))
+                       'face state-face)
+           "  "
+           (truncate-string-to-width name (or name-w 40) nil ?\s "…")
+           "  "
+           (propertize (octocat-workflow--file workflow) 'face 'octocat-dimmed))))
+    (octocat-vui-row line
+                     (lambda () (octocat-workflow-open repo (gethash "id" workflow) name
+                                                       (gethash "path" workflow)))
+                     "RET: open workflow")))
+
+(defun octocat-workflow-list--workflows (repo snap)
+  "Return the workflows of REPO, from SNAP, their sync snapshot.
+No pagination: run history lives on the runs page."
+  (pcase (octocat-vui-snapshot-status snap)
+    ('pending (vui-text (octocat-vui-line-skeleton)))
+    ('error   (vui-text (concat (octocat-vui-error-text snap) "\n") :face 'octocat-dimmed))
+    ('ready
+     (let ((workflows (append (plist-get snap :data) nil)))
+       (if (null workflows)
+           (vui-text "(no workflows)\n" :face 'octocat-dimmed)
+         (let* ((state-w (apply #'max (mapcar (lambda (wf)
+                                                (string-width
+                                                 (octocat-workflow--state wf)))
+                                              workflows)))
+                (name-w  (octocat-workflow-list--name-width
+                          workflows (octocat-vui-window-width) state-w)))
+           (vui-list workflows
+                     (lambda (wf) (octocat-workflow-list--row repo wf state-w name-w))
+                     (lambda (wf) (gethash "id" wf)))))))))
+
+(vui-defcomponent octocat-workflow-list--page (repo tick)
+  "The page of REPO's workflows.
+Stored, they show at once; a new TICK refetches them, keeping what is
+shown up until the fresh data replaces it."
+  :render
+  (let ((workflows (octocat-vui-use-resource (list 'workflows repo) tick)))
+    (vui-vstack
+     (vui-component 'octocat-vui-list-header :repo repo :tab 'actions :tick tick)
+     (octocat-run-list--tab-row repo 'workflows workflows)
+     (vui-newline)
+     (octocat-workflow-list--workflows repo workflows))))
+
+(defun octocat-workflow-list-refresh (&optional _ignore-auto _noconfirm)
+  "Refresh the current workflow list buffer, as `octocat-run-list-refresh'."
+  (interactive)
+  (unless octocat-vui-list--repo
+    (user-error "Octocat: Buffer is not associated with a repository"))
+  (octocat-vui-refresh-page 'octocat-workflow-list--page octocat-vui-list--repo
+                            (list :repo octocat-vui-list--repo)))
+
+(define-derived-mode octocat-workflow-list-mode octocat-vui-list-mode "Octocat-Workflows"
+  "Major mode for the list of a repository's workflows.
+
+\\{octocat-workflow-list-mode-map}"
+  :group 'octocat
+  (setq-local revert-buffer-function #'octocat-workflow-list-refresh))
 
 (provide 'octocat-workflow)
 ;;; octocat-workflow.el ends here

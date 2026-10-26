@@ -904,8 +904,8 @@ would pull the user back to it (see docs/using-vui.md)."
 
 ;;;; List-page base mode
 ;;
-;; Skeleton shared by the PR, issue and workflow list pages (defined in
-;; octocat-pr.el, octocat-issue.el and octocat-workflow.el): the repo they
+;; Skeleton shared by the PR, issue, run and workflow list pages (defined
+;; next to their detail pages, in octocat-pr.el and so on): the repo they
 ;; show, the github.com path `octocat-vui-list-browse' opens, and the
 ;; common keymap.  Each page derives from this mode, sets its own
 ;; `revert-buffer-function', and is opened via `octocat--open-list'
@@ -1293,7 +1293,7 @@ They are a sync resource, painted from the store while it is refetched;
 ;;
 ;; The default query, the buttons and the completions are buffer-local,
 ;; so a page with a query of its own, such as the run list
-;; (octocat-actions.el), sets its own.
+;; (octocat-run.el), sets its own.
 
 (defvar-local octocat-vui-list--query nil
   "Current search query of this list buffer; nil means the default query.")

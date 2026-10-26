@@ -75,11 +75,6 @@ every time its \"Load more\" button is used."
   :type 'integer
   :group 'octocat)
 
-(defcustom octocat-actions-runs-page-size 30
-  "Number of runs the Actions page's Runs tab shows, and loads, at a time."
-  :type 'integer
-  :group 'octocat)
-
 (defcustom octocat-repo-commits-page-size 25
   "Number of commits the commits page shows, and loads, at a time."
   :type 'integer
@@ -250,34 +245,6 @@ elsewhere is followed; a page on a picked ref stays on it."
 
 
 ;;;; gh integration
-
-(defun octocat-repo--list-workflows (repo callback)
-  "Fetch workflows for REPO asynchronously and call CALLBACK with results.
-CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MSG)."
-  (octocat--run-gh "workflows"
-                   (list "workflow" "list"
-                         "--repo" repo
-                         "--json" "id,name,state,path")
-                   #'octocat--parse-json-list
-                   callback))
-
-(defun octocat-repo--list-recent-runs (repo limit callback &optional args)
-  "Fetch the LIMIT most recent workflow run entries across all workflows in REPO.
-ARGS are more `gh run list' options, filtering the runs, such as
-\\=(\"--branch\" \"main\").  Call CALLBACK with a list of run hash-tables
-\(each including a \\='workflowName\\=' key), or a cons \\=(error . MSG) on
-failure."
-  (octocat--run-gh
-   "recent-runs"
-   (append
-    (list "run" "list"
-          "--repo"  repo
-          "--limit" (number-to-string limit)
-          "--json"  (concat "databaseId,displayTitle,status,conclusion,createdAt,"
-                            "headBranch,workflowName,workflowDatabaseId"))
-    args)
-   #'octocat--parse-json-list
-   callback))
 
 (defconst octocat-repo--history-query
   "query($owner:String!,$name:String!,$ref:String!,$limit:Int!,$after:String,$path:String){repository(owner:$owner,name:$name){object(expression:$ref){...on Commit{history(first:$limit,after:$after,path:$path){totalCount edges{cursor node{oid messageHeadline authoredDate committedDate author{name email user{login}}}}}}}}}"
@@ -479,15 +446,7 @@ and the longest knows the most; one with another head is out of date."
   "Open the commit detail buffer for COMMIT (a hash-table) in REPO."
   (octocat-commit-open repo (or (gethash "sha" commit) (gethash "oid" commit) "")))
 
-(defun octocat-repo-vui--open-workflow (repo workflow)
-  "Open the workflow detail buffer for WORKFLOW (a hash-table) in REPO."
-  (octocat-workflow-open repo (gethash "id" workflow)
-                         (or (gethash "name" workflow) "")
-                         (gethash "path" workflow)))
 
-(defun octocat-repo-vui--open-workflow-run (repo run)
-  "Open the workflow-run detail buffer for RUN (a hash-table) in REPO."
-  (octocat-run-open repo (gethash "databaseId" run)))
 
 
 ;;;; Row builders
@@ -897,102 +856,6 @@ REPO unless it names another, and number."
   "Return the milestone title of ITEM, or nil."
   (let ((m (gethash "milestone" item)))
     (and (hash-table-p m) (octocat--nonempty (gethash "title" m)))))
-
-(defun octocat-repo-vui--workflow-state (workflow)
-  "Return the state of WORKFLOW as shown on its row, such as \"active\"."
-  (downcase (or (gethash "state" workflow) "")))
-
-(defun octocat-repo-vui--workflow-file (workflow)
-  "Return the file name of WORKFLOW, such as \"test.yml\"."
-  (file-name-nondirectory (or (gethash "path" workflow) "")))
-
-(defun octocat-repo-vui--workflow-name-width (workflows width state-w)
-  "Return the width of the name column of WORKFLOWS: the longest name.
-It is at most what WIDTH columns leave beside the STATE-W wide state and
-the longest file name, but cuts no name shorter than 10."
-  (let ((longest (lambda (f) (apply #'max 0 (mapcar (lambda (wf) (string-width (funcall f wf)))
-                                                    workflows)))))
-    (min (funcall longest (lambda (wf) (or (gethash "name" wf) "")))
-         (max 10 (- width 1 state-w 2 2
-                    (funcall longest #'octocat-repo-vui--workflow-file))))))
-
-(defun octocat-repo-vui--workflow-row (repo workflow &optional state-w name-w)
-  "Return a row vnode for WORKFLOW in REPO: its state, name and file name.
-The state is padded to STATE-W columns and the name to NAME-W, cut to
-it when longer (40 by default), so the columns line up."
-  (let* ((name       (or (gethash "name"  workflow) ""))
-         (state      (octocat-repo-vui--workflow-state workflow))
-         (state-face (if (equal state "active") 'success 'octocat-dimmed))
-         (line
-          (concat
-           (propertize (string-pad state (max (or state-w 0) (string-width state)))
-                       'face state-face)
-           "  "
-           (truncate-string-to-width name (or name-w 40) nil ?\s "…")
-           "  "
-           (propertize (octocat-repo-vui--workflow-file workflow) 'face 'octocat-dimmed))))
-    (octocat-vui-row line
-                     (lambda () (octocat-repo-vui--open-workflow repo workflow))
-                     "RET: viewworkflow")))
-
-(defun octocat-repo-vui--run-title-width (runs width wf-w &optional branch-w)
-  "Return the title column's width, that of the longest title.
-The titles are those of RUNS.  It is at least
-`octocat-repo-vui--subject-min-width', and at most what WIDTH columns
-leave beside the other columns of `octocat-repo-vui--workflow-run-row',
-the workflow name WF-W wide and the branch BRANCH-W."
-  (let ((rest (+ (or branch-w octocat-branch-max-width) 2 11 2 wf-w 2 1 2 2 1
-                 (apply #'max 0 (mapcar (lambda (r)
-                                          (string-width (octocat--format-ts-relative
-                                                         (or (gethash "createdAt" r) ""))))
-                                        runs)))))
-    (max octocat-repo-vui--subject-min-width
-         (min (- width rest)
-              (apply #'max 0 (mapcar (lambda (r) (string-width (or (gethash "displayTitle" r) "")))
-                                     runs))))))
-
-(defun octocat-repo-vui--workflow-run-row (repo run current-branch wf-w
-                                                &optional title-w branch-w)
-  "Return a row vnode for RUN in REPO.
-CURRENT-BRANCH, when non-nil, highlights a matching run branch.
-WF-W is the column width to truncate/pad the workflow name to, TITLE-W
-that of the title, `octocat-title-width' by default, and BRANCH-W that
-of the branch, `octocat-branch-max-width' by default."
-  (let* ((run-id     (or (gethash "databaseId"   run) 0))
-         (title      (or (gethash "displayTitle" run) ""))
-         (status     (downcase (or (gethash "status" run) "")))
-         (conclusion (let ((c (gethash "conclusion" run)))
-                       (and (octocat--nonempty c) (downcase c))))
-         (branch     (or (gethash "headBranch"   run) ""))
-         (activep    (and current-branch (string= branch current-branch)))
-         (b-face     (if activep 'octocat-branch-current 'octocat-branch))
-         (wf-name    (or (gethash "workflowName" run) ""))
-         (created    (or (gethash "createdAt"    run) ""))
-         (date       (octocat--format-ts-relative created))
-         (icon       (octocat--workflow-run-icon status conclusion))
-         (line
-          ;; GitHub's order: what the run is about first, then where.
-          (concat
-           icon
-           "  "
-           (octocat--format-title title title-w)
-           "  "
-           (propertize (truncate-string-to-width wf-name wf-w nil ?\s "…")
-                       'face 'octocat-dimmed)
-           "  "
-           (propertize (format "%-11s" (number-to-string run-id))
-                       'face 'octocat-pr-number)
-           "  "
-           (let* ((branch-w (or branch-w octocat-branch-max-width))
-                  (name (truncate-string-to-width branch branch-w nil nil "…"))
-                  (pad  (make-string (- branch-w (string-width name)) ?\s)))
-             (concat (propertize name 'face b-face) pad))
-           "  "
-           (propertize date 'face 'octocat-dimmed))))
-    (octocat-vui-row (propertize line 'octocat-sync-prefetch
-                                 `((run ,repo ,run-id) (run-artifacts ,repo ,run-id)))
-                     (lambda () (octocat-repo-vui--open-workflow-run repo run))
-                     "RET: view workflow run")))
 
 (defconst octocat-repo-vui--author-max-width 30
   "Widest author column of the commit list; longer names are truncated.")

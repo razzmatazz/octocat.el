@@ -713,6 +713,9 @@ FIELDS, a plist, override the rest."
         (:id 4201 :name "Deploy docs" :state "active" :path ".github/workflows/docs.yml")
         (:id 4202 :name "Benchmarks" :state "active" :path ".github/workflows/bench.yml")
         (:id 4203 :name "Release" :state "disabled_manually" :path ".github/workflows/release.yml")])
+      ("recent-runs" ("--workflow 4200")
+       ,(vconcat (seq-filter (lambda (r) (equal (plist-get r :workflowName) "CI"))
+                             octocat-screenshots--runs)))
       ("recent-runs" () ,(vconcat octocat-screenshots--runs))
       ("run-view" ("9100200300")
        (:databaseId 9100200300 :displayTitle "Cache parsed templates between builds"
@@ -746,9 +749,6 @@ FIELDS, a plist, override the rest."
         :html_url "https://github.com/acme/rocket/actions/workflows/ci.yml"
         :badge_url "https://github.com/acme/rocket/workflows/CI/badge.svg"
         :created_at "2025-02-11T09:00:00Z" :updated_at ,(octocat-screenshots--ago (* 30 d))))
-      ("workflow-runs" ("4200")
-       ,(vconcat (seq-filter (lambda (r) (equal (plist-get r :workflowName) "CI"))
-                             octocat-screenshots--runs)))
 
       ;; People
       ("user-profile" ("users/srivera") ,octocat-screenshots--srivera)
