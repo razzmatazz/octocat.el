@@ -59,7 +59,12 @@ jobs:
         run: make test
 
       # On one release only: melpazoid builds its own Emacs 31, as MELPA's
-      # reviewers do, whichever this job tests, see the Makefile.
+      # reviewers do, whichever this job tests, see the Makefile.  Some
+      # of its checks run an emacs of the host's, which the runner lacks.
+      - name: Install Emacs for melpazoid
+        if: matrix.emacs == '31.1'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq emacs-nox
+
       - name: Run melpazoid
         if: matrix.emacs == '31.1'
         run: make melpazoid
