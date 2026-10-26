@@ -25,8 +25,9 @@
 ;; Commit data fetching and the `octocat-commit-mode' page, rendered with
 ;; vui.el like the issue and PR pages.  The commit, its check-runs and its
 ;; comments are three sync resources, each painted from the store and
-;; refetched behind it; the commit itself never changes, so it is kept.  The changed files are rendered
-;; by octocat-diff.el, like the PR diff page's.
+;; refetched behind it; the commit itself never changes, so it is kept.
+;; The changed files are rendered by octocat-diff.el, like the PR diff
+;; page's.
 ;;
 ;; Depends on octocat-core.el; must not depend on octocat.el or
 ;; octocat-pr.el to avoid circular requires.
@@ -357,10 +358,10 @@ fetches them again."
 (defvar octocat-commit-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-commit-browse)
+    (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-commit-mode'.")
-(define-key octocat-commit-mode-map (kbd "C-c C-o") #'octocat-commit-browse)
-(define-key octocat-commit-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
 
 (define-derived-mode octocat-commit-mode vui-mode "Octocat-Commit"
   "Major mode for viewing a GitHub commit.

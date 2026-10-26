@@ -9,7 +9,7 @@ See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as f
 ## Rules
 
 - **Never commit or modify git state.** The developer handles all commits.
-- **Always run `make ci-all`** (compile + lint + test, on every Emacs release CI runs, at once) after making changes. Fix all errors and warnings before finishing; `make ci` runs one release, for a quicker check while working.
+- **Always run `make ci-all`** (compile + lint + test, on every Emacs release CI runs, at once, plus melpazoid once) after making changes. Fix all errors and warnings before finishing; `make ci` runs one release, for a quicker check while working.
   Read `make ci-all`'s output unfiltered: on a failure it already ends
   with the failing lines, and a `grep` for "error" or "warn" drops
   checkdoc's, which read `FILE:LINE: message`.
@@ -212,6 +212,20 @@ or `ignore-errors` — `makunbound` on a void symbol signals an error):
 leaving dangling advice and repeated `jit-lock` errors. The `with-temp-buffer` +
 `eval-buffer` sequence re-evaluates every `defun`/`defvar` without it.
 
+## melpazoid
+
+`make melpazoid` runs MELPA's review checks, and any finding fails it
+(see "Compiling, linting and testing" in README.md).  What they rule out:
+
+- No top-level `define-key`, `setq` or `add-hook`.  Bind keys inside the
+  map's `defvar` (`(let ((map (make-sparse-keymap))) (define-key map ...)
+  map)`); where a lower file calls into a higher one through a variable
+  or hook, make the higher function its `defvar` default, with a
+  `declare-function`, as `octocat-sync-change-functions` does.
+- No `ignore-errors`: test for what can go wrong (`bound-and-true-p`, a
+  nil check), or catch only the error meant (`condition-case` on
+  `user-error`, `with-demoted-errors`).
+
 ## Byte-compiler warnings about functions "not known to be defined"
 
 `make ci` compiles all files in parallel.  The compiler warns "the function
@@ -231,7 +245,13 @@ top of A, alongside the other declarations:
 ```
 
 The `declare-function` form tells the byte-compiler the function exists
-without actually loading the file.  At runtime, every `;;;###autoload`
+without actually loading the file.  `make lint` checks every one with
+`check-declare`: the file must define the function with that arglist.
+Prefix the file with `ext:` when it may be missing: an optional package
+(`"ext:evil-core"`) or a C primitive some builds lack (`"ext:sqlite.c"`).
+Pass `t` as the fourth argument for a function defined by another
+package's macro (Evil's `evil-define-motion`), which `check-declare`
+cannot see.  At runtime, every `;;;###autoload`
 entry point (`M-x octocat`, `M-x octocat-repo`, ...) is defined in
 `octocat.el` itself (see "Entry points" in CONTRIBUTING.md), and
 `octocat.el` unconditionally `require`s every other file — so any code path

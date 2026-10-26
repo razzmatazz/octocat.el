@@ -299,9 +299,9 @@ data replaces it."
 (defvar octocat-run-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-run-browse)
     map)
   "Keymap for `octocat-run-mode'.")
-(define-key octocat-run-mode-map (kbd "C-c C-o") #'octocat-run-browse)
 
 (define-derived-mode octocat-run-mode vui-mode "Octocat-Run"
   "Major mode for viewing a GitHub Actions workflow run.

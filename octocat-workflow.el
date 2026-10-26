@@ -148,9 +148,9 @@ fetches them again."
 (defvar octocat-workflow-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-workflow-browse)
     map)
   "Keymap for `octocat-workflow-mode'.")
-(define-key octocat-workflow-mode-map (kbd "C-c C-o") #'octocat-workflow-browse)
 
 (define-derived-mode octocat-workflow-mode vui-mode "Octocat-Workflow"
   "Major mode for viewing a GitHub Actions Workflow.

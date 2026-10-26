@@ -276,12 +276,12 @@ everything again."
 (defvar octocat-pr-diff-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
+    (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
+    (define-key map (kbd "C-c C-o") #'octocat-pr-diff-browse)
+    (define-key map (kbd "C-c C-v") #'octocat-diff-toggle-comments)
     map)
   "Keymap for `octocat-pr-diff-mode'.")
-(define-key octocat-pr-diff-mode-map (kbd "C-c C-r") #'octocat-pr-diff-review)
-(define-key octocat-pr-diff-mode-map (kbd "C-c C-m") #'octocat-pr-merge)
-(define-key octocat-pr-diff-mode-map (kbd "C-c C-o") #'octocat-pr-diff-browse)
-(define-key octocat-pr-diff-mode-map (kbd "C-c C-v") #'octocat-diff-toggle-comments)
 
 (define-derived-mode octocat-pr-diff-mode vui-mode "Octocat-PR-Diff"
   "Major mode for viewing the complete diff of a GitHub Pull Request.

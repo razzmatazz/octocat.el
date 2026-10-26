@@ -9,10 +9,13 @@
 
 ;; evil is an optional runtime integration (see octocat-evil.el), so not in
 ;; Package-Requires, but `test/octocat-evil-repo-tests.el' exercises the
-;; real Evil keymap machinery.
-(eldev-add-extra-dependencies '(build test) 'evil)
+;; real Evil keymap machinery, and `tools/check-declare.el', run by
+;; `eldev exec', checks the Evil functions octocat declares.
+(eldev-add-extra-dependencies '(build test exec) 'evil)
 
 (setf eldev-lint-default '(doc package))
+;; tools/ holds scripts for this repository, not files of the package.
+(setf eldev-standard-excludes `(:or ,eldev-standard-excludes "./tools/"))
 ;; So `eldev prepare lint' installs it up front: `make ci' lints and tests
 ;; at once, and a lint installing it meanwhile would race the test.
 (eldev-add-extra-dependencies 'lint 'package-lint)

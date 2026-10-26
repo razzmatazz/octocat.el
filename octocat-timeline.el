@@ -325,8 +325,9 @@ the last one that has a colour."
   "Seconds within which one actor's label events are shown as one entry.")
 
 (defun octocat-timeline--seconds (time)
-  "Return ISO 8601 string TIME as float seconds, or nil if unparsable."
-  (ignore-errors (float-time (date-to-time time))))
+  "Return ISO 8601 string TIME as float seconds, or nil if it is missing."
+  (and (stringp time) (not (string-empty-p time))
+       (float-time (date-to-time time))))
 
 (defun octocat-timeline--labels-text (labeled bg)
   "Return the phrase for LABELED, a list of (STATE . LABEL) in order.

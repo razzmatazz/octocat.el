@@ -29,12 +29,12 @@
 ;; Only images uploaded to GitHub can be fetched, see
 ;; `octocat-image-allowed-p', and those of the repository a README
 ;; is in, which `octocat-image-file-function' fetches through `gh': any
-;; other URL in a comment would let its
-;; author learn who reads the page, and when, and feed Emacs's image
-;; decoders whatever they like.  `url-retrieve' would follow a redirect
-;; anywhere, so redirects are followed here instead, one hop at a time,
-;; each checked against `octocat-image--redirect-hosts'.  An image that
-;; cannot be fetched, as one in a private repository, stays a link.
+;; other URL in a comment would let its author learn who reads the
+;; page, and when, and feed Emacs's image decoders whatever they like.
+;; `url-retrieve' would follow a redirect anywhere, so redirects are
+;; followed here instead, one hop at a time, each checked against
+;; `octocat-image--redirect-hosts'.  An image that cannot be fetched, as
+;; one in a private repository, stays a link.
 ;;
 ;; A fetched image is kept in memory for the session.  It is put on the
 ;; buffer's text, not on the rendered string, by a `jit-lock' function,
@@ -53,7 +53,9 @@
 (require 'octocat-markdown)
 
 ;; Only in builds that can show images, the only ones that call it.
-(declare-function image-size "image.c" (spec &optional pixels frame))
+(declare-function image-size "ext:image.c" (spec &optional pixels frame))
+(declare-function octocat-tree--image-file "octocat-tree" (repo ref path callback))
+(declare-function octocat-vui--image-loading "octocat-vui" (buf loading))
 
 (defcustom octocat-image-max-lines 20
   "The most lines of text an image may be as tall as."
@@ -73,12 +75,12 @@
 github.com/user-attachments/assets/ redirects to S3 when fetched
 without a session.")
 
-(defvar octocat-image-file-function nil
+(defvar octocat-image-file-function #'octocat-tree--image-file
   "Function that fetches a file of a repository, for a relative image.
 Called with REPO, REF, PATH and a callback, which it calls with the
 file's bytes, or nil if they cannot be had.")
 
-(defvar octocat-image-loading-function nil
+(defvar octocat-image-loading-function #'octocat-vui--image-loading
   "Function that shows whether a buffer waits for an image.
 Called with the BUFFER and LOADING, t when it starts waiting for one,
 nil when that one arrived or failed.")

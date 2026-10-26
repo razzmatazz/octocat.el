@@ -99,14 +99,14 @@ The rest expands on RET.  Nil never folds."
 (defvar octocat-file-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-file-browse)
+    (define-key map (kbd "C-c C-f") #'octocat-tree-find-file)
+    (define-key map (kbd "C-c C-l") #'octocat-file-log-open)
+    (define-key map (kbd "C-c C-b") #'octocat-file-switch-branch)
+    (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
+    (define-key map (kbd "gr")      #'octocat-vui-refresh)
     map)
   "Keymap for `octocat-file-mode'.")
-(define-key octocat-file-mode-map (kbd "C-c C-o") #'octocat-file-browse)
-(define-key octocat-file-mode-map (kbd "C-c C-f") #'octocat-tree-find-file)
-(define-key octocat-file-mode-map (kbd "C-c C-l") #'octocat-file-log-open)
-(define-key octocat-file-mode-map (kbd "C-c C-b") #'octocat-file-switch-branch)
-(define-key octocat-file-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
-(define-key octocat-file-mode-map (kbd "gr")      #'octocat-vui-refresh)
 
 (define-derived-mode octocat-file-mode vui-mode "Octocat-File"
   "Major mode for viewing a GitHub file: highlighted, or rendered if markdown.
@@ -267,8 +267,6 @@ fetched once."
        (octocat-tree--load-blob
         repo sha (lambda (r) (funcall callback (and (stringp r) r))))))))
 
-(setq octocat-image-file-function #'octocat-tree--image-file)
-
 ;;;; Syntax highlighting
 
 (defun octocat-tree--fontify (path content)
@@ -278,7 +276,8 @@ PATH is used only to select the mode via `auto-mode-alist'."
     (insert content)
     (let ((buffer-file-name path))
       (delay-mode-hooks (set-auto-mode)))
-    (ignore-errors (font-lock-ensure))
+    ;; A mode's broken font-lock rules should not lose the file's text.
+    (with-demoted-errors "Octocat: cannot highlight: %S" (font-lock-ensure))
     (buffer-string)))
 
 

@@ -180,10 +180,10 @@ new TICK fetches it again."
 (defvar octocat-compare-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-compare-browse)
+    (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-compare-mode'.")
-(define-key octocat-compare-mode-map (kbd "C-c C-o") #'octocat-compare-browse)
-(define-key octocat-compare-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
 
 (define-derived-mode octocat-compare-mode vui-mode "Octocat-Compare"
   "Major mode for viewing the comparison of two refs of a GitHub repository.

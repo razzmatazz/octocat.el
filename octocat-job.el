@@ -599,9 +599,9 @@ unfolded, until the fresh data replaces it."
 (defvar octocat-job-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-job-browse)
     map)
   "Keymap for `octocat-job-mode'.")
-(define-key octocat-job-mode-map (kbd "C-c C-o") #'octocat-job-browse)
 
 (define-derived-mode octocat-job-mode vui-mode "Octocat-Job"
   "Major mode for viewing a GitHub Actions job.

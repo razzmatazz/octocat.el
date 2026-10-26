@@ -32,15 +32,17 @@
 
 ;;; Code:
 
-(declare-function evil-define-key*          "evil-core" (state keymap &rest bindings))
-(declare-function evil-normalize-keymaps    "evil-core" (&optional hook))
-(declare-function evil-set-initial-state    "evil-core" (mode state))
-(declare-function evil-insert-state         "evil-states" (&optional arg))
-(declare-function evil-normal-state         "evil-states" (&optional arg))
-(declare-function evil-local-set-key        "evil-core" (state key def))
-(declare-function evil-ret                  "evil-commands" (&optional count))
-(declare-function evil-backward-char        "evil-commands" (&optional count crosslines noerror))
-(declare-function evil-forward-char         "evil-commands" (&optional count crosslines noerror))
+(declare-function evil-define-key*          "ext:evil-core" (state keymap key def &rest bindings))
+(declare-function evil-normalize-keymaps    "ext:evil-core" (&optional hook))
+(declare-function evil-set-initial-state    "ext:evil-core" (mode state))
+(declare-function evil-local-set-key        "ext:evil-core" (state key def))
+;; Defined by Evil's own macros, which `check-declare' cannot read: the
+;; t says to check only that the file exists.
+(declare-function evil-insert-state         "ext:evil-states" (&optional arg) t)
+(declare-function evil-normal-state         "ext:evil-states" (&optional arg) t)
+(declare-function evil-ret                  "ext:evil-commands" (&optional count) t)
+(declare-function evil-backward-char        "ext:evil-commands" (&optional count crosslines noerror) t)
+(declare-function evil-forward-char         "ext:evil-commands" (&optional count crosslines noerror) t)
 
 (defvar octocat-mode-map)
 (defvar octocat-repo-mode-map)

@@ -107,10 +107,10 @@ Falls back to the user's GitHub page when point is not on a row."
 (defvar octocat-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "+")       #'octocat-feed-load-more)
+    (define-key map (kbd "C-c C-o") #'octocat-dashboard-browse)
     map)
   "Keymap for `octocat-mode' (GitHub account dashboard).")
-(define-key octocat-mode-map (kbd "+")       #'octocat-feed-load-more)
-(define-key octocat-mode-map (kbd "C-c C-o") #'octocat-dashboard-browse)
 (define-derived-mode octocat-mode vui-mode "Octocat"
   "Major mode for the GitHub account dashboard.
 

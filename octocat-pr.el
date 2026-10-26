@@ -1042,15 +1042,15 @@ A new TICK fetches them again."
 (defvar octocat-pr-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-pr-browse)
+    (define-key map (kbd "C-c C-a") #'octocat-pr-add-comment)
+    (define-key map (kbd "C-c C-e") #'octocat-pr-edit)
+    (define-key map (kbd "C-c C-n") #'octocat-issue-new)
+    (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
+    (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
+    (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-pr-mode'.")
-(define-key octocat-pr-mode-map (kbd "C-c C-o") #'octocat-pr-browse)
-(define-key octocat-pr-mode-map (kbd "C-c C-a") #'octocat-pr-add-comment)
-(define-key octocat-pr-mode-map (kbd "C-c C-e") #'octocat-pr-edit)
-(define-key octocat-pr-mode-map (kbd "C-c C-n") #'octocat-issue-new)
-(define-key octocat-pr-mode-map (kbd "C-c C-m") #'octocat-pr-merge)
-(define-key octocat-pr-mode-map (kbd "C-c C-r") #'octocat-pr-diff-review)
-(define-key octocat-pr-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
 
 (define-derived-mode octocat-pr-mode vui-mode "Octocat-PR"
   "Major mode for viewing a GitHub Pull Request as a timeline.
@@ -1117,11 +1117,11 @@ the background, in place: what is unfolded stays so."
 (defvar octocat-pr-commits-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-pr-commits-browse)
+    (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
+    (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
     map)
   "Keymap for `octocat-pr-commits-mode'.")
-(define-key octocat-pr-commits-mode-map (kbd "C-c C-o") #'octocat-pr-commits-browse)
-(define-key octocat-pr-commits-mode-map (kbd "C-c C-m") #'octocat-pr-merge)
-(define-key octocat-pr-commits-mode-map (kbd "C-c C-r") #'octocat-pr-diff-review)
 
 (define-derived-mode octocat-pr-commits-mode vui-mode "Octocat-PR-Commits"
   "Major mode for the commits of a GitHub Pull Request.
@@ -1180,6 +1180,13 @@ the background, in place: what is unfolded stays so."
                                                (octocat-repo-vui--pr-compact-line
                                                 repo pr bg no-state))))))
 
+(defvar octocat-pr-list-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map octocat-vui-list-mode-map)
+    (define-key map (kbd "C-c C-n") #'octocat-issue-new)
+    map)
+  "Keymap for `octocat-pr-list-mode'.")
+
 (define-derived-mode octocat-pr-list-mode octocat-vui-list-mode "Octocat-PRs"
   "Major mode for the pull request list of a repository.
 
@@ -1194,7 +1201,6 @@ the background, in place: what is unfolded stays so."
                 ("Label"    . octocat-vui-list-filter-label)))
   (setq-local octocat-vui-list--view "pr-list")
   (setq-local revert-buffer-function #'octocat-pr-list-refresh))
-(define-key octocat-pr-list-mode-map (kbd "C-c C-n") #'octocat-issue-new)
 
 (provide 'octocat-pr)
 ;;; octocat-pr.el ends here

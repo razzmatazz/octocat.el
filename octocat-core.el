@@ -1018,8 +1018,6 @@ is asked first and the matching view opened."
                   ((equal result "true") (octocat-pr-open repo id))
                   (t (octocat-issue-open repo id))))))))))
 
-(setq octocat-markdown-ref-function #'octocat--markdown-open-ref)
-
 ;;;; github.com links
 ;;
 ;; github.com links octocat has a view for open in it, through
@@ -1287,10 +1285,6 @@ Each page's mode map inherits it: the vui pages through
 ;; page, as on GitHub, with the file tree on it.  Detail
 ;; pages leave it out; their repo name leads back to the repo page.
 
-(declare-function octocat-issue-list "octocat"      (&optional repo))
-(declare-function octocat-pr-list    "octocat"      (&optional repo))
-(declare-function octocat-actions    "octocat"      (&optional repo))
-
 (defconst octocat--repo-tabs
   '((code    "Code"          "RET: open repository page"     octocat-visit-repo)
     (issues  "Issues"        "RET: list issues"              octocat-issue-list)
@@ -1401,17 +1395,17 @@ SHA, is the one to show instead of the default branch."
   "Return the \"owner/repo\" string for the current octocat buffer context.
 Tries each buffer-local repo variable in priority order, then falls
 back to parsing the git origin remote via `octocat-repo--current-repo'."
-  (or (and (boundp 'octocat-repo--repo)     (ignore-errors octocat-repo--repo))
-      (and (boundp 'octocat--pr-repo)       (ignore-errors octocat--pr-repo))
-      (and (boundp 'octocat--issue-repo)    (ignore-errors octocat--issue-repo))
-      (and (boundp 'octocat--commit-repo)   (ignore-errors octocat--commit-repo))
-      (and (boundp 'octocat--workflow-repo) (ignore-errors octocat--workflow-repo))
-      (and (boundp 'octocat--run-repo)      (ignore-errors octocat--run-repo))
-      (and (boundp 'octocat--job-repo)      (ignore-errors octocat--job-repo))
-      (and (boundp 'octocat--checks-repo)   (ignore-errors octocat--checks-repo))
-      (and (boundp 'octocat-tree--file-repo) (ignore-errors octocat-tree--file-repo))
-      (and (boundp 'octocat-vui-list--repo) (ignore-errors octocat-vui-list--repo))
-      (ignore-errors (octocat-repo--current-repo))))
+  (or (bound-and-true-p octocat-repo--repo)
+      (bound-and-true-p octocat--pr-repo)
+      (bound-and-true-p octocat--issue-repo)
+      (bound-and-true-p octocat--commit-repo)
+      (bound-and-true-p octocat--workflow-repo)
+      (bound-and-true-p octocat--run-repo)
+      (bound-and-true-p octocat--job-repo)
+      (bound-and-true-p octocat--checks-repo)
+      (bound-and-true-p octocat-tree--file-repo)
+      (bound-and-true-p octocat-vui-list--repo)
+      (condition-case nil (octocat-repo--current-repo) (user-error nil))))
 
 ;;;; List filters
 ;;

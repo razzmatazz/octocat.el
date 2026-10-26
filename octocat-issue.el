@@ -357,13 +357,13 @@ A new TICK fetches everything again."
 (defvar octocat-issue-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-issue-browse)
+    (define-key map (kbd "C-c C-a") #'octocat-issue-add-comment)
+    (define-key map (kbd "C-c C-e") #'octocat-issue-edit)
+    (define-key map (kbd "C-c C-n") #'octocat-issue-new)
+    (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-issue-mode'.")
-(define-key octocat-issue-mode-map (kbd "C-c C-o") #'octocat-issue-browse)
-(define-key octocat-issue-mode-map (kbd "C-c C-a") #'octocat-issue-add-comment)
-(define-key octocat-issue-mode-map (kbd "C-c C-e") #'octocat-issue-edit)
-(define-key octocat-issue-mode-map (kbd "C-c C-n") #'octocat-issue-new)
-(define-key octocat-issue-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
 
 (define-derived-mode octocat-issue-mode vui-mode "Octocat-Issue"
   "Major mode for viewing a GitHub Issue as a timeline.
@@ -429,6 +429,13 @@ the background, in place: what is unfolded stays so."
                                                (octocat-repo-vui--issue-compact-line
                                                 repo issue bg no-state))))))
 
+(defvar octocat-issue-list-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map octocat-vui-list-mode-map)
+    (define-key map (kbd "C-c C-n") #'octocat-issue-new)
+    map)
+  "Keymap for `octocat-issue-list-mode'.")
+
 (define-derived-mode octocat-issue-list-mode octocat-vui-list-mode "Octocat-Issues"
   "Major mode for the issue list of a repository.
 
@@ -437,7 +444,6 @@ the background, in place: what is unfolded stays so."
   (setq-local octocat-vui-list--states '("open" "closed" "all"))
   (setq-local octocat-vui-list--view "issue-list")
   (setq-local revert-buffer-function #'octocat-issue-list-refresh))
-(define-key octocat-issue-list-mode-map (kbd "C-c C-n") #'octocat-issue-new)
 
 (provide 'octocat-issue)
 ;;; octocat-issue.el ends here

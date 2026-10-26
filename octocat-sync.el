@@ -42,6 +42,20 @@
 (require 'subr-x)
 (require 'octocat-core)
 
+;; Emacs built without SQLite lacks these; `octocat-sync--db' checks
+;; `sqlite-available-p' first.  `sqlite-open' gained arguments in 31.
+(declare-function sqlite-open        "ext:sqlite.c" t)
+(declare-function sqlite-execute     "ext:sqlite.c" (db query &optional values))
+(declare-function sqlite-select      "ext:sqlite.c" (db query &optional values return-type))
+(declare-function sqlite-pragma      "ext:sqlite.c" (db pragma))
+(declare-function sqlite-transaction "ext:sqlite.c" (db))
+(declare-function sqlite-commit      "ext:sqlite.c" (db))
+(declare-function sqlite-rollback    "ext:sqlite.c" (db))
+
+(declare-function octocat-vui--on-sync-change     "octocat-vui" (keys))
+(declare-function octocat-vui--on-sync-loading    "octocat-vui" (key loading))
+(declare-function octocat-vui--on-sync-invalidate "octocat-vui" (keys))
+
 (defcustom octocat-sync-directory (locate-user-emacs-file "octocat/")
   "Directory of the sync store, one SQLite file per GitHub host.
 The file is named after the host, such as \"sync-github.com.sqlite\"."
@@ -76,17 +90,17 @@ after `octocat-gh-timeout'."
   :type 'integer
   :group 'octocat)
 
-(defvar octocat-sync-change-functions nil
+(defvar octocat-sync-change-functions (list #'octocat-vui--on-sync-change)
   "Functions called with the keys of resources whose snapshot changed.
 Called once per write, after it is committed.")
 
-(defvar octocat-sync-loading-functions nil
+(defvar octocat-sync-loading-functions (list #'octocat-vui--on-sync-loading)
   "Functions called with a resource's key and whether it is now loading.
 Starting or ending a fetch changes no snapshot a page draws from data,
 so it is reported here rather than as a change: a page keeps its
 spinner from it, and a refetch that finds nothing new renders nothing.")
 
-(defvar octocat-sync-invalidate-functions nil
+(defvar octocat-sync-invalidate-functions (list #'octocat-vui--on-sync-invalidate)
   "Functions called with the keys of resources found outdated.
 Their data stays; a page showing one should refetch it.")
 
@@ -437,7 +451,7 @@ refetches it; the rest are refetched when next opened."
 Return their keys.  Their data stays, but the next open refetches them."
   (let (keys)
     (pcase-dolist (`(,key) (sqlite-select db "SELECT key FROM resource"))
-      (let ((spec (ignore-errors (car (read-from-string key)))))
+      (let ((spec (car (read-from-string key))))
         (when (and (consp spec)
                    (seq-some (lambda (p) (octocat-sync--spec-match-p p spec)) patterns))
           (push key keys))))

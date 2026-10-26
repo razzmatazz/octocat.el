@@ -59,9 +59,9 @@
 ;; compiled when this file is.
 (declare-function octocat-run-open                 "octocat-run"      (repo run-id))
 (declare-function octocat-tree-find-file           "octocat-tree"     ())
-(declare-function octocat-issue-list               "octocat"          ())
-(declare-function octocat-pr-list                  "octocat"          ())
-(declare-function octocat-actions                  "octocat"          ())
+(declare-function octocat-issue-list               "octocat"          (&optional repo))
+(declare-function octocat-pr-list                  "octocat"          (&optional repo))
+(declare-function octocat-actions                  "octocat"          (&optional repo))
 (declare-function octocat-user-open                "octocat-user"     (login))
 
 
@@ -1619,13 +1619,13 @@ The tree browser stays in its directory, as GitHub's does."
 (defvar octocat-repo-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "^") #'octocat-repo-up)
+    (define-key map (kbd "C-c C-f") #'octocat-tree-find-file)
+    (define-key map (kbd "C-c C-b") #'octocat-repo-switch-branch)
+    (define-key map (kbd "C-c C-o") #'octocat-repo-browse)
+    (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-repo-mode'.")
-(define-key octocat-repo-mode-map (kbd "^") #'octocat-repo-up)
-(define-key octocat-repo-mode-map (kbd "C-c C-f") #'octocat-tree-find-file)
-(define-key octocat-repo-mode-map (kbd "C-c C-b") #'octocat-repo-switch-branch)
-(define-key octocat-repo-mode-map (kbd "C-c C-o") #'octocat-repo-browse)
-(define-key octocat-repo-mode-map (kbd "C-c C-v") #'octocat-toggle-markdown)
 
 (define-derived-mode octocat-repo-mode vui-mode "Octocat-Repo"
   "Major mode for browsing a GitHub repository.

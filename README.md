@@ -463,10 +463,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for code conventions and guidelines.
 
 ### Compiling, linting and testing
 
-`make ci` byte-compiles every file, tests included, runs `checkdoc` and
-[`package-lint`](https://github.com/purcell/package-lint), and runs the ERT
-tests, all inside a Docker (or Podman) container based on Ubuntu 26.04, so
-no local Emacs install is required.  The targets run
+`make ci` byte-compiles every file, tests included, runs `checkdoc`,
+[`package-lint`](https://github.com/purcell/package-lint) and
+`check-declare`, and runs the ERT tests, all inside a Docker (or Podman)
+container based on Ubuntu 26.04, so no local Emacs install is required.
+It also runs [melpazoid](https://github.com/riscy/melpazoid), see below.  The targets run
 [Eldev](https://github.com/emacs-eldev/eldev), configured in `Eldev`; it
 takes the dependencies from the `Package-Requires` header of `octocat.el`
 and keeps them in `.eldev/VERSION/`.
@@ -490,6 +491,17 @@ one passes can fail another.  The newest matters too: Emacs 31 checks a call's a
 against any loaded function, while older releases check it only against
 callees that are already byte-compiled, so only 31 catches every call
 with the wrong number of arguments.
+
+`make melpazoid` (part of `make ci` and `make ci-all`) runs the checks
+MELPA's reviewers run on a submission, so their findings show here
+first.  It clones melpazoid at the commit pinned in the `Makefile` into
+`.ci/melpazoid/` and runs it unchanged: it builds and runs its own image,
+an Emacs 31.1 without SQLite, which shows a call to a function only
+some builds have.  So it runs on the host, and needs `python3` as well as
+Docker or Podman.  Its report is in `.ci/melpazoid-report.txt`.  Any
+finding fails the target, even those melpazoid itself only reports, such
+as a top-level `define-key` or `ignore-errors`.  To take a newer
+melpazoid, change `MELPAZOID_COMMIT` and fix what it finds.
 
 With Eldev installed locally, its commands run against your own Emacs,
 without a container, which is quicker while working on a test.  For

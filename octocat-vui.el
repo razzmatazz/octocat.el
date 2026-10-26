@@ -169,8 +169,6 @@ own, so a segment such as a relative date keeps its own hover text
       (when-let* ((root (and (buffer-live-p buf) (vui-get-instance buf))))
         (vui-rerender root)))))
 
-(add-hook 'octocat-sync-change-functions #'octocat-vui--on-sync-change)
-
 (defvar-local octocat-vui--loading-keys nil
   "Keys of the resources this buffer's page reads that are being fetched.")
 
@@ -190,15 +188,11 @@ No re-render: a refetch shows only here until its data changes."
   (pcase-dolist (`(,buf . ,_) (gethash key octocat-vui--subscriptions))
     (octocat-vui--set-key-loading buf key loading)))
 
-(add-hook 'octocat-sync-loading-functions #'octocat-vui--on-sync-loading)
-
 (defun octocat-vui--on-sync-invalidate (keys)
   "Refetch the resources of KEYS that are on a page; the rest wait to be opened."
   (dolist (key keys)
     (when (gethash key octocat-vui--subscriptions)
       (octocat-sync-request (car (read-from-string key)) t))))
-
-(add-hook 'octocat-sync-invalidate-functions #'octocat-vui--on-sync-invalidate)
 
 (defvar-local octocat-vui--snapshots nil
   "Resource key to the snapshot this buffer's page reads, for its header line.")
@@ -287,9 +281,9 @@ hook."
 
 (defun octocat-vui--prefetch-schedule ()
   "Prefetch the specs of the row at point once point rests there.
-For `post-command-hook'.  A row names them in its `octocat-sync-prefetch'
-text property.  Each command restarts the wait, so moving through rows
-prefetches nothing."
+For `post-command-hook'.  A row names them in its text property, the
+symbol `octocat-sync-prefetch'.  Each command restarts the wait, so
+moving through rows prefetches nothing."
   (when (timerp octocat-vui--prefetch-timer)
     (cancel-timer octocat-vui--prefetch-timer))
   (setq octocat-vui--prefetch-timer
@@ -830,8 +824,6 @@ Its link's spinner turns with the mode line's.  For
     (with-current-buffer buf (setq octocat-vui--page-spinner t)))
   (octocat-vui--add-loading buf (if loading 1 -1)))
 
-(setq octocat-image-loading-function #'octocat-vui--image-loading)
-
 (defmacro octocat-vui-use-mode-line-loading (loading)
   "Show \":loading\" in the mode line while LOADING, a variable, is true.
 That is `mode-line-process', after the mode name, where Emacs shows that
@@ -918,9 +910,9 @@ would pull the user back to it (see docs/using-vui.md)."
 (declare-function octocat--setting-put "octocat-core" (key value))
 (declare-function octocat-visit-repo "octocat-core" (repo &optional ref))
 (declare-function octocat-user-open "octocat-user" (login))
-(declare-function octocat-issue-list "octocat" ())
-(declare-function octocat-pr-list "octocat" ())
-(declare-function octocat-actions "octocat" ())
+(declare-function octocat-issue-list "octocat" (&optional repo))
+(declare-function octocat-pr-list "octocat" (&optional repo))
+(declare-function octocat-actions "octocat" (&optional repo))
 
 (defvar-local octocat-vui-list--repo nil
   "The \"owner/repo\" string this list buffer is tracking.")
@@ -961,10 +953,11 @@ The choice is remembered for this page of this repository."
 (defvar octocat-vui-list-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-vui-list-browse)
+    (define-key map (kbd "C-c C-v") #'octocat-vui-list-toggle-compact)
+    (define-key map (kbd "F") #'octocat-vui-list-filter)
     map)
   "Keymap for `octocat-vui-list-mode' and the list pages derived from it.")
-(define-key octocat-vui-list-mode-map (kbd "C-c C-o") #'octocat-vui-list-browse)
-(define-key octocat-vui-list-mode-map (kbd "C-c C-v") #'octocat-vui-list-toggle-compact)
 
 (define-derived-mode octocat-vui-list-mode vui-mode "Octocat-List"
   "Base major mode for the octocat PR, issue and workflow list pages.
@@ -1642,8 +1635,6 @@ A [clear] button shows when it differs from the default."
                                   :on-click (cdr facet)))
                     octocat-vui-list--facets))
      (vui-newline))))
-
-(define-key octocat-vui-list-mode-map (kbd "F") #'octocat-vui-list-filter)
 
 (provide 'octocat-vui)
 ;;; octocat-vui.el ends here

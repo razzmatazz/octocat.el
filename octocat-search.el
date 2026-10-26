@@ -593,8 +593,7 @@ Prefix a hash (e.g. \"a1b2c3\") to narrow to a specific commit."
   (let ((repo (octocat--search-repo--current-repo)))
     (unless repo
       (user-error "Octocat: Cannot determine current repository"))
-    (let* ((dir    (or (and (boundp 'octocat-repo--local-dir)
-                            (ignore-errors octocat-repo--local-dir))
+    (let* ((dir    (or (bound-and-true-p octocat-repo--local-dir)
                        (octocat-repo--local-dir-for repo)))
            (chosen (consult--read
                     (consult--async-pipeline

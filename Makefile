@@ -13,37 +13,49 @@ endif
 # package archive fetches.
 RUN = $(DOCKER) run --rm -e CI -v "$(CURDIR)":/src -w /src $(IMAGE)
 
-.PHONY: ci ci-all image deps clean compile lint test screenshots
+.PHONY: ci ci-all image deps clean compile lint test melpazoid screenshots
 
-# Build the image and install the dependencies, then run compile, lint and
-# test in parallel, as they are independent.  compile, lint and test can
-# also run on their own once ci has run.
+# What ci runs at once.  ci-all leaves out melpazoid, which is the same on
+# every release, and runs it once beside them.
+CI_CHECKS ?= compile lint test melpazoid
+
+# Build the image and install the dependencies, then run compile, lint,
+# test and melpazoid in parallel, as they are independent.  Each can also
+# run on its own once ci has run.
 ci: clean
 	$(MAKE) image
 	$(MAKE) deps
-	$(MAKE) -j3 compile lint test
+	$(MAKE) -j4 $(CI_CHECKS)
 
-# ci on every release CI runs, at once: each has its own image, and its
-# own .eldev/VERSION.  Each run's output goes to .ci/VERSION.log; a failed
+# ci on every release CI runs, at once, and melpazoid beside them: each
+# release has its own image, and its own .eldev/VERSION.  Each run's output
+# goes to .ci/VERSION.log, melpazoid's to .ci/melpazoid.log; a failed
 # one's end is printed.
 ci-all:
 	@mkdir -p .ci
 	@for v in $(EMACS_ALL); do \
-	  ( $(MAKE) ci EMACS=$$v > .ci/$$v.log 2>&1; echo $$? > .ci/$$v.status ) & \
-	done; wait; \
+	  ( $(MAKE) ci EMACS=$$v CI_CHECKS="compile lint test" > .ci/$$v.log 2>&1; \
+	    echo $$? > .ci/$$v.status ) & \
+	done; \
+	( $(MAKE) melpazoid > .ci/melpazoid.log 2>&1; echo $$? > .ci/melpazoid.status ) & \
+	wait; \
 	failed=0; \
 	for v in $(EMACS_ALL); do \
 	  if [ "$$(cat .ci/$$v.status)" = 0 ]; then echo "Emacs $$v: ok"; \
 	  else failed=1; echo "Emacs $$v: failed, see .ci/$$v.log"; \
 	    grep -E "\.el:[0-9]+: |FAILED|Error" .ci/$$v.log | tail -20; fi; \
-	done; exit $$failed
+	done; \
+	if [ "$$(cat .ci/melpazoid.status)" = 0 ]; then echo "melpazoid: ok"; \
+	else failed=1; echo "melpazoid: failed, see .ci/melpazoid.log"; \
+	  tail -30 .ci/melpazoid.log; fi; \
+	exit $$failed
 
 image:
 	$(DOCKER) build --build-arg EMACS=$(EMACS) -t $(IMAGE) .
 
 # The linters too, as lint and test run at once, against the same .eldev.
 deps:
-	$(RUN) eldev prepare build test lint
+	$(RUN) eldev prepare build test lint exec
 
 clean:
 	find . -maxdepth 1 -name '*.elc' -delete
@@ -58,9 +70,9 @@ compile:
 	  && cp -a /src/.eldev/$(EMACS) /tmp/build/.eldev \
 	  && cd /tmp/build && eldev compile --warnings-as-errors --set all"
 
-# checkdoc and package-lint, as the Eldev file says.
+# checkdoc and package-lint, as the Eldev file says, then check-declare.
 lint:
-	$(RUN) eldev lint
+	$(RUN) sh -c 'eldev lint && eldev exec -R --file tools/check-declare.el'
 
 # The tests share one process, but for the evil one, which must load
 # octocat itself (see its Commentary).
@@ -68,6 +80,32 @@ EVIL_TEST := test/octocat-evil-repo-tests.el
 
 test:
 	$(RUN) sh -c 'eldev test $(EVIL_TEST) && eldev test $(filter-out $(EVIL_TEST),$(wildcard test/*-tests.el))'
+
+# melpazoid, as MELPA's reviewers run it on a submission: in its own image,
+# an Emacs 31 built without SQLite, so a function only some builds have
+# shows.  It runs on the host, as it builds and runs that image itself, so
+# it needs python3.  It is given a copy of what MELPA packages, as it
+# copies the whole tree.  It exits 0 on what it only reports, so any
+# "━" section, which it prints for each check that found something,
+# fails here too.
+MELPAZOID_COMMIT := fcf5d883c6ced74ba16963d48c9e9e0bf0a1ff37
+MELPAZOID_RECIPE := (octocat :fetcher github :repo "razzmatazz/octocat.el")
+
+melpazoid:
+	@if [ ! -d .ci/melpazoid/.git ]; then \
+	  git clone -q https://github.com/riscy/melpazoid .ci/melpazoid; fi
+	@git -C .ci/melpazoid cat-file -e $(MELPAZOID_COMMIT) 2>/dev/null \
+	  || git -C .ci/melpazoid fetch -q origin
+	@git -C .ci/melpazoid checkout -q $(MELPAZOID_COMMIT)
+	@rm -rf .ci/melpazoid-src/octocat && mkdir -p .ci/melpazoid-src/octocat
+	@cp -p *.el LICENSE .ci/melpazoid-src/octocat
+	@cd .ci/melpazoid && \
+	  DOCKER="$(DOCKER)" RECIPE='$(MELPAZOID_RECIPE)' \
+	  LOCAL_REPO="$(CURDIR)/.ci/melpazoid-src/octocat" WARN_IS_ERROR=true NO_COLOR=1 \
+	  python3 -I melpazoid/melpazoid.py > ../melpazoid-report.txt 2>&1; \
+	  status=$$?; cat ../melpazoid-report.txt; \
+	  if [ $$status != 0 ] || grep -q '^━ ' ../melpazoid-report.txt; then \
+	    echo "melpazoid: found something, see above"; exit 1; fi
 
 SCREENSHOTS_IMAGE := octocat-screenshots
 

@@ -58,6 +58,8 @@
 (require 'url-util)
 (require 'octocat-mermaid)
 
+(declare-function octocat--markdown-open-ref "octocat-core" (kind repo id))
+
 ;;;; Faces
 
 (defgroup octocat-markdown nil
@@ -137,7 +139,7 @@
 
 ;;;; Following links
 
-(defvar octocat-markdown-ref-function nil
+(defvar octocat-markdown-ref-function #'octocat--markdown-open-ref
   "Function that opens a reference found in rendered markdown.
 Called with KIND (`issue' or `commit'), REPO (an \"owner/name\" string, or
 nil for the repository of the current buffer) and ID (an issue number or

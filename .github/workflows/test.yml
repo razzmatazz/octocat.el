@@ -57,3 +57,9 @@ jobs:
 
       - name: Run ERT tests
         run: make test
+
+      # On one release only: melpazoid builds its own Emacs 31, as MELPA's
+      # reviewers do, whichever this job tests, see the Makefile.
+      - name: Run melpazoid
+        if: matrix.emacs == '31.1'
+        run: make melpazoid

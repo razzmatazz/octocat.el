@@ -359,9 +359,9 @@ A new TICK fetches everything again."
 (defvar octocat-user-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-user-browse)
     map)
   "Keymap for `octocat-user-mode'.")
-(define-key octocat-user-mode-map (kbd "C-c C-o") #'octocat-user-browse)
 
 (define-derived-mode octocat-user-mode vui-mode "Octocat-User"
   "Major mode for a GitHub user or organization page.

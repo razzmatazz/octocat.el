@@ -276,9 +276,9 @@ A new TICK fetches them again."
 (defvar octocat-checks-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
+    (define-key map (kbd "C-c C-o") #'octocat-checks-browse)
     map)
   "Keymap for `octocat-checks-mode'.")
-(define-key octocat-checks-mode-map (kbd "C-c C-o") #'octocat-checks-browse)
 
 (define-derived-mode octocat-checks-mode vui-mode "Octocat-Checks"
   "Major mode for viewing the GitHub check-runs of a commit.
