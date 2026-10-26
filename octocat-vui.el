@@ -491,7 +491,9 @@ PREFIX starts the marker row and NOUN (\"lines\", \"checks\") names the
 things in it.  KEY names the marker button, so point stays on it when
 the view re-renders.  With LIMIT nil, or TOTAL not above it, nothing
 folds.  RET on the marker unfolds the rest, easing out, and then
-folds it back."
+folds it back.  Unfolding leaves the window's view where it was: point
+follows the marker while it stays in view, and otherwise stays on the
+line RET was pressed on, where the rest starts."
   :state ((shown nil) (open nil) (closing nil))
   :render
   (let* ((_ (octocat-vui-use-view-reset
@@ -502,7 +504,19 @@ folds it back."
          (folds   (and limit (> total limit)))
          (visible (if folds (min total (or shown limit)) total))
          (done    (>= visible total))
-         (unfolding (and open (not done) (not closing))))
+         (unfolding (and open (not done) (not closing)))
+         ;; (WINDOW START STAY) from RET, see `octocat-vui--fold-pin'
+         (pin (vui-use-ref nil)))
+    ;; vui keeps point on the marker at the same screen row, so each
+    ;; frame would scroll the window by the lines it revealed.
+    (vui-use-effect (visible)
+      (pcase (car pin)
+        (`(,window ,start ,stay)
+         (when (and open (window-live-p window))
+           (set-window-start window start t)
+           (when stay (set-window-point window stay)))
+         (unless unfolding (setcar pin nil))))
+      nil)
     ;; Unfold progressively: a timer adds more things each frame (see
     ;; `octocat-vui-unfold-step') until all show.  It exists only while
     ;; that is going on.
@@ -540,7 +554,22 @@ folds it back."
           :on-click (vui-with-async-context
                      (cond (closing nil)
                            ((and open done) (vui-set-state :closing t))
-                           (t (vui-set-state :open t))))))))))
+                           (t (setcar pin (octocat-vui--fold-pin
+                                           (selected-window) (- total visible)))
+                              (vui-set-state :open t))))))))))
+
+(defun octocat-vui--fold-pin (window rows)
+  "Return how to keep WINDOW's view as a fold unfolds ROWS rows below point.
+That is (WINDOW START STAY): START is WINDOW's start, and STAY is nil
+when the marker at point still fits in WINDOW once moved ROWS rows
+down, so point follows it, or else the start of the marker's line,
+where the unfolded rows start.  Nil when point is not in view."
+  (when-let* (((eq (window-buffer window) (current-buffer)))
+              (posn (posn-at-point (point) window)))
+    (list window (window-start window)
+          (unless (< (+ (cdr (posn-col-row posn)) rows)
+                     (window-body-height window))
+            (line-beginning-position)))))
 
 (defun octocat-vui-fold-lines (string ends limit key prefix &optional wrap)
   "Return STRING folded to its first LIMIT lines, the rest behind a marker.
