@@ -92,6 +92,9 @@ test:
 # -j, would warn of the jobserver.
 MELPAZOID_COMMIT := fcf5d883c6ced74ba16963d48c9e9e0bf0a1ff37
 MELPAZOID_RECIPE := (octocat :fetcher github :repo "razzmatazz/octocat.el")
+# As the host's user, as without capabilities root cannot write to its
+# directory; rootless podman maps the container's users to others.
+MELPAZOID_USER = $(if $(findstring podman,$(DOCKER)),--userns=keep-id,--user $$(id -u):$$(id -g))
 MELPAZOID_MAKE = MAKEFLAGS= MFLAGS= $(MAKE) -s -C .ci/melpazoid-build DOCKER="$(DOCKER)" \
   DOCKER_OUTPUT=--quiet PACKAGE_MAIN="$$(cat .ci/melpazoid-out/package-main)"
 
@@ -105,6 +108,7 @@ melpazoid:
 	@mkdir -p .ci/melpazoid-src/octocat .ci/melpazoid-out
 	@cp -p *.el LICENSE .ci/melpazoid-src/octocat
 	@$(DOCKER) run --rm --cap-drop all --security-opt=no-new-privileges --pids-limit=100 \
+	  $(MELPAZOID_USER) -e HOME=/tmp \
 	  -v "$(CURDIR)/.ci/melpazoid:/melpazoid:ro" \
 	  -v "$(CURDIR)/.ci/melpazoid-src/octocat:/octocat:ro" \
 	  -v "$(CURDIR)/tools/melpazoid.py:/melpazoid-checks.py:ro" \
