@@ -114,12 +114,21 @@ them, its message, its checks and its files.
 
 ## Actions
 
-`M-x octocat-actions`: the recent workflow runs, filterable.
+`M-x octocat-run-list` (or `M-x octocat-actions`): the recent workflow
+runs, filterable.
 
-<!-- screenshot: (actions "acme/rocket") -->
-![actions](actions.png)
+<!-- screenshot: (run-list "acme/rocket") -->
+![run-list](run-list.png)
 
-[As text](actions.txt)
+[As text](run-list.txt)
+<!-- /screenshot -->
+
+`M-x octocat-workflow-list`: the workflows, and whether each is enabled.
+
+<!-- screenshot: (workflow-list "acme/rocket") -->
+![workflow-list](workflow-list.png)
+
+[As text](workflow-list.txt)
 <!-- /screenshot -->
 
 A run's jobs and artifacts:

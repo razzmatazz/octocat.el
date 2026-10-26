@@ -48,7 +48,7 @@
 (declare-function octocat-user-browse "octocat-user" ())
 (defvar octocat-pr-list-mode-map)
 (defvar octocat-issue-list-mode-map)
-(defvar octocat-actions-mode-map)
+(defvar octocat-run-list-mode-map)
 (defvar octocat-pr-mode-map)
 (defvar octocat-commit-mode-map)
 (defvar octocat-compare-mode-map)
@@ -212,13 +212,13 @@ Off an entry, such as on the header, move left."
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
 
-  ;; ── PR / issue list pages and the Actions page ──────────────────────────────────
+  ;; ── PR / issue list pages and the run list ──────────────────────────────────
   ;; Normal state is bound per buffer by `octocat-evil--list-setup'.
   ;; Motion state on each derived mode's own map: Evil's auxiliary keymaps
   ;; are not reliably found through the parent `octocat-vui-list-mode-map'.
   (dolist (map (list octocat-pr-list-mode-map
                      octocat-issue-list-mode-map
-                     octocat-actions-mode-map))
+                     octocat-run-list-mode-map))
     (evil-define-key* 'motion map
       (kbd "F")       #'octocat-vui-list-filter))
   (add-hook 'octocat-vui-list-mode-hook #'octocat-evil--list-setup)

@@ -20,9 +20,12 @@
 
 ;;; Commentary:
 
-;; The Actions page, as GitHub's Actions tab: a repository's recent runs
-;; across all workflows, and on a second tab its workflows.  Opened by `M-x
-;; octocat-actions' (octocat.el).  See "UI frameworks" in CONTRIBUTING.md.
+;; The pages of GitHub's Actions tab, each its own buffer and major mode:
+;; a repository's recent runs across all workflows (`octocat-run-list-mode')
+;; and its workflows (`octocat-workflow-list-mode').  A tab row under the
+;; header switches between them.  Opened by `M-x octocat-run-list',
+;; `octocat-workflow-list' and `octocat-actions' (octocat.el).  See "UI
+;; frameworks" in CONTRIBUTING.md.
 
 ;;; Code:
 
@@ -32,6 +35,9 @@
 (require 'vui)
 (require 'vui-components) ; vui-list, etc.
 (require 'octocat-repo) ; row builders and fetchers
+
+(declare-function octocat-run-list      "octocat" (&optional repo))
+(declare-function octocat-workflow-list "octocat" (&optional repo))
 
 
 (octocat-sync-define-resource runs (repo limit args)
@@ -121,7 +127,7 @@ tokens of QUERY that are no qualifier of `octocat-actions--run-qualifiers'."
   (octocat-vui-list--edit-facet "actor:" "Actor" nil #'octocat--list-people nil))
 
 (defun octocat-actions--filter-setup ()
-  "Give the current list buffer the filter of the Actions page."
+  "Give the current list buffer the filter of the run list."
   (setq-local octocat-vui-list--states octocat-actions--run-statuses
               octocat-vui-list--default-query ""
               octocat-vui-list--qualifiers
@@ -139,7 +145,7 @@ tokens of QUERY that are no qualifier of `octocat-actions--run-qualifiers'."
 ;;;; Page
 
 (vui-defcomponent octocat-actions--runs-section (repo current-branch tick query)
-  "The Runs tab of REPO's Actions page: its recent runs matching QUERY.
+  "The recent runs of REPO matching QUERY.
 See `octocat-actions--run-args' for QUERY.  TICK is the page's refresh
 tick."
   :state ((limit octocat-actions-runs-page-size))
@@ -190,10 +196,22 @@ tick."
               (and loading (< (length runs) limit)) 0
               (octocat-vui-line-skeleton)))))))))
 
+(defun octocat-actions--tab-row (repo current workflows)
+  "Return the tab row of REPO's Actions pages.
+CURRENT is the page shown, `runs' or `workflows'; the other tab opens
+its page.  WORKFLOWS, their sync snapshot, gives their count."
+  (let ((count (and (plist-get workflows :data) (length (plist-get workflows :data)))))
+    (octocat-vui-tab-row
+     (list (list "Runs" "RET: list the recent runs"
+                 (unless (eq current 'runs) (lambda () (octocat-run-list repo))))
+           (list (if count (format "Workflows (%d)" count) "Workflows")
+                 "RET: list the workflows"
+                 (unless (eq current 'workflows) (lambda () (octocat-workflow-list repo)))))
+     (octocat-vui-window-width))))
+
 (defun octocat-actions--workflows (repo snap)
-  "Return the Workflows tab of REPO's Actions page, from SNAP.
-SNAP is the sync snapshot of the workflows (no pagination: run history
-lives on the Runs tab)."
+  "Return the workflows of REPO, from SNAP, their sync snapshot.
+No pagination: run history lives on the runs page."
   (pcase (octocat-vui-snapshot-status snap)
     ('pending (vui-text (octocat-vui-line-skeleton)))
     ('error   (vui-text (concat (octocat-vui-error-text snap) "\n") :face 'octocat-dimmed))
@@ -211,57 +229,68 @@ lives on the Runs tab)."
                      (lambda (wf) (octocat-repo-vui--workflow-row repo wf state-w name-w))
                      (lambda (wf) (gethash "id" wf)))))))))
 
-(vui-defcomponent octocat-actions--page (repo current-branch tick query)
-  "The Actions page of REPO: a Runs and a Workflows tab, Runs first.
-The runs are those matching QUERY, filtered above them.
-The workflows are fetched whichever tab shows, for the count on their
-tab; stored, it shows at once.  A new TICK refetches, keeping what is
-shown up until the fresh data replaces it."
-  :state ((tab 'runs))
+(vui-defcomponent octocat-actions--runs-page (repo current-branch tick query)
+  "The page of REPO's recent runs, those matching QUERY, filtered above them.
+The workflows are fetched too, for the count on their tab.  A new TICK
+refetches, keeping what is shown up until the fresh data replaces it."
   :render
-  (let* ((workflows (octocat-vui-use-resource (list 'workflows repo) tick))
-         (count     (and (plist-get workflows :data) (length (plist-get workflows :data))))
-         (tab-of    (lambda (sym label help)
-                      (list label help
-                            (unless (eq tab sym) (lambda () (vui-set-state :tab sym)))))))
+  (vui-vstack
+   (vui-component 'octocat-vui-list-header :repo repo :tab 'actions :tick tick)
+   (octocat-actions--tab-row repo 'runs
+                             (octocat-vui-use-resource (list 'workflows repo) tick))
+   (vui-newline)
+   (octocat-vui-list-filter-bar query)
+   (vui-component 'octocat-actions--runs-section
+                  :key query
+                  :repo repo :current-branch current-branch :tick tick
+                  :query query)))
+
+(vui-defcomponent octocat-actions--workflows-page (repo tick)
+  "The page of REPO's workflows.
+Stored, they show at once; a new TICK refetches them, keeping what is
+shown up until the fresh data replaces it."
+  :render
+  (let ((workflows (octocat-vui-use-resource (list 'workflows repo) tick)))
     (vui-vstack
      (vui-component 'octocat-vui-list-header :repo repo :tab 'actions :tick tick)
-     (octocat-vui-tab-row
-      (list (funcall tab-of 'runs "Runs" "RET: show the recent runs")
-            (funcall tab-of 'workflows
-                     (if count (format "Workflows (%d)" count) "Workflows")
-                     "RET: show the workflows"))
-      (octocat-vui-window-width))
-     (if (eq tab 'runs)
-         (vui-vstack
-          (vui-newline)
-          (octocat-vui-list-filter-bar query)
-          (vui-component 'octocat-actions--runs-section
-                         :key query
-                         :repo repo :current-branch current-branch :tick tick
-                         :query query))
-       (octocat-actions--workflows repo workflows)))))
+     (octocat-actions--tab-row repo 'workflows workflows)
+     (vui-newline)
+     (octocat-actions--workflows repo workflows))))
 
-(defun octocat-actions-refresh (&optional _ignore-auto _noconfirm)
-  "Refresh the current Actions page buffer.
-The page paints from the sync store at once and fetches the workflows
-and runs in the background; a refresh keeps the old content up
-meanwhile."
+(defun octocat-run-list-refresh (&optional _ignore-auto _noconfirm)
+  "Refresh the current run list buffer.
+The page paints from the sync store at once and fetches the runs in the
+background; a refresh keeps the old content up meanwhile."
   (interactive)
   (unless octocat-vui-list--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
-  (octocat-vui-refresh-page 'octocat-actions--page octocat-vui-list--repo
+  (octocat-vui-refresh-page 'octocat-actions--runs-page octocat-vui-list--repo
                             (list :repo octocat-vui-list--repo
                                   :current-branch (plist-get (octocat--head-info) :branch)
                                   :query (octocat-vui-list-query))))
 
-(define-derived-mode octocat-actions-mode octocat-vui-list-mode "Octocat-Actions"
-  "Major mode for the Actions page of a repository.
+(defun octocat-workflow-list-refresh (&optional _ignore-auto _noconfirm)
+  "Refresh the current workflow list buffer, as `octocat-run-list-refresh'."
+  (interactive)
+  (unless octocat-vui-list--repo
+    (user-error "Octocat: Buffer is not associated with a repository"))
+  (octocat-vui-refresh-page 'octocat-actions--workflows-page octocat-vui-list--repo
+                            (list :repo octocat-vui-list--repo)))
 
-\\{octocat-actions-mode-map}"
+(define-derived-mode octocat-run-list-mode octocat-vui-list-mode "Octocat-Runs"
+  "Major mode for the list of a repository's recent workflow runs.
+
+\\{octocat-run-list-mode-map}"
   :group 'octocat
   (octocat-actions--filter-setup)
-  (setq-local revert-buffer-function #'octocat-actions-refresh))
+  (setq-local revert-buffer-function #'octocat-run-list-refresh))
+
+(define-derived-mode octocat-workflow-list-mode octocat-vui-list-mode "Octocat-Workflows"
+  "Major mode for the list of a repository's workflows.
+
+\\{octocat-workflow-list-mode-map}"
+  :group 'octocat
+  (setq-local revert-buffer-function #'octocat-workflow-list-refresh))
 
 (provide 'octocat-actions)
 ;;; octocat-actions.el ends here

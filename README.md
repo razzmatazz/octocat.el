@@ -191,14 +191,18 @@ the buttons below the field (or `F`).  On the pull request list,
 requests waiting for your review, including those requested from one of
 your teams.
 
-### Actions (`M-x octocat-actions`)
+### Actions (`M-x octocat-run-list`, `M-x octocat-workflow-list`)
 
-The Actions page has two tabs, as on GitHub: **Runs**, shown first, lists
-the repository's recent workflow runs across all workflows,
+The Actions tab has two pages, each its own buffer and major mode, so
+either can be opened directly: `M-x octocat-run-list` lists the
+repository's recent workflow runs across all workflows,
 `octocat-actions-runs-page-size` (30) at a time with a button to load
-more; **Workflows** lists its workflows and whether they
-are enabled, with their count on the tab.  `RET` on a tab switches to
-it, and `RET` on a row opens that run or workflow.
+more; `M-x octocat-workflow-list` lists its workflows and whether they
+are enabled.  `M-x octocat-actions`, and the Actions tab of any page,
+open the runs.  A **Runs** / **Workflows** tab row under the header
+switches between the two pages, with the count of workflows on its tab,
+and `RET` on a row opens that run or workflow.  A workflow can also be
+reached from anywhere with `C-c C-j`, by its name or file.
 
 The runs are filtered as the pull request list is: a query in the field
 above them, such as `branch:main status:failure`, edited by hand (with
@@ -400,7 +404,7 @@ fetched.
 | `C-c C-e` | Edit the title, body, comment, or Labels / Assignees / Reviewers field at point (PR and issue detail views); `RET` on a field does the same |
 | `C-c C-n` | Write a new issue (PR and issue lists and detail views): the first line is the title, the rest the body; `C-c C-c` creates it and opens its page |
 | `C-c C-m` | Merge the PR (all PR pages): edit the commit message, `C-c C-t` picks Merge / Squash / Rebase (starting on the one last used in the repo, if still allowed), `C-c C-d` toggles deleting the branch, `C-c C-c` merges |
-| `C-c C-j` | Jump to something in the repository: its PRs, issues, commits and files.  Those octocat has seen before that match show at once, with the commits `git log` finds in a local clone, when there is one; GitHub's search results then take the lead as they arrive, without repeating any.  With `C-u`, or on a page with no repository, jump to another repository instead, or to a user with `@`, matched the same way |
+| `C-c C-j` | Jump to something in the repository: its PRs, issues, commits, workflows and files.  Those octocat has seen before that match show at once, with the commits `git log` finds in a local clone, when there is one; GitHub's search results then take the lead as they arrive, without repeating any.  With `C-u`, or on a page with no repository, jump to another repository instead, or to a user with `@`, matched the same way |
 | `C-c C-v` | Alternative view of the page (see below): raw markdown on the repo page, the file viewer and the PR, commit and issue pages; the review comments in the diff on the PR's files changed page; one line per item on the PR and issue lists |
 | `C-c C-b` | Pick the branch shown (repo page, commits page); `[reset to main]` goes back to the clone's branch, or the default.  In the file viewer, open the file at another branch, in a buffer of its own |
 | `C-c C-f` | Open fuzzy file finder — `completing-read` over the full recursive file list of the commit shown; works from the repo page and the file viewer (the list is fetched once per commit) |

@@ -35,6 +35,7 @@
 ;;                      recent repos, activity feed)
 ;;   M-x octocat-repo — Per-repository view (summary, Commits)
 ;;   M-x octocat-pr-list / octocat-issue-list / octocat-actions — list pages
+;;   M-x octocat-run-list / octocat-workflow-list — the Actions pages
 
 ;;; Code:
 
@@ -674,11 +675,27 @@ With REPO, an \"owner/name\" string, open it for that repository."
   (octocat--open-list #'octocat-issue-list-mode "issue-list" "issues" repo))
 
 ;;;###autoload
-(defun octocat-actions (&optional repo)
-  "Open the Actions page for the current GitHub repository.
+(defun octocat-run-list (&optional repo)
+  "Open the run list of the current GitHub repository.
+It lists the recent workflow runs across all workflows.
 With REPO, an \"owner/name\" string, open it for that repository."
   (interactive)
-  (octocat--open-list #'octocat-actions-mode "actions" "actions" repo))
+  (octocat--open-list #'octocat-run-list-mode "run-list" "actions" repo))
+
+;;;###autoload
+(defun octocat-workflow-list (&optional repo)
+  "Open the list of workflows of the current GitHub repository.
+With REPO, an \"owner/name\" string, open it for that repository."
+  (interactive)
+  (octocat--open-list #'octocat-workflow-list-mode "workflow-list" "actions" repo))
+
+;;;###autoload
+(defun octocat-actions (&optional repo)
+  "Open the Actions tab of the current GitHub repository.
+That is its run list, `octocat-run-list'; see also `octocat-workflow-list'.
+With REPO, an \"owner/name\" string, open it for that repository."
+  (interactive)
+  (octocat-run-list repo))
 
 
 ;;;; Evil integration

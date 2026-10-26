@@ -119,7 +119,9 @@ GitHub's results lead once in, the stored ones it lacks after them."
   "Each type's stored result shows at once; its fetched one replaces it."
   (octocat-search-tests--with-store
     (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
-               (lambda (_repo _sha callback) (funcall callback '(error . "no files")))))
+               (lambda (_repo _sha callback) (funcall callback '(error . "no files"))))
+              ((symbol-function 'octocat-repo--list-workflows)
+               (lambda (_repo callback) (funcall callback '(error . "no workflows")))))
       (octocat-sync--write octocat-sync--db
                            (octocat-sync-spec-key '(object-search "o/r" "issues" "crash"))
                            (vector (let ((h (make-hash-table :test #'equal)))
@@ -186,6 +188,8 @@ item once."
                            (- now 2))
       (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
                  (lambda (_repo _sha callback) (funcall callback '(error . "no files"))))
+                ((symbol-function 'octocat-repo--list-workflows)
+                 (lambda (_repo callback) (funcall callback '(error . "no workflows"))))
                 ((symbol-function 'octocat--search-git)
                  (lambda (_dir args callback) (push (cons args callback) git-calls) #'ignore)))
         (let* ((log (list nil))
@@ -210,6 +214,45 @@ item once."
                                    (t "[]"))))
           (should (equal (funcall items) '(9 7 "ccc333" "aaa111")))
           (should (equal (cdr log) [indicator finished])))))))
+
+;; Workflows as `gh workflow list' gives them.
+(defun octocat-search-tests--workflow (id name path)
+  "Return a workflow of ID, NAME and PATH."
+  (let ((h (make-hash-table :test #'equal)))
+    (puthash "id" id h)
+    (puthash "name" name h)
+    (puthash "path" path h)
+    h))
+
+(ert-deftest octocat-search-test-repo-objects-workflows ()
+  "The workflows whose name or file holds every word show, from the store
+at once; selecting one opens it."
+  (octocat-search-tests--with-store
+    (octocat-sync--write octocat-sync--db
+                         (octocat-sync-spec-key '(workflows "o/r"))
+                         (vector (octocat-search-tests--workflow 1 "CI" ".github/workflows/ci.yml")
+                                 (octocat-search-tests--workflow 2 "Deploy docs"
+                                                                 ".github/workflows/docs.yml"))
+                         (float-time))
+    (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
+               (lambda (_repo _sha callback) (funcall callback '(error . "no files")))))
+      (let* ((log (list nil))
+             (stage (funcall (octocat--async-search-repo-objects "o/r" nil #'identity)
+                             (octocat-search-tests--sink log)))
+             (items (lambda ()
+                      (mapcar (lambda (c) (get-text-property 0 'octocat-search-item c))
+                              (car log)))))
+        (funcall stage "docs")
+        (should (equal (funcall items)
+                       '((:type workflow :repo "o/r" :id 2 :name "Deploy docs"
+                                :path ".github/workflows/docs.yml"))))
+        (funcall stage "ci.yml")
+        (should (equal (mapcar (lambda (i) (plist-get i :id)) (funcall items)) '(1)))
+        (let (opened)
+          (cl-letf (((symbol-function 'octocat-workflow-open)
+                     (lambda (&rest args) (setq opened args))))
+            (octocat--search-open-item (car (funcall items))))
+          (should (equal opened '("o/r" 1 "CI" ".github/workflows/ci.yml"))))))))
 
 (ert-deftest octocat-search-test-git-args ()
   "Commit messages are searched for every word; a SHA-like query names one."

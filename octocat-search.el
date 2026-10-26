@@ -26,7 +26,7 @@
 ;; the pull requests, issues and commits of the current repository with
 ;; live `gh search' queries, through a consult async pipeline.  File paths
 ;; of the repository's default branch are matched too, locally, against a
-;; file list kept in the sync store.
+;; file list kept in the sync store, and so are its workflows.
 ;;
 ;; GitHub is slow to answer, so what octocat has stored of the repo, and
 ;; the commits `git log' finds in its local clone when there is one, are
@@ -52,6 +52,7 @@
 (declare-function octocat-tree--fetch-all-files  "octocat-tree"   (repo sha callback))
 (declare-function octocat-tree--open-file-by-path "octocat-tree"  (repo branch path))
 (declare-function octocat-repo--local-dir-for    "octocat-repo"   (repo))
+(declare-function octocat-workflow-open          "octocat-workflow" (repo id name path))
 (defvar octocat-repo--local-dir)
 
 
@@ -142,6 +143,21 @@ FILE is a (PATH . BLOB-SHA) cons."
                        cand)
     cand))
 
+(defun octocat--search-make-workflow-candidate (workflow repo)
+  "Return a propertized candidate string for WORKFLOW hash-table in REPO."
+  (let* ((name (or (octocat--nonempty (gethash "name" workflow)) ""))
+         (path (or (gethash "path" workflow) ""))
+         (cand (copy-sequence
+                (format "%-8s %-42s  %s"
+                        (propertize "[Workflow]" 'face 'octocat-section-heading)
+                        (octocat--format-title name)
+                        (propertize path 'face 'octocat-dimmed)))))
+    (put-text-property 0 1 'octocat-search-item
+                       (list :type 'workflow :repo repo :id (gethash "id" workflow)
+                             :name name :path path)
+                       cand)
+    cand))
+
 (defun octocat--search-open-item (item)
   "Open the octocat buffer described by ITEM, a plist from `octocat-search-item'."
   (let ((type (plist-get item :type))
@@ -154,7 +170,10 @@ FILE is a (PATH . BLOB-SHA) cons."
       ('issue
        (octocat-issue-open repo (plist-get item :number)))
       ('commit
-       (octocat-commit-open repo (plist-get item :sha))))))
+       (octocat-commit-open repo (plist-get item :sha)))
+      ('workflow
+       (octocat-workflow-open repo (plist-get item :id)
+                              (plist-get item :name) (plist-get item :path))))))
 
 
 ;;;; Stored results
@@ -394,14 +413,28 @@ Matching is case-insensitive; shorter paths sort first."
       (setq matches (sort matches (lambda (a b) (< (length (car a)) (length (car b))))))
       (seq-take matches octocat--search-files-limit))))
 
+(defun octocat--search-workflows-match (workflows query)
+  "Return the WORKFLOWS with every word of QUERY in their name or file.
+Matching is case-insensitive."
+  (let ((words (split-string (downcase query) "[ \t]+" t)))
+    (when words
+      (seq-take (seq-filter
+                 (lambda (wf)
+                   (let ((text (downcase (concat (or (gethash "name" wf) "") " "
+                                                 (or (gethash "path" wf) "")))))
+                     (cl-every (lambda (w) (string-search w text)) words)))
+                 workflows)
+                octocat--search-local-limit))))
+
 
 ;;;; Async pipeline and command
 
 (defun octocat--async-search-repo-objects (repo &optional dir gate)
   "Build a consult async pipeline stage for live object search in REPO.
 On each input it lists the pull requests, issues and commits of REPO,
-and its files.  What octocat stored that matches shows at once, and the
-commits of the local clone in DIR, when non-nil, once `git log' is done.
+its workflows and its files.  What octocat stored that matches shows at
+once, and the commits of the local clone in DIR, when non-nil, once `git
+log' is done.
 GitHub's results, each type an `object-search' resource of the
 normalized input, lead as they arrive: first the stored result of the
 input, then the fetched one.  New input cancels the fetches of the last
@@ -420,7 +453,8 @@ with `consult--async-min-input'."
           (stop-git nil)
           (waiting  nil)                ; types, or `git', awaited
           (files    'unread)            ; (PATH . BLOB-SHA) list
-          (files-loading nil)
+          (workflows 'unread)           ; workflow hash-tables
+          (lists-loading nil)           ; specs of the lists above awaited
           fetch-gate)
       (cl-labels
           ((spec (type query) (list 'object-search repo type query))
@@ -440,11 +474,15 @@ with `consult--async-min-input'."
                                        (alist-get type local nil nil #'equal)
                                        (and (equal type "commits") git))))
                                    types)
+                           (and (listp workflows)
+                                (mapcar (lambda (wf)
+                                          (octocat--search-make-workflow-candidate wf repo))
+                                        (octocat--search-workflows-match workflows input)))
                            (and (listp files)
                                 (mapcar (lambda (f) (octocat--search-make-file-candidate f repo))
                                         (octocat--search-files-match files input))))))
                (funcall sink all))
-             (funcall sink (if (or files-loading waiting)
+             (funcall sink (if (or lists-loading waiting)
                                [indicator running]
                              [indicator finished])))
            (cancel ()
@@ -454,19 +492,26 @@ with `consult--async-min-input'."
              (when stop-git
                (funcall stop-git))
              (setq current nil stop-git nil))
-           ;; The file list is stored, and refetched once a session when stale.
-           (load-files ()
+           ;; The file and workflow lists are stored, and refetched once a
+           ;; session when stale.  SET takes a list, CONVERT makes it of
+           ;; the resource's data.
+           (load-list (spec convert set)
+             (funcall set (funcall convert (plist-get (octocat-sync-read spec) :data)))
+             (push spec lists-loading)
+             (octocat-sync-get
+              spec
+              (lambda (result)
+                (setq lists-loading (delete spec lists-loading))
+                (unless (eq (car-safe result) 'error)
+                  (funcall set (funcall convert result)))
+                (when input (publish)))))
+           (load-lists ()
              (when (eq files 'unread)
-               (setq files (octocat--search-files-alist
-                            (plist-get (octocat-sync-read (list 'search-files repo)) :data))
-                     files-loading t)
-               (octocat-sync-get
-                (list 'search-files repo)
-                (lambda (result)
-                  (setq files-loading nil)
-                  (unless (eq (car-safe result) 'error)
-                    (setq files (octocat--search-files-alist result)))
-                  (when input (publish))))))
+               (load-list (list 'search-files repo) #'octocat--search-files-alist
+                          (lambda (l) (setq files l))))
+             (when (eq workflows 'unread)
+               (load-list (list 'workflows repo) (lambda (d) (append d nil))
+                          (lambda (l) (setq workflows l)))))
            (fetch (action)
              (pcase action
                ((pred stringp)
@@ -518,7 +563,7 @@ with `consult--async-min-input'."
                      ;; Commits git found for earlier input that still match.
                      git     (octocat--search-match "commits" git query)
                      waiting (append types (and dir (list 'git))))
-               (load-files)
+               (load-lists)
                (publish)
                (funcall fetch-gate query)))
             ((or 'cancel 'destroy)
@@ -531,14 +576,15 @@ with `consult--async-min-input'."
              (funcall sink action))))))))
 
 (defun octocat-search-repo ()
-  "Search for a PR, issue, commit, or file in the current repository.
+  "Search for a PR, issue, commit, workflow or file in the current repository.
 
 The PRs, issues and commits octocat has stored that match show at once,
 with the commits of the local clone, when there is one, found by `git
 log'.  Live `gh search' queries (PRs, issues, and commits in parallel)
 against the repository associated with the current buffer then lead
 the list as each completes.  File paths containing every word of the
-query are listed too.  Selecting a candidate opens the corresponding
+query are listed too, and so are the workflows whose name or file
+holds every word.  Selecting a candidate opens the corresponding
 detail view.
 
 The query is matched against titles, commit messages, and bodies.

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `M-x octocat-run-list` and `M-x octocat-workflow-list` open the Actions pages
+* `C-c C-j` finds a repository's workflows, by name or file
 * Runs are laid out as on GitHub: status and title first, then workflow, branch, date
 * A blank line sets the last commit apart in the tree browser and file viewer
 * `C-c C-o` on a repository on its default branch opens the repository's page

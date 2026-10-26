@@ -23,7 +23,7 @@
 ;;; Commentary:
 
 ;; A workflow and its runs: `octocat-workflow-mode', a vui.el page
-;; opened from the Actions page (octocat-actions.el).  RET on a run opens
+;; opened from the workflow list (octocat-actions.el) or `C-c C-j'.  RET on a run opens
 ;; it (octocat-run.el).
 ;;
 ;; Depends on octocat-core.el.  Must not depend on octocat.el to avoid a

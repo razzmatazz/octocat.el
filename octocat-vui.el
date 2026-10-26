@@ -1248,7 +1248,7 @@ They are a sync resource, painted from the store while it is refetched;
 ;; Either way the buffer is refreshed with the new query.
 ;;
 ;; The default query, the buttons and the completions are buffer-local,
-;; so a page with a query of its own, such as the Actions page's runs
+;; so a page with a query of its own, such as the run list
 ;; (octocat-actions.el), sets its own.
 
 (defvar-local octocat-vui-list--query nil

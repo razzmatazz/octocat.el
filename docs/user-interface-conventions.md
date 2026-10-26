@@ -883,7 +883,7 @@ owner/repo  [Code]  [Issues (N)]  [Pull requests (N)]  [Actions]
 - `octocat-vui-repo-tabs` reads `octocat--repo-tabs`, so labels and help
   text stay in one place.
 - The commands behind the tabs, `octocat-issue-list`, `octocat-pr-list` and
-  `octocat-actions`, take the repo as an optional argument: a buffer's
+  `octocat-actions` (as `octocat-run-list` and `octocat-workflow-list`), take the repo as an optional argument: a buffer's
   repo is not derivable from its mode or `default-directory`.
 
 ### Tabs over content
