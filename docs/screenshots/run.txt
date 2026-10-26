@@ -1,6 +1,6 @@
-acme/rocket
-✓  Cache parsed templates between builds  9100200300
-Workflow CI · Event pull_request · Branch template-cache · SHA 8ee9a2c · Status success · Created 1 day ago · Duration 7m00s
+acme/rocket  CI › Cache parsed templates between builds
+success  Event pull_request · Branch template-cache · SHA 8ee9a2c
+         Run 9100200300 · Created 1 day ago · Duration 7m00s
 
 Jobs (4)
   ✓  lint                                           2m00s

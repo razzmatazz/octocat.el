@@ -819,6 +819,17 @@ OPEN    Assignees @bob · Reviewers none · Labels bug
         feature → main · Review required · Milestone v1
 ```
 
+A workflow, run or job page reads the same way: after `owner/repo`
+come the pages above it, from the workflow down, as links, then the
+page itself; its state heads the lines of details below.  Build it with
+`octocat-vui-actions-header`.
+
+```
+octocat/hello  CI › Fix the greeting › test (stable)
+success  Duration 6m00s · Started 1 day ago · Completed 1 day ago
+         Runner GitHub Actions 41 · Labels ubuntu-latest
+```
+
 A title too long for the line is cut with `…`; hovering or resting
 point on it shows the whole.
 

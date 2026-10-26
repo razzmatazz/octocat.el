@@ -38,6 +38,8 @@
 (require 'octocat-vui)
 (require 'vui)
 
+(declare-function octocat-workflow-open "octocat-workflow" (repo id name path))
+
 
 
 ;;;; Buffer-local declarations
@@ -62,7 +64,7 @@ whose value is a vector of job hash-tables), or a cons \\=(error . MSG)."
          "--repo" repo
          "--json" (concat "databaseId,displayTitle,status,conclusion,"
                           "createdAt,updatedAt,headBranch,headSha,"
-                          "event,workflowName,jobs"))
+                          "event,workflowName,workflowDatabaseId,jobs"))
    (lambda (output) (json-parse-string (string-trim output)))
    callback))
 
@@ -128,37 +130,48 @@ Calls CALLBACK with a vector of artifact hash-tables, or \\=[] on failure."
   (let ((v (gethash "jobs" run)))
     (if (vectorp v) (append v nil) nil)))
 
-(defun octocat-run--header (run local-branch)
-  "Return the vnodes under the top row: title, status and details of RUN.
-LOCAL-BRANCH, the checked-out branch, is highlighted when it is the run's."
+(defun octocat-run--workflow-crumb (repo run)
+  "Return the crumb of RUN's workflow in REPO, for `octocat-vui-actions-header'.
+It links to the workflow when RUN names its ID; nil when RUN has no
+workflow name."
+  (when-let* ((name (octocat--nonempty (gethash "workflowName" run))))
+    (let ((id (gethash "workflowDatabaseId" run)))
+      (list name
+            (and id (lambda () (octocat-workflow-open repo id name nil)))
+            "RET: open workflow"))))
+
+(defun octocat-run--header (repo run local-branch width)
+  "Return the header vnodes of RUN of REPO, kept within WIDTH.
+The top row names its workflow and title; under it its status and
+details.  LOCAL-BRANCH, the checked-out branch, is highlighted when it
+is the run's."
   (let* ((status     (downcase (or (gethash "status" run) "")))
          (conclusion (let ((c (octocat--nonempty (gethash "conclusion" run))))
                        (and c (downcase c))))
-         (shown      (or conclusion (octocat--nonempty status)))
+         (shown      (or conclusion (octocat--nonempty status) "unknown"))
          (created    (octocat--nonempty (gethash "createdAt" run)))
          (branch     (octocat--nonempty (gethash "headBranch" run)))
          (sha        (octocat--nonempty (gethash "headSha" run))))
-    (delq nil
-          (list
-           (vui-text (concat (octocat--run-icon status conclusion)
-                             "  " (or (gethash "displayTitle" run) "")
-                             "  " (propertize (format "%s" (or (gethash "databaseId" run) ""))
-                                              'face 'octocat-dimmed)))
-           (octocat-vui-fields
-            (list (cons "Workflow" (octocat--nonempty (gethash "workflowName" run)))
-                  (cons "Event"    (octocat--nonempty (gethash "event" run)))
-                  (cons "Branch"   (and branch
-                                        (propertize branch 'face
-                                                    (if (equal branch local-branch)
-                                                        'octocat-branch-current
-                                                      'octocat-branch))))
-                  (cons "SHA"      (and sha (propertize (substring sha 0 (min 7 (length sha)))
-                                                        'face 'octocat-pr-number)))
-                  (cons "Status"   (and shown (propertize shown 'face (octocat--job-status-face shown))))
-                  (cons "Created"  (and created (octocat--format-ts-relative created)))
-                  (cons "Duration" (and conclusion
-                                        (octocat--run-duration
-                                         created (octocat--nonempty (gethash "updatedAt" run)))))))))))
+    (octocat-vui-actions-header
+     repo
+     (delq nil (list (octocat-run--workflow-crumb repo run)
+                     (list (or (gethash "displayTitle" run) ""))))
+     width
+     (propertize shown 'face (octocat--job-status-face shown))
+     (list (list (cons "Event"  (octocat--nonempty (gethash "event" run)))
+                 (cons "Branch" (and branch
+                                     (propertize branch 'face
+                                                 (if (equal branch local-branch)
+                                                     'octocat-branch-current
+                                                   'octocat-branch))))
+                 (cons "SHA"    (and sha (propertize (substring sha 0 (min 7 (length sha)))
+                                                     'face 'octocat-pr-number))))
+           (list (cons "Run"      (and (gethash "databaseId" run)
+                                       (format "%s" (gethash "databaseId" run))))
+                 (cons "Created"  (and created (octocat--format-ts-relative created)))
+                 (cons "Duration" (and conclusion
+                                       (octocat--run-duration
+                                        created (octocat--nonempty (gethash "updatedAt" run))))))))))
 
 (defun octocat-run--job-row (repo run-id job)
   "Return a RET-able row for JOB of run RUN-ID of REPO."
@@ -233,6 +246,7 @@ A new TICK refetches everything, keeping what is shown until the fresh
 data replaces it."
   :render
   (let* ((local-branch (vui-use-memo () (octocat--current-branch)))
+         (width (octocat-vui-window-width))
          (run   (octocat-vui-use-detail (list 'run repo run-id) tick))
          (data  (or (plist-get run :data) (plist-get run :partial)))
          (jobs  (and data (octocat-run--jobs data)))
@@ -242,34 +256,30 @@ data replaces it."
                                jobs))
                  tick))
          (arts  (octocat-vui-use-resource (list 'run-artifacts repo run-id) tick)))
-    (vui-vstack
-     (octocat-vui-actions-top-row repo)
-     (octocat-vui-resource-view
-      run
-      :skeleton
-      (lambda (partial)
-        (apply #'vui-vstack
-               (append
-                (if partial
-                    ;; A list's copy of the run: its header, but no jobs yet.
-                    (append (octocat-run--header partial local-branch) (list (vui-newline)))
-                  (list (vui-text (format "run %s" run-id) :face 'octocat-dimmed)
-                        (vui-newline)))
-                (list (vui-text (octocat-vui-line-skeleton "  "))))))
-      :render
-      (lambda (_)
-        (apply #'vui-vstack
-               (append (octocat-run--header data local-branch)
-                       (list (vui-newline))
-                       (octocat-run--jobs-section repo run-id jobs)
-                       (when-let* ((section (octocat-job-artifacts
-                                             repo run-id (or (plist-get arts :data) []))))
-                         (cons (vui-newline) section))
-                       (when-let* ((section (octocat-job-annotations
-                                             (cl-loop for entry across (or (plist-get anns :data) [])
-                                                      append (cl-loop for ann across (gethash "annotations" entry)
-                                                                      collect (cons (gethash "job" entry) ann))))))
-                         (cons (vui-newline) section)))))))))
+    (apply
+     #'vui-vstack
+     (append
+      ;; A list's copy of the run gives its header before the jobs come.
+      (if data
+          (octocat-run--header repo data local-branch width)
+        (octocat-vui-actions-header repo (list (list (format "run %s" run-id))) width))
+      (list
+       (vui-newline)
+       (octocat-vui-resource-view
+        run
+        :skeleton (lambda (_) (vui-text (octocat-vui-line-skeleton "  ")))
+        :render
+        (lambda (_)
+          (apply #'vui-vstack
+                 (append (octocat-run--jobs-section repo run-id jobs)
+                         (when-let* ((section (octocat-job-artifacts
+                                               repo run-id (or (plist-get arts :data) []))))
+                           (cons (vui-newline) section))
+                         (when-let* ((section (octocat-job-annotations
+                                               (cl-loop for entry across (or (plist-get anns :data) [])
+                                                        append (cl-loop for ann across (gethash "annotations" entry)
+                                                                        collect (cons (gethash "job" entry) ann))))))
+                           (cons (vui-newline) section)))))))))))
 
 
 ;;;; Major mode

@@ -1,6 +1,5 @@
-acme/rocket
-CI  active  ●
-.github/workflows/ci.yml · Created 1 year ago · Updated 1 month ago
+acme/rocket  CI  .github/workflows/ci.yml
+active  Created 1 year ago · Updated 1 month ago
 
 7 workflow runs
   9100200310   incremental       ●  Incremental builds: skip pages whose in…  4 minutes ago

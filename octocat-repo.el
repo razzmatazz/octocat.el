@@ -273,7 +273,8 @@ failure."
     (list "run" "list"
           "--repo"  repo
           "--limit" (number-to-string limit)
-          "--json"  "databaseId,displayTitle,status,conclusion,createdAt,headBranch,workflowName")
+          "--json"  (concat "databaseId,displayTitle,status,conclusion,createdAt,"
+                            "headBranch,workflowName,workflowDatabaseId"))
     args)
    #'octocat--parse-json-list
    callback))

@@ -465,7 +465,9 @@ Closes #97"
 (defun octocat-screenshots--run (id title workflow branch status conclusion ago)
   "Return run ID, as `gh run list' gives it.
 TITLE, WORKFLOW, BRANCH, STATUS, CONCLUSION and AGO are its own."
-  `(:databaseId ,id :displayTitle ,title :workflowName ,workflow :headBranch ,branch
+  `(:databaseId ,id :displayTitle ,title :workflowName ,workflow
+    :workflowDatabaseId ,(pcase workflow ("CI" 4200) ("Deploy docs" 4201) (_ 4202))
+    :headBranch ,branch
     :status ,status :conclusion ,conclusion :createdAt ,(octocat-screenshots--ago ago)))
 
 (defconst octocat-screenshots--runs
@@ -714,7 +716,8 @@ FIELDS, a plist, override the rest."
       ("recent-runs" () ,(vconcat octocat-screenshots--runs))
       ("run-view" ("9100200300")
        (:databaseId 9100200300 :displayTitle "Cache parsed templates between builds"
-        :workflowName "CI" :status "completed" :conclusion "success" :event "pull_request"
+        :workflowName "CI" :workflowDatabaseId 4200
+        :status "completed" :conclusion "success" :event "pull_request"
         :headBranch "template-cache" :headSha ,octocat-screenshots--pr-head
         :createdAt ,(octocat-screenshots--ago (+ d h))
         :updatedAt ,(octocat-screenshots--ago (- (+ d h) (* 7 60)))
@@ -744,10 +747,8 @@ FIELDS, a plist, override the rest."
         :badge_url "https://github.com/acme/rocket/workflows/CI/badge.svg"
         :created_at "2025-02-11T09:00:00Z" :updated_at ,(octocat-screenshots--ago (* 30 d))))
       ("workflow-runs" ("4200")
-       ,(vconcat (mapcar (lambda (r) (cl-loop for (k v) on r by #'cddr
-                                              unless (eq k :workflowName) append (list k v)))
-                         (seq-filter (lambda (r) (equal (plist-get r :workflowName) "CI"))
-                                     octocat-screenshots--runs))))
+       ,(vconcat (seq-filter (lambda (r) (equal (plist-get r :workflowName) "CI"))
+                             octocat-screenshots--runs)))
 
       ;; People
       ("user-profile" ("users/srivera") ,octocat-screenshots--srivera)

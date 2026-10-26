@@ -43,7 +43,7 @@
 ;;   `octocat-vui-expand-all-button' unfolds or folds every fold of a section
 ;;   `octocat-vui-list-mode'         base mode of the PR/issue list pages
 ;;                                   and the Actions page
-;;   `octocat-vui-actions-top-row'   top row of workflow, run and job pages
+;;   `octocat-vui-actions-header'    header of workflow, run and job pages
 ;;   `octocat-vui-repo-tabs'         Code / Issues / Pull requests / Actions
 ;;                                   tab strip shared by the repo pages
 ;;   `octocat-vui-list-header'       list page header with open/closed counts
@@ -999,9 +999,53 @@ That is `owner/repo@sha', as `owner/repo#N' is on an issue."
     (vui-text (concat "@" (substring sha 0 (min 7 (length sha))))
               :face 'octocat-commit-sha)))
 
-(defun octocat-vui-actions-top-row (repo)
-  "Return the top row of a workflow, run or job page of REPO."
-  (octocat-vui-repo-heading repo))
+(defun octocat-vui--fit (text width)
+  "Return TEXT cut with an ellipsis to WIDTH columns, at least 10.
+A cut TEXT carries its whole as `help-echo' and `octocat-full-text'."
+  (let ((width (max 10 width)))
+    (if (<= (string-width text) width)
+        text
+      (let ((full (substring-no-properties text)))
+        (propertize (truncate-string-to-width text width nil nil "…")
+                    'help-echo full 'octocat-full-text full)))))
+
+(defun octocat-vui-actions-header (repo crumbs width &optional state lines)
+  "Return the header vnodes of a workflow, run or job page of REPO.
+The top row is REPO, then CRUMBS, the pages above this one from the
+workflow down and last this page, as the number and title on an issue.
+Each crumb is (TEXT ON-CLICK HELP): with ON-CLICK it is a link up to its
+page.  The last is cut to keep the row within WIDTH.  Under it, STATE,
+a propertized string, heads the first of LINES, each a list of fields
+as for `octocat-vui-fields'; the others are lined up under it.  With no
+STATE, there is only the top row."
+  (let* ((sep    (propertize " › " 'face 'octocat-dimmed))
+         (links  (butlast crumbs))
+         (used   (+ (string-width repo) 2
+                    (apply #'+ (mapcar (lambda (c) (+ (string-width (car c)) 3)) links))))
+         (title  (octocat-vui--fit (car (car (last crumbs))) (- width used)))
+         (fields (delq nil (mapcar #'octocat-vui-fields lines)))
+         (head   (and state (concat state "  "))))
+    (cons
+     (apply #'vui-hstack :spacing 0
+            (octocat-vui-repo-heading repo)
+            (vui-text "  ")
+            (append
+             (mapcan (pcase-lambda (`(,text ,on-click ,help))
+                       (list (if on-click
+                                 (vui-button text :no-decoration t :face 'link
+                                             :help-echo help :on-click on-click)
+                               (vui-text text))
+                             (vui-text sep)))
+                     links)
+             (list (vui-text title))))
+     (cond ((not state) nil)
+           ((null fields) (list (vui-text state)))
+           (t (cons (vui-hstack :spacing 0 (vui-text head) (car fields))
+                    (mapcar (lambda (node)
+                              (vui-hstack :spacing 0
+                                (vui-text (make-string (string-width head) ?\s))
+                                node))
+                            (cdr fields))))))))
 
 (defun octocat-vui-fields (fields)
   "Return a vnode of FIELDS on one line, or nil when none has a value.

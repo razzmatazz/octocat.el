@@ -49,6 +49,7 @@
 (require 'vui)
 
 (declare-function octocat-run-open "octocat-run" (repo run-id))
+(declare-function octocat-run--workflow-crumb "octocat-run" (repo run))
 
 
 ;;;; Buffer-local state
@@ -506,30 +507,39 @@ hash-table; a nil JOB-NAME is not shown."
 
 ;;;; Page
 
-(defun octocat-job--header (job)
-  "Return the vnodes under the top row: name, status and details of JOB."
+(defun octocat-job--crumbs (repo run-id run name)
+  "Return the crumbs of job NAME of run RUN-ID of REPO, from its workflow.
+RUN is the run's data, or nil before it is in; see
+`octocat-vui-actions-header'."
+  (let ((open-run (lambda () (octocat-run-open repo run-id))))
+    (delq nil
+          (list (and run (octocat-run--workflow-crumb repo run))
+                (list (or (and run (octocat--nonempty (gethash "displayTitle" run)))
+                          (format "run %s" run-id))
+                      open-run "RET: open run")
+                (list (propertize name 'face 'octocat-run-job-name))))))
+
+(defun octocat-job--header (repo crumbs job width)
+  "Return the header vnodes of JOB of REPO, kept within WIDTH.
+The top row is CRUMBS (see `octocat-job--crumbs'); under it the job's
+status and details."
   (let* ((status     (downcase (or (gethash "status" job) "")))
          (conclusion (let ((c (octocat--nonempty (gethash "conclusion" job))))
                        (and c (downcase c))))
-         (shown      (or conclusion status))
+         (shown      (or conclusion (octocat--nonempty status) "unknown"))
          (started    (octocat--nonempty (gethash "started_at" job)))
          (completed  (octocat--nonempty (gethash "completed_at" job)))
          (labels     (let ((v (gethash "labels" job)))
                        (and (vectorp v) (> (length v) 0)
                             (mapconcat #'identity v ", ")))))
-    (delq nil
-          (list
-           (vui-text (concat (octocat--run-icon status conclusion)
-                             "  " (propertize (or (gethash "name" job) "")
-                                              'face 'octocat-run-job-name)
-                             (unless (string-empty-p shown)
-                               (concat "  " (propertize shown 'face (octocat--job-status-face shown))))))
-           (octocat-vui-fields
-            (list (cons "Duration"  (octocat--run-duration started completed))
-                  (cons "Started"   (and started (octocat--format-ts-relative started)))
-                  (cons "Completed" (and completed (octocat--format-ts-relative completed)))
-                  (cons "Runner"    (octocat--nonempty (gethash "runner_name" job)))
-                  (cons "Labels"    (and labels (propertize labels 'face 'octocat-branch)))))))))
+    (octocat-vui-actions-header
+     repo crumbs width
+     (propertize shown 'face (octocat--job-status-face shown))
+     (list (list (cons "Duration"  (octocat--run-duration started completed))
+                 (cons "Started"   (and started (octocat--format-ts-relative started)))
+                 (cons "Completed" (and completed (octocat--format-ts-relative completed))))
+           (list (cons "Runner"    (octocat--nonempty (gethash "runner_name" job)))
+                 (cons "Labels"    (and labels (propertize labels 'face 'octocat-branch))))))))
 
 (vui-defcomponent octocat-job--page (repo run-id job-id name tick)
   "Job JOB-ID of run RUN-ID of REPO; NAME shows while it loads.
@@ -538,7 +548,11 @@ unfolded, until the fresh data replaces it."
   :state ((bulk nil))
   :render
   (let* ((_ (octocat-vui-use-view-reset (vui-async-callback () (vui-set-state :bulk nil))))
+         (width   (octocat-vui-window-width))
          (result  (octocat-vui-use-resource (list 'job repo run-id job-id) tick))
+         (run     (let ((snap (octocat-vui-use-detail (list 'run repo run-id) tick)))
+                    (or (plist-get snap :data) (plist-get snap :partial))))
+         (crumbs  (octocat-job--crumbs repo run-id run name))
          (data    (plist-get result :data))
          (raw     (and data (gethash "log" data)))
          (log     (vui-use-memo (raw)
@@ -546,30 +560,29 @@ unfolded, until the fresh data replaces it."
                         (octocat--job-parse-log raw)
                       (cons 'error (or (and data (gethash "log_error" data)) ""))))))
     (apply #'vui-vstack
-           (octocat-vui-actions-top-row repo)
-           (list
-            (octocat-vui-resource-view
-             result
-             :skeleton (lambda (_)
-                         (vui-vstack (vui-text name :face 'octocat-run-job-name)
-                                     (vui-newline)
-                                     (vui-text (octocat-vui-line-skeleton "  "))))
-             :render
-             (lambda (_)
-               (let ((job (gethash "job" data)))
-                 (apply
-                  #'vui-vstack
-                  (append (octocat-job--header job)
-                          (list (vui-newline))
-                          (octocat-job--steps job log bulk
-                                              (vui-async-callback (v) (vui-set-state :bulk v)))
-                          (when-let* ((arts (octocat-job-artifacts
-                                             repo run-id (gethash "artifacts" data))))
-                            (cons (vui-newline) arts))
-                          (when-let* ((anns (octocat-job-annotations
-                                             (mapcar (lambda (a) (cons nil a))
-                                                     (gethash "annotations" data)))))
-                            (cons (vui-newline) anns)))))))))))
+           (append
+            (if data
+                (octocat-job--header repo crumbs (gethash "job" data) width)
+              (octocat-vui-actions-header repo crumbs width))
+            (list
+             (vui-newline)
+             (octocat-vui-resource-view
+              result
+              :skeleton (lambda (_) (vui-text (octocat-vui-line-skeleton "  ")))
+              :render
+              (lambda (_)
+                (let ((job (gethash "job" data)))
+                  (apply
+                   #'vui-vstack
+                   (append (octocat-job--steps job log bulk
+                                               (vui-async-callback (v) (vui-set-state :bulk v)))
+                           (when-let* ((arts (octocat-job-artifacts
+                                              repo run-id (gethash "artifacts" data))))
+                             (cons (vui-newline) arts))
+                           (when-let* ((anns (octocat-job-annotations
+                                              (mapcar (lambda (a) (cons nil a))
+                                                      (gethash "annotations" data)))))
+                             (cons (vui-newline) anns))))))))))))
 
 
 ;;;; Major mode
