@@ -500,10 +500,16 @@ with the wrong number of arguments.
 `make melpazoid` (part of `make ci` and `make ci-all`) runs the checks
 MELPA's reviewers run on a submission, so their findings show here
 first.  It clones melpazoid at the commit pinned in the `Makefile` into
-`.ci/melpazoid/` and runs it unchanged: it builds and runs its own image,
-an Emacs 31.1 without SQLite, which shows a call to a function only
-some builds have.  So it runs on the host, and needs `python3` as well as
-Docker or Podman.  Its report is in `.ci/melpazoid-report.txt`.  Any
+`.ci/melpazoid/` and runs it in two containers, so none of it runs on
+the host.  First `tools/melpazoid.py` runs melpazoid's checks of the
+recipe and the package in our image, up to where melpazoid would build
+an image of its own, writing only the files that image is built from.
+Then that image, an Emacs 31.1 without SQLite, which shows a call to a
+function only some builds have, byte-compiles and lints the package, run
+by melpazoid's own Makefile without network or capabilities.  The
+wrapper calls melpazoid's internals, so a newer melpazoid may need it
+changed.  Its reports are in `.ci/melpazoid-report.txt` and
+`.ci/melpazoid-test.txt`.  Any
 finding fails the target, even those melpazoid itself only reports, such
 as a top-level `define-key` or `ignore-errors`.  To take a newer
 melpazoid, change `MELPAZOID_COMMIT` and fix what it finds.

@@ -26,9 +26,10 @@ RUN curl -fsSL --retry 5 https://ftp.gnu.org/gnu/emacs/emacs-${EMACS}.tar.xz | t
 
 FROM ubuntu:26.04
 
+# python3 runs melpazoid's checks, see tools/melpazoid.py.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      curl git ca-certificates \
+      curl git ca-certificates python3 \
       libgnutls30t64 libjansson4 libncurses6 libsqlite3-0 libxml2-16 zlib1g && \
     rm -rf /var/lib/apt/lists/*
 
