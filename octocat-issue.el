@@ -42,10 +42,13 @@
 ;; The issue list page below reuses the row builder and fetch plumbing
 ;; from octocat-repo.el, which requires this file (so cannot be required
 ;; here).
-(declare-function octocat-repo-vui--issue-row "octocat-repo" (repo issue width bg &optional compact no-state))
-(declare-function octocat-repo-vui--issue-compact-line "octocat-repo" (repo issue bg no-state &optional width))
+(declare-function octocat-repo-vui--issue-row "octocat-repo"
+                  (repo issue width bg &optional compact no-state))
+(declare-function octocat-repo-vui--issue-compact-line "octocat-repo"
+                  (repo issue bg no-state &optional width))
 (declare-function octocat-repo-vui--state-label "octocat-repo" (state &optional draft))
-(declare-function octocat-repo-vui--detail-header "octocat-repo" (repo item state on-edit-title bg width fields shown &optional branch omit))
+(declare-function octocat-repo-vui--detail-header "octocat-repo"
+                  (repo item state on-edit-title bg width fields shown &optional branch omit))
 (declare-function octocat-repo-vui--login-items "octocat-repo" (users))
 (declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
 (declare-function octocat-pr-open "octocat-pr" (repo number))
@@ -68,7 +71,8 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   "Replace the body of the issue in SOURCE buffer with BODY.
 See `octocat-timeline-submit' for ON-SUCCESS."
   (octocat-timeline-submit
-   (with-current-buffer source `(edit-body "issue" ,octocat--issue-repo ,octocat--issue-number ,body))
+   (with-current-buffer source
+     `(edit-body "issue" ,octocat--issue-repo ,octocat--issue-number ,body))
    body source on-success))
 
 (defun octocat-issue--submit-edit-comment (body source on-success _on-error)
@@ -279,7 +283,7 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
 (octocat-sync-define-resource issue (repo number)
   :entity (octocat-sync-item-key 'issue repo number)
   :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
-                                (repo-summary ,repo)))
+                            (repo-summary ,repo)))
   :fetch (lambda (done)
            (octocat--fetch-issue
             repo number
@@ -287,8 +291,8 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
               (funcall done (if (eq (car-safe r) 'error)
                                 r
                               (octocat-sync-detail
-                                 r '("comments")
-                                 (lambda (f) (octocat-sync-item 'issue repo f)))))))))
+                               r '("comments")
+                               (lambda (f) (octocat-sync-item 'issue repo f)))))))))
 
 ;;;; Rendering
 ;;
@@ -336,7 +340,8 @@ A new TICK fetches everything again."
                  (if partial
                      ;; The list fetched the issue: its header paints at once.
                      (apply #'vui-vstack
-                            (append (delq nil (octocat-issue--header repo partial bg (octocat--markdown-width)))
+                            (append (delq nil (octocat-issue--header repo partial bg
+                                                                     (octocat--markdown-width)))
                                     (list (vui-text (octocat-vui-post-skeleton width)))))
                    (vui-text (octocat-vui-detail-skeleton repo number width))))
      :render (lambda (_)

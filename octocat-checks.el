@@ -184,19 +184,18 @@ ROLLUP is a `statusCheckRollup' vector, as a PR has (see
 `octocat-checks-from-rest' for a commit's check-runs).  ON-VISIT is
 called by RET on a check.  INDENT starts each row, two spaces if nil."
   (let ((widths (octocat-checks--widths rollup))) ; Of all, so unfolding shifts no column.
-    (vui-component
-     'octocat-vui-fold-rest
-     :total (length rollup)
-     :limit octocat-checks-shown
-     :noun "checks"
-     :key 'checks-fold
-     :prefix (or indent "  ")
-     :render (lambda (shown)
-               (apply #'vui-vstack
-                      (cl-loop for check across rollup
-                               repeat shown
-                               collect (octocat-checks--row check widths on-visit
-                                                            nil indent)))))))
+    (vui-component 'octocat-vui-fold-rest
+      :total (length rollup)
+      :limit octocat-checks-shown
+      :noun "checks"
+      :key 'checks-fold
+      :prefix (or indent "  ")
+      :render (lambda (shown)
+                (apply #'vui-vstack
+                       (cl-loop for check across rollup
+                                repeat shown
+                                collect (octocat-checks--row check widths on-visit
+                                                             nil indent)))))))
 
 (defun octocat-checks-block (checks on-visit)
   "Return the vnodes of the CI section, with a CI summary.

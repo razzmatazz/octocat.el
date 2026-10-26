@@ -509,9 +509,9 @@ last item."
           (push (vui-text octocat-timeline--rail :key (intern (format "rail-%s" key)))
                 nodes))
         (push (vui-component 'octocat-timeline--entry
-                             :key key
-                             :item item :raw raw :width width :index (cl-incf index)
-                             :limit (and items (octocat-timeline--line-limit item)))
+                :key key
+                :item item :raw raw :width width :index (cl-incf index)
+                :limit (and items (octocat-timeline--line-limit item)))
               nodes)))
     (nreverse nodes)))
 
@@ -522,28 +522,28 @@ With JOINED the row hangs off the end of the timeline's rail; when it is
 `tight', it directly follows what is above, as in a section.  A nil
 entry in BUTTONS is skipped."
   (delq nil
-   (list (pcase joined
-           ('tight nil)
-           ('nil   (vui-newline))
-           (_      (vui-text octocat-timeline--rail)))
-        (apply #'vui-hstack :spacing 0
-               ;; Off the rail the row lines up with section content.
-               (vui-text (if (memq joined '(nil tight)) "  " ""))
-               (let (nodes)
-                 (dolist (button (delq nil buttons))
-                   (when nodes (push (vui-text "   ") nodes))
-                   (when (nth 3 button)
-                     (push (vui-text (concat (nth 3 button) " ") :face 'octocat-dimmed)
-                           nodes))
-                   (push (vui-button (format "[%s]" (nth 0 button))
-                                     :no-decoration t
-                                     :face 'octocat-dimmed
-                                     :key (nth 0 button)
-                                     :help-echo (octocat--button-help (nth 1 button)
-                                                                      (nth 2 button))
-                                     :on-click (nth 2 button))
-                         nodes))
-                 (nreverse nodes))))))
+        (list (pcase joined
+                ('tight nil)
+                ('nil   (vui-newline))
+                (_      (vui-text octocat-timeline--rail)))
+              (apply #'vui-hstack :spacing 0
+                     ;; Off the rail the row lines up with section content.
+                     (vui-text (if (memq joined '(nil tight)) "  " ""))
+                     (let (nodes)
+                       (dolist (button (delq nil buttons))
+                         (when nodes (push (vui-text "   ") nodes))
+                         (when (nth 3 button)
+                           (push (vui-text (concat (nth 3 button) " ") :face 'octocat-dimmed)
+                                 nodes))
+                         (push (vui-button (format "[%s]" (nth 0 button))
+                                 :no-decoration t
+                                 :face 'octocat-dimmed
+                                 :key (nth 0 button)
+                                 :help-echo (octocat--button-help (nth 1 button)
+                                                                  (nth 2 button))
+                                 :on-click (nth 2 button))
+                               nodes))
+                       (nreverse nodes))))))
 
 (defun octocat-timeline-ensure-idle (spec)
   "Refuse with a `user-error' while a change to SPEC's page is under way.

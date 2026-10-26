@@ -129,9 +129,9 @@ fetches them again."
              (if (eq (octocat-vui-snapshot-status snap) 'error)
                  (vui-text (concat "  " (octocat-vui-error-text snap)) :face 'error)
                (vui-component 'octocat-run-list--runs
-                              :repo repo
-                              :current-branch local-branch
-                              :tick tick :query "" :workflow id)))))))
+                 :repo repo
+                 :current-branch local-branch
+                 :tick tick :query "" :workflow id)))))))
 
 
 ;;;; Major mode

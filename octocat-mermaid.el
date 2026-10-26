@@ -79,7 +79,8 @@ Empty rows at the top and bottom are left out."
   (let ((rows (cl-loop for y below (octocat-mermaid--canvas-height cv)
                        collect (string-trim-right
                                 (mapconcat (lambda (x) (or (octocat-mermaid--get cv x y) " "))
-                                           (number-sequence 0 (1- (octocat-mermaid--canvas-width cv)))
+                                           (number-sequence
+                                            0 (1- (octocat-mermaid--canvas-width cv)))
                                            "")))))
     (nreverse (seq-drop-while #'string-empty-p
                               (nreverse (seq-drop-while #'string-empty-p rows))))))
@@ -337,13 +338,15 @@ to the first subgraph it is mentioned in.  Subgraphs do not nest."
             (cond
              ((or (string-empty-p line) (string-prefix-p "%%" line)))
              ((not header)
-              (unless (string-match "\\`\\(?:flowchart\\|graph\\)\\(?:[ \t]+\\(TD\\|TB\\|BT\\|LR\\|RL\\)\\)?[ \t]*\\'"
+              (unless (string-match (concat "\\`\\(?:flowchart\\|graph\\)\\(?:[ \t]+\\(TD"
+                                            "\\|TB\\|BT\\|LR\\|RL\\)\\)?[ \t]*\\'")
                                     line)
                 (throw 'fail nil))
               (setq header t
                     dir (intern (or (match-string 1 line) "TD")))
               (when (eq dir 'TB) (setq dir 'TD)))
-             ((string-match-p "\\`\\(?:style\\|classDef\\|class\\|linkStyle\\|click\\|direction\\)\\b"
+             ((string-match-p (concat "\\`\\(?:style\\|classDef\\|class\\|linkStyle\\|click"
+                                      "\\|direction\\)\\b")
                               line))
              ((string-match "\\`subgraph\\b\\(.*\\)\\'" line)
               (open-group (match-string 1 line)))
@@ -584,8 +587,10 @@ each its only one on that side is made straight when it can be."
                               (< (octocat-mermaid--center (cadr (octocat-mermaid--e-path a)))
                                  (octocat-mermaid--center (cadr (octocat-mermaid--e-path b)))))))
            (ins  (sort ins (lambda (a b)
-                             (< (octocat-mermaid--center (car (last (octocat-mermaid--e-path a) 2)))
-                                (octocat-mermaid--center (car (last (octocat-mermaid--e-path b) 2))))))))
+                             (< (octocat-mermaid--center
+                                 (car (last (octocat-mermaid--e-path a) 2)))
+                                (octocat-mermaid--center
+                                 (car (last (octocat-mermaid--e-path b) 2))))))))
       (cl-loop for e in outs for j from 0
                do (setf (octocat-mermaid--e-start-c e)
                         (octocat-mermaid--spread n j (length outs))))
@@ -698,7 +703,8 @@ layer extents from `octocat-mermaid--place-main'."
 
 (defun octocat-mermaid--node-rect (n)
   "Return (X0 Y0 X1 Y1), the cells covered by node N."
-  (let ((xy (octocat-mermaid--xy (octocat-mermaid--n-main n) (octocat-mermaid--n-cross n))))
+  (let ((xy (octocat-mermaid--xy (octocat-mermaid--n-main n)
+                                 (octocat-mermaid--n-cross n))))
     (list (car xy) (cdr xy)
           (+ (car xy) (octocat-mermaid--n-w n) -1)
           (+ (cdr xy) (octocat-mermaid--n-h n) -1))))
@@ -737,7 +743,8 @@ wide, or nil to leave frames as wide as their nodes make them."
   (not (or (cl-some (lambda (f)
                       (cl-some (lambda (n)
                                  (and (not (equal (octocat-mermaid--n-group n) (nth 5 f)))
-                                      (octocat-mermaid--rects-meet-p f (octocat-mermaid--node-rect n))))
+                                      (octocat-mermaid--rects-meet-p
+                                       f (octocat-mermaid--node-rect n))))
                                nodes))
                     frames)
            (cl-loop for (a . rest) on frames
@@ -785,7 +792,9 @@ stays; the title is left out where it would not fit."
                   (when (>= len 5)
                     (octocat-mermaid--put
                      cv start y0
-                     (concat " " (truncate-string-to-width title (- len 2) nil nil "…") " ")))))))))))
+                     (concat " "
+                             (truncate-string-to-width title (- len 2) nil nil "…")
+                             " ")))))))))))
 
 (defun octocat-mermaid--flow-draw (spec dir maxlabel)
   "Lay out and draw the flowchart SPEC in direction DIR.
@@ -824,18 +833,20 @@ the chart cannot be drawn."
         (dolist (e edges)
           (cl-loop for (a b) on (octocat-mermaid--e-path e) while b
                    do (push a (gethash b ups))
-                      (push b (gethash a downs))))
+                   do (push b (gethash a downs))))
         (dotimes (l nl)
           (setf (aref layers l) (octocat-mermaid--group-layer (aref layers l))))
         (dotimes (_ 4)
           (cl-loop for l from 1 below nl
                    do (setf (aref layers l)
                             (octocat-mermaid--group-layer
-                             (octocat-mermaid--order-layer (aref layers l) (aref layers (1- l)) ups))))
+                             (octocat-mermaid--order-layer
+                              (aref layers l) (aref layers (1- l)) ups))))
           (cl-loop for l from (- nl 2) downto 0
                    do (setf (aref layers l)
                             (octocat-mermaid--group-layer
-                             (octocat-mermaid--order-layer (aref layers l) (aref layers (1+ l)) downs)))))
+                             (octocat-mermaid--order-layer
+                              (aref layers l) (aref layers (1+ l)) downs)))))
         (octocat-mermaid--place-cross layers ups downs margin)
         (pcase-let ((`(,starts ,sizes ,_) (octocat-mermaid--place-main layers edges margin))
                     (marks nil)
@@ -843,10 +854,12 @@ the chart cannot be drawn."
           (octocat-mermaid--attach nodes edges)
           (setq frames (octocat-mermaid--frames groups nodes))
           (dolist (n nodes)
-            (let ((xy (octocat-mermaid--xy (octocat-mermaid--n-main n) (octocat-mermaid--n-cross n))))
+            (let ((xy (octocat-mermaid--xy (octocat-mermaid--n-main n)
+                                           (octocat-mermaid--n-cross n))))
               (octocat-mermaid--draw-box cv (car xy) (cdr xy)
                                          (octocat-mermaid--n-w n) (octocat-mermaid--n-h n)
-                                         (octocat-mermaid--n-lines n) (octocat-mermaid--n-shape n))))
+                                         (octocat-mermaid--n-lines n)
+                                         (octocat-mermaid--n-shape n))))
           (dolist (e edges)
             (pcase-let ((`(,pts ,smark ,emark) (octocat-mermaid--route e starts sizes)))
               (octocat-mermaid--draw-line
@@ -916,7 +929,8 @@ understood."
              ((string-match "\\`direction[ \t]+\\(TD\\|TB\\|BT\\|LR\\|RL\\)\\'" line)
               (setq dir (intern (match-string 1 line)))
               (when (eq dir 'TB) (setq dir 'TD)))
-             ((string-match "\\`state[ \t]+\"\\([^\"]*\\)\"[ \t]+as[ \t]+\\([[:alnum:]_]+\\)\\'" line)
+             ((string-match (concat "\\`state[ \t]+\"\\([^\"]*\\)\"[ \t]+as[ \t]+"
+                                    "\\([[:alnum:]_]+\\)\\'") line)
               (setf (nth 1 (node-for (match-string 2 line) (match-string 2 line)))
                     (match-string 1 line)))
              ((string-match (concat "\\`\\(\\[\\*\\]\\|[[:alnum:]_]+\\)[ \t]*-->[ \t]*"
@@ -964,8 +978,9 @@ DEPTH is how deeply blocks nest.  Return nil if anything is unsupported."
               (setq header t))
              ((string-match-p "\\`\\(?:activate\\|deactivate\\|title\\)\\b" line))
              ((string-match-p "\\`autonumber\\b" line) (setq auto t))
-             ((string-match "\\`\\(?:participant\\|actor\\)[ \t]+\\([[:alnum:]_]+\\)\\(?:[ \t]+as[ \t]+\\(.+\\)\\)?\\'"
-                             line)
+             ((string-match (concat "\\`\\(?:participant\\|actor\\)[ \t]+\\([[:alnum:]_]+\\)"
+                                    "\\(?:[ \t]+as[ \t]+\\(.+\\)\\)?\\'")
+                            line)
               (ensure (match-string 1 line)
                       (and (match-string 2 line)
                            (octocat-mermaid--clean-label (match-string 2 line)))))
@@ -982,7 +997,8 @@ DEPTH is how deeply blocks nest.  Return nil if anything is unsupported."
                      (text  (octocat-mermaid--clean-label what)))
                 (dolist (id ids) (ensure id))
                 (push (list 'note kind ids text) events)))
-             ((string-match "\\`\\(loop\\|alt\\|opt\\|par\\|critical\\|break\\|rect\\)\\b[ \t]*\\(.*\\)\\'" line)
+             ((string-match (concat "\\`\\(loop\\|alt\\|opt\\|par\\|critical\\|break"
+                                    "\\|rect\\)\\b[ \t]*\\(.*\\)\\'") line)
               (setq depth (1+ depth) maxdepth (max maxdepth depth))
               (push (list 'begin (match-string 1 line)
                           (if (equal (match-string 1 line) "rect")
@@ -1094,8 +1110,8 @@ EVS are the prepared events and HW the header widths."
       ;; Headers.
       (cl-loop for i below n for lines in names for w in hw
                do (octocat-mermaid--draw-box cv (- (cx i) (/ (1- w) 2)) 0 w hh lines 'box)
-                  (octocat-mermaid--put cv (cx i) (1- hh) "┬")
-                  (reach i (1+ (/ w 2))))
+               do (octocat-mermaid--put cv (cx i) (1- hh) "┬")
+               do (reach i (1+ (/ w 2))))
       ;; Events, top to bottom.
       (dolist (ev evs)
         (pcase ev
@@ -1106,7 +1122,11 @@ EVS are the prepared events and HW the header widths."
                  (let ((x (cx a)) (rows (max 2 (length lines))))
                    (octocat-mermaid--put cv x y (concat "├" (make-string 3 (aref dash 0)) "┐"))
                    (octocat-mermaid--put cv x (1+ y)
-                                         (concat "┤" (pcase head ('arrow "◄") ('cross "✕") (_ (string (aref dash 0))))
+                                         (concat "┤"
+                                                 (pcase head
+                                                   ('arrow "◄")
+                                                   ('cross "✕")
+                                                   (_ (string (aref dash 0))))
                                                  (make-string 2 (aref dash 0)) "┘"))
                    (cl-loop for l in lines for i from 0
                             do (octocat-mermaid--put cv (+ x 6) (+ y i) l))
@@ -1176,10 +1196,10 @@ EVS are the prepared events and HW the header widths."
               (octocat-mermaid--add-bits cv x2 y1 9)
               (cl-loop for x from (1+ x1) below x2
                        do (octocat-mermaid--add-bits cv x y0 10)
-                          (octocat-mermaid--add-bits cv x y1 10))
+                       do (octocat-mermaid--add-bits cv x y1 10))
               (cl-loop for yy from (1+ y0) below y1
                        do (octocat-mermaid--add-bits cv x1 yy 5)
-                          (octocat-mermaid--add-bits cv x2 yy 5))
+                       do (octocat-mermaid--add-bits cv x2 yy 5))
               (octocat-mermaid--put cv (+ x1 2) y0 (concat " " label " "))
               (dolist (s seps)
                 (cl-loop for x from (1+ x1) below x2
@@ -1230,7 +1250,9 @@ ROWS are (LABEL . VALUE)."
                (total (apply #'+ (mapcar #'cdr rows)))
                (top (apply #'max (mapcar #'cdr rows)))
                (lw (min 24 (octocat-mermaid--lines-width (mapcar #'car rows))))
-               (pcts (mapcar (lambda (r) (format "%.1f%%" (* 100.0 (/ (float (cdr r)) total)))) rows))
+               (pcts (mapcar (lambda (r)
+                               (format "%.1f%%" (* 100.0 (/ (float (cdr r)) total))))
+                             rows))
                (vals (mapcar (lambda (r) (format "%g" (cdr r))) rows))
                (pw (octocat-mermaid--lines-width pcts))
                (vw (octocat-mermaid--lines-width vals))

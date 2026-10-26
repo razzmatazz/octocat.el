@@ -244,7 +244,7 @@ everything again."
         (octocat-pr--tabs 'files repo number tab-w)))
       (t (vui-vstack
           (vui-text (format "%s#%d  diff" repo number)
-                    :face 'octocat-dimmed)
+            :face 'octocat-dimmed)
           (octocat-pr--tabs 'files repo number tab-w))))
      (pcase (octocat-vui-snapshot-status files)
        ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))

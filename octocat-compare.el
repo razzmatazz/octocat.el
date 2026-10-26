@@ -125,11 +125,11 @@ have diverged gets a note that the three-dot one is shown."
   "Return the top row of the comparison of BASE and HEAD of REPO.
 That is `owner/repo BASE...HEAD', as the commit page's `owner/repo@sha'."
   (vui-hstack :spacing 0
-    (octocat-vui-repo-heading repo)
-    (vui-text (concat "  "
-                      (propertize base 'face 'octocat-branch)
-                      (propertize dots 'face 'octocat-dimmed)
-                      (propertize head 'face 'octocat-branch)))))
+              (octocat-vui-repo-heading repo)
+              (vui-text (concat "  "
+                                (propertize base 'face 'octocat-branch)
+                                (propertize dots 'face 'octocat-dimmed)
+                                (propertize head 'face 'octocat-branch)))))
 
 
 ;;;; Page

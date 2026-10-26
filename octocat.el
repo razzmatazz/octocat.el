@@ -157,7 +157,10 @@ KIND is `issues' or `pulls'."
 
 (defun octocat--dashboard-items-query (kind)
   "Return the GraphQL search query for the dashboard's KIND items."
-  (format "query($q:String!,$limit:Int!){search(query:$q,type:ISSUE_ADVANCED,first:$limit){nodes{...on Issue{repository{nameWithOwner}} ...on PullRequest{repository{nameWithOwner}} %s}pageInfo{hasNextPage endCursor}}}"
+  (format (concat "query($q:String!,$limit:Int!){search(query:$q,type:ISSUE_ADVANCED,"
+                  "first:$limit){nodes{...on Issue{repository{nameWithOwner}} ...on "
+                  "PullRequest{repository{nameWithOwner}} %s}pageInfo{hasNextPage "
+                  "endCursor}}}")
           (alist-get kind octocat--list-item-fields)))
 
 (defun octocat--fetch-dashboard-items (kind limit callback)
@@ -221,7 +224,7 @@ Calls CALLBACK with a list of hash-tables, or an (error . MSG) cons."
     ("PublicEvent"                  (propertize "public      " 'face 'octocat-dimmed))
     ("SponsorshipEvent"             (propertize "sponsor     " 'face 'octocat-dimmed))
     (_                              (propertize (format "%-12s" (or type "event"))
-                                               'face 'octocat-dimmed))))
+                                                'face 'octocat-dimmed))))
 
 (defun octocat--dashboard-event-detail (event)
   "Return a short human-readable detail string for feed EVENT hash-table.

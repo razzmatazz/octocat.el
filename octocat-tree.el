@@ -177,7 +177,8 @@ not be text."
 
 
 (defconst octocat-tree--blob-query
-  "query($owner:String!,$name:String!,$expr:String!){repository(owner:$owner,name:$name){object(expression:$expr){...on Blob{oid}}}}"
+  (concat "query($owner:String!,$name:String!,$expr:String!){repository(owner:$owner,"
+          "name:$name){object(expression:$expr){...on Blob{oid}}}}")
   "GraphQL query behind `octocat-tree--fetch-blob-sha'.")
 
 (defun octocat-tree--fetch-blob-sha (repo ref path callback)
@@ -299,21 +300,20 @@ them.  Commands read them rather than relying on the line's keymap, so
 they keep working under Evil, whose state keymaps outrank text-property
 keymaps."
   (let ((map   (make-sparse-keymap))
+        (help  (concat (if (eq type 'dir) "RET: open directory" "RET: view file")
+                       "  S-RET: in other window  C-c C-o: browse on GitHub"))
         (props (list 'octocat-tree--type     type
                      'octocat-tree--entry    entry
                      'octocat-tree--path     path
                      'octocat-tree--activate activate)))
     (define-key map (kbd "RET") (lambda () (interactive) (funcall activate)))
     (vui-region :keymap map
-      (vui-text (apply #'propertize
-                       (concat indent
-                               (propertize name
-                                           'face face 'mouse-face 'highlight
-                                           'help-echo
-                                           (if (eq type 'dir)
-                                               "RET: open directory  S-RET: in other window  C-c C-o: browse on GitHub"
-                                             "RET: view file  S-RET: in other window  C-c C-o: browse on GitHub")))
-                       props)))))
+                (vui-text (apply #'propertize
+                                 (concat indent
+                                         (propertize name
+                                                     'face face 'mouse-face 'highlight
+                                                     'help-echo help))
+                                 props)))))
 
 
 ;;;; Rendering — tree
@@ -392,10 +392,10 @@ ON-BROWSE, for the whole tree."
         (vui-button (if (> more 0)
                         (format "[Browse code (%d more %s)]" more (if (= more 1) "entry" "entries"))
                       "[Browse code]")
-                    :no-decoration t
-                    :face 'octocat-dimmed
-                    :help-echo "RET: browse the whole tree"
-                    :on-click on-browse))))))
+          :no-decoration t
+          :face 'octocat-dimmed
+          :help-echo "RET: browse the whole tree"
+          :on-click on-browse))))))
 
 (vui-defcomponent octocat-tree--subtree
     (repo branch sha depth path reveal focus)
@@ -420,8 +420,8 @@ it is for browsing."
            (vui-list entries
                      (lambda (entry)
                        (vui-component 'octocat-tree--node
-                                      :repo repo :branch branch :entry entry :depth depth
-                                      :parent path :reveal reveal :focus focus))
+                         :repo repo :branch branch :entry entry :depth depth
+                         :parent path :reveal reveal :focus focus))
                      (lambda (entry) (gethash "path" entry))))))))
 
 (vui-defcomponent octocat-tree--node
@@ -447,13 +447,13 @@ The other arguments are as for `octocat-tree--subtree'."
           indent (concat (if expanded "▾ " "▸ ") name "/")
           'octocat-branch 'dir entry path
           (vui-with-async-context
-            (vui-set-state :expanded (lambda (old) (not old)))))
+           (vui-set-state :expanded (lambda (old) (not old)))))
          (when expanded
            (vui-fragment
             (vui-newline)
             (vui-component 'octocat-tree--subtree
-                           :repo repo :branch branch :sha sha :depth (1+ depth)
-                           :path path :reveal reveal :focus focus))))
+              :repo repo :branch branch :sha sha :depth (1+ depth)
+              :path path :reveal reveal :focus focus))))
       ;; Two spaces stand for "▸ ", so names line up with directories'.
       (octocat-tree--entry-line
        indent (concat "  " name) 'default
@@ -637,9 +637,9 @@ It is the page `[N commits]' opens, see `octocat-commit-list-open'."
                octocat-tree--file-repo octocat-tree--file-path)
     (user-error "Octocat: Not in a file viewer buffer"))
   (octocat-commit-list-open octocat-tree--file-repo
-                        (unless (equal octocat-tree--file-branch "HEAD")
-                          octocat-tree--file-branch)
-                        octocat-tree--file-path))
+                            (unless (equal octocat-tree--file-branch "HEAD")
+                              octocat-tree--file-branch)
+                            octocat-tree--file-path))
 
 (provide 'octocat-tree)
 ;;; octocat-tree.el ends here

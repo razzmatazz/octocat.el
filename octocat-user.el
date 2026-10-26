@@ -124,7 +124,10 @@ The user is an entity; the counts belong to this resource."
                    (json-parse-string json-string :null-object nil))))
 
 (defconst octocat-user--pinned-query
-  "query($login:String!){repositoryOwner(login:$login){... on ProfileOwner{pinnedItems(first:6,types:REPOSITORY){nodes{... on Repository{nameWithOwner description stargazerCount primaryLanguage{name} pushedAt isFork isArchived}}}}}}"
+  (concat "query($login:String!){repositoryOwner(login:$login){... on ProfileOwner{"
+          "pinnedItems(first:6,types:REPOSITORY){nodes{... on Repository{nameWithOwner "
+          "description stargazerCount primaryLanguage{name} pushedAt isFork "
+          "isArchived}}}}}}")
   "GraphQL query behind the `user-pinned' resource.
 The REST API does not expose pinned repositories.")
 

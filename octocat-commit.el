@@ -110,7 +110,8 @@ general comments (\\='path\\=' is :null or nil) and inline comments
 
 ;; Not REST: it has no way to ask whether a branch holds a commit.
 (defconst octocat-commit--branch-query
-  "query($owner:String!,$name:String!,$sha:String!){repository(owner:$owner,name:$name){defaultBranchRef{name compare(headRef:$sha){status}}}}"
+  (concat "query($owner:String!,$name:String!,$sha:String!){repository(owner:$owner,"
+          "name:$name){defaultBranchRef{name compare(headRef:$sha){status}}}}")
   "GraphQL query behind the `commit-branch' resource.")
 
 (defun octocat-commit--parse-branch (json-string)
@@ -156,10 +157,10 @@ the commit, the commit being behind it or at its head, else :null."
 That is owner/repo@SHA, in full, then a button to browse the files of
 the repository at it."
   (vui-hstack :spacing 0
-    (octocat-vui-repo-heading repo)
-    (vui-text (concat "@" sha) :face 'octocat-commit-sha)
-    (vui-text "  ")
-    (vui-button "[Browse files]"
+              (octocat-vui-repo-heading repo)
+              (vui-text (concat "@" sha) :face 'octocat-commit-sha)
+              (vui-text "  ")
+              (vui-button "[Browse files]"
                 :no-decoration t
                 :face 'octocat-dimmed
                 :help-echo "RET: browse the repository's files at this commit"
@@ -178,7 +179,7 @@ GitHub account linked to it, @login, opening its page."
     (delq nil
           (list (vui-text (string-join (delq nil (list name (and email (format "<%s>" email))))
                                        " ")
-                          :face 'octocat-pr-author)
+                  :face 'octocat-pr-author)
                 (and login (vui-text " "))
                 (and login (octocat-repo-vui--login-link login))))))
 
@@ -214,9 +215,11 @@ the commit.  Each parent and the branch open their page."
     (delq nil
           (list
            (octocat-commit--field "Author" (octocat-commit--person commit "author"))
-           (octocat-commit--field "AuthorDate" (delq nil (list (octocat-commit--date commit "author"))))
+           (octocat-commit--field "AuthorDate"
+                                  (delq nil (list (octocat-commit--date commit "author"))))
            (octocat-commit--field "Commit" (octocat-commit--person commit "committer"))
-           (octocat-commit--field "CommitDate" (delq nil (list (octocat-commit--date commit "committer"))))
+           (octocat-commit--field "CommitDate"
+                                  (delq nil (list (octocat-commit--date commit "committer"))))
            (octocat-commit--field
             (if (cdr parents) "Parents" "Parent")
             (cdr (mapcan (lambda (p)

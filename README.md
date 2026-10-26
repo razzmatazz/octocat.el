@@ -464,9 +464,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for code conventions and guidelines.
 ### Compiling, linting and testing
 
 `make ci` byte-compiles every file, tests included, runs `checkdoc`,
-[`package-lint`](https://github.com/purcell/package-lint) and
+[`package-lint`](https://github.com/purcell/package-lint),
+[`elisp-lint`](https://github.com/gonewest818/elisp-lint) and
 `check-declare`, and runs the ERT tests, all inside a Docker (or Podman)
 container based on Ubuntu 26.04, so no local Emacs install is required.
+elisp-lint checks that every line of the package's files is indented as
+stock Emacs indents it (with octocat, vui and Evil loaded, for their
+`indent` declarations), uses no tabs, has no trailing whitespace, and
+is at most 100 columns.
 It also runs [melpazoid](https://github.com/riscy/melpazoid), see below.  The targets run
 [Eldev](https://github.com/emacs-eldev/eldev), configured in `Eldev`; it
 takes the dependencies from the `Package-Requires` header of `octocat.el`

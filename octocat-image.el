@@ -189,7 +189,8 @@ so the text after it stays in its column."
          (width (plist-get plist :width))
          (image (apply #'create-image data nil t
                        :max-height (* octocat-image-max-lines (frame-char-height))
-                       (when-let* ((max (delq nil (list width (and cols (* cols (frame-char-width)))))))
+                       (when-let* ((max (delq nil (list width
+                                                        (and cols (* cols (frame-char-width)))))))
                          (list :max-width (apply #'min max))))))
     (when (and cols (plist-get plist :fill))
       (setf (image-property image :margin)

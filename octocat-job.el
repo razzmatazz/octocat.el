@@ -326,20 +326,19 @@ end."
 (defun octocat-job--log-group (name text index bulk)
   "Return a ##[group] of a step's log: NAME, folded over its TEXT.
 INDEX, its position in the step, keys it.  BULK is as for `octocat-vui-fold'."
-  (vui-component
-   'octocat-vui-fold
-   :key index
-   :bulk bulk
-   :header (lambda (open toggle)
-             (octocat-vui-fold-header "      " open toggle
-                                      (propertize name 'face 'octocat-dimmed)
-                                      '("RET: unfold" . "RET: fold")))
-   :deps text
-   :prepare (lambda ()
-              (octocat-vui-text-body
-               (if (string-empty-p text)
-                   (propertize "(empty)" 'face 'octocat-dimmed)
-                 text)))))
+  (vui-component 'octocat-vui-fold
+    :key index
+    :bulk bulk
+    :header (lambda (open toggle)
+              (octocat-vui-fold-header "      " open toggle
+                                       (propertize name 'face 'octocat-dimmed)
+                                       '("RET: unfold" . "RET: fold")))
+    :deps text
+    :prepare (lambda ()
+               (octocat-vui-text-body
+                (if (string-empty-p text)
+                    (propertize "(empty)" 'face 'octocat-dimmed)
+                  text)))))
 
 (defun octocat-job--step-body (lines bulk)
   "Return the log LINES of a step as the (TOTAL . RENDER) body of a fold.
@@ -397,16 +396,15 @@ BULK is as for `octocat-vui-fold'."
       ;; `octocat-vui-fold', not `vui-collapsible': its toggle button would
       ;; draw the whole title in the `link' face, losing the icon and
       ;; status faces.
-      (vui-component
-       'octocat-vui-fold
-       :key (gethash "number" step)
-       :bulk bulk
-       :header (lambda (open toggle)
-                 (octocat-vui-fold-header "  " open toggle title
-                                          '("RET: show log" . "RET: hide log")))
-       ;; BULK too, for the log groups it unfolds.
-       :deps (cons lines bulk)
-       :prepare (lambda () (octocat-job--step-body lines bulk))))))
+      (vui-component 'octocat-vui-fold
+        :key (gethash "number" step)
+        :bulk bulk
+        :header (lambda (open toggle)
+                  (octocat-vui-fold-header "  " open toggle title
+                                           '("RET: show log" . "RET: hide log")))
+        ;; BULK too, for the log groups it unfolds.
+        :deps (cons lines bulk)
+        :prepare (lambda () (octocat-job--step-body lines bulk))))))
 
 (defun octocat-job--steps (job log bulk on-bulk)
   "Return the vnodes of the section listing each step of JOB.
@@ -491,13 +489,13 @@ hash-table; a nil JOB-NAME is not shown."
                     (let ((level (downcase (or (gethash "annotation_level" (cdr entry))
                                                "notice"))))
                       (vui-text
-                       (concat "  " (octocat--annotation-icon level) "  "
-                               (when (car entry)
-                                 (concat (propertize (car entry) 'face 'octocat-run-job-name)
-                                         "  "))
-                               (propertize (replace-regexp-in-string
-                                            "\n" " " (or (gethash "message" (cdr entry)) ""))
-                                           'face (octocat--annotation-face level))))))
+                          (concat "  " (octocat--annotation-icon level) "  "
+                                  (when (car entry)
+                                    (concat (propertize (car entry) 'face 'octocat-run-job-name)
+                                            "  "))
+                                  (propertize (replace-regexp-in-string
+                                               "\n" " " (or (gethash "message" (cdr entry)) ""))
+                                              'face (octocat--annotation-face level))))))
                   entries))))
 
 

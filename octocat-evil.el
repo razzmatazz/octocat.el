@@ -41,8 +41,10 @@
 (declare-function evil-insert-state         "ext:evil-states" (&optional arg) t)
 (declare-function evil-normal-state         "ext:evil-states" (&optional arg) t)
 (declare-function evil-ret                  "ext:evil-commands" (&optional count) t)
-(declare-function evil-backward-char        "ext:evil-commands" (&optional count crosslines noerror) t)
-(declare-function evil-forward-char         "ext:evil-commands" (&optional count crosslines noerror) t)
+(declare-function evil-backward-char        "ext:evil-commands"
+                  (&optional count crosslines noerror) t)
+(declare-function evil-forward-char         "ext:evil-commands"
+                  (&optional count crosslines noerror) t)
 
 (defvar octocat-mode-map)
 (defvar octocat-repo-mode-map)
@@ -70,19 +72,22 @@
 (declare-function octocat-tree-visit         "octocat-tree"      ())
 (declare-function octocat-visit              "octocat-core"      ())
 (declare-function octocat-visit-other-window "octocat-core"      ())
-(declare-function octocat-file-refresh       "octocat-tree"      (&optional _ignore-auto _noconfirm))
+(declare-function octocat-file-refresh       "octocat-tree"
+                  (&optional _ignore-auto _noconfirm))
 (declare-function octocat-vui-refresh        "octocat-vui"       ())
 (declare-function octocat-file-browse        "octocat-tree"      ())
 (declare-function octocat-file-log-open      "octocat-tree"      ())
 (declare-function octocat-file-switch-branch "octocat-tree"      ())
 (declare-function octocat-jump               "octocat-core"      (&optional other))
 (declare-function octocat-toggle-markdown    "octocat-core"      ())
-(declare-function octocat-pr-refresh         "octocat-pr"        (&optional _ignore-auto _noconfirm))
+(declare-function octocat-pr-refresh         "octocat-pr"
+                  (&optional _ignore-auto _noconfirm))
 (declare-function octocat-pr-add-comment     "octocat-pr"        ())
 (declare-function octocat-pr-edit-body       "octocat-pr"        ())
 (declare-function octocat-pr-edit            "octocat-pr"        ())
 (declare-function octocat-pr-merge           "octocat-pr"        ())
-(declare-function octocat-commit-refresh     "octocat-commit"    (&optional _ignore-auto _noconfirm))
+(declare-function octocat-commit-refresh     "octocat-commit"
+                  (&optional _ignore-auto _noconfirm))
 (declare-function octocat-pr-diff-browse    "octocat-pr-diff"   ())
 (declare-function octocat-pr-commits-browse "octocat-pr"        ())
 (declare-function octocat-pr-diff-review    "octocat-pr-diff"   ())
@@ -92,7 +97,8 @@
 (declare-function octocat-compare-refresh   "octocat-compare"   (&optional _ignore-auto _noconfirm))
 (declare-function octocat-checks-browse     "octocat-checks"    ())
 (declare-function octocat-checks-refresh    "octocat-checks"    (&optional _ignore-auto _noconfirm))
-(declare-function octocat-issue-refresh      "octocat-issue"     (&optional _ignore-auto _noconfirm))
+(declare-function octocat-issue-refresh      "octocat-issue"
+                  (&optional _ignore-auto _noconfirm))
 (declare-function octocat-issue-add-comment  "octocat-issue"     ())
 (declare-function octocat-issue-new          "octocat-issue"     ())
 (declare-function octocat-issue-edit-body    "octocat-issue"     ())
@@ -157,11 +163,14 @@ would start recording a macro."
     (evil-normal-state)))
 
 (declare-function octocat-workflow-browse    "octocat-workflow"  ())
-(declare-function octocat-workflow-refresh   "octocat-workflow"  (&optional _ignore-auto _noconfirm))
+(declare-function octocat-workflow-refresh   "octocat-workflow"
+                  (&optional _ignore-auto _noconfirm))
 (declare-function octocat-run-browse         "octocat-run"       ())
-(declare-function octocat-run-refresh        "octocat-run"       (&optional _ignore-auto _noconfirm))
+(declare-function octocat-run-refresh        "octocat-run"
+                  (&optional _ignore-auto _noconfirm))
 (declare-function octocat-job-browse         "octocat-job"       ())
-(declare-function octocat-job-refresh        "octocat-job"       (&optional _ignore-auto _noconfirm))
+(declare-function octocat-job-refresh        "octocat-job"
+                  (&optional _ignore-auto _noconfirm))
 
 (defun octocat-evil-tree-l ()
   "Open the file or the directory at point, as in treemacs-evil.

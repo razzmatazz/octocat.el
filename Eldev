@@ -9,16 +9,33 @@
 
 ;; evil is an optional runtime integration (see octocat-evil.el), so not in
 ;; Package-Requires, but `test/octocat-evil-repo-tests.el' exercises the
-;; real Evil keymap machinery, and `tools/check-declare.el', run by
-;; `eldev exec', checks the Evil functions octocat declares.
-(eldev-add-extra-dependencies '(build test exec) 'evil)
+;; real Evil keymap machinery, `tools/check-declare.el', run by
+;; `eldev exec', checks the Evil functions octocat declares, and the
+;; elisp linter indents by Evil's macros.
+(eldev-add-extra-dependencies '(build test exec runtime) 'evil)
 
-(setf eldev-lint-default '(doc package))
+(setf eldev-lint-default '(doc package elisp))
 ;; tools/ holds scripts for this repository, not files of the package.
 (setf eldev-standard-excludes `(:or ,eldev-standard-excludes "./tools/"))
-;; So `eldev prepare lint' installs it up front: `make ci' lints and tests
-;; at once, and a lint installing it meanwhile would race the test.
-(eldev-add-extra-dependencies 'lint 'package-lint)
+;; So `eldev prepare lint' installs them up front: `make ci' lints and
+;; tests at once, and a lint installing them meanwhile would race the test.
+(eldev-add-extra-dependencies 'lint 'package-lint 'elisp-lint)
+
+;; elisp-lint for what the others do not check: indentation, line length
+;; and whitespace.  Its byte-compile, which `make compile' does, would also
+;; write .elc and autoloads files into the tree while the tests run.
+(with-eval-after-load 'elisp-lint
+  (setf elisp-lint-ignored-validators
+        '("byte-compile" "check-declare" "checkdoc" "package-lint"))
+  (setq-default indent-tabs-mode nil
+                fill-column 100)
+  ;; As Emacs 31 declares it, so a value on the next line indents the
+  ;; same on every release; before, it is 2, which indents it two more.
+  (setf elisp-lint-indent-specs '((defvar-local . defun)))
+  ;; Indent as an Emacs with octocat and Evil loaded does, by their and
+  ;; vui's `indent' declarations.
+  (require 'evil)
+  (require 'octocat))
 
 ;; Every run rewrites .eldev/ever-initialized, and `make ci-all' runs
 ;; several at once: with lock files, one would wait for good on another's.

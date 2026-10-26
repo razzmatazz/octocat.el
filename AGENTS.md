@@ -56,65 +56,12 @@ parallel sub-agents for **pure research / read-only** tasks.
 
 ## Checking paren structure
 
-Before reloading or running `make ci`, use `tools/el-outline.py` to verify
-the parenthesis structure of any `.el` file you have edited:
-
-```bash
-python3 tools/el-outline.py octocat-run.el octocat-workflow.el
-```
-
-The script prints an indented outline of every top-level form with its line
-range, then exits 1 if any file is unbalanced.  Two markers flag problems:
-
-- **`← UNCLOSED`** — a form with no matching `)` before EOF; the next
-  top-level forms will appear as its children.
-- **`← SPANS INTO NEXT FORM`** — a multi-line form whose closing line
-  reaches the opening line of the next sibling, indicating a missing `)`.
-
-This catches the class of bug where removing an expression (e.g.
-`(goto-char (point-min))`) accidentally strips one of the surrounding
-closing parens, silently swallowing subsequent `defun`s.
-
-Run with `--depth N` to expand more nesting levels (default 4).  No
-arguments processes all `*.el` files in the current directory.
-
-When the outline flags a problem, four targeted sub-commands help find the
-exact broken line:
-
-**`--trace DEFUN`** — prints every source line of the named top-level form
-with a running depth counter.  Now skips `declare-function` stubs and finds
-the actual `defun`/`defvar` definition:
-
-```bash
-python3 tools/el-outline.py --trace octocat--render-prs octocat.el
-```
-
-**`--trace-line N`** — like `--trace` but selects whichever top-level form
-*contains* line N.  Use this when the form has no distinct name, or when
-`--trace` still resolves to the wrong occurrence:
-
-```bash
-python3 tools/el-outline.py --trace-line 274 octocat-commit.el
-```
-
-**`--depth-at N`** — shows the absolute paren depth at each line in a
-±10-line window around N, then lists every form that is still open at that
-line (innermost last).  Answers the question *"what is unclosed going into
-line N?"*:
-
-```bash
-python3 tools/el-outline.py --depth-at 149 octocat-commit.el
-```
-
-**`--close-map --lines A-B`** — for every `)` in the given line range,
-prints which `(` it closes, at what depth, and the head token of the opening
-form.  Highlights closings that reach depth 0 (top-level) unexpectedly.  Use
-this to find the `)` that is doing "double duty" — closing two forms at once
-because a `)` is missing above it:
-
-```bash
-python3 tools/el-outline.py --close-map --lines 145-155 octocat-commit.el
-```
+`make lint`'s elisp linter checks every line's indentation against
+Emacs's own.  A `)` removed by mistake (e.g. along with a `(goto-char
+(point-min))`) and made up by an extra one further on leaves the file
+balanced but swallows the `defun`s in between; they then sit indented
+inside the form above, and the linter names their lines.  `M-x
+check-parens` finds a paren left unbalanced.
 
 ## Reloading into Emacs
 

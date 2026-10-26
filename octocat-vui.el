@@ -126,19 +126,19 @@ own, so a segment such as a relative date keeps its own hover text
                (define-key m (kbd "RET") (lambda () (interactive) (funcall on-visit)))
                m)))
     (vui-region :keymap map
-      (if (stringp line)
-          (octocat-vui-row--text line help-echo)
-        (vui-hstack :spacing 0
-          (mapcar (lambda (part)
-                    (if (stringp part)
-                        (octocat-vui-row--text part help-echo)
-                      part))
-                  line))))))
+                (if (stringp line)
+                    (octocat-vui-row--text line help-echo)
+                  (vui-hstack :spacing 0
+                              (mapcar (lambda (part)
+                                        (if (stringp part)
+                                            (octocat-vui-row--text part help-echo)
+                                          part))
+                                      line))))))
 
 (defun octocat-vui-row--text (string help-echo)
   "Return a `vui-text' of STRING highlighted as part of a row with HELP-ECHO."
   (vui-text (octocat-vui--default-help-echo string (or help-echo "RET: view details"))
-            'mouse-face 'highlight))
+    'mouse-face 'highlight))
 
 (defun octocat-vui--default-help-echo (string help-echo)
   "Return a copy of STRING with HELP-ECHO on the parts lacking a `help-echo'."
@@ -427,17 +427,17 @@ INDENT columns \(default two).  The flush-left list pages pass 0."
     (vui-fragment
      (when skeleton
        (vui-component 'octocat-vui-unfolding-text
-                      :text (concat "\n" pad (string-replace "\n" (concat "\n" pad) skeleton))
-                      :open (and loading t)))
+         :text (concat "\n" pad (string-replace "\n" (concat "\n" pad) skeleton))
+         :open (and loading t)))
      (vui-newline)
      (vui-text pad)
      (vui-button (format "[+] Load %d more…" count)
-                 :no-decoration t
-                 :face 'octocat-dimmed
-                 :key key
-                 :disabled loading
-                 :help-echo (if loading nil help-echo)
-                 :on-click on-click))))
+       :no-decoration t
+       :face 'octocat-dimmed
+       :key key
+       :disabled loading
+       :help-echo (if loading nil help-echo)
+       :on-click on-click))))
 
 (defmacro octocat-vui-use-timer (deps interval active &rest body)
   "Run BODY every INTERVAL seconds while ACTIVE, tied to the component.
@@ -457,11 +457,11 @@ of on every tick.  BODY runs in the component's context, so it may call
                  (run-with-timer
                   ,interval ,interval
                   (vui-with-async-context
-                    (condition-case err
-                        (unless (progn ,@body)
-                          (cancel-timer ,timer))
-                      (error (cancel-timer ,timer)
-                             (signal (car err) (cdr err)))))))
+                   (condition-case err
+                       (unless (progn ,@body)
+                         (cancel-timer ,timer))
+                     (error (cancel-timer ,timer)
+                            (signal (car err) (cdr err)))))))
            (lambda () (cancel-timer ,timer)))))))
 
 (defconst octocat-vui-unfold-growth 0.4
@@ -533,32 +533,31 @@ folds it back."
                                               (- total visible) noun))
                           ((or done closing) "▴ show less")
                           (t          (format "▾ %d more %s…" (- total visible) noun)))
-                    :no-decoration t
-                    :face 'octocat-dimmed
-                    :key key
-                    :help-echo (if open "RET: fold this back" "RET: show the rest")
-                    :on-click (vui-with-async-context
-                                (cond (closing nil)
-                                      ((and open done) (vui-set-state :closing t))
-                                      (t (vui-set-state :open t))))))))))
+          :no-decoration t
+          :face 'octocat-dimmed
+          :key key
+          :help-echo (if open "RET: fold this back" "RET: show the rest")
+          :on-click (vui-with-async-context
+                     (cond (closing nil)
+                           ((and open done) (vui-set-state :closing t))
+                           (t (vui-set-state :open t))))))))))
 
 (defun octocat-vui-fold-lines (string ends limit key prefix &optional wrap)
   "Return STRING folded to its first LIMIT lines, the rest behind a marker.
 ENDS are its newlines, from `octocat-vui-line-ends'.  KEY and PREFIX
 are as for `octocat-vui-fold-rest'.  WRAP turns the shown text into a
 vnode, `vui-text' by default."
-  (vui-component
-   'octocat-vui-fold-rest
-   :total (length ends)
-   :limit limit
-   :noun "lines"
-   :key key
-   :prefix prefix
-   :render (lambda (shown)
-             (funcall (or wrap #'vui-text)
-                      (substring string 0 (if (< shown (length ends))
-                                              (nth shown ends)
-                                            (length string)))))))
+  (vui-component 'octocat-vui-fold-rest
+    :total (length ends)
+    :limit limit
+    :noun "lines"
+    :key key
+    :prefix prefix
+    :render (lambda (shown)
+              (funcall (or wrap #'vui-text)
+                       (substring string 0 (if (< shown (length ends))
+                                               (nth shown ends)
+                                             (length string)))))))
 
 (vui-defcomponent octocat-vui-reveal (items render)
   "Call RENDER with ITEMS, revealing items added later one frame at a time.
@@ -659,10 +658,10 @@ which the caller keeps, typically in its state, and passes to every fold."
   (let ((gen  (or (car bulk) 0))
         (open (cdr bulk)))
     (vui-button (if open "Collapse all" "Expand all")
-                :face 'octocat-dimmed
-                :key 'expand-all
-                :help-echo (if open "RET: fold everything" "RET: unfold everything")
-                :on-click (lambda () (funcall on-click (cons (1+ gen) (not open)))))))
+      :face 'octocat-dimmed
+      :key 'expand-all
+      :help-echo (if open "RET: fold everything" "RET: unfold everything")
+      :on-click (lambda () (funcall on-click (cons (1+ gen) (not open)))))))
 
 (defun octocat-vui-fold-header (indent open toggle title help)
   "Return a header row for `octocat-vui-fold': a ▸/▾ marker, then TITLE.
@@ -675,11 +674,11 @@ faces show (a button would draw it in one face).  RET on either toggles."
      :spacing 0
      (vui-text indent)
      (vui-button (if open "▾" "▸")
-                 :no-decoration t
-                 :face 'octocat-dimmed
-                 :key 'fold-toggle
-                 :help-echo hint
-                 :on-click toggle)
+       :no-decoration t
+       :face 'octocat-dimmed
+       :key 'fold-toggle
+       :help-echo hint
+       :on-click toggle)
      (octocat-vui-row (concat " " title) toggle hint))))
 
 (defun octocat-vui-text-body (text)
@@ -708,8 +707,8 @@ Items that arrive after the first render unfold progressively, see
 `octocat-vui-reveal'.  Lay columns out from all of ITEMS before calling
 this, so they do not shift as the new rows appear."
   (vui-component 'octocat-vui-reveal
-                 :items items
-                 :render (lambda (shown) (vui-list shown row-fn key-fn))))
+    :items items
+    :render (lambda (shown) (vui-list shown row-fn key-fn))))
 
 (defconst octocat-vui--spinner-frames ["▖" "▘" "▝" "▗"]
   "Frames of the busy spinner.")
@@ -988,9 +987,9 @@ being where the page sits (the Code tab reaches the repository page)."
   "Return the top row of a page about commit SHA of REPO.
 That is `owner/repo@sha', as `owner/repo#N' is on an issue."
   (vui-hstack :spacing 0
-    (octocat-vui-repo-heading repo)
-    (vui-text (concat "@" (substring sha 0 (min 7 (length sha))))
-              :face 'octocat-commit-sha)))
+              (octocat-vui-repo-heading repo)
+              (vui-text (concat "@" (substring sha 0 (min 7 (length sha))))
+                :face 'octocat-commit-sha)))
 
 (defun octocat-vui--fit (text width)
   "Return TEXT cut with an ellipsis to WIDTH columns, at least 10.
@@ -1036,8 +1035,8 @@ STATE, there is only the top row."
            (t (cons (vui-hstack :spacing 0 (vui-text head) (car fields))
                     (mapcar (lambda (node)
                               (vui-hstack :spacing 0
-                                (vui-text (make-string (string-width head) ?\s))
-                                node))
+                                          (vui-text (make-string (string-width head) ?\s))
+                                          node))
                             (cdr fields))))))))
 
 (defun octocat-vui-fields (fields)
@@ -1077,7 +1076,7 @@ what is below it without a blank line."
            (append (cdr (mapcan (lambda (n) (list (vui-text "  " :face 'underline) n))
                                 nodes))
                    (list (vui-text (make-string (max 0 (- width used)) ?\s)
-                                   :face 'underline))))))
+                           :face 'underline))))))
 
 (defcustom octocat-repo-summary-ttl 300
   "Seconds a repo's summary, with its open issue and PR counts, is reused.
@@ -1125,9 +1124,9 @@ render, like any hook."
                (if (eq sym current)
                    (vui-text label :face '(octocat-section-heading underline))
                  (vui-button label
-                             :face '(octocat-dimmed underline)
-                             :help-echo help
-                             :on-click (lambda () (funcall fn repo))))))
+                   :face '(octocat-dimmed underline)
+                   :help-echo help
+                   :on-click (lambda () (funcall fn repo))))))
            octocat--repo-tabs)))
     ;; One node, so the gaps between the tabs are underlined too.
     (list (apply #'vui-hstack :spacing 0
@@ -1170,7 +1169,7 @@ them again."
                                (and (gethash "merged" counts)
                                     (format "%d merged" (gethash "merged" counts)))))
                    " · ")
-                  :face 'octocat-dimmed)
+          :face 'octocat-dimmed)
         (vui-newline))))))
 
 (vui-defcomponent octocat-vui-search-list (repo kind query row-fn line-fn compact tick)
@@ -1189,9 +1188,9 @@ and starts the results afresh."
    (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick)
    (octocat-vui-list-filter-bar query)
    (vui-component 'octocat-vui--search-results
-                  :key (list query (and compact t) tick)
-                  :repo repo :kind kind :query query :row-fn row-fn
-                  :line-fn line-fn :compact compact :tick tick)))
+     :key (list query (and compact t) tick)
+     :repo repo :kind kind :query query :row-fn row-fn
+     :line-fn line-fn :compact compact :tick tick)))
 
 (defun octocat-vui--list-tree (kind repo page)
   "Return PAGE, a page of KIND items of REPO, as a list resource's tree.
@@ -1207,11 +1206,15 @@ PAGE is as `octocat--parse-list-items' returns; each item is an entity."
 (octocat-sync-define-resource list-items (kind repo query limit)
   :fetch (lambda (done)
            ;; As many as "load more" stored, so a refetch keeps them.
-           (let ((data (plist-get (octocat-sync-read (list 'list-items kind repo query limit)) :data)))
+           (let ((data (plist-get (octocat-sync-read
+                                   (list 'list-items kind repo query limit))
+                                  :data)))
              (octocat--list-items
               kind repo
               (lambda (r)
-                (funcall done (if (eq (car-safe r) 'error) r (octocat-vui--list-tree kind repo r))))
+                (funcall done (if (eq (car-safe r) 'error)
+                                  r
+                                (octocat-vui--list-tree kind repo r))))
               query nil (min 100 (max limit (length (and data (gethash "nodes" data)))))))))
 
 (vui-defcomponent octocat-vui--search-results (repo kind query row-fn line-fn compact tick)
@@ -1247,7 +1250,7 @@ They are a sync resource, painted from the store while it is refetched;
                                     "(no %s match the filters)\n"
                                   "(no %s)\n")
                                 noun)
-                        :face 'octocat-dimmed)
+                :face 'octocat-dimmed)
             (octocat-vui-reveal-list
              items
              (lambda (item) (funcall row-fn item row-w compact no-state))
@@ -1264,7 +1267,9 @@ They are a sync resource, painted from the store while it is refetched;
                   (octocat--list-items
                    kind repo
                    (lambda (r)
-                     (funcall done (if (eq (car-safe r) 'error) r (octocat-vui--list-tree kind repo r))))
+                     (funcall done (if (eq (car-safe r) 'error)
+                                       r
+                                     (octocat-vui--list-tree kind repo r))))
                    query after limit))
                 (vui-async-callback (r)
                   (vui-set-state :fetching nil)
@@ -1609,11 +1614,11 @@ A [clear] button shows when it differs from the default."
      ;; (plus the stack's spacing), so the query box and the facet buttons
      ;; start in the same column.
      (vui-hstack :spacing 2
-       (vui-text "Filter" :face 'octocat-dimmed)
-       (vui-component 'octocat-vui-list-query-field
-                      :query (string-trim (or query "")))
-       (when active
-         (vui-button "[clear]"
+                 (vui-text "Filter" :face 'octocat-dimmed)
+                 (vui-component 'octocat-vui-list-query-field
+                   :query (string-trim (or query "")))
+                 (when active
+                   (vui-button "[clear]"
                      :no-decoration t
                      :face 'octocat-dimmed
                      :key :clear
@@ -1625,14 +1630,14 @@ A [clear] button shows when it differs from the default."
             (vui-text "      ")
             (mapcar (lambda (facet)
                       (vui-button (format "[%s]" (car facet))
-                                  :no-decoration t
-                                  :face 'octocat-dimmed
-                                  :key (car facet)
-                                  :help-echo (octocat--button-help
-                                              (format "RET: filter by %s"
-                                                      (downcase (car facet)))
-                                              (cdr facet))
-                                  :on-click (cdr facet)))
+                        :no-decoration t
+                        :face 'octocat-dimmed
+                        :key (car facet)
+                        :help-echo (octocat--button-help
+                                    (format "RET: filter by %s"
+                                            (downcase (car facet)))
+                                    (cdr facet))
+                        :on-click (cdr facet)))
                     octocat-vui-list--facets))
      (vui-newline))))
 

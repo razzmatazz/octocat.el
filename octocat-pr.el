@@ -46,10 +46,13 @@
 ;; The PR page and the PR list page below reuse the row builder and fetch
 ;; plumbing from octocat-repo.el, which requires this file (so cannot be
 ;; required here).
-(declare-function octocat-repo-vui--pr-row "octocat-repo" (repo pr width bg &optional compact no-state))
-(declare-function octocat-repo-vui--pr-compact-line "octocat-repo" (repo pr bg no-state &optional width))
+(declare-function octocat-repo-vui--pr-row "octocat-repo"
+                  (repo pr width bg &optional compact no-state))
+(declare-function octocat-repo-vui--pr-compact-line "octocat-repo"
+                  (repo pr bg no-state &optional width))
 (declare-function octocat-repo-vui--state-label"octocat-repo" (state &optional draft))
-(declare-function octocat-repo-vui--detail-header "octocat-repo" (repo item state on-edit-title bg width fields shown &optional branch omit))
+(declare-function octocat-repo-vui--detail-header "octocat-repo"
+                  (repo item state on-edit-title bg width fields shown &optional branch omit))
 (declare-function octocat-repo-vui--cells "octocat-repo" (repo item bg))
 (declare-function octocat-repo-vui--login-items   "octocat-repo" (users))
 (declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
@@ -319,50 +322,50 @@ workflow runs, with the button approving them under it."
          (approvals (seq-count (lambda (r) (equal (gethash "state" r) "APPROVED"))
                                (or (octocat--get pr "latestReviews") []))))
     (delq nil
-     (list
-      (pcase (octocat--get pr "reviewDecision")
-        ("APPROVED"
-         (list 'ok "Changes approved"
-               (format "%d approving review%s" approvals (if (= approvals 1) "" "s"))))
-        ("CHANGES_REQUESTED"
-         (list 'fail "Changes requested"
-               "Changes must be addressed before merging."))
-        ("REVIEW_REQUIRED"
-         (list 'fail "Review required"
-               "At least 1 approving review is required by reviewers with write access.")))
-      (unless (zerop (length checks))
-        (list (cond ((> (nth 0 counts) 0) 'fail) ((> (nth 1 counts) 0) 'wait) (t 'ok))
-              (cond ((> (nth 0 counts) 0) "Some checks were not successful")
-                    ((> (nth 1 counts) 0) "Some checks haven't completed yet")
-                    (t "All checks have passed"))
-              (concat (mapconcat #'identity
-                                 (delq nil (cl-mapcar (lambda (n label)
-                                                        (and (> n 0) (format "%d %s" n label)))
-                                                      counts
-                                                      '("failing" "in progress" "skipped" "successful")))
-                                 ", ")
-                      (if (= (length checks) 1) " check" " checks"))
-              'checks))
-      (and awaiting
-           (list 'wait
-                 (if (cdr awaiting)
-                     (format "%d workflows awaiting approval" (length awaiting))
-                   "1 workflow awaiting approval")
-                 (if (cdr awaiting)
-                     "These workflows require approval from a maintainer."
-                   "This workflow requires approval from a maintainer.")
-                 'approval))
-      (cond
-       ((octocat-pr--conflicts-p pr)
-        (list 'fail "This branch has conflicts that must be resolved"
-              "Use the web editor or the command line to resolve conflicts."))
-       ((equal (octocat--get pr "mergeStateStatus") "BEHIND")
-        (list 'wait "This branch is out-of-date with the base branch"
-              (format "Merge the latest changes from %s into this branch."
-                      (or (gethash "baseRefName" pr) "the base branch"))))
-       ((equal (octocat--get pr "mergeable") "MERGEABLE")
-        (list 'ok "No conflicts with base branch"))
-       (t (list 'wait "Checking for the ability to merge automatically…")))))))
+          (list
+           (pcase (octocat--get pr "reviewDecision")
+             ("APPROVED"
+              (list 'ok "Changes approved"
+                    (format "%d approving review%s" approvals (if (= approvals 1) "" "s"))))
+             ("CHANGES_REQUESTED"
+              (list 'fail "Changes requested"
+                    "Changes must be addressed before merging."))
+             ("REVIEW_REQUIRED"
+              (list 'fail "Review required"
+                    "At least 1 approving review is required by reviewers with write access.")))
+           (unless (zerop (length checks))
+             (list (cond ((> (nth 0 counts) 0) 'fail) ((> (nth 1 counts) 0) 'wait) (t 'ok))
+                   (cond ((> (nth 0 counts) 0) "Some checks were not successful")
+                         ((> (nth 1 counts) 0) "Some checks haven't completed yet")
+                         (t "All checks have passed"))
+                   (concat (string-join
+                            (delq nil (cl-mapcar (lambda (n label)
+                                                   (and (> n 0) (format "%d %s" n label)))
+                                                 counts
+                                                 '("failing" "in progress" "skipped" "successful")))
+                            ", ")
+                           (if (= (length checks) 1) " check" " checks"))
+                   'checks))
+           (and awaiting
+                (list 'wait
+                      (if (cdr awaiting)
+                          (format "%d workflows awaiting approval" (length awaiting))
+                        "1 workflow awaiting approval")
+                      (if (cdr awaiting)
+                          "These workflows require approval from a maintainer."
+                        "This workflow requires approval from a maintainer.")
+                      'approval))
+           (cond
+            ((octocat-pr--conflicts-p pr)
+             (list 'fail "This branch has conflicts that must be resolved"
+                   "Use the web editor or the command line to resolve conflicts."))
+            ((equal (octocat--get pr "mergeStateStatus") "BEHIND")
+             (list 'wait "This branch is out-of-date with the base branch"
+                   (format "Merge the latest changes from %s into this branch."
+                           (or (gethash "baseRefName" pr) "the base branch"))))
+            ((equal (octocat--get pr "mergeable") "MERGEABLE")
+             (list 'ok "No conflicts with base branch"))
+            (t (list 'wait "Checking for the ability to merge automatically…")))))))
 
 (defun octocat-pr--conflicts-p (pr)
   "Return non-nil when PR conflicts with its base branch."
@@ -405,7 +408,7 @@ under way in its place."
        (cond
         (merging
          (list (vui-text (concat "  " (octocat-vui-spinner) " " merging)
-                         :face 'bold)))
+                 :face 'bold)))
         (draft
          (append
           (list (vui-text "  This pull request is still a work in progress" :face 'bold))
@@ -420,7 +423,7 @@ under way in its place."
              (if (equal (octocat--get pr "mergeStateStatus") "BLOCKED")
                  (vui-text "  Merging is blocked" :face 'octocat-ci-failure)
                (vui-text "  Merging can be performed automatically."
-                         :face 'octocat-merge-ready))))
+                 :face 'octocat-merge-ready))))
           (octocat-timeline-buttons
            (list (and (not (octocat-pr--conflicts-p pr))
                       '("Merge pull request" "RET: merge this pull request"
@@ -597,23 +600,25 @@ is the confirmation."
      (refusal (user-error "Octocat: %s" refusal)))
     (message "Octocat: Fetching merge options…")
     (octocat--run-gh "merge-methods"
-      (list "repo" "view" repo "--json"
-            (mapconcat #'identity
-                       (cons "deleteBranchOnMerge"
-                             (mapcar (lambda (m) (nth 2 m)) octocat-pr--merge-methods))
-                       ","))
-      (lambda (out) (json-parse-string (string-trim out)))
-      (lambda (result)
-        (let ((methods (and (hash-table-p result) (octocat-pr--merge-allowed result))))
-          (cond
-           ((eq (car-safe result) 'error)
-            (message "Octocat: Failed to fetch merge options: %s" (cdr result)))
-           ((not methods) (message "Octocat: The repo allows no merge method"))
-           ((buffer-live-p source)
-            (message nil)
-            (with-current-buffer source
-              (octocat-pr--open-merge-dialog
-               repo pr methods (eq (gethash "deleteBranchOnMerge" result) t))))))))))
+                     (list "repo" "view" repo "--json"
+                           (mapconcat #'identity
+                                      (cons "deleteBranchOnMerge"
+                                            (mapcar (lambda (m) (nth 2 m))
+                                                    octocat-pr--merge-methods))
+                                      ","))
+                     (lambda (out) (json-parse-string (string-trim out)))
+                     (lambda (result)
+                       (let ((methods (and (hash-table-p result)
+                                           (octocat-pr--merge-allowed result))))
+                         (cond
+                          ((eq (car-safe result) 'error)
+                           (message "Octocat: Failed to fetch merge options: %s" (cdr result)))
+                          ((not methods) (message "Octocat: The repo allows no merge method"))
+                          ((buffer-live-p source)
+                           (message nil)
+                           (with-current-buffer source
+                             (octocat-pr--open-merge-dialog
+                              repo pr methods (eq (gethash "deleteBranchOnMerge" result) t))))))))))
 
 (octocat-sync-define-mutation approve-runs (repo number ids)
   :label "Approving workflows…"
@@ -626,13 +631,14 @@ is the confirmation."
                           (if (null ids)
                               (funcall done (and failed (cons 'error failed)))
                             (octocat--run-gh "approve-run"
-                              (list "api" "--method" "POST"
-                                    (format "repos/%s/actions/runs/%s/approve" repo (car ids)))
-                              #'ignore
-                              (lambda (result)
-                                (when (eq (car-safe result) 'error)
-                                  (setq failed (cdr result)))
-                                (next (cdr ids)))))))
+                                             (list "api" "--method" "POST"
+                                                   (format "repos/%s/actions/runs/%s/approve"
+                                                           repo (car ids)))
+                                             #'ignore
+                                             (lambda (result)
+                                               (when (eq (car-safe result) 'error)
+                                                 (setq failed (cdr result)))
+                                               (next (cdr ids)))))))
               (next ids))))
   :invalidates (lambda () `((pr ,repo ,number) (awaiting-runs ,repo _))))
 
@@ -714,7 +720,7 @@ lists do not share.")
 (octocat-sync-define-resource pr (repo number)
   :entity (octocat-sync-item-key 'pr repo number)
   :invalidates (lambda () `((list-items pulls ,repo _ _) (counts pulls ,repo)
-                                (repo-summary ,repo)))
+                            (repo-summary ,repo)))
   :fetch (lambda (done)
            (octocat--fetch-pr
             repo number
@@ -722,8 +728,8 @@ lists do not share.")
               (funcall done (if (eq (car-safe r) 'error)
                                 r
                               (octocat-sync-detail
-                                 r octocat-pr--parts
-                                 (lambda (f) (octocat-sync-item 'pr repo f)))))))))
+                               r octocat-pr--parts
+                               (lambda (f) (octocat-sync-item 'pr repo f)))))))))
 
 
 ;;;; Rendering
@@ -732,11 +738,14 @@ lists do not share.")
   "Fetch each workflow run of commit SHA in REPO awaiting approval.
 Calls CALLBACK with a list of run hash-tables, or \=(error . MSG)."
   (octocat--run-gh "awaiting-runs"
-    (list "api" (format "repos/%s/actions/runs?head_sha=%s&status=action_required&per_page=100"
-                        repo sha))
-    (lambda (output)
-      (append (gethash "workflow_runs" (json-parse-string (string-trim output))) nil))
-    callback))
+                   (list "api" (format (concat "repos/%s/actions/runs?head_sha=%s"
+                                               "&status=action_required&per_page=100")
+                                       repo sha))
+                   (lambda (output)
+                     (append (gethash "workflow_runs"
+                                      (json-parse-string (string-trim output)))
+                             nil))
+                   callback))
 
 (octocat-sync-define-resource awaiting-runs (repo sha)
   :fetch (lambda (done)

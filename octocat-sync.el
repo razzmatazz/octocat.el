@@ -245,13 +245,13 @@ nil, so the store has one null."
   (cond
    ((eq value :null) nil)
    ((octocat-sync--entity-p value)
-      (let* ((key    (octocat-sync--entity-key value))
-             (fields (octocat-sync--split (octocat-sync--entity-fields value) entities))
-             (seen   (gethash key entities)))
-        (if seen
-            (maphash (lambda (k v) (puthash k v (cdr seen))) fields)
-          (puthash key (cons (octocat-sync--entity-type value) fields) entities))
-        (octocat-sync--ref key)))
+    (let* ((key    (octocat-sync--entity-key value))
+           (fields (octocat-sync--split (octocat-sync--entity-fields value) entities))
+           (seen   (gethash key entities)))
+      (if seen
+          (maphash (lambda (k v) (puthash k v (cdr seen))) fields)
+        (puthash key (cons (octocat-sync--entity-type value) fields) entities))
+      (octocat-sync--ref key)))
    (t (octocat-sync--map-tree (lambda (v) (octocat-sync--split v entities)) value))))
 
 (defun octocat-sync--refs (value)
@@ -709,10 +709,13 @@ first again."
                        (unless (eq (car-safe result) 'error)
                          ;; The stored nodes are refs already; the new ones
                          ;; are split out as any fetch's.
-                         (puthash "nodes" (vconcat (gethash "nodes" tree) (gethash "nodes" result)) tree)
+                         (puthash "nodes"
+                                  (vconcat (gethash "nodes" tree) (gethash "nodes" result))
+                                  tree)
                          (puthash "cursor" (gethash "cursor" result) tree)
-                         (octocat-sync--notify (cl-adjoin key (octocat-sync--write db key tree (float-time))
-                                                          :test #'equal)))
+                         (octocat-sync--notify
+                          (cl-adjoin key (octocat-sync--write db key tree (float-time))
+                                     :test #'equal)))
                        (when on-done
                          (funcall on-done (and (eq (car-safe result) 'error) result)))))))))))
 

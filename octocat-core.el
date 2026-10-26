@@ -222,15 +222,15 @@ lightened to read, as text and border.  Both follow github.com's CSS."
          (let* ((rgb (octocat--label-rgb (concat "#" c)))
                 (pl  (octocat--label-lightness rgb)))
            (if (not bg)
-               `(:background ,(concat "#" c)
-                 :foreground ,(if (> pl 0.453) "black" "white"))
+               (list :background (concat "#" c)
+                     :foreground (if (> pl 0.453) "black" "white"))
              (pcase-let* ((`(,h ,s ,l) (apply #'color-rgb-to-hsl rgb))
                           (fg (color-hsl-to-rgb
                                h s (min 1.0 (+ l (max 0 (- 0.6 pl)))))))
-               `(:background ,(octocat--label-blend rgb 0.18 bg)
-                 :foreground ,(octocat--label-hex fg)
-                 :box (:line-width (-1 . -1)
-                       :color ,(octocat--label-blend fg 0.3 bg)))))))))
+               (list :background (octocat--label-blend rgb 0.18 bg)
+                     :foreground (octocat--label-hex fg)
+                     :box (list :line-width '(-1 . -1)
+                                :color (octocat--label-blend fg 0.3 bg)))))))))
 
 (defun octocat--format-label (label bg)
   "Return a propertized chip string for GitHub LABEL hash-table.
@@ -1178,7 +1178,8 @@ The handler `octocat-open-github-urls' adds to `browse-url-handlers'."
                                    (octocat-tree-open repo ref path)
                                  (octocat-visit-repo repo ref)))))
     (`(commit-list ,repo . ,segs)
-     (octocat--open-ref-path repo segs (lambda (ref path) (octocat-commit-list-open repo ref path))))
+     (octocat--open-ref-path repo segs
+                             (lambda (ref path) (octocat-commit-list-open repo ref path))))
     (`(blob ,repo . ,segs)
      (octocat--open-ref-path repo segs
                              (lambda (ref path)
@@ -1303,7 +1304,7 @@ COMMAND takes the \"owner/name\" repo to open the tab's page for.")
 (defun octocat-buffer-p (&optional buffer)
   "Return non-nil if BUFFER (default: the current one) is an octocat page."
   (string-prefix-p "octocat-" (symbol-name (buffer-local-value
-                                             'major-mode (or buffer (current-buffer))))))
+                                            'major-mode (or buffer (current-buffer))))))
 
 (defun octocat-display-buffer (buffer)
   "Show BUFFER and select its window, as Magit does.
@@ -1429,8 +1430,15 @@ OR in it cannot escape the repo scope."
       (format "( %s ) %s" query scope))))
 
 (defconst octocat--list-item-fields
-  '((pulls  . "...on PullRequest{number title state isDraft reviewDecision createdAt author{login} labels(first:100){nodes{name color}} comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{state contexts{checkRunCountsByState{state count} statusContextCountsByState{state count}}}}}}}")
-    (issues . "...on Issue{number title state createdAt author{login} labels(first:100){nodes{name color}} comments{totalCount} closedByPullRequestsReferences(first:20){nodes{number repository{name owner{login}}}}}"))
+  `((pulls  . ,(concat "...on PullRequest{number title state isDraft reviewDecision "
+                       "createdAt author{login} labels(first:100){nodes{name color}} "
+                       "comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{"
+                       "state contexts{checkRunCountsByState{state count} "
+                       "statusContextCountsByState{state count}}}}}}}"))
+    (issues . ,(concat "...on Issue{number title state createdAt author{login} "
+                       "labels(first:100){nodes{name color}} comments{totalCount} "
+                       "closedByPullRequestsReferences(first:20){nodes{number repository{"
+                       "name owner{login}}}}}")))
   "The GraphQL fields of a list row, by KIND.
 Only what the row shows: `gh pr/issue list --json' would fetch every
 comment's body and every check run, many times the size and the API cost.
@@ -1439,7 +1447,9 @@ entity, which must hold the whole set.")
 
 (defun octocat--list-items-query (kind)
   "Return the GraphQL search query for a page of KIND list items."
-  (format "query($q:String!,$limit:Int!,$after:String){search(query:$q,type:ISSUE_ADVANCED,first:$limit,after:$after){nodes{%s}pageInfo{hasNextPage endCursor}}}"
+  (format (concat "query($q:String!,$limit:Int!,$after:String){search(query:$q,"
+                  "type:ISSUE_ADVANCED,first:$limit,after:$after){nodes{%s}pageInfo{"
+                  "hasNextPage endCursor}}}")
           (alist-get kind octocat--list-item-fields)))
 
 (defun octocat--flatten-list-item (item)
@@ -1540,7 +1550,9 @@ in `octocat--parse-counts', or a cons \\=(error . MSG).  One API call."
      callback)))
 
 (defconst octocat--repo-summary-query
-  "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){defaultBranchRef{name} parent{nameWithOwner} issues(states:OPEN){totalCount} pullRequests(states:OPEN){totalCount}}}"
+  (concat "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){"
+          "defaultBranchRef{name} parent{nameWithOwner} issues(states:OPEN){totalCount} "
+          "pullRequests(states:OPEN){totalCount}}}")
   "GraphQL query behind `octocat--fetch-repo-summary'.")
 
 (defun octocat--parse-repo-summary (json-string)

@@ -70,7 +70,8 @@ compile:
 	  && cp -a /src/.eldev/$(EMACS) /tmp/build/.eldev \
 	  && cd /tmp/build && eldev compile --warnings-as-errors --set all"
 
-# checkdoc and package-lint, as the Eldev file says, then check-declare.
+# checkdoc, package-lint and elisp-lint, as the Eldev file says, then
+# check-declare.
 lint:
 	$(RUN) sh -c 'eldev lint && eldev exec -R --file tools/check-declare.el'
 
@@ -87,7 +88,8 @@ test:
 # it needs python3.  It is given a copy of what MELPA packages, as it
 # copies the whole tree.  It exits 0 on what it only reports, so any
 # "━" section, which it prints for each check that found something,
-# fails here too.
+# fails here too.  It runs make itself, which, given the jobserver of
+# `make ci''s -j, warns on stderr, and melpazoid fails on any stderr.
 MELPAZOID_COMMIT := fcf5d883c6ced74ba16963d48c9e9e0bf0a1ff37
 MELPAZOID_RECIPE := (octocat :fetcher github :repo "razzmatazz/octocat.el")
 
@@ -100,7 +102,7 @@ melpazoid:
 	@rm -rf .ci/melpazoid-src/octocat && mkdir -p .ci/melpazoid-src/octocat
 	@cp -p *.el LICENSE .ci/melpazoid-src/octocat
 	@cd .ci/melpazoid && \
-	  DOCKER="$(DOCKER)" RECIPE='$(MELPAZOID_RECIPE)' \
+	  MAKEFLAGS= MFLAGS= DOCKER="$(DOCKER)" RECIPE='$(MELPAZOID_RECIPE)' \
 	  LOCAL_REPO="$(CURDIR)/.ci/melpazoid-src/octocat" WARN_IS_ERROR=true NO_COLOR=1 \
 	  python3 -I melpazoid/melpazoid.py > ../melpazoid-report.txt 2>&1; \
 	  status=$$?; cat ../melpazoid-report.txt; \

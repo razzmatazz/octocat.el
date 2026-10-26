@@ -174,7 +174,8 @@ is the run's."
                  (cons "Created"  (and created (octocat--format-ts-relative created)))
                  (cons "Duration" (and conclusion
                                        (octocat--run-duration
-                                        created (octocat--nonempty (gethash "updatedAt" run))))))))))
+                                        created
+                                        (octocat--nonempty (gethash "updatedAt" run))))))))))
 
 (defun octocat-run--job-row (repo run-id job)
   "Return a RET-able row for JOB of run RUN-ID of REPO."
@@ -255,10 +256,14 @@ data replaces it."
          (jobs  (and data (octocat-run--jobs data)))
          (anns  (octocat-vui-use-resource
                  (list 'run-annotations repo run-id
-                       (mapcar (lambda (j) (cons (gethash "databaseId" j) (or (gethash "name" j) "")))
+                       (mapcar (lambda (j)
+                                 (cons (gethash "databaseId" j) (or (gethash "name" j) "")))
                                jobs))
                  tick))
-         (arts  (octocat-vui-use-resource (list 'run-artifacts repo run-id) tick)))
+         (arts  (octocat-vui-use-resource (list 'run-artifacts repo run-id) tick))
+         (annotations (cl-loop for entry across (or (plist-get anns :data) [])
+                               append (cl-loop for ann across (gethash "annotations" entry)
+                                               collect (cons (gethash "job" entry) ann)))))
     (apply
      #'vui-vstack
      (append
@@ -278,10 +283,7 @@ data replaces it."
                          (when-let* ((section (octocat-job-artifacts
                                                repo run-id (or (plist-get arts :data) []))))
                            (cons (vui-newline) section))
-                         (when-let* ((section (octocat-job-annotations
-                                               (cl-loop for entry across (or (plist-get anns :data) [])
-                                                        append (cl-loop for ann across (gethash "annotations" entry)
-                                                                        collect (cons (gethash "job" entry) ann))))))
+                         (when-let* ((section (octocat-job-annotations annotations)))
                            (cons (vui-newline) section)))))))))))
 
 
@@ -377,8 +379,9 @@ failure."
               (funcall done (if (eq (car-safe r) 'error)
                                 r
                               (let ((tree (make-hash-table :test #'equal)))
-                                (puthash "nodes" (vconcat (mapcar (lambda (run) (octocat-sync-run repo run))
-                                                                  r))
+                                (puthash "nodes"
+                                         (vconcat (mapcar (lambda (run) (octocat-sync-run repo run))
+                                                          r))
                                          tree)
                                 tree))))
             args)))
@@ -546,43 +549,44 @@ workflow column out.  TICK is the page's refresh tick."
     ;; longer one loads.
     (when data (setcar shown (append (gethash "nodes" data) nil)))
     (pcase (if (car shown) 'ready (octocat-vui-snapshot-status snap))
-       ('pending (vui-text (octocat-vui-line-skeleton)))
-       ('error   (vui-text (concat (octocat-vui-error-text snap) "\n") :face 'octocat-dimmed))
-       ('ready
-        (let* ((runs (car shown))
-               (wf-w (cond (workflow nil)
-                           (runs (min 25 (apply #'max 1
-                                                (mapcar (lambda (r)
-                                                          (length (or (gethash "workflowName" r) "")))
-                                                        runs))))
-                           (t 1)))
-               (branch-w (octocat--branch-column-width runs "headBranch"))
-               (title-w (octocat-run-list--title-width
-                         runs (octocat-vui-window-width) wf-w branch-w)))
-          (vui-fragment
-           (when (cdr parsed)
-             (vui-text (format "Ignored, not a run filter: %s\n"
-                               (string-join (cdr parsed) " "))
-                       :face 'octocat-dimmed))
-           (if (null runs)
-               (vui-text (if (car parsed)
-                             "(no workflow runs match the filters)\n"
-                           "(no workflow runs)\n")
-                         :face 'octocat-dimmed)
-             (octocat-vui-reveal-list
-              runs
-              (lambda (r)
-                (octocat-run-list--row
-                 repo r current-branch wf-w title-w branch-w))
-              (lambda (r) (gethash "databaseId" r))))
-           (when (and runs (or (>= (length runs) limit)
-                               (and loading (> limit size))))
-             (octocat-vui-load-more-button
-              'load-more-runs size
-              "RET: load more runs"
-              (lambda () (vui-set-state :limit (+ limit size)))
-              (and loading (< (length runs) limit)) 0
-              (octocat-vui-line-skeleton)))))))))
+      ('pending (vui-text (octocat-vui-line-skeleton)))
+      ('error   (vui-text (concat (octocat-vui-error-text snap) "\n") :face 'octocat-dimmed))
+      ('ready
+       (let* ((runs (car shown))
+              (wf-w (cond (workflow nil)
+                          (runs (min 25 (apply #'max 1
+                                               (mapcar (lambda (r)
+                                                         (length
+                                                          (or (gethash "workflowName" r) "")))
+                                                       runs))))
+                          (t 1)))
+              (branch-w (octocat--branch-column-width runs "headBranch"))
+              (title-w (octocat-run-list--title-width
+                        runs (octocat-vui-window-width) wf-w branch-w)))
+         (vui-fragment
+          (when (cdr parsed)
+            (vui-text (format "Ignored, not a run filter: %s\n"
+                              (string-join (cdr parsed) " "))
+              :face 'octocat-dimmed))
+          (if (null runs)
+              (vui-text (if (car parsed)
+                            "(no workflow runs match the filters)\n"
+                          "(no workflow runs)\n")
+                :face 'octocat-dimmed)
+            (octocat-vui-reveal-list
+             runs
+             (lambda (r)
+               (octocat-run-list--row
+                repo r current-branch wf-w title-w branch-w))
+             (lambda (r) (gethash "databaseId" r))))
+          (when (and runs (or (>= (length runs) limit)
+                              (and loading (> limit size))))
+            (octocat-vui-load-more-button
+             'load-more-runs size
+             "RET: load more runs"
+             (lambda () (vui-set-state :limit (+ limit size)))
+             (and loading (< (length runs) limit)) 0
+             (octocat-vui-line-skeleton)))))))))
 
 (defun octocat-run-list--tab-row (repo current workflows)
   "Return the tab row of REPO's Actions pages.
@@ -605,13 +609,13 @@ refetches, keeping what is shown up until the fresh data replaces it."
   (vui-vstack
    (vui-component 'octocat-vui-list-header :repo repo :tab 'actions :tick tick)
    (octocat-run-list--tab-row repo 'runs
-                             (octocat-vui-use-resource (list 'workflows repo) tick))
+                              (octocat-vui-use-resource (list 'workflows repo) tick))
    (vui-newline)
    (octocat-vui-list-filter-bar query)
    (vui-component 'octocat-run-list--runs
-                  :key query
-                  :repo repo :current-branch current-branch :tick tick
-                  :query query)))
+     :key query
+     :repo repo :current-branch current-branch :tick tick
+     :query query)))
 
 (defun octocat-run-list-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current run list buffer.

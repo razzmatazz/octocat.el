@@ -398,7 +398,8 @@ Only an absolute one: a link left relative has nowhere to go."
                "\\1⁄\\2" s)
             s (replace-regexp-in-string (concat "\\\\sqrt *" group) "√(\\1)" s)
             s (replace-regexp-in-string
-               (concat "\\\\\\(?:text\\|mathrm\\|mathbf\\|mathit\\|mathbb\\|operatorname\\|mathcal\\) *" group)
+               (concat "\\\\\\(?:text\\|mathrm\\|mathbf\\|mathit\\|mathbb\\|operatorname"
+                       "\\|mathcal\\) *" group)
                "\\1" s)))
     (setq s (replace-regexp-in-string "\\\\sqrt *\\([^ {]\\)" "√\\1" s)
           s (replace-regexp-in-string "\\\\\\(?:left\\|right\\|big\\|Big\\)\\([.|(]?\\)" "\\1" s))
@@ -511,20 +512,20 @@ Group 2 is its content."
     (,"<img\\b[^>]*>" ,(lambda (m) (octocat-markdown--img (nth 0 m))))
     (,"<kbd>\\(.*?\\)</kbd>"
      ,(lambda (m) (octocat-markdown--face (concat "[" (nth 1 m) "]")
-                                           'octocat-markdown-code)))
+                                          'octocat-markdown-code)))
     (,"<a +[^>]*?href=[\"']\\([^\"']*\\)[\"'][^>]*>\\(.*?\\)</a *>"
      ,(lambda (m) (octocat-markdown--link (octocat-markdown--inline (nth 2 m))
-                                           (nth 1 m))))
+                                          (nth 1 m))))
     (,(octocat-markdown--tag-re "b\\|strong")
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m)) 'bold)))
     (,(octocat-markdown--tag-re "i\\|em")
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m)) 'italic)))
     (,(octocat-markdown--tag-re "s\\|del\\|strike")
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
-                                           'octocat-markdown-strike)))
+                                          'octocat-markdown-strike)))
     (,(octocat-markdown--tag-re "u\\|ins")
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
-                                           'underline)))
+                                          'underline)))
     (,(octocat-markdown--tag-re "sup")
      ,(lambda (m) (octocat-markdown--html-script (nth 2 m) octocat-markdown--super)))
     (,(octocat-markdown--tag-re "sub")
@@ -532,12 +533,12 @@ Group 2 is its content."
     (,"</?[a-zA-Z][^<>\n]*>" ,(lambda (_m) ""))
     (,"&\\(#?[a-zA-Z0-9]+\\);"
      ,(lambda (m)
-          (let ((name (nth 1 m)) (whole (nth 0 m)))
-            (cond ((assoc name octocat-markdown--entities)
-                   (cdr (assoc name octocat-markdown--entities)))
-                  ((string-match "\\`#\\([0-9]+\\)\\'" name)
-                   (string (string-to-number (match-string 1 name))))
-                  (t whole))))))
+        (let ((name (nth 1 m)) (whole (nth 0 m)))
+          (cond ((assoc name octocat-markdown--entities)
+                 (cdr (assoc name octocat-markdown--entities)))
+                ((string-match "\\`#\\([0-9]+\\)\\'" name)
+                 (string (string-to-number (match-string 1 name))))
+                (t whole))))))
   "Inline rules for HTML, as in `octocat-markdown--inline-rules'.
 They alone apply inside <pre>, where markdown is not rendered.")
 
@@ -554,90 +555,95 @@ They alone apply inside <pre>, where markdown is not rendered.")
     ;; Not among the HTML rules: inside <pre> it is already code.
     (,(octocat-markdown--tag-re "code\\|tt")
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
-                                           'octocat-markdown-code)))
+                                          'octocat-markdown-code)))
     ,@octocat-markdown--html-rules
     ;; Images show their alt text; links their label.
     (,"!\\[\\([^]\n]*\\)\\](\\([^)[:space:]]+\\)\\(?: +\"[^\"]*\"\\)?)"
      ,(lambda (m) (octocat-markdown--image (nth 1 m) (nth 2 m))))
     (,"\\[\\([^]\n]+\\)\\](\\([^)[:space:]]+\\)\\(?: +\"[^\"]*\"\\)?)"
      ,(lambda (m)
-          (octocat-markdown--link (octocat-markdown--inline (nth 1 m))
-                                  (nth 2 m))))
+        (octocat-markdown--link (octocat-markdown--inline (nth 1 m))
+                                (nth 2 m))))
     ;; Reference-style links, footnote references and [shortcut] links
     ;; stay literal unless the label has a definition.
     (,"\\[\\([^]\n]+\\)\\]\\[\\([^]\n]*\\)\\]"
      ,(lambda (m)
-          (let* ((id  (if (string-empty-p (nth 2 m)) (nth 1 m) (nth 2 m)))
-                 (url (octocat-markdown--definition id)))
-            (if url
-                (octocat-markdown--link (octocat-markdown--inline (nth 1 m)) url)
-              (concat "[" (octocat-markdown--inline (nth 1 m)) "]["
-                      (nth 2 m) "]")))))
+        (let* ((id  (if (string-empty-p (nth 2 m)) (nth 1 m) (nth 2 m)))
+               (url (octocat-markdown--definition id)))
+          (if url
+              (octocat-markdown--link (octocat-markdown--inline (nth 1 m)) url)
+            (concat "[" (octocat-markdown--inline (nth 1 m)) "]["
+                    (nth 2 m) "]")))))
     (,"\\[\\^\\([^]\n]+\\)\\]"
      ,(lambda (m)
-          (if-let* ((n (octocat-markdown--footnote-number (nth 1 m))))
-              (octocat-markdown--face (octocat-markdown--superscript n)
-                                      'octocat-markdown-mention)
-            (nth 0 m))))
+        (if-let* ((n (octocat-markdown--footnote-number (nth 1 m))))
+            (octocat-markdown--face (octocat-markdown--superscript n)
+                                    'octocat-markdown-mention)
+          (nth 0 m))))
     (,"\\[\\([^]\n^][^]\n]*\\)\\]"
      ,(lambda (m)
-          (if-let* ((url (octocat-markdown--definition (nth 1 m))))
-              (octocat-markdown--link (octocat-markdown--inline (nth 1 m)) url)
-            (concat "[" (octocat-markdown--inline (nth 1 m)) "]"))))
+        (if-let* ((url (octocat-markdown--definition (nth 1 m))))
+            (octocat-markdown--link (octocat-markdown--inline (nth 1 m)) url)
+          (concat "[" (octocat-markdown--inline (nth 1 m)) "]"))))
     (,"https?://[^[:space:]<>]*[^[:space:]<>.,;:!?)\"']"
      ,(lambda (m) (octocat-markdown--link (nth 0 m) (nth 0 m))))
     (,"\\*\\*\\*\\([^[:space:]]\\(?:.*?[^[:space:]]\\)?\\)\\*\\*\\*"
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 1 m))
-                                           'bold 'italic)))
+                                          'bold 'italic)))
     (,"\\*\\*\\([^[:space:]]\\(?:.*?[^[:space:]]\\)?\\)\\*\\*"
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 1 m))
-                                           'bold)))
+                                          'bold)))
     ;; Underscore emphasis needs non-word neighbours (snake_case stays).
-    (,"\\(?:\\`\\|[^[:alnum:]_]\\)\\(__\\([^[:space:]_]\\(?:.*?[^[:space:]_]\\)?\\)__\\)\\(?:[^[:alnum:]_]\\|\\'\\)"
+    (,(concat "\\(?:\\`\\|[^[:alnum:]_]\\)\\(__\\([^[:space:]_]"
+              "\\(?:.*?[^[:space:]_]\\)?\\)__\\)\\(?:[^[:alnum:]_]\\|\\'\\)")
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
-                                           'bold))
+                                          'bold))
      1)
     (,"\\*\\([^*[:space:]]\\(?:[^*]*?[^*[:space:]]\\)?\\)\\*"
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 1 m))
-                                           'italic)))
-    (,"\\(?:\\`\\|[^[:alnum:]_]\\)\\(_\\([^_[:space:]]\\(?:[^_]*?[^_[:space:]]\\)?\\)_\\)\\(?:[^[:alnum:]_]\\|\\'\\)"
+                                          'italic)))
+    (,(concat "\\(?:\\`\\|[^[:alnum:]_]\\)\\(_\\([^_[:space:]]"
+              "\\(?:[^_]*?[^_[:space:]]\\)?\\)_\\)\\(?:[^[:alnum:]_]\\|\\'\\)")
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
-                                           'italic))
+                                          'italic))
      1)
     (,"~~\\([^[:space:]~]\\(?:.*?[^[:space:]~]\\)?\\)~~"
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 1 m))
-                                           'octocat-markdown-strike)))
+                                          'octocat-markdown-strike)))
     (,"\\(?:\\`\\|[^[:alnum:]_/]\\)\\(@[A-Za-z0-9][A-Za-z0-9-]*\\(?:/[A-Za-z0-9_.-]+\\)?\\)"
      ,(lambda (m) (octocat-markdown--mention (nth 1 m)))
      1)
     (,"\\(?:\\`\\|[^[:alnum:]_&]\\)\\(\\(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\\)?#[0-9]+\\)\\b"
      ,(lambda (m)
-          (string-match "\\`\\(.*\\)#\\([0-9]+\\)\\'" (nth 1 m))
-          (octocat-markdown--ref (nth 1 m) 'issue
-                                 (let ((repo (match-string 1 (nth 1 m))))
-                                   (and (not (string-empty-p repo)) repo))
-                                 (string-to-number (match-string 2 (nth 1 m)))))
+        (string-match "\\`\\(.*\\)#\\([0-9]+\\)\\'" (nth 1 m))
+        (octocat-markdown--ref (nth 1 m) 'issue
+                               (let ((repo (match-string 1 (nth 1 m))))
+                                 (and (not (string-empty-p repo)) repo))
+                               (string-to-number (match-string 2 (nth 1 m)))))
      1)
     ;; Commit hashes: a short or full SHA, optionally as owner/repo@sha.
-    (,"\\(?:\\`\\|[^[:alnum:]_/#&@.-]\\)\\(\\(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@\\)?[0-9a-f]\\{7,40\\}\\)\\(?:[^[:alnum:]_-]\\|\\'\\)"
+    (,(concat "\\(?:\\`\\|[^[:alnum:]_/#&@.-]\\)\\("
+              "\\(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@\\)?[0-9a-f]\\{7,40\\}\\)"
+              "\\(?:[^[:alnum:]_-]\\|\\'\\)")
      ,(lambda (m)
-          (let* ((text (nth 1 m))
-                 (at   (string-search "@" text))
-                 (sha  (if at (substring text (1+ at)) text)))
-            (if (octocat-markdown--sha-p sha)
-                (octocat-markdown--ref (if at text (substring sha 0 7))
-                                       'commit (and at (substring text 0 at)) sha)
-              text)))
+        (let* ((text (nth 1 m))
+               (at   (string-search "@" text))
+               (sha  (if at (substring text (1+ at)) text)))
+          (if (octocat-markdown--sha-p sha)
+              (octocat-markdown--ref (if at text (substring sha 0 7))
+                                     'commit (and at (substring text 0 at)) sha)
+            text)))
      1)
     (,":\\([a-z0-9_+-]+\\):"
      ,(lambda (m) (or (cdr (assoc (nth 1 m) octocat-markdown--emoji)) (nth 0 m))))
     ;; $math$: the opening $ is followed, and the closing one preceded, by
     ;; a non-space, and the closing one is not followed by a digit ($5 and $10).
-    (,"\\(?:\\`\\|[^[:alnum:]_$\\]\\)\\(\\$[^$[:space:]]\\(?:[^$\n]*?[^$[:space:]\\]\\)?\\$\\)\\(?:[^[:digit:]]\\|\\'\\)"
+    (,(concat "\\(?:\\`\\|[^[:alnum:]_$\\]\\)\\(\\$[^$[:space:]]"
+              "\\(?:[^$\n]*?[^$[:space:]\\]\\)?\\$\\)\\(?:[^[:digit:]]\\|\\'\\)")
      ,(lambda (m)
-          (octocat-markdown--face
-           (octocat-markdown--tex (substring (nth 1 m) 1 -1))
-           'octocat-markdown-code))
+        (octocat-markdown--face
+         (octocat-markdown--tex (substring (nth 1 m) 1 -1))
+         'octocat-markdown-code))
      1))
   "Inline rules: each is (REGEXP HANDLER) or (REGEXP HANDLER GROUP).
 HANDLER is called with the list of the match's group strings (group 0
@@ -702,7 +708,8 @@ lines.  Tags in code spans are skipped unless HTML (inside <pre>)."
 
 (defconst octocat-markdown--fence-re "^ \\{0,3\\}\\(`\\{3,\\}\\|~\\{3,\\}\\)\\(.*\\)$")
 (defconst octocat-markdown--hr-re "^ \\{0,3\\}\\([-*_]\\)\\(?: *\\1\\)\\{2,\\} *$")
-(defconst octocat-markdown--heading-re "^ \\{0,3\\}\\(#\\{1,6\\}\\)\\(?: +\\(.*?\\)\\)?\\(?: +#+\\)? *$")
+(defconst octocat-markdown--heading-re
+  "^ \\{0,3\\}\\(#\\{1,6\\}\\)\\(?: +\\(.*?\\)\\)?\\(?: +#+\\)? *$")
 (defconst octocat-markdown--quote-re "^ \\{0,3\\}>")
 (defconst octocat-markdown--item-re "^\\( *\\)\\([-*+]\\|[0-9]+[.)]\\)\\(?: +\\(.*\\)\\|\\(\\)\\)$")
 (defconst octocat-markdown--table-delim-re
@@ -934,7 +941,8 @@ the table.  A table inside a cell is left in its CONTENT."
   (let ((case-fold-search t) (pos 0) (mark 0) (nest 0) rows row cell loose)
     (let ((close-cell (lambda (end)
                         (when cell
-                          (push (append (butlast cell) (list (substring source (car (last cell)) end)))
+                          (push (append (butlast cell)
+                                        (list (substring source (car (last cell)) end)))
                                 row)
                           (setq cell nil))))
           (close-row (lambda () (when row (push (nreverse row) rows) (setq row nil)))))
@@ -958,7 +966,8 @@ the table.  A table inside a cell is left in its CONTENT."
               ((or "td" "th")
                (unless closing
                  (setq cell (list (equal name "th")
-                                  (pcase (downcase (or (octocat-markdown--html-attr attrs "align") ""))
+                                  (pcase (downcase
+                                          (or (octocat-markdown--html-attr attrs "align") ""))
                                     ("center" 'center) ("right" 'right) (_ 'left))
                                   (max 1 (min 100 (string-to-number
                                                    (or (octocat-markdown--html-attr attrs "colspan")
@@ -1069,8 +1078,9 @@ nil if they cannot fit `octocat-markdown--avail'."
          (widths (if share
                      (make-list ncols share)
                    (cl-loop for i below ncols
-                            collect (apply #'max 1 (mapcar (lambda (r) (string-width (cadr (nth i r))))
-                                                           rows))))))
+                            collect (apply #'max 1
+                                           (mapcar (lambda (r) (string-width (cadr (nth i r))))
+                                                   rows))))))
     (when (and (or (null share) (>= share octocat-markdown--min-column))
                (cl-every (lambda (r)
                            (cl-every #'identity
@@ -1083,7 +1093,8 @@ nil if they cannot fit `octocat-markdown--avail'."
                         (lambda (c w)
                           (let* ((s   (cadr c))
                                  (img (octocat-markdown--html-image (cdr c)))
-                                 (s   (octocat-markdown--pad s w (if img 'left (cl-second (car c))))))
+                                 (s   (octocat-markdown--pad s w
+                                                             (if img 'left (cl-second (car c))))))
                             (when img
                               (put-text-property 0 (length s) 'octocat-markdown-image
                                                  (append img (list :cols share :fill t)) s))
@@ -1190,7 +1201,8 @@ squeezed the grid cannot fit `octocat-markdown--avail'."
                                              collect (make-string (+ (nth i widths) 2) ?─)
                                              when (< i (1- ncols))
                                              collect (let ((a (memq i above)) (b (memq i below)))
-                                                       (cond ((and a b) "┼") (a "┴") (b "┬") (t "─"))))
+                                                       (cond ((and a b) "┼") (a "┴")
+                                                             (b "┬") (t "─"))))
                                             "")
                                            r))))
                (draw    (lambda (r)
@@ -1208,7 +1220,8 @@ squeezed the grid cannot fit `octocat-markdown--avail'."
                                                (cdr c))
                                              w (cl-second (car c)))))
                                    r))
-                                 (height (apply #'max (mapcar (lambda (c) (length (car c))) cells))))
+                                 (height (apply #'max
+                                                (mapcar (lambda (c) (length (car c))) cells))))
                             (cl-loop for i below height
                                      collect (concat
                                               (funcall bar "│")
@@ -1512,9 +1525,11 @@ DEPTH is the list nesting depth, which picks the bullet."
             (while (and lines
                         (or (string-match-p octocat-markdown--indented-re (car lines))
                             (and (octocat-markdown--blank-p (car lines))
-                                 (let ((next (seq-find (lambda (l) (not (octocat-markdown--blank-p l)))
-                                                       lines)))
-                                   (and next (string-match-p octocat-markdown--indented-re next))))))
+                                 (let ((next (seq-find
+                                              (lambda (l) (not (octocat-markdown--blank-p l)))
+                                              lines)))
+                                   (and next
+                                        (string-match-p octocat-markdown--indented-re next))))))
               (push (octocat-markdown--unindent (pop lines)) code))
             (dolist (l (octocat-markdown--code-block (nreverse code)))
               (push l out))))
@@ -1564,8 +1579,9 @@ DEPTH is the list nesting depth, which picks the bullet."
             (while (and lines
                         (or (> (octocat-markdown--indentation (car lines)) indent)
                             (and (octocat-markdown--blank-p (car lines))
-                                 (let ((next (seq-find (lambda (l) (not (octocat-markdown--blank-p l)))
-                                                       lines)))
+                                 (let ((next (seq-find
+                                              (lambda (l) (not (octocat-markdown--blank-p l)))
+                                              lines)))
                                    (and next (> (octocat-markdown--indentation next) indent))))
                             ;; Lazy continuation: unindented text running on.
                             (octocat-markdown--lazy-p (car content) (car lines))))
@@ -1577,7 +1593,9 @@ DEPTH is the list nesting depth, which picks the bullet."
             (let* ((task (and (string-match "\\`\\[\\([ xX]\\)\\] +" first)
                               (cons (equal (match-string 1 first) " ") (match-end 0))))
                    (label (cond (task (propertize (if (car task) "☐" "☑")
-                                                  'face (if (car task) 'octocat-markdown-dimmed 'success)))
+                                                  'face (if (car task)
+                                                            'octocat-markdown-dimmed
+                                                          'success)))
                                 (ordered (propertize marker 'face 'octocat-markdown-dimmed))
                                 (t (propertize (if (cl-evenp depth) "•" "◦")
                                                'face 'octocat-markdown-dimmed))))
@@ -1729,7 +1747,8 @@ they can be.  A nil WIDTH leaves ROWS as they are."
                   (room  (max 1 (- width (string-width hang) 2)))
                   (arrow (propertize "↪ " 'face 'octocat-markdown-dimmed))
                   (code  (lambda (str)
-                           (add-face-text-property 0 (length str) 'octocat-markdown-code-block t str)
+                           (add-face-text-property 0 (length str)
+                                                   'octocat-markdown-code-block t str)
                            (put-text-property 0 (length str) 'octocat-markdown-code t str)
                            str)))
              ;; Only the arrow joins the box: HANG lies outside it.
@@ -1858,7 +1877,7 @@ Markup is replaced by faces; see the Commentary for what is understood."
 ;;;; Font-lock for markdown source
 
 (defvar octocat-markdown-font-lock-keywords
-  '(;; Fenced code first, so nothing inside it is taken for markup.
+  `(;; Fenced code first, so nothing inside it is taken for markup.
     ("^ \\{0,3\\}\\(?:```\\|~~~\\).*\n\\(?:.*\n\\)*?\\(?: \\{0,3\\}\\(?:```\\|~~~\\).*$\\|\\'\\)"
      (0 'octocat-markdown-code-block t))
     ("^ \\{0,3\\}\\(#\\{1,6\\}\\)\\( +.*\\)$"
@@ -1874,7 +1893,8 @@ Markup is replaced by faces; see the Commentary for what is understood."
     ("\\(?:\\`\\|[^[:alnum:]_]\\)\\(__[^[:space:]_]\\(?:.*?[^[:space:]_]\\)?__\\)"
      (1 'bold))
     ("\\*\\([^*[:space:]]\\(?:[^*\n]*?[^*[:space:]]\\)?\\)\\*" (0 'italic))
-    ("\\(?:\\`\\|[^[:alnum:]_]\\)\\(_[^_[:space:]]\\(?:[^_\n]*?[^_[:space:]]\\)?_\\)\\(?:[^[:alnum:]_]\\|\\'\\)"
+    (,(concat "\\(?:\\`\\|[^[:alnum:]_]\\)\\(_[^_[:space:]]\\(?:[^_\n]*?[^_[:space:]]\\)?_\\)"
+              "\\(?:[^[:alnum:]_]\\|\\'\\)")
      (1 'italic))
     ("~~[^[:space:]~]\\(?:.*?[^[:space:]~]\\)?~~" (0 'octocat-markdown-strike))
     ("!?\\[\\([^]\n]+\\)\\](\\([^)\n]*\\))"
