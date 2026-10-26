@@ -15,8 +15,9 @@ README.md
 
 README  [Contributing]  [License]
 rocket
-A small, fast static site generator.  Write pages in Markdown, lay them
-out with templates, and rocket build turns them into a site.
+[image: CI] [image: crates.io]
+
+A static site generator: rocket build turns Markdown pages into a site.
 
 Install
  cargo install rocket-ssg

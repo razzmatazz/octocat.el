@@ -123,8 +123,12 @@
 (defconst octocat-screenshots--readme
   "# rocket
 
-A small, fast static site generator.  Write pages in Markdown, lay them
-out with templates, and `rocket build` turns them into a site.
+[![CI](https://github.com/acme/rocket/actions/workflows/ci.yml/badge.svg)](https://github.com/acme/rocket/actions/workflows/ci.yml) [![crates.io][crate-badge]][crate]
+
+[crate-badge]: https://img.shields.io/crates/v/rocket-ssg.svg
+[crate]: https://crates.io/crates/rocket-ssg
+
+A static site generator: `rocket build` turns Markdown pages into a site.
 
 ## Install
 
