@@ -202,6 +202,21 @@ the window's point; mid-render that scrambled the page."
     (should (equal (octocat-markdown-tests--prop out "Other" 'octocat-markdown-url)
                    "http://o"))))
 
+(ert-deftest octocat-markdown-test-linked-images ()
+  "Images, inline or by reference, link to the link around them, as badges do."
+  (let ((defs "\n\n[b]: https://x/b.svg\n[ci]: https://x/ci"))
+    (dolist (md '("[![CI](https://x/b.svg)](https://x/ci)" "[![CI][b]][ci]"
+                  "[![CI][b]](https://x/ci)" "[![CI](https://x/b.svg)][ci]"))
+      (let ((out (octocat-markdown-render (concat md defs) "" nil)))
+        (should (equal (substring-no-properties out) "[image: CI]\n"))
+        (should (equal (get-text-property 0 'octocat-markdown-url out) "https://x/ci"))
+        (should (equal (get-text-property 0 'octocat-markdown-image out)
+                       '(:url "https://x/b.svg" :width nil :cols nil)))))
+    (let ((out (octocat-markdown-render (concat "![CI][b] ![b] ![no][x] ![no]" defs) "")))
+      (should (equal (substring-no-properties out) "[image: CI] [image: b] ![no][x] ![no]\n"))
+      (should (equal (octocat-markdown-tests--prop out "[image: b" 'octocat-markdown-url)
+                     "https://x/b.svg")))))
+
 (ert-deftest octocat-markdown-test-footnotes ()
   "Footnote references are numbered in order and listed below a rule."
   (should (equal (octocat-markdown-tests--md

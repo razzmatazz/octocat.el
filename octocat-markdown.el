@@ -542,6 +542,13 @@ Group 2 is its content."
   "Inline rules for HTML, as in `octocat-markdown--inline-rules'.
 They alone apply inside <pre>, where markdown is not rendered.")
 
+(defconst octocat-markdown--label-re
+  (concat "\\(\\(?:[^][\n]\\|\\[[^][\n]*\\]"
+          "\\(?:([^)[:space:]]*)\\|\\[[^][\n]*\\]\\)?\\)+\\)")
+  "Matches a link's label, as group 1.
+It may hold bracketed text, and so an image, as badges are linked:
+`[![CI](badge.svg)](url)'.")
+
 (defvar octocat-markdown--inline-rules
   `(;; Code spans bind tighter than anything else.
     (,"``\\(.+?\\)``"
@@ -560,13 +567,25 @@ They alone apply inside <pre>, where markdown is not rendered.")
     ;; Images show their alt text; links their label.
     (,"!\\[\\([^]\n]*\\)\\](\\([^)[:space:]]+\\)\\(?: +\"[^\"]*\"\\)?)"
      ,(lambda (m) (octocat-markdown--image (nth 1 m) (nth 2 m))))
-    (,"\\[\\([^]\n]+\\)\\](\\([^)[:space:]]+\\)\\(?: +\"[^\"]*\"\\)?)"
+    (,(concat "\\[" octocat-markdown--label-re
+              "\\](\\([^)[:space:]]+\\)\\(?: +\"[^\"]*\"\\)?)")
      ,(lambda (m)
         (octocat-markdown--link (octocat-markdown--inline (nth 1 m))
                                 (nth 2 m))))
-    ;; Reference-style links, footnote references and [shortcut] links
-    ;; stay literal unless the label has a definition.
-    (,"\\[\\([^]\n]+\\)\\]\\[\\([^]\n]*\\)\\]"
+    ;; Reference-style images and links, footnote references and
+    ;; [shortcut] links stay literal unless the label has a definition.
+    (,"!\\[\\([^]\n]*\\)\\]\\[\\([^]\n]*\\)\\]"
+     ,(lambda (m)
+        (if-let* ((url (octocat-markdown--definition
+                        (if (string-empty-p (nth 2 m)) (nth 1 m) (nth 2 m)))))
+            (octocat-markdown--image (nth 1 m) url)
+          (concat "!" (octocat-markdown--inline (substring (nth 0 m) 1))))))
+    (,"!\\[\\([^]\n^][^]\n]*\\)\\]"
+     ,(lambda (m)
+        (if-let* ((url (octocat-markdown--definition (nth 1 m))))
+            (octocat-markdown--image (nth 1 m) url)
+          (concat "!" (octocat-markdown--inline (substring (nth 0 m) 1))))))
+    (,(concat "\\[" octocat-markdown--label-re "\\]\\[\\([^]\n]*\\)\\]")
      ,(lambda (m)
         (let* ((id  (if (string-empty-p (nth 2 m)) (nth 1 m) (nth 2 m)))
                (url (octocat-markdown--definition id)))
