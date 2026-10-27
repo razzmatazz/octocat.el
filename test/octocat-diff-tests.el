@@ -131,6 +131,37 @@ The old side's comment, left open, does not reach the added line."
     (should (memq 'font-lock-comment-face (octocat-diff-tests--face-at (nth 2 lines) 4)))
     (should (memq 'font-lock-type-face (octocat-diff-tests--face-at (nth 4 lines) 1)))))
 
+(defun octocat-diff-tests--refined (line face)
+  "Return the text of LINE in FACE, the parts joined by `|'."
+  (let ((pos 0) out)
+    (while (< pos (length line))
+      (let ((next (next-single-property-change pos 'face line (length line))))
+        (when (memq face (octocat-diff-tests--face-at line pos))
+          (push (substring-no-properties line pos next) out))
+        (setq pos next)))
+    (string-join (nreverse out) "|")))
+
+(ert-deftest octocat-diff-test-refine ()
+  "The words changed in a line are marked, on both sides.
+A line added whole, and a change of spaces alone, are not."
+  (pcase-let ((`(,_ ,old ,whole ,new ,_ ,spaced)
+               (octocat-diff--lines
+                (concat "@@ -1,3 +1,4 @@\n-f(a, b);\n+int x;\n+f(a, c, d);\n"
+                        "-g(1);\n+g( 1 );")
+                "notes")))
+    (should (equal (octocat-diff-tests--refined old 'diff-refine-removed) "b"))
+    (should (equal (octocat-diff-tests--refined new 'diff-refine-added) "c, d"))
+    (should (equal (octocat-diff-tests--refined whole 'diff-refine-added) ""))
+    (should (equal (octocat-diff-tests--refined spaced 'diff-refine-added) ""))))
+
+(ert-deftest octocat-diff-test-refine-limit ()
+  "A run of more words than `octocat-diff--refine-limit' is not refined."
+  (let ((octocat-diff--refine-limit 4))
+    (should (equal (octocat-diff-tests--refined
+                    (nth 2 (octocat-diff--lines "@@ -1 +1 @@\n-f(a);\n+f(b);" "notes"))
+                    'diff-refine-added)
+                   ""))))
+
 (ert-deftest octocat-diff-test-highlight-limit ()
   "A patch past `octocat-diff--highlight-limit' is only in the diff faces."
   (let ((octocat-diff--highlight-limit 10))

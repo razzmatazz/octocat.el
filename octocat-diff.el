@@ -277,25 +277,119 @@ the code is left plain when PATH has no mode."
                              do (aset bodies i line)))))
     (append bodies nil)))
 
+(defconst octocat-diff--refine-limit 40000
+  "Most word pairs compared to find what changed in a run of lines.
+The comparison takes time and memory in their number.")
+
+(defun octocat-diff--words (strings)
+  "Return the words of STRINGS, a vector of (INDEX START END).
+A word is a run of letters, digits and `_', or any other character
+but a space.  INDEX is the string's, START and END the word's bounds."
+  (let (out)
+    (cl-loop for s in strings for i from 0
+             do (let ((pos 0))
+                  (while (string-match "[[:alnum:]_]+\\|[^[:space:]]" s pos)
+                    (push (list i (match-beginning 0) (match-end 0)) out)
+                    (setq pos (match-end 0)))))
+    (vconcat (nreverse out))))
+
+(defun octocat-diff--common (a b)
+  "Return the strings of A and B, vectors of strings, in a longest common run.
+That is (IN-A . IN-B), two vectors of booleans, as `diff' finds them."
+  (let* ((n (length a)) (m (length b))
+         ;; Row I, column J: the longest common run of A from I, B from J.
+         (table (vconcat (cl-loop repeat (1+ n) collect (make-vector (1+ m) 0))))
+         (in-a (make-bool-vector n nil))
+         (in-b (make-bool-vector m nil))
+         (i 0) (j 0))
+    (cl-flet ((at (i j) (aref (aref table i) j)))
+      (cl-loop for i from (1- n) downto 0
+               do (cl-loop for j from (1- m) downto 0
+                           do (aset (aref table i) j
+                                    (if (equal (aref a i) (aref b j))
+                                        (1+ (at (1+ i) (1+ j)))
+                                      (max (at (1+ i) j) (at i (1+ j)))))))
+      (while (and (< i n) (< j m))
+        (cond ((equal (aref a i) (aref b j))
+               (aset in-a i t) (aset in-b j t) (cl-incf i) (cl-incf j))
+              ((>= (at (1+ i) j) (at i (1+ j))) (cl-incf i))
+              (t (cl-incf j)))))
+    (cons in-a in-b)))
+
+(defun octocat-diff--mark (strings words kept face)
+  "Add FACE to the WORDS of STRINGS not KEPT, a vector of booleans.
+Changed words next to each other on a line are marked as one, with the
+spaces between them.  A line none of whose words is kept is added or
+removed whole, and left unmarked, as `diff-refine-nonmodified' leaves
+it.  See `octocat-diff--words' for WORDS."
+  (let ((kept-lines (cl-loop for w across words for k from 0
+                             when (aref kept k) collect (car w)))
+        range)                          ; (INDEX START END) being marked.
+    (cl-flet ((flush ()
+                (when (and range (memq (car range) kept-lines))
+                  (pcase-let ((`(,i ,beg ,end) range))
+                    (add-face-text-property beg end face nil (nth i strings)))
+                  (setq range nil))))
+      (cl-loop for w across words for k from 0
+               do (cond ((aref kept k) (flush))
+                        ((and range (= (car range) (car w)))
+                         (setf (nth 2 range) (nth 2 w)))
+                        (t (flush) (setq range (copy-sequence w)))))
+      (flush))))
+
+(defun octocat-diff--refine (kinds bodies)
+  "Mark the words changed in each run of removed lines and added ones after.
+KINDS are the lines' kinds and BODIES their code, see
+`octocat-diff--bodies': the changed words get `diff-refine-removed' or
+`diff-refine-added', in place.  A run of too many words, see
+`octocat-diff--refine-limit', is left as it is."
+  (let ((kinds (vconcat kinds)) (bodies (vconcat bodies)) (i 0))
+    (while (< i (length kinds))
+      (let* ((j (or (cl-position-if-not (lambda (k) (eq k 'removed)) kinds :start i)
+                    (length kinds)))
+             (k (or (cl-position-if-not (lambda (k) (eq k 'added)) kinds :start j)
+                    (length kinds))))
+        (if (and (> j i) (> k j))
+            (let* ((old (append (substring bodies i j) nil))
+                   (new (append (substring bodies j k) nil))
+                   (wa (octocat-diff--words old))
+                   (wb (octocat-diff--words new)))
+              (when (<= (* (length wa) (length wb)) octocat-diff--refine-limit)
+                (cl-flet ((text (strings words)
+                            (vconcat (mapcar (pcase-lambda (`(,n ,beg ,end))
+                                               (substring-no-properties (nth n strings) beg end))
+                                             words))))
+                  (let ((kept (octocat-diff--common (text old wa) (text new wb))))
+                    (octocat-diff--mark old wa (car kept) 'diff-refine-removed)
+                    (octocat-diff--mark new wb (cdr kept) 'diff-refine-added))))
+              (setq i k))
+          (setq i (max (1+ i) j)))))))
+
 (defun octocat-diff--lines (patch path)
   "Return the lines of PATCH, a file's unified diff, propertized for display.
 PATH is the file's: its major mode highlights the code, see
-`octocat-diff--bodies', under `diff-added' or `diff-removed'.  A patch
-larger than `octocat-diff--highlight-limit' is only in the diff faces."
+`octocat-diff--bodies', under `diff-added' or `diff-removed', and the
+words changed within lines are marked, see `octocat-diff--refine'.  A
+patch larger than `octocat-diff--highlight-limit' is only in the diff
+faces."
   (let* ((lines  (octocat-diff--split patch))
          (kinds  (mapcar #'octocat-diff--line-kind lines))
-         (bodies (if (> (length patch) octocat-diff--highlight-limit)
-                     (cl-mapcar (lambda (l k)
-                                  (and (memq k '(added removed context)) (substring l 1)))
-                                lines kinds)
-                   (octocat-diff--bodies lines kinds path))))
+         (large  (> (length patch) octocat-diff--highlight-limit))
+         (bodies (mapcar (lambda (b) (and b (copy-sequence b)))
+                         (if large
+                             (cl-mapcar (lambda (l k)
+                                          (and (memq k '(added removed context))
+                                               (substring l 1)))
+                                        lines kinds)
+                           (octocat-diff--bodies lines kinds path)))))
+    (unless large
+      (octocat-diff--refine kinds bodies))
     (cl-mapcar
      (lambda (line kind body)
        (pcase kind
          ('hunk (propertize line 'face 'octocat-diff-hunk-heading))
          ('note line)
-         (_ (let ((body (copy-sequence body))
-                  (face (pcase kind ('added 'diff-added) ('removed 'diff-removed))))
+         (_ (let ((face (pcase kind ('added 'diff-added) ('removed 'diff-removed))))
               (when face
                 (add-face-text-property 0 (length body) face t body))
               (concat (if face
