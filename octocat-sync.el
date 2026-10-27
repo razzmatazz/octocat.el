@@ -158,6 +158,14 @@ Signal a `user-error' when DB was made by a newer octocat."
       (sqlite-execute db (format "PRAGMA user_version = %d" octocat-sync--schema))))
     db))
 
+(defun octocat-sync--host ()
+  "Return the GitHub host `gh' talks to, such as \"github.com\"."
+  (or (getenv "GH_HOST") "github.com"))
+
+(defun octocat-sync--file ()
+  "Return the file name of the store of the current GitHub host."
+  (expand-file-name (concat "sync-" (octocat-sync--host) ".sqlite") octocat-sync-directory))
+
 (defun octocat-sync--db ()
   "Return the store of the current GitHub host, opening it on first use."
   (or octocat-sync--db
@@ -165,10 +173,7 @@ Signal a `user-error' when DB was made by a newer octocat."
         (unless (and (fboundp 'sqlite-available-p) (sqlite-available-p))
           (user-error "Octocat: Needs an Emacs built with SQLite"))
         (make-directory octocat-sync-directory t)
-        (let ((db (sqlite-open
-                   (expand-file-name (concat "sync-" (or (getenv "GH_HOST") "github.com")
-                                             ".sqlite")
-                                     octocat-sync-directory))))
+        (let ((db (sqlite-open (octocat-sync--file))))
           (sqlite-pragma db "journal_mode=WAL")
           (sqlite-pragma db "busy_timeout=2000")
           (setq octocat-sync--db (octocat-sync--create db))

@@ -83,6 +83,12 @@ octocat pages with `(add-hook 'doom-real-buffer-functions #'octocat-buffer-p)`.
 - [CHANGELOG.md](CHANGELOG.md) — what changed in each release
 - [CONTRIBUTING.md](CONTRIBUTING.md) — code conventions, building, testing, CI
 
+`M-x octocat-doctor` reports, as text to paste into a bug report, which
+files are loaded (and whether a compiled one is stale), the store's size
+and largest resources, which pages refresh on their own and why, and
+the requests to GitHub of the last hour.  It names the resources it
+stores, but not your token.
+
 ## License
 
 [GNU General Public License](LICENSE).

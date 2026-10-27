@@ -57,6 +57,7 @@
 (require 'octocat-user)
 (require 'octocat-tree)
 (require 'octocat-search)
+(require 'octocat-doctor)
 
 ;; Buffer-locals of other files, used below.
 (defvar octocat-repo--repo)           ; defined as buffer-local in octocat-repo.el
@@ -715,153 +716,14 @@ in octocat's own pages open in it whether this mode is on or not."
 
 
 ;;;; Doctor
-;;
-;; What octocat is doing behind the pages: which refetch on their own,
-;; and the recent requests to GitHub.
-
-(defun octocat--doctor-duration (seconds)
-  "Return SECONDS as a short duration, such as \"40 s\" or \"12 min\"."
-  (cond ((< seconds 90)   (format "%d s" (round seconds)))
-        ((< seconds 5400) (format "%d min" (round seconds 60)))
-        (t                (format "%.1f h" (/ seconds 3600.0)))))
-
-(defun octocat--doctor-rate (state offline)
-  "Return how timed refetches run, from STATE, `octocat-vui--poll-state'.
-OFFLINE is whether GitHub was out of reach."
-  (pcase-let* ((`(,_ ,slowdown ,idle ,focused ,power) state)
-               (why (delq nil (list (and offline "offline")
-                                    (pcase power ('low "low battery") ('battery "on battery"))
-                                    (and (>= idle octocat-sync-poll-idle-after)
-                                         (format "idle %s" (octocat--doctor-duration idle)))
-                                    (and (not focused) "no Emacs frame focused")))))
-    (concat (pcase slowdown
-              ('nil "stopped")
-              (1    "full rate")
-              (n    (format "%d times slower" n)))
-            (and why (format " (%s)" (string-join why ", "))))))
-
-(defun octocat--doctor-resource (spec slowdown now)
-  "Return a line on how SPEC is refetched, SLOWDOWN times slower, as of NOW."
-  (pcase-let ((`(,fetched ,interval ,state) (octocat-sync-poll-info spec)))
-    (format "    %-16s %-22s %s%s"
-            (cond ((null interval) "never")
-                  ((null slowdown) "stopped")
-                  (t (format "every %s" (octocat--doctor-duration (* slowdown interval)))))
-            (if fetched
-                (format "fetched %s ago" (octocat--doctor-duration (- now fetched)))
-              "not fetched")
-            (prin1-to-string spec)
-            (pcase state
-              ('queued  "  [refetch queued]")
-              ('quiet   "  [refetching]")
-              ('loading "  [loading]")
-              (_        "")))))
-
-(defun octocat--doctor-requests (log now)
-  "Return lines summing up LOG, the `gh' log `octocat--gh-log', as of NOW."
-  (let ((sum (lambda (seconds label)
-               (let* ((calls  (seq-filter (lambda (e) (> (aref e 0) (- now seconds))) log))
-                      (failed (seq-count (lambda (e) (and (aref e 1) (not (aref e 3)))) calls))
-                      (counts nil))
-                 (dolist (e calls)
-                   (let ((reason (or (aref e 4) 'other)))
-                     (setf (alist-get reason counts) (1+ (alist-get reason counts 0)))))
-                 (format "  %-12s %3d%s, %d failed" label (length calls)
-                         (if counts
-                             (format " (%s)"
-                                     (mapconcat (pcase-lambda (`(,r . ,n)) (format "%s %d" r n))
-                                                (sort counts (lambda (a b) (> (cdr a) (cdr b))))
-                                                ", "))
-                           "")
-                         failed)))))
-    (append
-     (list (funcall sum 300 "Last 5 min")
-           (funcall sum 3600 "Last hour")
-           (format "  %-12s %3d" "Running" (seq-count (lambda (e) (null (aref e 1))) log))
-           ""
-           "  Most recent:")
-     (mapcar (lambda (e)
-               (format "    %s  %7s  %-9s %-6s %s"
-                       (format-time-string "%H:%M:%S" (aref e 0))
-                       (if (aref e 1) (format "%.1f s" (- (aref e 1) (aref e 0))) "…")
-                       (or (aref e 4) 'other)
-                       (cond ((null (aref e 1)) "")
-                             ((aref e 3) "ok")
-                             (t "failed"))
-                       (aref e 2)))
-             (seq-take log 20)))))
-
-(defun octocat--doctor-text (now)
-  "Return the text of `octocat-doctor' as of NOW."
-  (let* ((state    octocat-vui--poll-state)
-         (slowdown (nth 1 state))
-         (shown    (octocat-vui--shown-pages))
-         (pages    (seq-uniq (mapcar #'car (apply #'append
-                                                  (hash-table-values
-                                                   octocat-vui--subscriptions)))))
-         (buried   (seq-filter #'buffer-live-p (seq-difference pages shown #'eq))))
-    (string-join
-     (append
-      (list "Refreshing pages on screen"
-            (format "  Default:   %s"
-                    (if octocat-sync-poll-interval
-                        (format "every %s, slower after %s idle"
-                                (octocat--doctor-duration octocat-sync-poll-interval)
-                                (octocat--doctor-duration octocat-sync-poll-idle-after))
-                      "off (`octocat-sync-poll-interval' is nil)"))
-            (format "  Now:       %s"
-                    (if state (octocat--doctor-rate state octocat-sync--offline) "not checked yet"))
-            (format "  Checked:   %s"
-                    (if (timerp octocat-vui--poll-timer)
-                        (format "every %d s, last %s ago" octocat-vui--poll-tick
-                                (if state (octocat--doctor-duration (- now (car state))) "never"))
-                      "not running: no page on screen"))
-            (format "  Power:     %s" (octocat-power))
-            "")
-      (if shown
-          (mapcan (lambda (buf)
-                    (cons (format "  %s" (buffer-name buf))
-                          (mapcar (lambda (spec) (octocat--doctor-resource spec slowdown now))
-                                  (octocat-vui--page-specs (list buf)))))
-                  shown)
-        (list "  No page on screen."))
-      (list ""
-            (format "  Not refreshing, not on screen: %s"
-                    (if buried (mapconcat #'buffer-name buried ", ") "none"))
-            ""
-            "Requests to GitHub through gh, last hour")
-      (octocat--doctor-requests octocat--gh-log now))
-     "\n")))
-
-(defvar octocat-doctor-mode-map
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map special-mode-map)
-    map)
-  "Keymap of `octocat-doctor-mode'; `g' redraws the report.")
-
-(define-derived-mode octocat-doctor-mode special-mode "Octocat-Doctor"
-  "Major mode of the `octocat-doctor' report."
-  (setq-local revert-buffer-function
-              (lambda (&rest _)
-                (let ((inhibit-read-only t)
-                      (line (line-number-at-pos)))
-                  (erase-buffer)
-                  (insert (octocat--doctor-text (float-time)) "\n")
-                  (goto-char (point-min))
-                  (forward-line (1- line))))))
 
 ;;;###autoload
 (defun octocat-doctor ()
-  "Show what octocat is doing behind its pages; `g' redraws it.
-That is which pages refetch on their own, how often and why, and the
-`gh' calls of the last hour."
+  "Show a report on octocat's code, store, refreshes and requests to GitHub.
+It is plain text, to paste into a bug report; `g' redoes it.  See
+`octocat-doctor-report'."
   (interactive)
-  (let ((buf (get-buffer-create "*octocat-doctor*")))
-    (with-current-buffer buf
-      (unless (derived-mode-p 'octocat-doctor-mode)
-        (octocat-doctor-mode))
-      (revert-buffer))
-    (octocat-display-buffer buf)))
+  (octocat-doctor-show))
 
 
 ;;;; Evil integration

@@ -384,7 +384,8 @@ are under way.  They slow down when you are idle for 5 minutes
 (`octocat-sync-poll-idle-after`), switch to another app or run on
 battery, and stop after half an hour idle or on low battery; coming
 back refreshes at once.  `M-x octocat-doctor` shows which pages are
-refreshing, how often and why, and the recent requests to GitHub.
+refreshing, how often and why, and the recent requests to GitHub,
+along with the code loaded and the store.
 
 ### Another view (`C-c C-v`)
 

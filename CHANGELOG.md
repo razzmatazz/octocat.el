@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 * Pages on screen refresh on their own every minute, and runs in progress every 10 s
 * Refreshes slow down while you're away or on battery, and stop on low battery
 * On low battery, folds open at once and spinners stand still, saving power
-* `M-x octocat-doctor` shows which pages refresh, how often and why, and recent requests
+* `M-x octocat-doctor` reports, to paste into a bug report, on the code, store, refreshes and requests
 * `C-c C-l` reacts to the PR, issue or comment at point, or takes a reaction back
 * Loading octocat no longer changes `exec-path`; `octocat-gh-program` names `gh`
 * github.com links elsewhere in Emacs open in octocat only with `octocat-github-links-mode`
