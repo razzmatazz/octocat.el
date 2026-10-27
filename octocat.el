@@ -699,6 +699,20 @@ With REPO, an \"owner/name\" string, open it for that repository."
   (interactive)
   (octocat-run-list repo))
 
+;;;###autoload
+(define-minor-mode octocat-github-links-mode
+  "Open github.com links in octocat views, wherever Emacs follows them.
+This covers every link `browse-url' opens: in Org, mail, other packages'
+buffers.  Links octocat has no view for still go to the browser.  Links
+in octocat's own pages open in it whether this mode is on or not."
+  :global t
+  :group 'octocat
+  (setq browse-url-handlers
+        (rassq-delete-all #'octocat-browse-url browse-url-handlers))
+  (when octocat-github-links-mode
+    (push (cons #'octocat--github-url-target #'octocat-browse-url)
+          browse-url-handlers)))
+
 
 ;;;; Evil integration
 

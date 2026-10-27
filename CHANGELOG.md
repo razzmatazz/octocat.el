@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* github.com links elsewhere in Emacs open in octocat only with `octocat-github-links-mode`
 * A commit's message starts at the left edge, so it copies without an indent
 * The commit and PR diff pages open with the review comments in the diff shown
 * A PR's Merge box heading is underlined across the page, setting it apart

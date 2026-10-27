@@ -59,6 +59,7 @@
 (require 'octocat-mermaid)
 
 (declare-function octocat--markdown-open-ref "octocat-core" (kind repo id))
+(declare-function octocat-follow-url "octocat-core" (url))
 
 ;;;; Faces
 
@@ -144,6 +145,9 @@
 Called with KIND (`issue' or `commit'), REPO (an \"owner/name\" string, or
 nil for the repository of the current buffer) and ID (an issue number or
 a commit SHA).")
+
+(defvar octocat-markdown-url-function #'octocat-follow-url
+  "Function that opens a URL linked from rendered markdown.")
 
 (defvar octocat-markdown-link-map
   (let ((map (make-sparse-keymap)))
@@ -307,7 +311,7 @@ Only an absolute one: a link left relative has nowhere to go."
           ;; `browse-url' would take a relative link for a local file.
           ((and url (not (string-match-p "\\`[a-zA-Z][a-zA-Z0-9+.-]*:" url)))
            (user-error "Octocat: no way to open %s" url))
-          (url (browse-url url))
+          (url (funcall octocat-markdown-url-function url))
           ((get-text-property pos 'octocat-markdown-details)
            (octocat-markdown-toggle-details pos))
           (t (user-error "Octocat: nothing to follow here")))))

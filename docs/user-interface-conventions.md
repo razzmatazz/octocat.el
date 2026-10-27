@@ -496,18 +496,21 @@ some package can show it there, and in the browser only when none can,
 or when the user asks for the browser.
 
 - **Following a link** (RET on a link in markdown, a check that is not
-  an Actions run) calls `browse-url`.  It consults `browse-url-handlers`,
-  so github.com links open in octocat (see below) and links to any other
-  web app open in whatever Emacs package registered a handler for them.
+  an Actions run) calls `octocat-follow-url`.  It opens github.com links
+  octocat has a view for in octocat (see below), and passes the rest to
+  `browse-url`, which consults `browse-url-handlers`, so links to any
+  other web app open in whatever Emacs package registered a handler for
+  them.
 - **"Open in browser" commands** (`C-c C-o` and friends) call
   `octocat-browse-external`, i.e. `browse-url-with-browser-kind
   'external`.  It skips handlers marked `internal`, octocat's included,
   so `C-c C-o` on a PR does not just reopen the PR page.
 
-Octocat's handler is `octocat-browse-url`, registered in
-`browse-url-handlers` with `octocat--github-url-target` as its
-predicate, while `octocat-open-github-urls` is non-nil (the default).
-The predicate maps a URL to a view and returns nil for pages octocat has
+Octocat's handler is `octocat-browse-url`, with
+`octocat--github-url-target` as its predicate.  `octocat-follow-url`
+calls it directly; `octocat-github-links-mode`, off by default, also
+registers it in `browse-url-handlers`, so links followed anywhere in
+Emacs reach it.  The predicate maps a URL to a view and returns nil for pages octocat has
 no view for (blobs, wikis, releases, …), which then fall through to the
 browser.  A link names its own repository, so one to another owner's
 commit or run opens in that repository; `#123` and bare commit hashes

@@ -312,21 +312,35 @@
 
 (ert-deftest octocat-core-test-browse-url-handler ()
   "`browse-url' sends the github.com links octocat can show to it.
-Other links, and an explicit request for an external browser, skip it;
-`octocat-open-github-urls' turns it off."
-  (should (eq (browse-url-select-handler "https://github.com/o/r/pull/1")
-              #'octocat-browse-url))
-  (should-not (eq (browse-url-select-handler "https://github.com/o/r/wiki")
-                  #'octocat-browse-url))
-  (should-not (eq (browse-url-select-handler "https://github.com/o/r/pull/1" 'external)
+Only while `octocat-github-links-mode' is on, which loading octocat does
+not turn on.  Other links, and an explicit request for an external
+browser, skip it."
+  (should-not octocat-github-links-mode)
+  (should-not (eq (browse-url-select-handler "https://github.com/o/r/pull/1")
                   #'octocat-browse-url))
   (unwind-protect
       (progn
-        (customize-set-variable 'octocat-open-github-urls nil)
-        (should-not (eq (browse-url-select-handler "https://github.com/o/r/pull/1")
+        (octocat-github-links-mode 1)
+        (octocat-github-links-mode 1)
+        (should (= 1 (cl-count #'octocat-browse-url browse-url-handlers :key #'cdr)))
+        (should (eq (browse-url-select-handler "https://github.com/o/r/pull/1")
+                    #'octocat-browse-url))
+        (should-not (eq (browse-url-select-handler "https://github.com/o/r/wiki")
+                        #'octocat-browse-url))
+        (should-not (eq (browse-url-select-handler "https://github.com/o/r/pull/1" 'external)
                         #'octocat-browse-url)))
-    (customize-set-variable 'octocat-open-github-urls t))
-  (should (= 1 (cl-count #'octocat-browse-url browse-url-handlers :key #'cdr))))
+    (octocat-github-links-mode -1))
+  (should-not (memq #'octocat-browse-url (mapcar #'cdr browse-url-handlers))))
+
+(ert-deftest octocat-core-test-follow-url ()
+  "Links in octocat's own pages open in it with the mode off."
+  (let (opened browsed)
+    (cl-letf (((symbol-function 'octocat-pr-open) (lambda (&rest a) (setq opened a)))
+              ((symbol-function 'browse-url) (lambda (u &rest _) (setq browsed u))))
+      (octocat-follow-url "https://github.com/o/r/pull/1")
+      (octocat-follow-url "https://github.com/o/r/wiki"))
+    (should (equal opened '("o/r" 1)))
+    (should (equal browsed "https://github.com/o/r/wiki"))))
 
 (ert-deftest octocat-core-test-markdown-links-open-views ()
   "RET on a github.com link in markdown opens its view, in the repo it names;

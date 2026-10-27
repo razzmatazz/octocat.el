@@ -396,9 +396,8 @@ On Doom Emacs, let `q` reach octocat pages with
 
 ## github.com links
 
-Following a github.com link anywhere in Emacs (`RET` on a link in a
-comment, `browse-url`, Org links, …) opens it in octocat when there is a
-view for it: users, repositories, PRs and their diffs, issues, commits,
+Following a github.com link in an octocat page (`RET` on a link in a
+comment or README) opens it in octocat when there is a view for it: users, repositories, PRs and their diffs, issues, commits,
 comparisons (`/compare/BASE...HEAD`), workflows, runs, jobs, and a
 repository's PR, issue and Actions pages.  Links to a ref open as on
 GitHub: `/tree/REF[/PATH]` the repo page at that branch, tag or commit, in that
@@ -407,4 +406,10 @@ directory,
 `/blob/REF/PATH` the file.  A ref may contain slashes (`feature/x`): as
 GitHub does, the longest leading part of the path that names a ref is the
 ref, which takes one request to find out.  Other links still open in the browser, and `C-c C-o` always
-does.  Set `octocat-open-github-urls` to nil to turn this off.
+does.
+
+To open github.com links this way from anywhere in Emacs (`browse-url`,
+Org links, mail, other packages), turn on `octocat-github-links-mode`,
+e.g. with `(octocat-github-links-mode 1)` in your init file.  It is off
+by default, as loading a package should not change how Emacs opens
+links.

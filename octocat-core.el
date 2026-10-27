@@ -1054,10 +1054,11 @@ is asked first and the matching view opened."
 
 ;;;; github.com links
 ;;
-;; github.com links octocat has a view for open in it, through
-;; `browse-url-handlers', so this works wherever Emacs follows a link.
-;; Following a link uses `browse-url', which lets any package's handler
-;; claim it; "open in browser" commands use `octocat-browse-external'.
+;; github.com links octocat has a view for open in it: always from its
+;; own pages (`octocat-follow-url'), and from anywhere in Emacs, through
+;; `browse-url-handlers', while `octocat-github-links-mode' is on.
+;; Other links go to `browse-url', which lets any package's handler claim
+;; them; "open in browser" commands use `octocat-browse-external'.
 
 (declare-function octocat-pr-diff-open  "octocat-pr-diff"  (repo number))
 (declare-function octocat-pr-commits-open "octocat-pr"    (repo number))
@@ -1187,7 +1188,7 @@ and path are nil: the default branch."
 
 (defun octocat-browse-url (url &rest _)
   "Open github.com URL in the octocat view showing it.
-The handler `octocat-open-github-urls' adds to `browse-url-handlers'."
+The handler `octocat-github-links-mode' adds to `browse-url-handlers'."
   (pcase (octocat--github-url-target url)
     (`(user ,login)        (octocat-user-open login))
     (`(repo ,repo)         (octocat-visit-repo repo))
@@ -1223,19 +1224,11 @@ The handler `octocat-open-github-urls' adds to `browse-url-handlers'."
 ;; So `browse-url-with-browser-kind' skips it when asked for a browser.
 (function-put 'octocat-browse-url 'browse-url-browser-kind 'internal)
 
-(defcustom octocat-open-github-urls t
-  "Non-nil means `browse-url' opens github.com links in octocat views.
-This covers every link Emacs follows, not only those in octocat buffers.
-Links octocat has no view for still go to the browser."
-  :type 'boolean
-  :group 'octocat
-  :set (lambda (symbol value)
-         (set-default symbol value)
-         (setq browse-url-handlers
-               (cl-remove #'octocat-browse-url browse-url-handlers :key #'cdr))
-         (when value
-           (push (cons #'octocat--github-url-target #'octocat-browse-url)
-                 browse-url-handlers))))
+(defun octocat-follow-url (url)
+  "Open URL in its octocat view, or with `browse-url' if it has none."
+  (if (octocat--github-url-target url)
+      (octocat-browse-url url)
+    (browse-url url)))
 
 (defun octocat-browse-external (url)
   "Open URL in a browser, even one octocat or another Emacs package handles."

@@ -220,7 +220,7 @@ A check not created by GitHub Actions opens in the browser instead."
     (if run-id
         (octocat-run-open repo run-id)
       (when-let* ((url (octocat--nonempty (gethash "html_url" check))))
-        (browse-url url)))))
+        (octocat-follow-url url)))))
 
 (defun octocat-checks--list (repo checks)
   "Return the vnodes of the section of the CI results of REPO, one per row.
