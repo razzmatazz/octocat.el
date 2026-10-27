@@ -164,7 +164,7 @@ leaving dangling advice and repeated `jit-lock` errors. The `with-temp-buffer` +
 ## melpazoid
 
 `make melpazoid` runs MELPA's review checks, and any finding fails it
-(see "Compiling, linting and testing" in README.md).  What they rule out:
+(see "Building and testing" in CONTRIBUTING.md).  What they rule out:
 
 - No top-level `define-key`, `setq` or `add-hook`.  Bind keys inside the
   map's `defvar` (`(let ((map (make-sparse-keymap))) (define-key map ...)

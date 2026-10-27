@@ -147,6 +147,40 @@ Each mode's map gets its bindings with `evil-define-key*`.  Rows bind RET
 themselves (a `keymap` text property, see `octocat-vui-row`), so only the
 mode-wide commands go there.
 
+## Building and testing
+
+Everything runs in a Docker (or Podman) container, so you need no local
+Emacs.  Dependencies come from the `Package-Requires` header of
+`octocat.el`, via [Eldev](https://github.com/emacs-eldev/eldev).
+
+| Command | Does |
+|---------|------|
+| `make ci` | Compile, lint and test on Emacs 31.1, then run melpazoid |
+| `make ci EMACS=29.1` | The same on another release |
+| `make ci-all` | 29.1, 30.2 and 31.1 at once, as CI does; logs in `.ci/VERSION.log` |
+| `make melpazoid` | MELPA's review checks; reports in `.ci/melpazoid-*.txt` |
+| `make screenshots` | Redraw [docs/screenshots](docs/screenshots/README.md) (see [Updating](docs/screenshots/README.md#updating)) |
+
+Run `make ci-all` before sending a change: each release catches
+something the others miss.  29.1's `checkdoc` differs from the newer
+ones, and only 31 catches every call with the wrong number of arguments.
+
+Lint covers `checkdoc`, `package-lint`, `check-declare` and
+`elisp-lint`, which wants every line indented as stock Emacs indents
+it, no tabs or trailing whitespace, and at most 100 columns.  Any
+melpazoid finding fails the build, even those melpazoid only warns
+about; to take a newer melpazoid, bump `MELPAZOID_COMMIT` in the
+`Makefile` and fix what it finds.
+
+With Eldev installed, `eldev test core` runs the tests matching `core`
+against your own Emacs, quicker while working on a test; `eldev test
+:failed` reruns the failures.  Run `test/octocat-evil-repo-tests.el` on
+its own, since it loads octocat itself.
+
+GitHub Actions compiles, lints and tests on all three releases, and runs
+melpazoid once, on every push and pull request
+([test.yml](.github/workflows/test.yml)).
+
 ## Versioning and releases
 
 octocat follows [semantic versioning](https://semver.org/).  While it is
