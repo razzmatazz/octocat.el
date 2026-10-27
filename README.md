@@ -140,7 +140,6 @@ at, with point on it:
 owner/repo[main ▾]:/
 
 @alice  Show open issue and PR counts …  a9fc167 · committed 1 day ago  [62 commits]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ▸ .github/
 ▾ docs/
     user-interface-conventions.md
@@ -151,7 +150,7 @@ owner/repo[main ▾]:/
 ```
 
 `RET` on a directory only expands or collapses it; the line above the
-tree stays on the root's last commit.  `RET` on a file opens it in the
+tree, underlined, stays on the root's last commit.  `RET` on a file opens it in the
 file viewer, and `^` moves point to the directory holding the entry at
 point.  `S-RET` opens a file in another window (see Keybindings).
 Under Evil, as in treemacs-evil, `l` opens the entry at point and `h`
@@ -166,7 +165,7 @@ path (`/tree/main/src/parser`) opens the browser at it.
 the directory shown, newest first, `octocat-repo-commits-page-size` (25) at a time with a button to
 load more; `C-c C-l` in the file viewer lists a file's.  Its top line is
 the tree browser's, `owner/repo[main ▾]:/dir`, with how many commits
-there are, then a rule: the picker shows another branch's history, and
+there are, underlined: the picker shows another branch's history, and
 a directory of the path its own.  Each row reads as on GitHub: the
 subject, the author, when it was committed, then the short SHA.  The
 local `HEAD` commit is highlighted, and `RET` on a commit opens it.  A github.com
@@ -268,11 +267,10 @@ it directly in your browser.
 Navigate to a commit from the PR detail view, the commits page, or the
 last-commit line atop the repository's files (`RET` on the line, or `TAB`
 to its SHA).  Below a top line like the tree browser's, the commit
-reads as `git show --format=fuller` prints it:
+reads as `git show --format=fuller` prints it, its message unindented:
 
 ```
 owner/repo@a1b2c3d4e5f6…  [Browse files]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Author:     Jane Doe <jane@example.com> @jane
 AuthorDate: Mon Oct 19 10:00:00 2026 +0300  (3 days ago)
 Commit:     GitHub <noreply@github.com> @web-flow
@@ -280,9 +278,9 @@ CommitDate: Mon Oct 19 11:00:00 2026 +0300  (3 days ago)
 Parent:     9f84ad6
 Branch:     main
 
-    Commit subject line
+Commit subject line
 
-    <optional multi-line commit body>
+<optional multi-line commit body>
 
 Checks (2)
   ✓  build                github-actions        1m 2s
@@ -357,7 +355,7 @@ The top of the page is the tree browser's: `owner/repo[main ▾]:/dir/file`,
 the branch picker and the path, whose directories open the tree browser
 down to them, and `[Browse tree]`, which opens it down to the file.
 Under it, after a blank line, are the file's last commit and a
-`[N commits]` button to its history, then a rule.  A branch name longer than `octocat-ref-max-width`
+`[N commits]` button to its history, underlined.  A branch name longer than `octocat-ref-max-width`
 is cut in its middle, there and in every branch picker; hovering over
 it shows it in full, as does picking a branch.  Each ref of a file has a buffer of its own, named
 `*owner/repo@ref:path*`; `C-c C-b`, or `RET` on the picker, opens the
@@ -420,8 +418,8 @@ fetched.
 has a second way to show what is on it, `C-c C-v` switches to it and
 back.  Pages showing markdown switch between rendered and raw text, so
 the markup can be read or copied as written.  The PR's files changed
-page instead shows or hides the review comments in the diff, which start
-hidden so the diff reads uninterrupted; the `[Show comments (N)]` button
+page instead shows or hides the review comments in the diff, which
+opening the page shows again; the `[Show comments (N)]` button
 in its Files heading does the same, also on the commit page.  The PR and
 issue lists switch between two-line rows and a compact view of one line
 per item.

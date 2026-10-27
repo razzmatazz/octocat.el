@@ -5,7 +5,7 @@ open    Assignees @srivera · Labels  performance
         template-cache → main · Approved · Milestone 0.10 · Closes #97
 
 [Conversation]  [Commits (2)]  Files changed (3)
-Files (3)  [Collapse all]  [Show comments (1)]
+Files (3)  [Collapse all]  [Hide comments (1)]
 ▾ A src/cache.rs  +18 -0
 @@ -0,0 +1,18 @@
 +use std::collections::HashMap;
@@ -24,6 +24,10 @@ Files (3)  [Collapse all]  [Show comments (1)]
 +    pub fn get(&self, path: &PathBuf, modified: SystemTime) -> Option<&Template> {
 +        let (at, template) = self.entries.get(path)?;
 +        (*at == modified).then_some(template)
+  ┌─ @mchen  1 day ago  👍 1
+  │ Comparing modification times is enough here: a build never runs while a template is half
+  │ written.
+  └─
 +    }
 +}
 ▾ M src/build.rs  +5 -2

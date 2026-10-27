@@ -1,0 +1,20 @@
+acme/rocket#127  Watch mode: rebuild only the pages that changed · @aokafor
+merged  Assignees none · Reviewers none · Labels none
+        watch-mode → main
+
+Conversation  [Commits (2)]  [Files changed (3)]
+● @aokafor opened this pull request  4 days ago
+│ rocket serve rebuilt the whole site on every save; now only the pages whose source or template
+│ changed.
+│
+○ @srivera committed dc0c893 Cache parsed templates by path  2 days ago
+│
+○ @srivera committed 8ee9a2c Invalidate a template when one it includes changes  1 day ago  CI: ✓
+│
+[+ Add a comment]
+
+Checks (4)  CI: ✓
+  ✓ lint           CI  2m00s  1 day ago
+  ✓ test (stable)  CI  6m00s  1 day ago
+  ✓ test (beta)    CI  7m00s  1 day ago
+  ✓ docs           CI  3m00s  1 day ago

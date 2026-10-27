@@ -1021,7 +1021,7 @@ again."
                                                 awaiting (alist-get 'approve mutating))
                      (octocat-checks-block
                       (or (octocat--get pr "statusCheckRollup") [])
-                      on-visit-check)))))))))
+                      on-visit-check (octocat--markdown-width))))))))))
 
 
 (vui-defcomponent octocat-pr-commits--page (repo number tick)

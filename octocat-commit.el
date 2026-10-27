@@ -46,7 +46,6 @@
 
 (declare-function octocat-repo-vui--link       "octocat-repo" (label face action &optional help))
 (declare-function octocat-repo-vui--login-link "octocat-repo" (login))
-(declare-function octocat-repo-vui--rule       "octocat-repo" ())
 (declare-function octocat-tree-open            "octocat-repo" (repo &optional ref path))
 
 
@@ -250,18 +249,15 @@ committer rows, the message, then a few changed files."
                         width))
 
 (defun octocat-commit--message (commit)
-  "Return COMMIT's message as `git show' prints it: indented four columns.
-Its subject is bold.  Shown verbatim, not as markdown: git messages
-are plain text, wrapped by their author.  A long one is folded as an
-opening post is (see `octocat-timeline-body-lines')."
+  "Return COMMIT's message, its subject bold, unindented so it copies as is.
+Shown verbatim, not as markdown: git messages are plain text, wrapped
+by their author.  A long one is folded as an opening post is (see
+`octocat-timeline-body-lines')."
   (let* ((c     (gethash "commit" commit))
          (lines (split-string (string-trim-right (or (and c (gethash "message" c)) "")) "\n"))
-         (text  (mapconcat (lambda (l) (if (string-empty-p l) "" (concat "    " l)))
-                           (cons (propertize (car lines) 'face 'bold) (cdr lines))
-                           "\n")))
-    (setq text (propertize text 'wrap-prefix "    "))
+         (text  (string-join (cons (propertize (car lines) 'face 'bold) (cdr lines)) "\n")))
     (octocat-vui-fold-lines text (octocat-vui-line-ends text)
-                            octocat-timeline-body-lines 'message-fold "    ")))
+                            octocat-timeline-body-lines 'message-fold "")))
 
 (defun octocat-commit--async-status (snap empty)
   "Return a dimmed vnode for the sync snapshot SNAP if failed or empty, else nil.
@@ -273,26 +269,29 @@ while it is pending."
     (_ (and (zerop (length (plist-get snap :data)))
             (vui-text (concat "  " empty) :face 'octocat-dimmed)))))
 
-(defun octocat-commit--heading (label snap)
-  "Return the section heading LABEL, with the count of SNAP's data once known."
-  (vui-text (propertize (if (plist-get snap :data)
-                            (format "%s (%d)" label (length (plist-get snap :data)))
-                          label)
-                        'face 'octocat-section-heading)))
+(defun octocat-commit--heading (label snap width)
+  "Return the section heading LABEL, with the count of SNAP's data once known.
+It is underlined across WIDTH columns."
+  (octocat-vui-section-heading (if (plist-get snap :data)
+                                   (format "%s (%d)" label (length (plist-get snap :data)))
+                                 label)
+                               width))
 
-(defun octocat-commit--checks (repo sha checks)
+(defun octocat-commit--checks (repo sha checks width)
   "Return the CI section of commit SHA of REPO, or nil when it has none.
-Its check-runs are in CHECKS, a sync snapshot."
+Its check-runs are in CHECKS, a sync snapshot.  Its heading is
+underlined across WIDTH columns."
   (unless (and (plist-get checks :data)
                (zerop (length (plist-get checks :data))))
     (or (and (eq (octocat-vui-snapshot-status checks) 'pending)
-             (octocat-commit--heading "Checks" checks))
+             (octocat-commit--heading "Checks" checks width))
         (when-let* ((status (octocat-commit--async-status checks "(no checks)")))
-          (vui-vstack (octocat-commit--heading "Checks" checks) status))
+          (vui-vstack (octocat-commit--heading "Checks" checks width) status))
         (apply #'vui-vstack
                (octocat-checks-block
                 (cl-map 'vector #'octocat-checks-from-rest (plist-get checks :data))
-                (lambda () (octocat-checks-open repo sha nil)))))))
+                (lambda () (octocat-checks-open repo sha nil))
+                width)))))
 
 
 ;;;; Page
@@ -318,7 +317,6 @@ fetches them again."
                      (and data (octocat-commit--message data)))))
     (vui-vstack
      (octocat-commit--top-line repo (or (and data (gethash "sha" data)) sha))
-     (octocat-repo-vui--rule)
      (octocat-vui-resource-view
       commit
       :skeleton (lambda (_) (vui-text (octocat-commit--skeleton width)))
@@ -332,10 +330,10 @@ fetches them again."
                 (list (vui-newline)
                       message
                       (vui-newline)
-                      (when-let* ((section (octocat-commit--checks repo sha checks)))
+                      (when-let* ((section (octocat-commit--checks repo sha checks width)))
                         (vui-fragment section (vui-newline)))
                       (octocat-diff-files-section
-                       (or (gethash "files" data) []) by-path hide-comments raw md-width)
+                       (or (gethash "files" data) []) by-path hide-comments raw md-width t)
                       ;; Most commits have none, so the section is left
                       ;; out unless there are any, or they failed to load.
                       (when (or (not (seq-empty-p (plist-get comments :data)))
@@ -406,7 +404,8 @@ only on `g'."
     (unless (derived-mode-p 'octocat-commit-mode)
       (octocat-commit-mode))
     (setq octocat--commit-repo repo
-          octocat--commit-sha  sha)
+          octocat--commit-sha  sha
+          octocat-diff--hide-comments nil)
     (octocat-commit-refresh)))
 
 (provide 'octocat-commit)

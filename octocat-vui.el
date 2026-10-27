@@ -1107,11 +1107,18 @@ what is below it without a blank line."
                    (list (vui-text (make-string (max 0 (- width used)) ?\s)
                            :face 'underline))))))
 
-(defun octocat-vui-section-heading (label width)
-  "Return the heading LABEL, underlined across WIDTH columns.
-Drawn as a tab row of one current tab, so a full-width underline always
-heads what is below it."
-  (octocat-vui-tab-row (list (list label nil nil)) width))
+(defun octocat-vui-underlined (width &rest nodes)
+  "Return NODES on one line, underlined across WIDTH columns.
+A full-width underline heads what is below it, as a tab row does."
+  (apply #'vui-hstack :spacing 0 :face 'underline
+         (append (delq nil nodes)
+                 (list (vui-text (propertize " " 'display `(space :align-to ,width)))))))
+
+(defun octocat-vui-section-heading (label width &rest after)
+  "Return the heading LABEL, then AFTER, nodes or nils, underlined across WIDTH."
+  (apply #'octocat-vui-underlined width
+         (vui-text label :face 'octocat-section-heading)
+         (mapcan (lambda (node) (list (vui-text "  ") node)) (delq nil after))))
 
 (defcustom octocat-repo-summary-ttl 300
   "Seconds a repo's summary, with its open issue and PR counts, is reused.

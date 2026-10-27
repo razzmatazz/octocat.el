@@ -110,13 +110,16 @@ have diverged gets a note that the three-dot one is shown."
            (and (>= files 300) "GitHub's API lists at most 300 changed files")))))
 
 (defun octocat-compare--commits (repo commits width)
-  "Return the vnodes of COMMITS of REPO, a REST commits vector, fitted to WIDTH."
+  "Return the vnodes of the Commits section, fitted to WIDTH.
+COMMITS is a REST commits vector of REPO."
   (let* ((commits   (append commits nil))
          (author-w  (octocat-repo-vui--author-width commits))
          (subject-w (octocat-repo-vui--subject-width commits width author-w))
          (date-w    (octocat-repo-vui--date-width commits)))
     (and commits
-         (append (mapcar (lambda (c)
+         (append (list (octocat-vui-section-heading
+                        (format "Commits (%d)" (length commits)) width))
+                 (mapcar (lambda (c)
                            (octocat-repo-vui--commit-row repo c nil author-w subject-w date-w))
                          commits)
                  (list (vui-newline))))))
@@ -159,7 +162,7 @@ new TICK fetches it again."
                 (list (vui-newline))
                 (octocat-compare--commits repo (or (gethash "commits" data) []) width)
                 (list (octocat-diff-files-section
-                       (or (gethash "files" data) []) nil nil raw width)))))))))
+                       (or (gethash "files" data) []) nil nil raw width t)))))))))
 
 
 ;;;; Major mode

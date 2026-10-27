@@ -1067,7 +1067,7 @@ The commits are those of REF, or of the default branch when nil, that
 touched PATH, or all of them when nil.  The top line is the picker of
 the ref, highlighted when it is the local CURRENT-BRANCH, then PATH,
 whose directories show their own commits, how many commits there are,
-and a button back to DEFAULT-BRANCH when REF is another; a rule follows.
+and a button back to DEFAULT-BRANCH when REF is another, underlined.
 HEAD-INFO is the plist from `octocat--head-info', used to highlight
 the local HEAD commit.  The
 first page is a sync resource; \"load more\" fetches a page at a time,
@@ -1087,15 +1087,16 @@ pinned to the head shown."
          (label   (or ref default-branch)))
     (octocat-vui-use-mode-line-loading fetching)
     (vui-vstack
-     (octocat-repo-vui--top-line
-      repo label path current-branch nil
-      (lambda (dir) (octocat-commit-list-open repo ref (octocat--nonempty dir)))
-      (when-let* ((total (and first (gethash "total" (car first)))))
-        (vui-text (format "%d commit%s" total (if (= total 1) "" "s"))
-          :face 'octocat-dimmed))
-      (and (octocat-repo--resettable-p ref default-branch)
-           (octocat-repo-vui--reset-button default-branch)))
-     (octocat-repo-vui--rule)
+     (octocat-vui-underlined
+      (octocat-vui-window-width)
+      (octocat-repo-vui--top-line
+       repo label path current-branch nil
+       (lambda (dir) (octocat-commit-list-open repo ref (octocat--nonempty dir)))
+       (when-let* ((total (and first (gethash "total" (car first)))))
+         (vui-text (format "%d commit%s" total (if (= total 1) "" "s"))
+           :face 'octocat-dimmed))
+       (and (octocat-repo--resettable-p ref default-branch)
+            (octocat-repo-vui--reset-button default-branch))))
      (pcase status
        ('pending (vui-text (octocat-vui-line-skeleton)))
        ('error   (vui-text (octocat-vui-error-text snap) :face 'octocat-dimmed))
@@ -1299,31 +1300,29 @@ the directories of PATH buttons calling ON-DIR, see
          (append (octocat-repo-vui--path-nodes path on-dir)
                  (mapcan (lambda (node) (list (vui-text "  ") node)) (delq nil after)))))
 
-(defun octocat-repo-vui--rule ()
-  "Return the rule between a page's top lines and what they head."
-  (vui-text (make-string (octocat-vui-window-width) ?━) :face 'octocat-dimmed))
-
 (defun octocat-repo-vui--head-line (repo ref path head-snap default-branch current-branch
                                          &optional bare)
   "Return the line of the picker of REF and the last commit of PATH of REPO.
 HEAD-SNAP is the snapshot of PATH's `repo-head'; DEFAULT-BRANCH and
 CURRENT-BRANCH are as for `octocat-repo-vui--ref-picker'.  BARE leaves
 the picker out, for a page whose top line has it, see
-`octocat-repo-vui--top-line'."
+`octocat-repo-vui--top-line'.  The line is underlined: it heads the files."
   (let* ((label  (or ref default-branch))
          (reset  (octocat-repo--resettable-p ref default-branch))
          (picker (and (not bare)
                       (octocat-repo-vui--ref-picker label current-branch reset default-branch)))
          (beside (lambda (node)
                    (if picker (vui-hstack :spacing 2 picker node) node))))
-    (pcase (octocat-vui-snapshot-status head-snap)
-      ('error (funcall beside (vui-text (octocat-vui-error-text head-snap)
-                                :face 'octocat-dimmed)))
-      ('ready (octocat-repo-vui--head-row
-               repo ref path (plist-get head-snap :data) picker
-               (and picker (octocat-repo-vui--picker-width label reset default-branch))
-               (octocat-vui-window-width)))
-      (_ (funcall beside (vui-text (octocat-vui-skeleton '((7 "  " 40 "  " 12)))))))))
+    (octocat-vui-underlined
+     (octocat-vui-window-width)
+     (pcase (octocat-vui-snapshot-status head-snap)
+       ('error (funcall beside (vui-text (octocat-vui-error-text head-snap)
+                                 :face 'octocat-dimmed)))
+       ('ready (octocat-repo-vui--head-row
+                repo ref path (plist-get head-snap :data) picker
+                (and picker (octocat-repo-vui--picker-width label reset default-branch))
+                (octocat-vui-window-width)))
+       (_ (funcall beside (vui-text (octocat-vui-skeleton '((7 "  " 40 "  " 12))))))))))
 
 (vui-defcomponent octocat-repo-vui--root (repo ref tracked local-dir unpushed raw tick)
   "Root component for the repo buffer, as GitHub's Code tab: header and
@@ -1390,7 +1389,7 @@ one summary resource and the rest from the root's `repo-head' at REF."
 As GitHub's sidebar, it is opened down to REVEAL, and point goes to
 FOCUS, an entry's path, once it is shown.  Above it are REF's picker
 and REVEAL's path, its directories RET-able, then the root's last
-commit, which expanding a directory leaves be, and a rule.  REF is a branch, tag
+commit, underlined, which expanding a directory leaves be.  REF is a branch, tag
 or SHA, nil for TRACKED, the clone's branch, or else the default
 branch."
   :render
@@ -1416,7 +1415,6 @@ branch."
      (vui-newline)
      (octocat-repo-vui--head-line repo ref nil head-snap (or tracked default-branch)
                                   current-branch t)
-     (octocat-repo-vui--rule)
      (if root
          ;; Each ref, and each opening from elsewhere, starts the tree
          ;; afresh.
@@ -1491,7 +1489,7 @@ RAW shows markdown as is."
 REF is a branch, tag or SHA, nil for the default branch.  Its top is
 the tree browser's, so one reads on from the other: the picker of REF
 and PATH, its directories RET-able, and a button to the tree, then the
-last commit of PATH, and a rule above the content.  Picking another ref
+last commit of PATH, underlined above the content.  Picking another ref
 opens the file at it in its own buffer, see `octocat-file-switch-branch'.
 RAW shows markdown as is.  A file too large to show unasked, see
 `octocat-repo--file-notice', has a button to show it ANYWAY."
@@ -1517,7 +1515,6 @@ RAW shows markdown as is.  A file too large to show unasked, see
         :on-click (lambda () (octocat-tree-open repo ref path))))
      (vui-newline)
      (octocat-repo-vui--head-line repo ref path head-snap default-branch current-branch t)
-     (octocat-repo-vui--rule)
      (cond (notice
             (apply #'vui-hstack :spacing 2
                    (vui-text notice :face 'octocat-dimmed)

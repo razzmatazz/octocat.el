@@ -83,6 +83,14 @@ Its changed files, with `[Expand all]` pressed:
 [As text](pr-diff.txt)
 <!-- /screenshot -->
 
+A merged pull request: with no merge box, its checks end the page.
+
+<!-- screenshot: (pr "acme/rocket" 127) :name "pr-merged" -->
+![pr-merged](pr-merged.png)
+
+[As text](pr-merged.txt)
+<!-- /screenshot -->
+
 ## Issues
 
 `M-x octocat-issue-list`:
@@ -110,6 +118,15 @@ them, its message, its checks and its files.
 ![commit](commit.png)
 
 [As text](commit.txt)
+<!-- /screenshot -->
+
+Two refs compared, as from a GitHub compare link: the commits, then the
+files.
+
+<!-- screenshot: (compare "acme/rocket" "main" "..." "template-cache") -->
+![compare](compare.png)
+
+[As text](compare.txt)
 <!-- /screenshot -->
 
 ## Actions

@@ -320,7 +320,8 @@ independently, in place."
     (unless (derived-mode-p 'octocat-pr-diff-mode)
       (octocat-pr-diff-mode))
     (setq octocat--pr-diff-repo   repo
-          octocat--pr-diff-number number)
+          octocat--pr-diff-number number
+          octocat-diff--hide-comments nil)
     (octocat-pr-diff-refresh)))
 
 (provide 'octocat-pr-diff)

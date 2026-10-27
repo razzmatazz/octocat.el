@@ -197,15 +197,16 @@ called by RET on a check.  INDENT starts each row, two spaces if nil."
                                 collect (octocat-checks--row check widths on-visit
                                                              nil indent)))))))
 
-(defun octocat-checks-block (checks on-visit)
+(defun octocat-checks-block (checks on-visit width)
   "Return the vnodes of the CI section, with a CI summary.
-CHECKS and ON-VISIT are as for `octocat-checks-rows'."
+CHECKS and ON-VISIT are as for `octocat-checks-rows'.  The heading is
+underlined across WIDTH columns."
   (list
-   (vui-text (concat (propertize (format "Checks (%d)" (length checks))
-                                 'face 'octocat-section-heading)
-                     (unless (zerop (length checks))
-                       (concat "  " (propertize "CI:" 'face 'octocat-dimmed)
-                               " " (octocat--checks-ci-status checks)))))
+   (octocat-vui-section-heading
+    (format "Checks (%d)" (length checks)) width
+    (unless (zerop (length checks))
+      (vui-text (concat (propertize "CI:" 'face 'octocat-dimmed)
+                        " " (octocat--checks-ci-status checks)))))
    (if (zerop (length checks))
        (vui-text (propertize "  (no checks)" 'face 'octocat-dimmed))
      (octocat-checks-rows checks on-visit))))

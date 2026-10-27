@@ -20,6 +20,8 @@ See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as f
 - **Keep `Assisted-by:` headers complete.** Every `.el` file, tests included, lists each model that has worked on it, one line per model, as MELPA asks (`;; Assisted-by: AGENT_NAME:MODEL_VERSION`, e.g. `;; Assisted-by: Claude:claude-opus-5-5`). When you edit or create a file and your model is not listed there, add a line after the existing `Assisted-by:` lines, or, in a file with none, after the title line. Never remove a line.
 - **Keep docs and comments minimal.** Say only what the code doesn't: the why, the non-obvious. Short, but complete enough to understand.
   Docs (`README.md`, `docs/`) must not be too short either: a reader new to the feature should get what it does, why, and how to use or extend it, in full sentences.
+  Keep new prose in docs short and to the point: the rule or fact, not
+  the history or context that led to it.
 - **Never modify source files through Emacs** (`emacs__eval-elisp`, buffer edits, `save-buffer`, etc.); it risks a live buffer and the file on disk drifting apart. Use the file-editing tools or any shell tool (`sed`, Python, etc.).
 
 ## Screenshots

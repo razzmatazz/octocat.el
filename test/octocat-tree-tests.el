@@ -163,7 +163,7 @@ A refresh asks GitHub again, which never answers."
             (should (derived-mode-p 'octocat-file-mode))
             (should (string-match-p
                      (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  \\[Browse tree\\]\n\n"
-                             "Ann  Add the guide +abc1234 · committed .*  \\[3 commits\\]\n━+\n")
+                             "Ann  Add the guide +abc1234 · committed .*  \\[3 commits\\] \n")
                      text))
             (should-not (string-match-p "reset" text))
             ;; The root and the directories on the way open the tree.
@@ -387,7 +387,7 @@ It does not fold, however long."
       (should (equal (octocat-tree--path-at-point) "f04")))))
 
 (ert-deftest octocat-tree-test-commits-page ()
-  "The commits page has the tree's top line, with the count, and a rule; C-c C-l opens it."
+  "The commits page has the tree's top line, with the count, underlined; C-c C-l opens it."
   (octocat-tree-tests--with-file-page
     (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n")
     (octocat-tree-tests--store
@@ -403,7 +403,7 @@ It does not fold, however long."
               (should (derived-mode-p 'octocat-commit-list-mode))
               (should (string-match-p
                        (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  3 commits  "
-                               "\\[reset to main\\]\n━+\nAdd the guide +Ann +committed .* +abc1234$")
+                               "\\[reset to main\\] \nAdd the guide +Ann +committed .* +abc1234$")
                        text))
               ;; A directory on the way shows its own commits.
               (let (opened)

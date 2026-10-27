@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A commit's message starts at the left edge, so it copies without an indent
+* The commit and PR diff pages open with the review comments in the diff shown
 * A PR's Merge box heading is underlined across the page, setting it apart
+* Section headings and the last-commit line are underlined across the page, not ruled off
 * Issues, pull requests, comments and reviews show their reactions, such as 👍 3
 * New and edited comments and descriptions show at once, with a spinner until saved
 * Expanding a long comment no longer scrolls the window; RET still folds it back

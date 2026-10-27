@@ -325,6 +325,35 @@ Closes #97"
                  '(("lint" 2) ("test (stable)" 6) ("test (beta)" 7) ("docs" 3)))]))
   "Pull request #128, as `gh pr view' gives it.")
 
+(defconst octocat-screenshots--pr-127
+  (let ((pr (copy-sequence octocat-screenshots--pr-128))
+        (d octocat-screenshots--d))
+    (dolist (field `((:number 127) (:title "Watch mode: rebuild only the pages that changed")
+                     (:author (:login "aokafor" :name "Ada Okafor" :is_bot :false))
+                     (:state "MERGED") (:createdAt ,(octocat-screenshots--ago (* 4 d)))
+                     (:mergedAt ,(octocat-screenshots--ago (* 2 d)))
+                     (:closedAt ,(octocat-screenshots--ago (* 2 d)))
+                     (:headRefName "watch-mode") (:url "https://github.com/acme/rocket/pull/127")
+                     (:labels []) (:reactionGroups []) (:reviewDecision "")
+                     (:body "`rocket serve` rebuilt the whole site on every save; now only the pages whose source or template changed.")
+                     (:comments []) (:reviews []) (:latestReviews []) (:reviewRequests [])
+                     (:assignees []) (:milestone :null) (:closingIssuesReferences [])))
+      (setq pr (plist-put pr (car field) (cadr field))))
+    pr)
+  "Pull request #127, merged, as `gh pr view' gives it.")
+
+(defun octocat-screenshots--commit-rest-short (sha message login name ago)
+  "Return commit SHA, by LOGIN called NAME AGO seconds ago, as the REST API does.
+MESSAGE is its message."
+  (let ((at (octocat-screenshots--ago ago)))
+    `(:sha ,sha
+      :html_url ,(format "https://github.com/acme/rocket/commit/%s" sha)
+      :commit (:message ,message
+               :author (:name ,name :email ,(format "%s@example.com" login) :date ,at)
+               :committer (:name ,name :email ,(format "%s@example.com" login) :date ,at))
+      :author ,(octocat-screenshots--user login)
+      :committer ,(octocat-screenshots--user login))))
+
 (defconst octocat-screenshots--pr-128-events
   (let ((d octocat-screenshots--d) (h octocat-screenshots--h))
     `[[(:event "labeled" :actor (:login "srivera") :created_at ,(octocat-screenshots--ago (* 2 d))
@@ -699,6 +728,8 @@ FIELDS, a plist, override the rest."
        (:data (:repository (:open (:totalCount 6) :closed (:totalCount 14) :merged (:totalCount 108)))))
       ("pulls" ("repo:acme/rocket") ,(octocat-screenshots--search octocat-screenshots--prs))
       ("pr" ("128") ,octocat-screenshots--pr-128)
+      ("pr" ("127") ,octocat-screenshots--pr-127)
+      ("timeline-events" ("issues/127/") [[]])
       ("timeline-events" ("issues/128/") ,octocat-screenshots--pr-128-events)
       ("awaiting-runs" () (:total_count 0 :workflow_runs []))
       ("pr-diff" ("pulls/128/files") ,octocat-screenshots--pr-128-files)
@@ -724,6 +755,15 @@ FIELDS, a plist, override the rest."
          :user ,(octocat-screenshots--user "pnair") :created_at ,(octocat-screenshots--ago (* 4 h))
          :body "Released in 0.10: the docs site builds in 2s now."
          :reactions (:total_count 2 :+1 0 :-1 0 :laugh 0 :hooray 2 :confused 0 :heart 0 :rocket 0 :eyes 0))])
+      ("compare" ("compare/main...template-cache")
+       (:status "ahead" :ahead_by 2 :behind_by 0 :total_commits 2
+        :commits [,(octocat-screenshots--commit-rest-short
+                    (octocat-screenshots--sha "pr-128-1") "Cache parsed templates by path"
+                    "srivera" "Sam Rivera" (* 2 octocat-screenshots--d))
+                  ,(octocat-screenshots--commit-rest-short
+                    octocat-screenshots--pr-head "Invalidate a template when one it includes changes"
+                    "srivera" "Sam Rivera" (+ octocat-screenshots--d octocat-screenshots--h))]
+        :files ,octocat-screenshots--pr-128-files))
       ("commit-branch" () (:data (:repository (:defaultBranchRef (:name "main" :compare (:status "BEHIND"))))))
 
       ;; Actions
