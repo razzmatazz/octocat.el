@@ -929,15 +929,11 @@ Every page showing it changes at once; the mode line shows it under way."
   (let* ((item    (octocat-sync-detail-read (octocat-timeline--detail-spec kind repo number)))
          (current (or (and item (octocat--nonempty (gethash "title" item))) ""))
          (new     (string-trim (read-string (if (equal kind "pr") "PR title: " "Issue title: ")
-                                            current)))
-         (buf     (current-buffer)))
+                                            current))))
     (when (string-empty-p new)
       (user-error "Octocat: Title must not be empty"))
     (unless (string-equal new current)
-      ;; In the mode line: the page has no button for this to replace.
-      (octocat-vui-mode-line-action buf ":saving")
-      (octocat-sync-submit `(set-title ,kind ,repo ,number ,new)
-                           (lambda (_) (octocat-vui-mode-line-action buf nil))))))
+      (octocat-sync-submit `(set-title ,kind ,repo ,number ,new)))))
 
 (defconst octocat-timeline--value-fields
   '(("label"    "Labels"    "labels"         "name")
@@ -989,10 +985,8 @@ stored ones, refetched behind the prompt (see `octocat-vui-list--stored')."
                      (add    (seq-difference picked current))
                      (remove (seq-difference current picked)))
                 (when (or add remove)
-                  (octocat-vui-mode-line-action buf ":saving")
                   (octocat-sync-submit
-                   `(edit-values ,kind ,repo ,number ,flag ,add ,remove)
-                   (lambda (_) (octocat-vui-mode-line-action buf nil)))))))))))))
+                   `(edit-values ,kind ,repo ,number ,flag ,add ,remove))))))))))))
 
 (defun octocat-timeline-target ()
   "Return what the timeline entry at point stands for, or nil.

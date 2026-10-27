@@ -867,6 +867,10 @@ this, so they do not shift as the new rows appear."
 (defvar octocat-vui--spinner (aref octocat-vui--spinner-frames 0)
   "The current spinner frame; mode-line constructs show it by name.")
 
+(defvar octocat-vui--pending-mode-line nil
+  "The `global-mode-string' entry of the changes being sent, or nil.")
+(put 'octocat-vui--pending-mode-line 'risky-local-variable t)
+
 (defvar octocat-vui--spinner-index 0)
 (defvar octocat-vui--spinner-timer nil)
 
@@ -909,7 +913,8 @@ Stop the timer once no buffer shows it."
         (% (1+ octocat-vui--spinner-index) (length octocat-vui--spinner-frames))
         octocat-vui--spinner
         (aref octocat-vui--spinner-frames octocat-vui--spinner-index))
-  (let ((busy nil))
+  (let ((busy (and octocat-vui--pending-mode-line t)))
+    (when busy (force-mode-line-update t))
     (dolist (buf (buffer-list))
       (when (octocat-vui--mode-line-busy-p buf)
         (setq busy t)
@@ -927,6 +932,40 @@ Stop the timer once no buffer shows it."
   (octocat-vui--spinner-start)
   (list (concat label " ") 'octocat-vui--spinner))
 
+(defcustom octocat-mode-line-writes t
+  "Whether every mode line shows the changes being sent to GitHub.
+A merge, comment or review may take many seconds on a slow GitHub; this
+shows it under way wherever you are, as well as on its page."
+  :type 'boolean
+  :group 'octocat)
+
+(defun octocat-vui--pending-label (labels)
+  "Return the mode line label of the pending mutations of LABELS, or nil."
+  (pcase (length labels)
+    (0 nil)
+    (1 (concat "Octocat: " (car labels)))
+    (n (format "Octocat: %d changes…" n))))
+
+(defun octocat-vui--on-sync-pending (labels)
+  "Show LABELS, those of the pending mutations, in every mode line.
+For `octocat-sync-pending-functions'."
+  (let ((label (and octocat-mode-line-writes (octocat-vui--pending-label labels))))
+    (setq octocat-vui--pending-mode-line
+          (and label (list " " 'octocat-vui--spinner " " label)))
+    (if label
+        (progn
+          (unless (listp global-mode-string)
+            (setq global-mode-string (list global-mode-string)))
+          (unless (memq 'octocat-vui--pending-mode-line global-mode-string)
+            (setq global-mode-string
+                  (append global-mode-string '(octocat-vui--pending-mode-line))))
+          (octocat-vui--spinner-start))
+      (setq global-mode-string
+            (if (listp global-mode-string)
+                (delq 'octocat-vui--pending-mode-line global-mode-string)
+              global-mode-string)))
+    (force-mode-line-update t)))
+
 (defun octocat-vui-spinner ()
   "Return a spinner to render in the current buffer's page.
 It turns in step with the mode line's, through its `display' property,
@@ -940,15 +979,11 @@ turns too, displayed as what it returns for each frame."
 (defvar-local octocat-vui--loading 0
   "How many components of this buffer are loading.")
 
-(defvar-local octocat-vui--action nil
-  "The mode line label of an action under way here, such as \":saving\", or nil.")
-
 (defun octocat-vui--show-busy ()
-  "Show the current buffer's action, else whether it is loading, in its mode line."
+  "Show whether the current buffer is loading in its mode line."
   (setq mode-line-process
-        (cond (octocat-vui--action (octocat-vui-mode-line-busy octocat-vui--action))
-              ((or (> octocat-vui--loading 0) octocat-vui--loading-keys)
-               (octocat-vui-mode-line-busy ":loading"))))
+        (and (or (> octocat-vui--loading 0) octocat-vui--loading-keys)
+             (octocat-vui-mode-line-busy ":loading")))
   (force-mode-line-update))
 
 (defun octocat-vui--add-loading (buf n)
@@ -956,15 +991,6 @@ turns too, displayed as what it returns for each frame."
   (when (buffer-live-p buf)
     (with-current-buffer buf
       (setq octocat-vui--loading (max 0 (+ octocat-vui--loading n)))
-      (octocat-vui--show-busy))))
-
-(defun octocat-vui-mode-line-action (buf label)
-  "Show LABEL, such as \":saving\", and a spinner in BUF's mode line.
-A nil LABEL clears it.  For an action with no place on the page; it
-takes precedence over \":loading\"."
-  (when (buffer-live-p buf)
-    (with-current-buffer buf
-      (setq octocat-vui--action label)
       (octocat-vui--show-busy))))
 
 (defun octocat-vui--image-loading (buf loading)

@@ -134,15 +134,27 @@
       (octocat-vui--add-loading buf -1)
       (should (null mode-line-process)))))
 
-(ert-deftest octocat-vui-test-mode-line-action ()
-  "An action shows in the mode line ahead of :loading, which it gives back."
-  (with-temp-buffer
-    (let ((buf (current-buffer)))
-      (octocat-vui--add-loading buf 1)
-      (octocat-vui-mode-line-action buf ":saving")
-      (should (equal mode-line-process '(":saving " octocat-vui--spinner)))
-      (octocat-vui-mode-line-action buf nil)
-      (should (equal mode-line-process '(":loading " octocat-vui--spinner))))))
+(ert-deftest octocat-vui-test-pending-mode-line ()
+  "Pending writes show in every mode line, a count for several, until answered."
+  (let ((global-mode-string '("" display-time-string))
+        (octocat-vui--pending-mode-line nil)
+        (octocat-mode-line-writes t))
+    (cl-letf (((symbol-function 'octocat-vui--spinner-start) #'ignore))
+      (octocat-vui--on-sync-pending '("Merging pull request…"))
+      (should (equal global-mode-string
+                     '("" display-time-string octocat-vui--pending-mode-line)))
+      (should (equal octocat-vui--pending-mode-line
+                     '(" " octocat-vui--spinner " " "Octocat: Merging pull request…")))
+      (octocat-vui--on-sync-pending '("Merging pull request…" "Posting comment…"))
+      (should (equal (car (last octocat-vui--pending-mode-line)) "Octocat: 2 changes…"))
+      (should (= 1 (seq-count (lambda (x) (eq x 'octocat-vui--pending-mode-line))
+                              global-mode-string)))
+      (octocat-vui--on-sync-pending nil)
+      (should (equal global-mode-string '("" display-time-string)))
+      (should (null octocat-vui--pending-mode-line))
+      (let ((octocat-mode-line-writes nil))
+        (octocat-vui--on-sync-pending '("Posting comment…"))
+        (should (equal global-mode-string '("" display-time-string)))))))
 
 (ert-deftest octocat-vui-test-page-spinner ()
   "A page spinner turns with the mode line's until the page drops it."

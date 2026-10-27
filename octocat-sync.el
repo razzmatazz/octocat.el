@@ -56,6 +56,7 @@
 (declare-function octocat-vui--on-sync-change     "octocat-vui" (keys))
 (declare-function octocat-vui--on-sync-loading    "octocat-vui" (key loading))
 (declare-function octocat-vui--on-sync-invalidate "octocat-vui" (keys))
+(declare-function octocat-vui--on-sync-pending    "octocat-vui" (labels))
 
 (defcustom octocat-sync-directory (locate-user-emacs-file "octocat/")
   "Directory of the sync store, one SQLite file per GitHub host.
@@ -124,6 +125,10 @@ spinner from it, and a refetch that finds nothing new renders nothing.")
 (defvar octocat-sync-invalidate-functions (list #'octocat-vui--on-sync-invalidate)
   "Functions called with the keys of resources found outdated.
 Their data stays; a page showing one should refetch it.")
+
+(defvar octocat-sync-pending-functions (list #'octocat-vui--on-sync-pending)
+  "Functions called with the labels of the pending mutations, oldest first.
+Called whenever one is sent or answered; nil once none is left.")
 
 (defconst octocat-sync--schema 4
   "Version of the store's tables, kept in SQLite's `user_version'.
@@ -990,6 +995,11 @@ Each is a plist (:changes ALIST :edits EDITS :resources KEYS :specs SPECS
 :label LABEL :slot SLOT), where ALIST holds (ENTITY-KEY . FIELDS), EDITS
 \(RESOURCE-KEY . FUNCTION) and SPECS the specs of KEYS.")
 
+(defun octocat-sync--pending-changed ()
+  "Tell `octocat-sync-pending-functions' the labels of the pending mutations."
+  (run-hook-with-args 'octocat-sync-pending-functions
+                      (mapcar (lambda (m) (plist-get m :label)) octocat-sync--pending)))
+
 (defmacro octocat-sync-define-mutation (name args &rest props)
   "Define the mutation NAME, whose spec is (NAME . ARGS).
 PROPS are evaluated with ARGS bound:
@@ -1064,6 +1074,7 @@ the resources it acts on refetched: GitHub may have made it anyway."
                 :label (plist-get props :label)
                 :slot (or (plist-get props :slot) 'action))))
     (setq octocat-sync--pending (append octocat-sync--pending (list mutation)))
+    (octocat-sync--pending-changed)
     (octocat-sync--notify (octocat-sync--touched db mutation))
     (let ((octocat--gh-reason 'mutation))
       (funcall (plist-get props :send)
@@ -1083,6 +1094,7 @@ On success its changes, and EDITS, a list of (KEY . FUNCTION) as
 them.  On failure the resources it acts on are outdated instead."
   (let ((db (octocat-sync--db)))
     (setq octocat-sync--pending (delq mutation octocat-sync--pending))
+    (octocat-sync--pending-changed)
     (if (eq (car-safe result) 'error)
         (message "Octocat: %s failed: %s"
                  (string-remove-suffix "…" (plist-get mutation :label)) (cdr result))

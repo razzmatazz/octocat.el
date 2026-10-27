@@ -748,9 +748,12 @@ Where each slot shows:
   under the checks, leaving the merge buttons alone.
 - **`review`**, under the review comments on the PR's Files page:
   submitting a review.
-- **The mode line**, for an action with no button on the page to
-  replace, such as renaming the title: `octocat-vui-mode-line-action`
-  shows `(Octocat-PR:saving ▘)`, ahead of `:loading`.
+- **Only the mode line**, for an action with no button to replace,
+  such as renaming the title.
+
+Every mode line also shows the pending mutations, through
+`global-mode-string`: `▘ Octocat: Merging pull request…`, or
+`▘ Octocat: 2 changes…`, as the user may have left the page.
 
 ---
 

@@ -296,7 +296,6 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
                  (should (equal candidates '("@ann" "@bob" "@cy")))
                  (should (equal selected '("@ann" "@bob")))
                  '("@bob" "cy")))
-              ((symbol-function 'octocat-vui-mode-line-action) #'ignore)
               ((symbol-function 'octocat-sync-submit)
                (lambda (spec &rest _) (setq submitted spec))))
       (octocat-timeline-edit-values "issue" "o/r" 3 "assignee"))
