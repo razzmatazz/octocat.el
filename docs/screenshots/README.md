@@ -130,6 +130,15 @@ them, its message, its checks and its files.
 [As text](commit.txt)
 <!-- /screenshot -->
 
+Its files, unfolded, are in the diff faces, the code highlighted as
+its major mode would; here JavaScript, as `js-mode` does:
+
+<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-diff" -->
+![commit-diff](commit-diff.png)
+
+[As text](commit-diff.txt)
+<!-- /screenshot -->
+
 Two refs compared, as from a GitHub compare link: the commits, then the
 files.
 

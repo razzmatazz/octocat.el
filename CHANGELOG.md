@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Diffs highlight their code as its major mode would, under the added and removed faces
 * A `*`, `~` or `(` in an HTML link's href no longer breaks the markdown around it
 * Markdown decodes every HTML entity, like `&ensp;` and `&mdash;`, and hex `&#x…;` ones
 * HTML in markdown is read by libxml2: nested and unclosed tags show as on GitHub

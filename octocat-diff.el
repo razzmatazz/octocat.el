@@ -32,6 +32,7 @@
 
 (require 'cl-lib)
 (require 'seq)
+(require 'diff-mode) ; The diff faces.
 (require 'octocat-core)
 (require 'octocat-vui)
 (require 'vui)
@@ -127,58 +128,186 @@ comments there, in order."
 (defun octocat-diff--walk (patch index fn)
   "Call FN with each line of the unified diff PATCH and the comments after it.
 INDEX is the comment index of the file, see `octocat-diff--index'.  FN
-gets the line, its face (nil for context) and the list of comments
-placed right after it, found by tracking the right-side line number,
-from the `@@' headers, and the 1-based position in the diff.  A comment
-on no line of PATCH, as an outdated one, is placed nowhere."
+gets the line and the list of comments placed right after it, found by
+tracking the right-side line number, from the `@@' headers, and the
+1-based position in the diff.  A comment on no line of PATCH, as an
+outdated one, is placed nowhere."
   (let ((by-line (car index))
         (by-pos  (cdr index))
         (right 0)
-        (pos   0)
-        (lines (split-string patch "\n")))
-    (when (equal (car (last lines)) "")
-      (setq lines (butlast lines)))
+        (pos   0))
     (cl-flet ((at (key table) (cdr (assq key table))))
-      (dolist (raw lines)
+      (dolist (raw (octocat-diff--split patch))
         (cl-incf pos)
-        (cond
-         ((string-prefix-p "@@" raw)
-          (when (string-match "@@ -[0-9]+\\(?:,[0-9]+\\)? \\+\\([0-9]+\\)" raw)
-            (setq right (string-to-number (match-string 1 raw))))
-          (funcall fn raw 'octocat-diff-hunk-heading (at pos by-pos)))
-         ;; Deleted: only in the old file, so the right line stays.
-         ((string-prefix-p "-" raw)
-          (funcall fn raw 'diff-removed (at pos by-pos)))
-         (t
-          (funcall fn raw (and (string-prefix-p "+" raw) 'diff-added)
-                   (append (at right by-line) (at pos by-pos)))
-          (cl-incf right)))))))
+        (pcase (octocat-diff--line-kind raw)
+          ('hunk
+           (when (string-match "@@ -[0-9]+\\(?:,[0-9]+\\)? \\+\\([0-9]+\\)" raw)
+             (setq right (string-to-number (match-string 1 raw))))
+           (funcall fn raw (at pos by-pos)))
+          ;; Only in the old file, or in neither, so the right line stays.
+          ((or 'removed 'note)
+           (funcall fn raw (at pos by-pos)))
+          (_
+           (funcall fn raw (append (at right by-line) (at pos by-pos)))
+           (cl-incf right)))))))
 
 (defun octocat-diff--placed-count (patch comments)
   "Return how many of COMMENTS, on the file of PATCH, are placed in its diff."
   (let ((n 0))
     (octocat-diff--walk patch (octocat-diff--index comments)
-                        (lambda (_line _face placed) (cl-incf n (length placed))))
+                        (lambda (_line placed) (cl-incf n (length placed))))
     n))
 
-(defun octocat-diff--patch-text (patch index raw width)
+(defun octocat-diff--patch-text (patch path index raw width)
   "Return the unified diff PATCH as a propertized string, without final newline.
-INDEX is the comment index of the file, see `octocat-diff--index'.  RAW
-and WIDTH are as for `octocat-diff--comment-lines'.  Each comment is
-placed right after the diff line it is on, see `octocat-diff--walk'.
-A line is cut at `octocat--max-line-length', see `octocat--clip-line'."
-  (let (out)
+PATH is the file's, whose major mode highlights the code, see
+`octocat-diff--lines'.  INDEX is the comment index of the file, see
+`octocat-diff--index'.  RAW and WIDTH are as for
+`octocat-diff--comment-lines'.  Each comment is placed right after the
+diff line it is on, see `octocat-diff--walk'.  A line is cut at
+`octocat--max-line-length', see `octocat--clip-line'."
+  (let ((lines (octocat-diff--lines patch path))
+        out)
     ;; Diff lines are not indented, so they copy out as a valid patch.
     (octocat-diff--walk
      patch index
-     (lambda (line face placed)
-       (push (octocat--clip-line (if face (propertize line 'face face) line)
-                                 octocat--max-line-length)
-             out)
+     (lambda (_line placed)
+       (push (octocat--clip-line (pop lines) octocat--max-line-length) out)
        (dolist (c placed)
          (dolist (l (octocat-diff--comment-lines c raw width))
            (push l out)))))
     (mapconcat #'identity (nreverse out) "\n")))
+
+
+;;;; Highlighting
+;;
+;; A hunk holds part of two files: its old side, the context and removed
+;; lines, and its new side, the context and added lines.  Each side is
+;; highlighted by the file's major mode on its own, and the diff faces
+;; are laid under the code's.  An added file is one hunk, its new side
+;; the whole file, so it is highlighted as the file itself would be.
+
+(defconst octocat-diff--highlight-limit 50000
+  "Longest patch, in characters, whose code is highlighted.
+About a thousand lines; a mode takes up to a second for twice that.")
+
+(defun octocat-diff--split (patch)
+  "Return the lines of PATCH, without the empty one after a final newline."
+  (let ((lines (split-string patch "\n")))
+    (if (equal (car (last lines)) "") (butlast lines) lines)))
+
+(defun octocat-diff--line-kind (line)
+  "Return what diff LINE is: `hunk', `added', `removed', `note' or `context'.
+A note is a `\\ No newline at end of file'."
+  (cond ((string-prefix-p "@@" line) 'hunk)
+        ((string-prefix-p "+" line)  'added)
+        ((string-prefix-p "-" line)  'removed)
+        ((string-prefix-p "\\" line) 'note)
+        (t                           'context)))
+
+(defun octocat-diff--faces-only (text)
+  "Return TEXT with no property but its faces, `font-lock-face' as `face'."
+  (let ((pos 0) (end (length text)) (face-next 0) (flf-next 0) out)
+    (while (< pos end)
+      ;; Each next change is looked for only once passed: looking from
+      ;; every position for a property not there would scan to the end.
+      (when (<= face-next pos)
+        (setq face-next (next-single-property-change pos 'face text end)))
+      (when (<= flf-next pos)
+        (setq flf-next (next-single-property-change pos 'font-lock-face text end)))
+      (let ((next (min face-next flf-next))
+            (face (or (get-text-property pos 'face text)
+                      (get-text-property pos 'font-lock-face text))))
+        (push (if face
+                  (propertize (substring-no-properties text pos next) 'face face)
+                (substring-no-properties text pos next))
+              out)
+        (setq pos next)))
+    (apply #'concat (nreverse out))))
+
+(defun octocat-diff--fontify (path texts)
+  "Return the lines of each of TEXTS, highlighted as PATH's major mode would.
+Return nil when PATH's mode, if any, does not highlight.  The mode is
+set up once, with its hooks delayed, as for a file being visited."
+  (with-temp-buffer
+    (with-demoted-errors "Octocat: cannot highlight: %S"
+      (let ((buffer-file-name path))
+        (delay-mode-hooks (set-auto-mode))))
+    (when (font-lock-specified-p major-mode)
+      (mapcar (lambda (text)
+                (erase-buffer)
+                (insert text)
+                ;; A mode's broken font-lock rules should not lose the text.
+                (with-demoted-errors "Octocat: cannot highlight: %S"
+                  (font-lock-ensure))
+                (split-string (octocat-diff--faces-only (buffer-string)) "\n"))
+              texts))))
+
+(defun octocat-diff--bodies (lines kinds path)
+  "Return the code of each diff line of LINES, highlighted for PATH.
+KINDS are the lines' kinds, see `octocat-diff--line-kind'.  The code is
+the line without its first column, nil for a hunk heading or a note.
+Each hunk's sides are highlighted apart, see `octocat-diff--fontify';
+the code is left plain when PATH has no mode."
+  (let* ((bodies (vconcat (cl-mapcar (lambda (l k)
+                                       (and (memq k '(added removed context))
+                                            (substring l 1)))
+                                     lines kinds)))
+         (kinds (vconcat kinds))
+         hunks old new)
+    ;; Each hunk as (OLD . NEW), the indexes of the lines of each side.
+    (cl-loop for k across kinds for i from 0
+             do (pcase k
+                  ('hunk (when (or old new) (push (cons (nreverse old) (nreverse new)) hunks))
+                         (setq old nil new nil))
+                  ('removed (push i old))
+                  ('added (push i new))
+                  ('context (push i old) (push i new))))
+    (when (or old new) (push (cons (nreverse old) (nreverse new)) hunks))
+    (setq hunks (nreverse hunks))
+    (let ((sides (mapcan (lambda (h) (list (car h) (cdr h))) hunks)))
+      (when-let* ((done (octocat-diff--fontify
+                         path (mapcar (lambda (side)
+                                        (mapconcat (lambda (i) (aref bodies i)) side "\n"))
+                                      sides))))
+        (cl-loop for side in sides for fontified in done
+                 for removed = t then (not removed) ; Sides alternate, old first.
+                 do (cl-loop for i in side for line in fontified
+                             ;; A context line is the same on both sides:
+                             ;; the new side's is kept.
+                             unless (and removed (eq (aref kinds i) 'context))
+                             do (aset bodies i line)))))
+    (append bodies nil)))
+
+(defun octocat-diff--lines (patch path)
+  "Return the lines of PATCH, a file's unified diff, propertized for display.
+PATH is the file's: its major mode highlights the code, see
+`octocat-diff--bodies', under `diff-added' or `diff-removed'.  A patch
+larger than `octocat-diff--highlight-limit' is only in the diff faces."
+  (let* ((lines  (octocat-diff--split patch))
+         (kinds  (mapcar #'octocat-diff--line-kind lines))
+         (bodies (if (> (length patch) octocat-diff--highlight-limit)
+                     (cl-mapcar (lambda (l k)
+                                  (and (memq k '(added removed context)) (substring l 1)))
+                                lines kinds)
+                   (octocat-diff--bodies lines kinds path))))
+    (cl-mapcar
+     (lambda (line kind body)
+       (pcase kind
+         ('hunk (propertize line 'face 'octocat-diff-hunk-heading))
+         ('note line)
+         (_ (let ((body (copy-sequence body))
+                  (face (pcase kind ('added 'diff-added) ('removed 'diff-removed))))
+              (when face
+                (add-face-text-property 0 (length body) face t body))
+              (concat (if face
+                          (propertize (substring line 0 1) 'face
+                                      (if (eq kind 'added)
+                                          'diff-indicator-added
+                                        'diff-indicator-removed))
+                        (substring line 0 1))
+                      body)))))
+     lines kinds bodies)))
 
 
 ;;;; Components
@@ -217,7 +346,7 @@ are as for `octocat-diff--comment-lines'."
         :prepare (lambda ()
                    (octocat-vui-text-body
                     (octocat-diff--patch-text
-                     patch (octocat-diff--index comments) raw width)))))))
+                     patch filename (octocat-diff--index comments) raw width)))))))
 
 (defun octocat-diff--line-count (files)
   "Return how many lines FILES take with every patch shown."

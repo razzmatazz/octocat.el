@@ -1,0 +1,47 @@
+acme/rocket@1a954628a960aaef81d7b2d4521929579f3541e6  [Browse files]
+Author:     Mei Chen <mchen@example.com> @mchen
+AuthorDate: Fri Oct 23 10:00:00 2026 +0000  (2 hours ago)
+Commit:     GitHub <noreply@github.com> @web-flow
+CommitDate: Fri Oct 23 10:00:00 2026 +0000  (2 hours ago)
+Parent:     3f9c2a1
+Branch:     main
+
+Render footnotes in Markdown pages (#131)
+
+Footnotes were left as their Markdown source.  Render them, and show a
+note in a popup when its reference is hovered.
+
+Checks (4)  CI: ✓
+  ✓ lint           GitHub Actions  2m00s  6 hours ago
+  ✓ test (stable)  GitHub Actions  6m00s  6 hours ago
+  ✓ test (beta)    GitHub Actions  7m00s  6 hours ago
+  ✓ docs           GitHub Actions  3m00s  6 hours ago
+
+Files (2)  [Collapse all]
+▾ M src/markdown.rs  +2 -1
+@@ -12,6 +12,7 @@ pub fn render(source: &str) -> String {
+     let mut options = Options::empty();
+     options.insert(Options::ENABLE_TABLES);
+-    options.insert(Options::ENABLE_STRIKETHROUGH);
++    options.insert(Options::ENABLE_STRIKETHROUGH | Options::ENABLE_FOOTNOTES);
++    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+     let parser = Parser::new_ext(source, options);
+     let mut out = String::with_capacity(source.len() * 3 / 2);
+     html::push_html(&mut out, parser);
+▾ M src/theme/main.js  +5 -1
+@@ -1,9 +1,14 @@
+ /* The default theme's scripts: the search box and, on a page with
+    footnotes, their previews. */
+ import { initSearch } from "./search.js";
++import { initFootnotes } from "./footnotes.js";
+
+ const PAGES = "/search-index.json";
+
+ document.addEventListener("DOMContentLoaded", () => {
+-  initSearch(document.querySelector("#search"), PAGES);
++  const root = document.querySelector("main");
++  initSearch(document.querySelector("#search"), PAGES, { limit: 10 });
++  if (root.querySelector(".footnote-ref")) {
++    initFootnotes(root);
++  }
+ });

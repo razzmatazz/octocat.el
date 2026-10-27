@@ -98,5 +98,55 @@ The comments come as a sync snapshot."
     (should-not (string-search "comments (" out))
     (should (string-search "+x" out))))
 
+(defun octocat-diff-tests--face-at (line col)
+  "Return the faces at COL of LINE, as a list."
+  (ensure-list (get-text-property col 'face line)))
+
+(ert-deftest octocat-diff-test-highlight-sides ()
+  "Each side of a hunk is highlighted apart, under the diff faces.
+The old side's comment, left open, does not reach the added line."
+  (pcase-let ((`(,_ ,removed ,added ,context)
+               (octocat-diff--lines
+                "@@ -1,2 +1,2 @@\n-/* int x;\n+int x;\n return;\n" "a.c")))
+    (should (memq 'font-lock-comment-face (octocat-diff-tests--face-at removed 4)))
+    (should (memq 'diff-removed (octocat-diff-tests--face-at removed 4)))
+    (should (equal (octocat-diff-tests--face-at added 0) '(diff-indicator-added)))
+    (should (equal (octocat-diff-tests--face-at added 1)
+                   '(font-lock-type-face diff-added)))
+    (should (memq 'font-lock-keyword-face (octocat-diff-tests--face-at context 1)))
+    (should (equal (substring-no-properties context) " return;"))))
+
+(ert-deftest octocat-diff-test-highlight-hunks ()
+  "Every hunk is highlighted, each on its own."
+  (should (memq 'font-lock-keyword-face
+                (octocat-diff-tests--face-at
+                 (car (last (octocat-diff--lines
+                             "@@ -1 +1 @@\n-int a;\n+int b;\n@@ -9 +9 @@\n return;" "a.c")))
+                 1))))
+
+(ert-deftest octocat-diff-test-highlight-limit ()
+  "A patch past `octocat-diff--highlight-limit' is only in the diff faces."
+  (let ((octocat-diff--highlight-limit 10))
+    (should (equal (octocat-diff-tests--face-at
+                    (nth 1 (octocat-diff--lines "@@ -1 +1 @@\n+return 1;" "a.c"))
+                    1)
+                   '(diff-added)))))
+
+(ert-deftest octocat-diff-test-highlight-no-mode ()
+  "A file with no mode of its own is only in the diff faces."
+  (should (equal (octocat-diff-tests--face-at
+                  (nth 1 (octocat-diff--lines "@@ -1 +1 @@\n-int x;\n+int y;" "notes"))
+                  1)
+                 '(diff-removed))))
+
+(ert-deftest octocat-diff-test-walk-note ()
+  "A `\\ No newline' note takes no line of the new file."
+  (let (seen)
+    (octocat-diff--walk "@@ -1 +1,2 @@\n-a\n\\ No newline at end of file\n+a\n+b"
+                        (octocat-diff--index
+                         (list (json-parse-string "{\"line\":2,\"body\":\"x\"}")))
+                        (lambda (line placed) (when placed (push line seen))))
+    (should (equal seen '("+b")))))
+
 (provide 'octocat-diff-tests)
 ;;; octocat-diff-tests.el ends here

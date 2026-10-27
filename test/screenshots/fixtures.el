@@ -550,6 +550,55 @@ Closes #97"
       :files ,octocat-screenshots--pr-128-files))
   "The commit that merged #128, as the REST API gives it.")
 
+(defconst octocat-screenshots--commit-131-files
+  `[(:sha ,(octocat-screenshots--sha "f4") :filename "src/markdown.rs" :status "modified"
+     :additions 2 :deletions 1 :changes 3
+     :patch "@@ -12,6 +12,7 @@ pub fn render(source: &str) -> String {
+     let mut options = Options::empty();
+     options.insert(Options::ENABLE_TABLES);
+-    options.insert(Options::ENABLE_STRIKETHROUGH);
++    options.insert(Options::ENABLE_STRIKETHROUGH | Options::ENABLE_FOOTNOTES);
++    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+     let parser = Parser::new_ext(source, options);
+     let mut out = String::with_capacity(source.len() * 3 / 2);
+     html::push_html(&mut out, parser);")
+    (:sha ,(octocat-screenshots--sha "f5") :filename "src/theme/main.js" :status "modified"
+     :additions 5 :deletions 1 :changes 6
+     :patch "@@ -1,9 +1,14 @@
+ /* The default theme's scripts: the search box and, on a page with
+    footnotes, their previews. */
+ import { initSearch } from \"./search.js\";
++import { initFootnotes } from \"./footnotes.js\";
+ 
+ const PAGES = \"/search-index.json\";
+ 
+ document.addEventListener(\"DOMContentLoaded\", () => {
+-  initSearch(document.querySelector(\"#search\"), PAGES);
++  const root = document.querySelector(\"main\");
++  initSearch(document.querySelector(\"#search\"), PAGES, { limit: 10 });
++  if (root.querySelector(\".footnote-ref\")) {
++    initFootnotes(root);
++  }
+ });")]
+  "The files commit #131 changes.")
+
+(defconst octocat-screenshots--commit-131-rest
+  (let ((at (octocat-screenshots--ago (* 2 octocat-screenshots--h))))
+    `(:sha ,octocat-screenshots--head
+      :html_url ,(format "https://github.com/acme/rocket/commit/%s" octocat-screenshots--head)
+      :commit (:message "Render footnotes in Markdown pages (#131)
+
+Footnotes were left as their Markdown source.  Render them, and show a
+note in a popup when its reference is hovered."
+               :author (:name "Mei Chen" :email "mchen@example.com" :date ,at)
+               :committer (:name "GitHub" :email "noreply@github.com" :date ,at))
+      :author ,(octocat-screenshots--user "mchen")
+      :committer ,(octocat-screenshots--user "web-flow")
+      :parents [(:sha ,octocat-screenshots--commit)]
+      :stats (:total 9 :additions 7 :deletions 2)
+      :files ,octocat-screenshots--commit-131-files))
+  "The commit that merged #131, the tip of main, as the REST API gives it.")
+
 (defun octocat-screenshots--check-run (id name conclusion started minutes)
   "Return check run ID, NAME, ended in CONCLUSION, STARTED ago, lasting MINUTES."
   `(:id ,id :name ,name :status "completed" :conclusion ,conclusion
@@ -807,6 +856,8 @@ FIELDS, a plist, override the rest."
 
       ;; Commit
       ("commit" (,(concat "commits/" octocat-screenshots--commit)) ,octocat-screenshots--commit-rest)
+      ("commit" (,(concat "commits/" octocat-screenshots--head)) ,octocat-screenshots--commit-131-rest)
+      ("commit-comments" (,(concat "commits/" octocat-screenshots--head)) [])
       ("checks" ("check-runs")
        (:total_count 4
         :check_runs [,(octocat-screenshots--check-run 27100200310 "lint" "success" (* 6 h) 2)
