@@ -53,6 +53,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'dom)
 (require 'seq)
 (require 'subr-x)
 (require 'url-util)
@@ -125,24 +126,6 @@
   :group 'octocat-markdown)
 
 ;;;; Inline
-
-(defconst octocat-markdown--entities
-  '(("amp" . "&") ("lt" . "<") ("gt" . ">") ("quot" . "\"")
-    ("apos" . "'")
-    ;; Plain spaces, so `nobreak-char-display' does not mark them.
-    ("nbsp" . " ") ("ensp" . " ") ("emsp" . " ") ("thinsp" . " ")
-    ("zwj" . "\u200d") ("zwnj" . "\u200c") ("shy" . "")
-    ("ndash" . "–") ("mdash" . "—") ("hellip" . "…") ("bull" . "•")
-    ("middot" . "·") ("lsquo" . "‘") ("rsquo" . "’") ("ldquo" . "“")
-    ("rdquo" . "”") ("laquo" . "«") ("raquo" . "»") ("copy" . "©")
-    ("reg" . "®") ("trade" . "™") ("deg" . "°") ("times" . "×")
-    ("divide" . "÷") ("plusmn" . "±") ("larr" . "←") ("rarr" . "→")
-    ("uarr" . "↑") ("darr" . "↓") ("harr" . "↔") ("check" . "✓")
-    ("cross" . "✗") ("star" . "☆") ("starf" . "★") ("hearts" . "♥")
-    ("sect" . "§") ("para" . "¶") ("euro" . "€") ("pound" . "£")
-    ("cent" . "¢") ("yen" . "¥"))
-  "Named character references understood by the inline renderer.
-The ones READMEs use; any other can be written as `&#NNN;' or `&#xHHH;'.")
 
 (defun octocat-markdown--face (string &rest faces)
   "Return STRING with FACES added on top of any faces it already has."
@@ -501,66 +484,136 @@ relative SRC is a file of the repository, which it carries as :file,
                        s)
     s))
 
-(defun octocat-markdown--img (tag)
-  "Return the HTML <img> TAG as an image link."
-  (let ((attr (lambda (name)
-                (and (string-match (concat "\\b" name "=\"\\([^\"]*\\)\"") tag)
-                     (match-string 1 tag)))))
-    (octocat-markdown--image
-     (funcall attr "alt") (or (funcall attr "src") "")
-     ;; A percentage is of a width GitHub's page has and this one lacks.
-     (let ((w (funcall attr "width")))
-       (and w (string-match-p "\\`[0-9]+\\'" w) (string-to-number w))))))
+;;;; HTML
+;;
+;; HTML is read by libxml, as `shr' reads it, into a `dom.el' tree:
+;; nesting, attributes and every entity come out right.  Without
+;; libxml, HTML shows as its source.
 
-(defun octocat-markdown--tag-re (names)
-  "Return a regexp matching an HTML element NAMES (an alternation) on one line.
-Group 2 is its content."
-  (concat "<\\(" names "\\)\\b[^>]*>\\(.*?\\)</\\1 *>"))
+(defconst octocat-markdown--html-tag-re
+  "<\\(?:!--\\(?:.\\|\n\\)*?-->\\|/?[a-zA-Z][a-zA-Z0-9-]*\\(?:[ \t\n/][^<>]*\\)?>\\)"
+  "Matches an HTML tag or comment, as CommonMark reads them.")
+
+(defun octocat-markdown--html-protect (text)
+  "Return TEXT, outside HTML tags, made safe for libxml to read as text.
+A `<' or `&' that starts no tag or entity is escaped, so `a < b' stays.
+Whitespace becomes characters libxml does not drop between elements, as
+it drops the space between two <img>s; `octocat-markdown--html-parse'
+turns them back."
+  (replace-regexp-in-string
+   "&\\(?:#?[a-zA-Z0-9]+;\\)?\\|[< \t\n]"
+   (lambda (m) (pcase m
+                 ("&" "&amp;") ("<" "&lt;")
+                 (" " " ") ("\t" " ") ("\n" " ")
+                 (_ m)))
+   text t t))
+
+(defun octocat-markdown--html-unprotect (node)
+  "Return NODE with the whitespace `octocat-markdown--html-protect' hid."
+  (if (stringp node)
+      (apply #'string (mapcar (lambda (c) (pcase c (#xa0 ?\s) (#x2007 ?\t) (#x2028 ?\n) (_ c)))
+                              node))
+    `(,(dom-tag node) ,(dom-attributes node)
+      ,@(mapcar #'octocat-markdown--html-unprotect (dom-children node)))))
+
+(defun octocat-markdown--html-parse (html)
+  "Return the nodes of the HTML fragment HTML, or nil without libxml."
+  (when (libxml-available-p)
+    (let ((pos 0) parts)
+      (while (string-match octocat-markdown--html-tag-re html pos)
+        (push (octocat-markdown--html-protect (substring html pos (match-beginning 0))) parts)
+        (unless (string-prefix-p "<!--" (match-string 0 html))
+          (push (match-string 0 html) parts))
+        (setq pos (match-end 0)))
+      (push (octocat-markdown--html-protect (substring html pos)) parts)
+      (with-temp-buffer
+        (apply #'insert (nreverse parts))
+        (mapcar #'octocat-markdown--html-unprotect
+                (dom-children (car (dom-by-tag (libxml-parse-html-region
+                                                (point-min) (point-max))
+                                               'body))))))))
+
+(defun octocat-markdown--html-source (node)
+  "Return NODE as HTML source again."
+  (if (stringp node)
+      (replace-regexp-in-string "[&<]" (lambda (c) (if (equal c "&") "&amp;" "&lt;")) node t t)
+    (with-temp-buffer (dom-print node) (buffer-string))))
+
+(defvar octocat-markdown--held nil
+  "What `octocat-markdown--inline' rendered of markdown, out of the HTML.")
+
+(defun octocat-markdown--img (node)
+  "Return the HTML <img> NODE as an image link."
+  (octocat-markdown--image
+   (dom-attr node 'alt) (or (dom-attr node 'src) "")
+   ;; A percentage is of a width GitHub's page has and this one lacks.
+   (let ((w (dom-attr node 'width)))
+     (and w (string-match-p "\\`[0-9]+\\'" w) (string-to-number w)))))
 
 (defun octocat-markdown--html-script (text table)
-  "Return TEXT in the scripts of TABLE, or rendered as is if it has no form."
+  "Return TEXT in the scripts of TABLE, or as is if it has no form."
   (if (cl-every (lambda (c) (assq c table)) text)
       (octocat-markdown--script text table "")
-    (octocat-markdown--inline text)))
+    text))
 
-(defvar octocat-markdown--html-rules
-  `((,"<!--.*?-->" ,(lambda (_m) ""))
-    (,"<br */?>" ,(lambda (_m) " "))
-    (,"<img\\b[^>]*>" ,(lambda (m) (octocat-markdown--img (nth 0 m))))
-    (,"<kbd>\\(.*?\\)</kbd>"
-     ,(lambda (m) (octocat-markdown--face (concat "[" (nth 1 m) "]")
-                                          'octocat-markdown-code)))
-    (,"<a +[^>]*?href=[\"']\\([^\"']*\\)[\"'][^>]*>\\(.*?\\)</a *>"
-     ,(lambda (m) (octocat-markdown--link (octocat-markdown--inline (nth 2 m))
-                                          (nth 1 m))))
-    (,(octocat-markdown--tag-re "b\\|strong")
-     ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m)) 'bold)))
-    (,(octocat-markdown--tag-re "i\\|em")
-     ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m)) 'italic)))
-    (,(octocat-markdown--tag-re "s\\|del\\|strike")
-     ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
-                                          'octocat-markdown-strike)))
-    (,(octocat-markdown--tag-re "u\\|ins")
-     ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
-                                          'underline)))
-    (,(octocat-markdown--tag-re "sup")
-     ,(lambda (m) (octocat-markdown--html-script (nth 2 m) octocat-markdown--super)))
-    (,(octocat-markdown--tag-re "sub")
-     ,(lambda (m) (octocat-markdown--html-script (nth 2 m) octocat-markdown--sub)))
-    (,"</?[a-zA-Z][^<>\n]*>" ,(lambda (_m) ""))
-    (,"&\\(#?[a-zA-Z0-9]+\\);"
-     ,(lambda (m)
-        (let* ((name (nth 1 m))
-               (code (cond ((string-match "\\`#\\([0-9]+\\)\\'" name)
-                            (string-to-number (match-string 1 name)))
-                           ((string-match "\\`#[xX]\\([[:xdigit:]]+\\)\\'" name)
-                            (string-to-number (match-string 1 name) 16)))))
-          (cond ((assoc name octocat-markdown--entities)
-                 (cdr (assoc name octocat-markdown--entities)))
-                ((and code (< 0 code (1+ (max-char t)))) (string code))
-                (t (nth 0 m)))))))
-  "Inline rules for HTML, as in `octocat-markdown--inline-rules'.
-They alone apply inside <pre>, where markdown is not rendered.")
+(defconst octocat-markdown--html-block-tags
+  '("address" "article" "aside" "blockquote" "body" "center" "dd" "details"
+    "dialog" "dir" "div" "dl" "dt" "fieldset" "figcaption" "figure" "footer"
+    "form" "h1" "h2" "h3" "h4" "h5" "h6" "header" "hr" "html" "legend" "li"
+    "main" "menu" "nav" "ol" "p" "section" "summary" "table" "tbody" "td"
+    "tfoot" "th" "thead" "tr" "ul")
+  "HTML elements that start a CommonMark HTML block, and break the line.")
+
+(defconst octocat-markdown--html-block-re
+  (concat "\\` \\{0,3\\}</?"
+          (regexp-opt octocat-markdown--html-block-tags t)
+          "\\(?:[ \t/>]\\|\\'\\)")
+  "Matches the line an HTML block starts on.")
+
+(defun octocat-markdown--dom-inline (node &optional mode)
+  "Return NODE, from `octocat-markdown--html-parse', as rendered text.
+<br> breaks the line.  MODE `cell' runs whitespace together, as in a
+table cell; `block' does too, and block elements break the line as
+well; `pre' keeps it, and gives <code> no face of its own."
+  (if (stringp node)
+      (if (memq mode '(cell block)) (replace-regexp-in-string "[ \t\n]+" " " node) node)
+    (let* ((tag  (dom-tag node))
+           (text (mapconcat (lambda (n) (octocat-markdown--dom-inline n mode))
+                            (dom-children node) ""))
+           (text (pcase tag
+                   ('x-md (nth (string-to-number (dom-attr node 'i)) octocat-markdown--held))
+                   ('br "\n")
+                   ('img (octocat-markdown--img node))
+                   ('a (if-let* ((url (dom-attr node 'href)))
+                           (octocat-markdown--link text url)
+                         text))
+                   ((or 'b 'strong 'h1 'h2 'h3 'h4 'h5 'h6) (octocat-markdown--face text 'bold))
+                   ((or 'i 'em) (octocat-markdown--face text 'italic))
+                   ((or 's 'del 'strike) (octocat-markdown--face text 'octocat-markdown-strike))
+                   ((or 'u 'ins) (octocat-markdown--face text 'underline))
+                   ((or 'code 'tt)
+                    (if (eq mode 'pre) text (octocat-markdown--face text 'octocat-markdown-code)))
+                   ('kbd (octocat-markdown--face (concat "[" text "]") 'octocat-markdown-code))
+                   ('sup (octocat-markdown--html-script text octocat-markdown--super))
+                   ('sub (octocat-markdown--html-script text octocat-markdown--sub))
+                   ('li (if (eq mode 'block) (concat "• " text) text))
+                   (_ text))))
+      (if (not (and (eq mode 'block)
+                    (member (symbol-name tag) octocat-markdown--html-block-tags)))
+          text
+        (when (or (eq tag 'center) (equal (downcase (or (dom-attr node 'align) "")) "center"))
+          (setq text (copy-sequence text))
+          (put-text-property 0 (length text) 'octocat-markdown-center t text))
+        (concat "\n" text "\n")))))
+
+(defun octocat-markdown--html-text (html &optional mode)
+  "Return the HTML fragment HTML rendered, as `octocat-markdown--dom-inline'.
+MODE is as for it.
+Without libxml, return HTML as it is."
+  (if (libxml-available-p)
+      (mapconcat (lambda (n) (octocat-markdown--dom-inline n mode))
+                 (octocat-markdown--html-parse html) "")
+    html))
 
 (defconst octocat-markdown--label-re
   (concat "\\(\\(?:[^][\n]\\|\\[[^][\n]*\\]"
@@ -579,11 +632,6 @@ It may hold bracketed text, and so an image, as badges are linked:
      ,(lambda (m) (nth 1 m)))
     (,"<\\(https?://[^>[:space:]]+\\)>"
      ,(lambda (m) (octocat-markdown--link (nth 1 m) (nth 1 m))))
-    ;; Not among the HTML rules: inside <pre> it is already code.
-    (,(octocat-markdown--tag-re "code\\|tt")
-     ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
-                                          'octocat-markdown-code)))
-    ,@octocat-markdown--html-rules
     ;; Images show their alt text; links their label.
     (,"!\\[\\([^]\n]*\\)\\](\\([^)[:space:]]+\\)\\(?: +\"[^\"]*\"\\)?)"
      ,(lambda (m) (octocat-markdown--image (nth 1 m) (nth 2 m))))
@@ -695,14 +743,14 @@ kept.")
     "sup" "sub" "kbd")
   "HTML elements that `octocat-markdown--balance' carries across lines.")
 
-(defun octocat-markdown--balance (line open &optional html)
+(defun octocat-markdown--balance (line open)
   "Return (LINE2 . OPEN2): LINE closing the elements left open in it.
 OPEN is the elements left open by the lines before, as (NAME . TAG),
 innermost first; LINE2 reopens them and OPEN2 is what LINE2 leaves open.
 The inline rules see one line at a time, so this lets an element span
-lines.  Tags in code spans are skipped unless HTML (inside <pre>)."
+lines.  Tags in code spans are skipped."
   (let* ((line  (concat (mapconcat #'cdr (reverse open) "") line))
-         (scan  (if html line (replace-regexp-in-string "`[^`\n]+`" "" line)))
+         (scan  (replace-regexp-in-string "`[^`\n]+`" "" line))
          (pos   0))
     (while (string-match "<\\(/?\\)\\([a-zA-Z]+\\)\\b[^<>]*>" scan pos)
       (let ((name (downcase (match-string 2 scan))))
@@ -714,9 +762,6 @@ lines.  Tags in code spans are skipped unless HTML (inside <pre>)."
       (setq pos (match-end 0)))
     (cons (concat line (mapconcat (lambda (o) (concat "</" (car o) ">")) open ""))
           open)))
-
-(defvar octocat-markdown--rules nil
-  "Inline rules in force, or nil for `octocat-markdown--inline-rules'.")
 
 (defun octocat-markdown--mask-attributes (text)
   "Return TEXT with the attributes of its HTML tags blanked out.
@@ -731,16 +776,15 @@ does not start or end emphasis or a link: tags bind tighter."
     masked))
 
 (defun octocat-markdown--inline (text)
-  "Return TEXT (a single line) with inline markdown rendered."
+  "Return TEXT (a single line) with inline markdown rendered.
+The rules match TEXT with its tags' attributes masked.  What they
+render is held out of the text between, which is read as HTML."
   (let ((pos 0) (out nil) (len (length text))
         (masked (octocat-markdown--mask-attributes text)))
     (while (< pos len)
       (let (best)                       ; (BEG END DATA RULE)
-        (dolist (rule (or octocat-markdown--rules octocat-markdown--inline-rules))
-          ;; HTML rules, which start with `<', read the attributes.
-          (when (string-match (car rule)
-                              (if (string-prefix-p "<" (car rule)) text masked)
-                              pos)
+        (dolist (rule octocat-markdown--inline-rules)
+          (when (string-match (car rule) masked pos)
             (let ((group (or (nth 2 rule) 0)))
               (when (or (null best) (< (match-beginning group) (car best)))
                 (setq best (list (match-beginning group) (match-end group)
@@ -751,9 +795,20 @@ does not start or end emphasis or a link: tags bind tighter."
             (progn (push (substring text pos) out) (setq pos len))
           (pcase-let ((`(,beg ,end ,groups ,rule) best))
             (push (substring text pos beg) out)
-            (push (funcall (cadr rule) groups) out)
+            (push (list (funcall (cadr rule) groups)) out)
             (setq pos end)))))
-    (apply #'concat (nreverse out))))
+    (setq out (nreverse out))
+    (if (not (and (libxml-available-p)
+                  (cl-some (lambda (o) (and (stringp o) (string-match-p "[<&]" o))) out)))
+        (mapconcat (lambda (o) (if (stringp o) o (car o))) out "")
+      (let ((octocat-markdown--held (delq nil (mapcar (lambda (o) (and (consp o) (car o))) out)))
+            (i -1))
+        (subst-char-in-string
+         ?\n ?\s
+         (octocat-markdown--html-text
+          (mapconcat (lambda (o) (if (stringp o) o
+                                   (format "<x-md i=\"%d\"></x-md>" (cl-incf i))))
+                     out "")))))))
 
 ;;;; Blocks
 ;;
@@ -955,14 +1010,9 @@ text onto several lines, with a rule between rows to keep them apart."
 (defconst octocat-markdown--html-table-re "\\` \\{0,3\\}<table\\b"
   "Matches the line an HTML table starts on.")
 
-(defvar octocat-markdown--html-block-rules
-  (cons (assoc (octocat-markdown--tag-re "code\\|tt") octocat-markdown--inline-rules)
-        octocat-markdown--html-rules)
-  "Inline rules for HTML that is not markdown, outside <pre>: <code> too.")
-
 (defun octocat-markdown--html-table-source (line lines)
   "Return (SOURCE AFTER REST) of the <table> opened on LINE, the rest in LINES.
-SOURCE is the table's text inside its own tags, AFTER what follows the
+SOURCE is the table's text up to its closing tag, AFTER what follows the
 closing tag on its line, and REST the lines after that.  A table that
 is never closed runs to the end of LINES."
   (let ((case-fold-search t) (level 0) body after)
@@ -976,83 +1026,55 @@ is never closed runs to the end of LINES."
             (setq after (substring l pos)
                   l     (substring l 0 (match-beginning 0)))))
         (push l body)))
-    (let ((source (string-join (nreverse body) "\n")))
-      (string-match "<table\\b[^>]*>" source)
-      (list (substring source (match-end 0)) (or after "") lines))))
+    (list (string-join (nreverse body) "\n") (or after "") lines)))
 
-(defun octocat-markdown--html-attr (attrs name)
-  "Return the value of attribute NAME in a tag's ATTRS, or nil."
-  (let ((case-fold-search t))
-    (and (string-match (concat "\\b" name
-                               "=\\(?:\"\\([^\"]*\\)\"\\|'\\([^']*\\)'\\|\\([^[:space:]>]+\\)\\)")
-                       attrs)
-         (or (match-string 1 attrs) (match-string 2 attrs) (match-string 3 attrs)))))
-
-(defun octocat-markdown--html-table-parse (source)
-  "Return (ROWS . LOOSE) of the table SOURCE, from inside its tags.
+(defun octocat-markdown--html-table-parse (table)
+  "Return (ROWS . LOOSE) of the TABLE node.
 Each row is a list of cells, each (HEADER-P ALIGN SPAN CONTENT), CONTENT
-its source.  LOOSE is the text in no cell, which browsers move out of
+its nodes.  A cell outside a <tr> starts a row, as browsers read it.
+LOOSE is the source of what is in no cell, which browsers move out of
 the table.  A table inside a cell is left in its CONTENT."
-  (let ((case-fold-search t) (pos 0) (mark 0) (nest 0) rows row cell loose)
-    (let ((close-cell (lambda (end)
-                        (when cell
-                          (push (append (butlast cell)
-                                        (list (substring source (car (last cell)) end)))
-                                row)
-                          (setq cell nil))))
-          (close-row (lambda () (when row (push (nreverse row) rows) (setq row nil)))))
-      (while (string-match
-              "<\\(/?\\)\\(table\\|thead\\|tbody\\|tfoot\\|tr\\|th\\|td\\)\\b\\([^>]*\\)>"
-              source pos)
-        (let ((beg (match-beginning 0)) (end (match-end 0))
-              (closing (not (string-empty-p (match-string 1 source))))
-              (name (downcase (match-string 2 source)))
-              (attrs (match-string 3 source)))
-          (setq pos end)
-          (cond
-           ((equal name "table") (setq nest (max 0 (+ nest (if closing -1 1)))))
-           ((> nest 0))
-           (t
-            (if cell
-                (funcall close-cell beg)
-              (push (substring source mark beg) loose))
-            (setq mark end)
-            (pcase name
-              ((or "td" "th")
-               (unless closing
-                 (setq cell (list (equal name "th")
-                                  (pcase (downcase
-                                          (or (octocat-markdown--html-attr attrs "align") ""))
-                                    ("center" 'center) ("right" 'right) (_ 'left))
-                                  (max 1 (min 100 (string-to-number
-                                                   (or (octocat-markdown--html-attr attrs "colspan")
-                                                       "1"))))
-                                  end))))
-              ;; Rows end at <tr>, </tr> and the table's sections.
-              (_ (funcall close-row)))))))
-      (if cell
-          (funcall close-cell (length source))
-        (push (substring source mark) loose))
-      (funcall close-row))
-    (cons (nreverse rows) (string-trim (string-join (nreverse loose) "\n")))))
+  (let (rows row loose)
+    (cl-labels ((close-row () (when row (push (nreverse row) rows) (setq row nil)))
+                (walk (nodes)
+                  (dolist (n nodes)
+                    (pcase (car-safe n)
+                      ((or 'thead 'tbody 'tfoot 'tr)
+                       (close-row) (walk (dom-children n)) (close-row))
+                      ((or 'td 'th)
+                       (push (list (eq (car n) 'th)
+                                   (pcase (downcase (or (dom-attr n 'align) ""))
+                                     ("center" 'center) ("right" 'right) (_ 'left))
+                                   (max 1 (min 100 (string-to-number
+                                                    (or (dom-attr n 'colspan) "1"))))
+                                   (dom-children n))
+                             row))
+                      (_ (push (octocat-markdown--html-source n) loose))))))
+      (walk (dom-children table))
+      (close-row))
+    (cons (nreverse rows) (string-trim (apply #'concat (nreverse loose))))))
 
 (defun octocat-markdown--html-cell-lines (cell width)
   "Return the rendered lines of table CELL, fit to WIDTH columns or nil.
 As on GitHub, its content is HTML up to its first blank line, where
 whitespace runs together and <br> breaks the line, and markdown after."
-  (let* ((case-fold-search t)
-         (content (nth 3 cell))
-         (split   (string-match "\n[ \t]*\n" content))
-         (md      (and split (substring content (match-end 0))))
-         (html    (string-trim (replace-regexp-in-string
-                                "[ \t\n]+" " " (substring content 0 split))))
-         (lines   (unless (and md (string-empty-p html))
-                    (let ((octocat-markdown--rules octocat-markdown--html-block-rules))
-                      (cl-mapcan (lambda (l)
-                                   (let ((s (octocat-markdown--inline (string-trim l))))
-                                     (if width (octocat-markdown--wrap s width) (list s))))
-                                 (split-string html "<br */?>")))))
-         (lines   (append lines
+  (let ((nodes (nth 3 cell)) html md)
+    (while nodes
+      (let ((n (pop nodes)))
+        (if (not (and (stringp n) (string-match "\n[ \t]*\n" n)))
+            (push n html)
+          (push (substring n 0 (match-beginning 0)) html)
+          (setq md (mapconcat #'octocat-markdown--html-source
+                              (cons (substring n (match-end 0)) nodes) "")
+                nodes nil))))
+    (let* ((html  (string-trim (mapconcat (lambda (n) (octocat-markdown--dom-inline n 'cell))
+                                          (nreverse html) "")))
+           (lines (unless (and md (string-empty-p html))
+                    (cl-mapcan (lambda (l)
+                                 (let ((s (string-trim l)))
+                                   (if width (octocat-markdown--wrap s width) (list s))))
+                               (split-string html "\n"))))
+           (lines (append lines
                           (and md
                                (let ((octocat-markdown--avail width))
                                  (mapcar #'car
@@ -1060,10 +1082,10 @@ whitespace runs together and <br> breaks the line, and markdown after."
                                           (octocat-markdown--tidy
                                            (octocat-markdown--blocks (split-string md "\n")))
                                           width))))))
-         (lines   (or lines (list ""))))
-    (if (car cell)
-        (mapcar (lambda (l) (octocat-markdown--face l 'bold)) lines)
-      lines)))
+           (lines (or lines (list ""))))
+      (if (car cell)
+          (mapcar (lambda (l) (octocat-markdown--face l 'bold)) lines)
+        lines))))
 
 (defun octocat-markdown--html-image (lines)
   "Return the image plist of cell LINES that are an image alone, or nil."
@@ -1081,9 +1103,12 @@ whitespace runs together and <br> breaks the line, and markdown after."
 Return (ROWS . REST), REST being the lines after the closing tag.  Text
 after the tag on its line is HTML, as on GitHub."
   (pcase-let* ((`(,source ,after ,rest) (octocat-markdown--html-table-source line lines))
-               (`(,rows . ,loose) (octocat-markdown--html-table-parse source))
-               (after (let ((octocat-markdown--rules octocat-markdown--html-block-rules))
-                        (string-trim (octocat-markdown--inline after)))))
+               (`(,rows . ,loose)
+                (octocat-markdown--html-table-parse
+                 (seq-find (lambda (n) (eq (car-safe n) 'table))
+                           (octocat-markdown--html-parse source))))
+               (after (string-trim (subst-char-in-string
+                                    ?\n ?\s (octocat-markdown--html-text after 'cell)))))
     (cons (append (and rows (octocat-markdown--html-table-rows rows))
                   (and (not (string-empty-p loose))
                        (octocat-markdown--tidy
@@ -1102,7 +1127,7 @@ too wide for `octocat-markdown--avail' is stacked."
          (rows  (mapcar (lambda (r)
                           (mapcar (lambda (c) (cons c (octocat-markdown--html-cell-lines c nil)))
                                   (append r (make-list (- ncols (apply #'+ (mapcar #'cl-third r)))
-                                                       (list nil 'left 1 "")))))
+                                                       (list nil 'left 1 nil)))))
                         rows))
          (image-row (lambda (r)
                       (and (cl-some (lambda (c) (octocat-markdown--html-image (cdr c))) r)
@@ -1417,7 +1442,8 @@ draw it, the source is shown, labelled as such."
       (string-match-p "\\` \\{0,3\\}#\\{1,6\\}\\(?: \\|\\'\\)" line)
       (string-match-p octocat-markdown--details-re line)
       (string-match-p octocat-markdown--pre-re line)
-      (string-match-p octocat-markdown--html-table-re line)))
+      (string-match-p octocat-markdown--html-table-re line)
+      (string-match-p octocat-markdown--html-block-re line)))
 
 (defun octocat-markdown--lazy-p (prev next)
   "Return non-nil if NEXT continues, unindented, the paragraph line PREV.
@@ -1506,6 +1532,21 @@ and start collapsed unless the tag has `open'."
                     rows)))
          lines)))))
 
+(defun octocat-markdown--html-block (line lines)
+  "Render the HTML block opened on LINE, the rest of it in LINES.
+Return (ROWS . REST).  As in CommonMark, it runs to a blank line and is
+HTML alone: an indented line in it is no code, and markdown stays."
+  (let ((block (list line)))
+    (while (and lines (not (octocat-markdown--blank-p (car lines))))
+      (push (pop lines) block))
+    (cons (delq nil (mapcar (lambda (l) (let ((l (string-trim l)))
+                                          (and (not (string-empty-p l))
+                                               (cons (octocat-markdown--image-row l) ""))))
+                            (split-string (octocat-markdown--html-text
+                                           (string-join (nreverse block) "\n") 'block)
+                                          "\n")))
+          lines)))
+
 (defun octocat-markdown--pre (line lines)
   "Render the <pre> element opened on LINE, the rest of it in LINES.
 Return (ROWS . REST), REST being the lines after the closing tag.  As
@@ -1519,20 +1560,15 @@ on GitHub, its whitespace is kept and only HTML inside it is rendered."
         (push l body)
       (push (substring l 0 (match-beginning 0)) body)
       (setq rest (string-trim (substring l (match-end 0)))))
-    (setq body (nreverse body))
+    (setq body (split-string (octocat-markdown--html-text
+                              (string-join (nreverse body) "\n") 'pre)
+                             "\n"))
     ;; HTML drops a newline straight after <pre>, and one before </pre>
     ;; ends the last line rather than adding an empty one.
     (when (and (cdr body) (string-empty-p (car body))) (pop body))
     (when (and (cdr body) (string-empty-p (car (last body))))
       (setq body (butlast body)))
-    (cons (octocat-markdown--code-block
-           (let ((octocat-markdown--rules octocat-markdown--html-rules)
-                 (open nil))
-             (mapcar (lambda (l)
-                       (pcase-let ((`(,l2 . ,o) (octocat-markdown--balance l open t)))
-                         (setq open o)
-                         (octocat-markdown--inline l2)))
-                     body)))
+    (cons (octocat-markdown--code-block body)
           (if (member rest '(nil "")) lines (cons rest lines)))))
 
 (defun octocat-markdown--blocks (lines &optional depth)
@@ -1550,12 +1586,17 @@ DEPTH is the list nesting depth, which picks the bullet."
          ((string-match-p "\\`[ \t]*<!--" line)
           (while (and (not (string-match-p "-->" line)) lines)
             (setq line (pop lines))))
-         ((string-match-p octocat-markdown--pre-re line)
+         ((and (libxml-available-p) (string-match-p octocat-markdown--pre-re line))
           (pcase-let ((`(,rows . ,rest) (octocat-markdown--pre line lines)))
             (dolist (r rows) (push r out))
             (setq lines rest)))
-         ((string-match-p octocat-markdown--html-table-re line)
+         ((and (libxml-available-p) (string-match-p octocat-markdown--html-table-re line))
           (pcase-let ((`(,rows . ,rest) (octocat-markdown--html-table line lines)))
+            (dolist (r rows) (push r out))
+            (setq lines rest)))
+         ((and (libxml-available-p) (string-match-p octocat-markdown--html-block-re line)
+               (not (string-match-p octocat-markdown--details-re line)))
+          (pcase-let ((`(,rows . ,rest) (octocat-markdown--html-block line lines)))
             (dolist (r rows) (push r out))
             (setq lines rest)))
          ((string-match octocat-markdown--fence-re line)
@@ -1787,7 +1828,9 @@ HANG, a string, or that many spaces, as a `wrap-prefix' would show it."
 Emacs would wrap them at the window's edge, past a capped page's column.
 Prose breaks at spaces, hung as a wrap would be; code breaks anywhere,
 each continuation marked with an arrow.  Tables were already fit where
-they can be.  A nil WIDTH leaves ROWS as they are."
+they can be.  A row of HTML that is centred is centred in WIDTH, but an
+image alone, whose width shown is not known here.  A nil WIDTH leaves
+ROWS as they are."
   (if (null width)
       rows
     (cl-mapcan
@@ -1795,36 +1838,50 @@ they can be.  A nil WIDTH leaves ROWS as they are."
        (let* ((s    (car row))
               (hang (cdr row))
               (has  (lambda (prop) (text-property-not-all 0 (length s) prop nil s))))
-         (cond
-          ;; An image's link is replaced whole by the image.
-          ((or (<= (string-width s) width) (funcall has 'octocat-markdown-table)
-               (funcall has 'octocat-markdown-image))
-           (list row))
-          ((funcall has 'octocat-markdown-code)
-           (let* ((head  (car (octocat-markdown--cut s width)))
-                  (room  (max 1 (- width (string-width hang) 2)))
-                  (arrow (propertize "↪ " 'face 'octocat-markdown-dimmed))
-                  (code  (lambda (str)
-                           (add-face-text-property 0 (length str)
-                                                   'octocat-markdown-code-block t str)
-                           (put-text-property 0 (length str) 'octocat-markdown-code t str)
-                           str)))
-             ;; Only the arrow joins the box: HANG lies outside it.
-             (setq arrow (concat hang (funcall code arrow)))
-             ;; Pad each piece, the last above all, so the block's
-             ;; background reaches the column like its other lines.
-             (cons (cons head hang)
-                   (mapcar (lambda (piece)
-                             (cons (concat arrow piece
-                                           (funcall code (make-string
-                                                          (max 0 (- room (string-width piece)))
-                                                          ?\s)))
-                                   hang))
-                           (octocat-markdown--cut (substring s (length head)) room)))))
-          (t
-           (mapcar (lambda (l) (cons l hang))
-                   (octocat-markdown-wrap-hung s width hang))))))
+         (octocat-markdown--center
+          (and (not (funcall has 'octocat-markdown-image))
+               (> (length s) 0) (get-text-property 0 'octocat-markdown-center s))
+          width
+          (cond
+           ;; An image's link is replaced whole by the image.
+           ((or (<= (string-width s) width) (funcall has 'octocat-markdown-table)
+                (funcall has 'octocat-markdown-image))
+            (list row))
+           ((funcall has 'octocat-markdown-code)
+            (let* ((head  (car (octocat-markdown--cut s width)))
+                   (room  (max 1 (- width (string-width hang) 2)))
+                   (arrow (propertize "↪ " 'face 'octocat-markdown-dimmed))
+                   (code  (lambda (str)
+                            (add-face-text-property 0 (length str)
+                                                    'octocat-markdown-code-block t str)
+                            (put-text-property 0 (length str) 'octocat-markdown-code t str)
+                            str)))
+              ;; Only the arrow joins the box: HANG lies outside it.
+              (setq arrow (concat hang (funcall code arrow)))
+              ;; Pad each piece, the last above all, so the block's
+              ;; background reaches the column like its other lines.
+              (cons (cons head hang)
+                    (mapcar (lambda (piece)
+                              (cons (concat arrow piece
+                                            (funcall code (make-string
+                                                           (max 0 (- room (string-width piece)))
+                                                           ?\s)))
+                                    hang))
+                            (octocat-markdown--cut (substring s (length head)) room)))))
+           (t
+            (mapcar (lambda (l) (cons l hang))
+                    (octocat-markdown-wrap-hung s width hang)))))))
      rows)))
+
+(defun octocat-markdown--center (center width rows)
+  "Return ROWS centred in WIDTH columns if CENTER, else as they are."
+  (if (not center)
+      rows
+    (mapcar (lambda (r)
+              (cons (concat (make-string (max 0 (/ (- width (string-width (car r))) 2)) ?\s)
+                            (car r))
+                    (cdr r)))
+            rows)))
 
 (defun octocat-markdown--finish (rows indent)
   "Join ROWS (see `octocat-markdown--blocks') into a string prefixed by INDENT.

@@ -26,7 +26,10 @@ You need:
 
 - **Emacs 29.1 or later**, built with SQLite (`(sqlite-available-p)`
   returns `t`).  On Emacs 29 it also needs JSON support
-  (`(json-available-p)`); Emacs 30 and later always have it.
+  (`(json-available-p)`); Emacs 30 and later always have it.  HTML in
+  READMEs, issues and comments is read with libxml2
+  (`(libxml-available-p)`), which Emacs builds with whenever it finds
+  the library; without it, that HTML shows as its source.
 - **[`gh`](https://cli.github.com/)**, installed (`brew install gh`,
   `apt install gh`, `winget install GitHub.cli`) and logged in with
   `gh auth login`.  Octocat looks for it on `exec-path`, then in the

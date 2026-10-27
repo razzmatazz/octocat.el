@@ -179,6 +179,61 @@ settings are in [the configuration](configuration.md).
 "
   "The docs/guide.md of acme/rocket.")
 
+(defconst octocat-screenshots--html
+  "<p align=\"center\">
+  <a href=\"https://rocket.acme.dev\">
+    <picture>
+      <source media=\"(prefers-color-scheme: dark)\" srcset=\"images/logo-dark.svg\">
+      <img src=\"images/logo.svg\" alt=\"rocket\" width=\"120\">
+    </picture>
+  </a>
+</p>
+
+<h3 align=\"center\">Static sites, built in a blink</h3>
+
+<p align=\"center\">
+  <a href=\"https://github.com/acme/rocket/actions\"><img src=\"https://img.shields.io/badge/build-passing-green\" alt=\"build\"></a>
+  <a href=\"https://crates.io/crates/rocket-ssg\"><img src=\"https://img.shields.io/badge/crates.io-0.10-orange\" alt=\"crates.io\"></a>
+  <a href=\"LICENSE\"><img src=\"https://img.shields.io/badge/license-MIT-blue\" alt=\"license\"></a>
+</p>
+
+<p align=\"center\">
+  <a href=\"#install\">Install</a> &middot;
+  <a href=\"#themes\">Themes</a> &middot;
+  <a href=\"https://rocket.acme.dev/docs\">Docs</a>
+</p>
+
+Press <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop `rocket serve`.  Builds take
+O(n<sup>2</sup>) time no more &mdash; H<sub>2</sub>O &amp; friends &copy; 2026.
+
+<details>
+<summary><b>Supported platforms</b> (click to expand)</summary>
+
+- Linux, macOS and Windows
+- Any CPU **Rust** supports
+
+</details>
+
+<table>
+  <tr>
+    <th>Default theme</th>
+    <th>Dark theme</th>
+  </tr>
+  <tr>
+    <td><img src=\"images/theme-light.png\" alt=\"light\" width=\"300\"></td>
+    <td><img src=\"images/theme-dark.png\" alt=\"dark\" width=\"300\"></td>
+  </tr>
+</table>
+
+<div>
+  <ul>
+    <li><b>Fast</b>: parses each template once</li>
+    <li><i>Small</i>: one binary, <code>4 MB</code></li>
+  </ul>
+</div>
+"
+  "The docs/html.md of acme/rocket: HTML as READMEs write it.")
+
 (defconst octocat-screenshots--src
   `[,(octocat-screenshots--tree-entry "src/build.rs" "blob" 8120)
     ,(octocat-screenshots--tree-entry "src/cache.rs" "blob" 2304)
@@ -718,6 +773,12 @@ FIELDS, a plist, override the rest."
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/guide.md"))))))
       (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "docs/guide.md") 0 8)) ()
        ,(octocat-screenshots--base64 octocat-screenshots--guide))
+      ("repo-head" ("dir=main:docs/html.md")
+       (:data (:repository (:object (:history (:totalCount 3 :nodes [,(octocat-screenshots--history-node
+                                                                       (nth 2 octocat-screenshots--commits))]))
+                            :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/html.md"))))))
+      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "docs/html.md") 0 8)) ()
+       ,(octocat-screenshots--base64 octocat-screenshots--html))
       (,(format "tree-dir-%s" (substring (octocat-screenshots--sha "root") 0 8)) ()
        (:sha ,(octocat-screenshots--sha "root") :tree ,octocat-screenshots--root :truncated :false))
       (,(format "tree-dir-%s" (substring (octocat-screenshots--sha "src") 0 8)) ()

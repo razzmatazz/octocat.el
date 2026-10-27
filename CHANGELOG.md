@@ -5,7 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 * A `*`, `~` or `(` in an HTML link's href no longer breaks the markdown around it
-* Markdown decodes more HTML entities, like `&ensp;` and `&mdash;`, and hex `&#x…;` ones
+* Markdown decodes every HTML entity, like `&ensp;` and `&mdash;`, and hex `&#x…;` ones
+* HTML in markdown is read by libxml2: nested and unclosed tags show as on GitHub
+* An HTML block, like a README's `<p align="center">` of linked images, no longer shows as code
+* HTML `align="center"` and `<center>` centre their text, and `<li>` items show bullets
 * Merges, comments, reviews and other changes sent to GitHub show in every mode line
 * `#123` refs and branch links opened in another window no longer open in the same one
 * Markdown keeps the blank line written after a list, as GitHub shows it

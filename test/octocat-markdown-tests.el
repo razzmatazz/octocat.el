@@ -103,8 +103,56 @@ the window's point; mid-render that scrambled the page."
   "Named, decimal and hex character references are decoded; unknown ones kept."
   (should (equal (substring-no-properties
                   (octocat-markdown-render
-                   "<a>x</a>&ensp;Vulns &mdash; &#x2713; &#65; &bogus; &#x110000;" ""))
-                 "x Vulns — ✓ A &bogus; &#x110000;\n")))
+                   "<a>x</a>&ensp;Vulns &mdash; &#x2713; &#65; &bogus; a < b && c" ""))
+                 "x\u2002Vulns — ✓ A &bogus; a < b && c\n"))
+  ;; In a code span, an entity is as written.
+  (should (equal (octocat-markdown-tests--md "`&amp;`") "&amp;\n")))
+
+(ert-deftest octocat-markdown-test-html-parsed ()
+  "HTML is read by a parser: nesting, quoted `>', unclosed tags, spacing."
+  (let ((out (octocat-markdown-render "<b><b>x</b> y</b> z" "")))
+    (should (equal (substring-no-properties out) "x y z\n"))
+    (should (memq 'bold (ensure-list (octocat-markdown-tests--prop out "y" 'face))))
+    (should-not (octocat-markdown-tests--prop out "z" 'face)))
+  (let ((out (octocat-markdown-render "<a href=\"https://x.org/?a=1>2\">y</a>" "")))
+    (should (equal (substring-no-properties out) "y\n"))
+    (should (equal (octocat-markdown-tests--prop out "y" 'octocat-markdown-url)
+                   "https://x.org/?a=1>2")))
+  (should (memq 'bold (ensure-list (octocat-markdown-tests--prop
+                                    (octocat-markdown-render "<b>open y" "") "y" 'face))))
+  ;; libxml drops the space between two images unless kept from it.
+  (should (equal (octocat-markdown-tests--md
+                  "<img src=\"https://x/a.png\" alt=\"a\"> <img src=\"https://x/b.png\" alt=\"b\">")
+                 "[image: a] [image: b]\n")))
+
+(ert-deftest octocat-markdown-test-html-block ()
+  "An HTML block runs to a blank line: indented lines in it are no code."
+  (let ((out (octocat-markdown-render
+              (concat "<p align=\"center\">\n  <a href=\"https://x.org/map\">\n"
+                      "    <img src=\"https://x/map.svg\" alt=\"map\" width=\"100%\">\n"
+                      "  </a>\n</p>\n\n**after**")
+              "" 40)))
+    (should (equal (substring-no-properties out) "[image: map]\n\nafter\n"))
+    (should (equal (octocat-markdown-tests--prop out "[image" 'octocat-markdown-url)
+                   "https://x.org/map"))
+    (should (octocat-markdown-tests--prop out "[image" 'octocat-markdown-image)))
+  ;; Block elements break the line; markdown in the block stays as written.
+  (should (equal (octocat-markdown-tests--md "<div><h1>Title</h1><p>a **b**</p></div>")
+                 "Title\na **b**\n"))
+  (should (equal (octocat-markdown-tests--md "<ul>\n  <li>one</li>\n  <li><b>two</b></li>\n</ul>")
+                 "• one\n• two\n"))
+  ;; Centred where the width is known.
+  (should (equal (octocat-markdown-tests--md "<p align=\"center\">hi</p>\n\n<center>abcd</center>" 10)
+                 "    hi\n\n   abcd\n"))
+  (should (equal (octocat-markdown-tests--md "<p align=\"center\">hi</p>") "hi\n")))
+
+(ert-deftest octocat-markdown-test-html-without-libxml ()
+  "Without libxml, HTML shows as its source; markdown is still rendered."
+  (cl-letf (((symbol-function 'libxml-available-p) #'ignore))
+    (should (equal (octocat-markdown-tests--md "<b>x</b> *y* &amp;")
+                   "<b>x</b> y &amp;\n"))
+    (should (string-match-p "<table>" (octocat-markdown-tests--md
+                                       "<table><tr><td>a</td></tr></table>")))))
 
 (ert-deftest octocat-markdown-test-emphasis-around-tag ()
   "Markdown in a tag's attributes is not rendered, nor ends emphasis."

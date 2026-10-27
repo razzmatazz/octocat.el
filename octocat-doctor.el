@@ -81,10 +81,11 @@
   (let ((gh (octocat--gh-executable)))
     (concat
      "Code\n"
-     (format "  Emacs %s, %s, native-comp %s, SQLite %s\n"
+     (format "  Emacs %s, %s, native-comp %s, SQLite %s, libxml %s\n"
              emacs-version system-configuration
              (if (and (fboundp 'native-comp-available-p) (native-comp-available-p)) "yes" "no")
-             (if (and (fboundp 'sqlite-available-p) (sqlite-available-p)) "yes" "no"))
+             (if (and (fboundp 'sqlite-available-p) (sqlite-available-p)) "yes" "no")
+             (if (libxml-available-p) "yes" "no: HTML in markdown shows as source"))
      (format "  GC          threshold %s, percentage %s; %d so far, %.1f s in all\n"
              (file-size-human-readable gc-cons-threshold) gc-cons-percentage
              gcs-done gc-elapsed)

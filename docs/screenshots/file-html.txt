@@ -1,0 +1,20 @@
+acme/rocket[main ▾]:/docs/html.md  [Browse tree]
+
+dependabot[bot]  Bump toml from 0.8.12 to 0.8.19          a625406 · committed 1 day ago  [3 commits]
+[image: rocket]
+
+                                   Static sites, built in a blink
+
+                         [image: build] [image: crates.io] [image: license]
+
+                                      Install · Themes · Docs
+
+Press [Ctrl]+[C] to stop rocket serve.  Builds take
+O(n²) time no more — H₂O & friends © 2026.
+▸ Supported platforms (click to expand)
+• Linux, macOS and Windows
+• Any CPU Rust supports
+Default theme                                      Dark theme
+[image: light]                                     [image: dark]
+• Fast: parses each template once
+• Small: one binary, 4 MB

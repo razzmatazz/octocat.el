@@ -47,6 +47,16 @@ buffer of its own.
 [As text](file.txt)
 <!-- /screenshot -->
 
+HTML as READMEs write it, rendered: a centred logo in a `<picture>`, a
+row of linked badges, `<kbd>`, `<sup>` and entities, a `<details>`, a
+table of screenshots shown side by side, and an HTML list.
+
+<!-- screenshot: (tree--open-file-by-path "acme/rocket" "main" "docs/html.md") :name "file-html" -->
+![file-html](file-html.png)
+
+[As text](file-html.txt)
+<!-- /screenshot -->
+
 `[342 commits]` lists the history of the branch:
 
 <!-- screenshot: (commit-list "acme/rocket") -->
