@@ -124,6 +124,13 @@ The old side's comment, left open, does not reach the added line."
                              "@@ -1 +1 @@\n-int a;\n+int b;\n@@ -9 +9 @@\n return;" "a.c")))
                  1))))
 
+(ert-deftest octocat-diff-test-highlight-added-file ()
+  "An added file is highlighted whole: a comment spans its lines."
+  (let ((lines (octocat-diff--lines
+                "@@ -0,0 +1,4 @@\n+/* A note\n+   over lines\n+ */\n+int x;" "a.c")))
+    (should (memq 'font-lock-comment-face (octocat-diff-tests--face-at (nth 2 lines) 4)))
+    (should (memq 'font-lock-type-face (octocat-diff-tests--face-at (nth 4 lines) 1)))))
+
 (ert-deftest octocat-diff-test-highlight-limit ()
   "A patch past `octocat-diff--highlight-limit' is only in the diff faces."
   (let ((octocat-diff--highlight-limit 10))

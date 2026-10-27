@@ -131,9 +131,10 @@ them, its message, its checks and its files.
 <!-- /screenshot -->
 
 Its files, unfolded, are in the diff faces, the code highlighted as
-its major mode would; here JavaScript, as `js-mode` does:
+its major mode would; here JavaScript, as `js-mode` does.  An added
+file is highlighted whole, as the file itself:
 
-<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-diff" -->
+<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-diff" :press ("Expand all") -->
 ![commit-diff](commit-diff.png)
 
 [As text](commit-diff.txt)

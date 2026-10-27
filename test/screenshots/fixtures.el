@@ -562,6 +562,36 @@ Closes #97"
      let parser = Parser::new_ext(source, options);
      let mut out = String::with_capacity(source.len() * 3 / 2);
      html::push_html(&mut out, parser);")
+    (:sha ,(octocat-screenshots--sha "f6") :filename "src/theme/footnotes.js" :status "added"
+     :additions 27 :deletions 0 :changes 27
+     :patch "@@ -0,0 +1,27 @@
++/**
++ * Footnote previews: hovering a footnote's reference shows the note in
++ * a popup, so readers need not jump to the end of the page.
++ */
++export function initFootnotes(root) {
++  for (const ref of root.querySelectorAll(\".footnote-ref a\")) {
++    const note = document.getElementById(ref.hash.slice(1));
++    if (!note) continue;
++    ref.addEventListener(\"mouseenter\", () => show(ref, note));
++    ref.addEventListener(\"mouseleave\", hide);
++  }
++}
++
++let popup = null;
++
++function show(ref, note) {
++  hide();
++  popup = document.createElement(\"aside\");
++  popup.className = \"footnote-popup\";
++  popup.innerHTML = note.innerHTML;
++  ref.after(popup);
++}
++
++function hide() {
++  popup?.remove();
++  popup = null;
++}")
     (:sha ,(octocat-screenshots--sha "f5") :filename "src/theme/main.js" :status "modified"
      :additions 5 :deletions 1 :changes 6
      :patch "@@ -1,9 +1,14 @@
@@ -595,7 +625,7 @@ note in a popup when its reference is hovered."
       :author ,(octocat-screenshots--user "mchen")
       :committer ,(octocat-screenshots--user "web-flow")
       :parents [(:sha ,octocat-screenshots--commit)]
-      :stats (:total 9 :additions 7 :deletions 2)
+      :stats (:total 36 :additions 34 :deletions 2)
       :files ,octocat-screenshots--commit-131-files))
   "The commit that merged #131, the tip of main, as the REST API gives it.")
 

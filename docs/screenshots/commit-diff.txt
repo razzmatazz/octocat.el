@@ -17,7 +17,7 @@ Checks (4)  CI: ✓
   ✓ test (beta)    GitHub Actions  7m00s  6 hours ago
   ✓ docs           GitHub Actions  3m00s  6 hours ago
 
-Files (2)  [Collapse all]
+Files (3)  [Collapse all]
 ▾ M src/markdown.rs  +2 -1
 @@ -12,6 +12,7 @@ pub fn render(source: &str) -> String {
      let mut options = Options::empty();
@@ -28,6 +28,35 @@ Files (2)  [Collapse all]
      let parser = Parser::new_ext(source, options);
      let mut out = String::with_capacity(source.len() * 3 / 2);
      html::push_html(&mut out, parser);
+▾ A src/theme/footnotes.js  +27 -0
+@@ -0,0 +1,27 @@
++/**
++ * Footnote previews: hovering a footnote's reference shows the note in
++ * a popup, so readers need not jump to the end of the page.
++ */
++export function initFootnotes(root) {
++  for (const ref of root.querySelectorAll(".footnote-ref a")) {
++    const note = document.getElementById(ref.hash.slice(1));
++    if (!note) continue;
++    ref.addEventListener("mouseenter", () => show(ref, note));
++    ref.addEventListener("mouseleave", hide);
++  }
++}
++
++let popup = null;
++
++function show(ref, note) {
++  hide();
++  popup = document.createElement("aside");
++  popup.className = "footnote-popup";
++  popup.innerHTML = note.innerHTML;
++  ref.after(popup);
++}
++
++function hide() {
++  popup?.remove();
++  popup = null;
++}
 ▾ M src/theme/main.js  +5 -1
 @@ -1,9 +1,14 @@
  /* The default theme's scripts: the search box and, on a page with
