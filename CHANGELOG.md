@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Markdown keeps the blank line written after a list, as GitHub shows it
 * Pages on screen refresh on their own every minute, and runs in progress every 10 s
 * Refreshes slow down while you're away or on battery, and stop on low battery
 * On low battery, folds open at once and spinners stand still, saving power

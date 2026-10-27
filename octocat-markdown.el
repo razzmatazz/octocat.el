@@ -1636,7 +1636,8 @@ DEPTH is the list nesting depth, which picks the bullet."
                          (cons (if firstp
                                    (concat label " " (car r))
                                  (concat (make-string pad ?\s) (car r)))
-                               (concat (make-string pad ?\s) (cdr r))))
+                               (concat (make-string pad ?\s) (cdr r)))
+                         'list)
                         out)
                   (setq firstp nil))))
             ;; Items of one list sit together: no blank row between them.
@@ -1664,10 +1665,11 @@ DEPTH is the list nesting depth, which picks the bullet."
                   out))))))
     (nreverse out)))
 
-(defun octocat-markdown--standout (row)
-  "Return ROW marked as a block that needs no blank row beside it."
+(defun octocat-markdown--standout (row &optional kind)
+  "Return ROW marked as a block that needs no blank row beside it.
+KIND `list' marks a list's row, which keeps a blank row after it."
   (let ((s (copy-sequence (car row))))
-    (put-text-property 0 (length s) 'octocat-markdown-standout t s)
+    (put-text-property 0 (length s) 'octocat-markdown-standout (or kind t) s)
     (cons s (cdr row))))
 
 (defun octocat-markdown--standout-p (row)
@@ -1684,7 +1686,8 @@ DEPTH is the list nesting depth, which picks the bullet."
   "Return ROWS packed tightly, to save vertical space.
 Blank rows at either end, doubled blank rows, and blank rows next to a
 block that stands out by itself (rule, table, heading, quote) are
-dropped.  Blank rows beside a code box or between paragraphs are kept.
+dropped, but for one after a list, which GitHub shows too.  Blank rows
+beside a code box or between paragraphs are kept.
 A heading after other rows always gets one blank row above it, so
 sections are easy to tell apart."
   (let (out)
@@ -1701,7 +1704,7 @@ sections are easy to tell apart."
                      (not (string-empty-p (caar tight))))
             (push (cons "" "") tight))
           (unless (and (string-empty-p (car r))
-                       (or (octocat-markdown--standout-p prev)
+                       (or (eq (octocat-markdown--standout-p prev) t)
                            (octocat-markdown--standout-p (car out))))
             (push r tight))
           (setq prev r)))

@@ -13,6 +13,8 @@ open    Assignees @srivera · Labels  performance
 │ 2. Generate 1,000 pages into content/
 │ 3. time rocket build
 │
+│ The same site built in 0.9s on 0.8.
+│
 ● @srivera commented  1 week ago
 │ Confirmed.  Parsing each template once per build should fix most of it; I'll take this.
 │

@@ -429,9 +429,9 @@ the window's point; mid-render that scrambled the page."
                  "mermaid diagram (source)\n A-->B \n")))
 
 (ert-deftest octocat-markdown-test-tight-lists-and-quotes ()
-  "Blank rows around lists and inside list items and quotes are dropped."
-  (should (equal (octocat-markdown-tests--md "text\n\n- a\n\n- b\n\nafter")
-                 "text\n• a\n• b\nafter\n"))
+  "Blank rows between and inside list items and in quotes are dropped."
+  (should (equal (octocat-markdown-tests--md "- a\n\n- b\n- c")
+                 "• a\n• b\n• c\n"))
   ;; A blank row inside an item survives only between paragraphs (and is
   ;; indented like the rest of the item).
   (should (equal (octocat-markdown-tests--md "- one\n\n  two\n\n  ---\n\n  three")
@@ -444,7 +444,14 @@ the window's point; mid-render that scrambled the page."
   (should (equal (octocat-markdown-tests--md "- a\nb\n- c\n# h")
                  "• a\n  b\n• c\n\nh\n"))
   ;; After a blank row it is a paragraph of its own.
-  (should (equal (octocat-markdown-tests--md "- a\n\nb") "• a\nb\n")))
+  (should (equal (octocat-markdown-tests--md "- a\n\nb") "• a\n\nb\n")))
+
+(ert-deftest octocat-markdown-test-blank-row-after-list ()
+  "A blank line after a list is kept, as on GitHub; one before it is not."
+  (should (equal (octocat-markdown-tests--md "text\n\n- a\n- b\n\nafter")
+                 "text\n• a\n• b\n\nafter\n"))
+  ;; A heading after a list still gets just one blank row.
+  (should (equal (octocat-markdown-tests--md "- a\n\n\n# h") "• a\n\nh\n")))
 
 (ert-deftest octocat-markdown-test-quote-lazy-continuation ()
   "A paragraph in a quote runs on into lines with fewer `>', as on GitHub."
