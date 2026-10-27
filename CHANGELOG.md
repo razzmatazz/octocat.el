@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `#123` refs and branch links opened in another window no longer open in the same one
 * Markdown keeps the blank line written after a list, as GitHub shows it
 * Pages on screen refresh on their own every minute, and runs in progress every 10 s
 * Refreshes slow down while you're away or on battery, and stop on low battery

@@ -91,6 +91,29 @@
       (kill-buffer list)
       (kill-buffer page))))
 
+(ert-deftest octocat-core-test-other-window-after-gh ()
+  "A page shown once `gh' answers goes to the other window the command asked for."
+  (let ((list (generate-new-buffer "*octocat-test-list*"))
+        (page (generate-new-buffer "*octocat-test-page*"))
+        answer)
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (with-current-buffer list (octocat-core-test-page-mode))
+          (with-current-buffer page (octocat-core-test-page-mode))
+          (switch-to-buffer list)
+          (cl-letf (((symbol-function 'octocat--run-gh)
+                     (lambda (_name _args _parse callback) (setq answer callback))))
+            (octocat-call-in-other-window
+             (lambda ()
+               (octocat--open-ref-path "o/r" '("feature" "x")
+                                       (lambda (_ref _path) (octocat-display-buffer page))))))
+          (funcall answer '(2))
+          (should (eq (window-buffer) page))
+          (should (eq (window-buffer (next-window)) list)))
+      (kill-buffer list)
+      (kill-buffer page))))
+
 (ert-deftest octocat-core-test-format-label-colour ()
   (let* ((label (make-hash-table :test 'equal)))
     (puthash "name" "bug" label)

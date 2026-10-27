@@ -1133,13 +1133,14 @@ is asked first and the matching view opened."
           "resolve-ref"
           (list "api" (format "repos/%s/issues/%d" repo id) "--jq" ".pull_request != null")
           #'string-trim
-          (lambda (result)
-            (cond ((eq (car-safe result) 'error)
-                   (message "Octocat: cannot open %s#%d: %s" repo id (cdr result)))
-                  ((not (octocat--still-selected-p buf))
-                   (message "Octocat: not opening %s#%d, as you moved on" repo id))
-                  ((equal result "true") (octocat-pr-open repo id))
-                  (t (octocat-issue-open repo id))))))))))
+          (octocat--display-later
+           (lambda (result)
+             (cond ((eq (car-safe result) 'error)
+                    (message "Octocat: cannot open %s#%d: %s" repo id (cdr result)))
+                   ((not (octocat--still-selected-p buf))
+                    (message "Octocat: not opening %s#%d, as you moved on" repo id))
+                   ((equal result "true") (octocat-pr-open repo id))
+                   (t (octocat-issue-open repo id)))))))))))
 
 ;;;; github.com links
 ;;
@@ -1269,11 +1270,12 @@ and path are nil: the default branch."
                            (gethash "data" (json-parse-string json :null-object nil)))))
            (seq-filter (lambda (i) (and r (gethash (format "p%d" i) r)))
                        (number-sequence 1 n))))
-       (lambda (resolved)
-         ;; Unresolved, the first segment is the ref, which the page reports.
-         (let ((split (octocat--split-ref-path
-                       segments (if (eq (car-safe resolved) 'error) nil resolved))))
-           (funcall open (car split) (cdr split))))))))
+       (octocat--display-later
+        (lambda (resolved)
+          ;; Unresolved, the first segment is the ref, which the page reports.
+          (let ((split (octocat--split-ref-path
+                        segments (if (eq (car-safe resolved) 'error) nil resolved))))
+            (funcall open (car split) (cdr split)))))))))
 
 (defun octocat-browse-url (url &rest _)
   "Open github.com URL in the octocat view showing it.
@@ -1444,6 +1446,15 @@ pane."
            (direction . right)
            (inhibit-same-window . t))))
     (funcall fn)))
+
+(defun octocat--display-later (fn)
+  "Return FN, made to show a page where the command calling this would.
+For a page shown once `gh' answers: by then the command has returned,
+and `octocat-call-in-other-window''s binding with it."
+  (let ((action display-buffer-overriding-action))
+    (lambda (&rest args)
+      (let ((display-buffer-overriding-action action))
+        (apply fn args)))))
 
 (defun octocat-visit ()
   "Do what RET does at point.
