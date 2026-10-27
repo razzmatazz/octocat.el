@@ -132,7 +132,8 @@ them, its message, its checks and its files.
 
 Its files, unfolded, are in the diff faces, the code highlighted as
 its major mode would; here JavaScript, as `js-mode` does.  An added
-file is highlighted whole, as the file itself:
+file is highlighted whole, as the file itself.  A binary file, and one
+whose diff is too large for GitHub to send, show no diff:
 
 <!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-diff" :press ("Expand all") -->
 ![commit-diff](commit-diff.png)

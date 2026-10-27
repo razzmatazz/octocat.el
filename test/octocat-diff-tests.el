@@ -186,5 +186,12 @@ A line added whole, and a change of spaces alone, are not."
                         (lambda (line placed) (when placed (push line seen))))
     (should (equal seen '("+b")))))
 
+(ert-deftest octocat-diff-test-underline-last ()
+  "Only the last line of a file's diff is underlined, across the width."
+  (let ((text (octocat-diff--underline-last "+a\n+b" 10)))
+    (should-not (memq 'underline (octocat-diff-tests--face-at text 1)))
+    (should (memq 'underline (octocat-diff-tests--face-at text 4)))
+    (should (equal (get-text-property 5 'display text) '(space :align-to 10)))))
+
 (provide 'octocat-diff-tests)
 ;;; octocat-diff-tests.el ends here

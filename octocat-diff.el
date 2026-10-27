@@ -404,12 +404,23 @@ faces."
 
 ;;;; Components
 
-(defun octocat-diff--file (file comments bulk raw width)
+(defun octocat-diff--underline-last (text width)
+  "Return TEXT with its last line underlined across WIDTH columns.
+The underline closes a file's diff, setting it apart from the next
+file; it shows only once the diff is unfolded to its end."
+  (let ((text  (copy-sequence text))
+        (start (1+ (or (cl-position ?\n text :from-end t) -1))))
+    (add-face-text-property start (length text) 'underline t text)
+    (concat text (propertize " " 'face 'underline 'display `(space :align-to ,width)))))
+
+(defun octocat-diff--file (file comments bulk raw width last)
   "Return one changed FILE (a files-endpoint hash-table) with its inline COMMENTS.
 It is folded unless BULK, as for `octocat-vui-fold', says otherwise; a
 file without a patch is just its heading, which says why when the file
 changed: it is binary, or too large for GitHub to show.  RAW and WIDTH
-are as for `octocat-diff--comment-lines'."
+are as for `octocat-diff--comment-lines'.  Unless LAST, the file being
+the last one, its diff ends underlined, see
+`octocat-diff--underline-last'."
   (let* ((filename (or (gethash "filename" file) ""))
          (status   (or (gethash "status" file) "modified"))
          (patch    (let ((p (gethash "patch" file)))
@@ -434,11 +445,12 @@ are as for `octocat-diff--comment-lines'."
         :header (lambda (open toggle)
                   (octocat-vui-fold-header "" open toggle title
                                            '("RET: show diff" . "RET: hide diff")))
-        :deps (list patch comments raw width)
+        :deps (list patch comments raw width last)
         :prepare (lambda ()
-                   (octocat-vui-text-body
-                    (octocat-diff--patch-text
-                     patch filename (octocat-diff--index comments) raw width)))))))
+                   (let ((text (octocat-diff--patch-text
+                                patch filename (octocat-diff--index comments) raw width)))
+                     (octocat-vui-text-body
+                      (if last text (octocat-diff--underline-last text width)))))))))
 
 (defun octocat-diff--line-count (files)
   "Return how many lines FILES take with every patch shown."
@@ -509,7 +521,8 @@ when the diff shows some comment, runs `octocat-diff-toggle-comments'."
                  (lambda (f)
                    (octocat-diff--file f (and (not hide)
                                               (cdr (assoc (gethash "filename" f) by-path)))
-                                       bulk raw width))
+                                       bulk raw width
+                                       (eq f (aref files (1- (length files))))))
                  (lambda (f) (gethash "filename" f)))))))
 
 (defun octocat-diff-files-section (files by-path hide raw width &optional underline)

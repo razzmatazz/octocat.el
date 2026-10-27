@@ -551,7 +551,13 @@ Closes #97"
   "The commit that merged #128, as the REST API gives it.")
 
 (defconst octocat-screenshots--commit-131-files
-  `[(:sha ,(octocat-screenshots--sha "f4") :filename "src/markdown.rs" :status "modified"
+  ;; GitHub leaves out the patch of a binary file, and of one whose diff
+  ;; is too large.
+  `[(:sha ,(octocat-screenshots--sha "f7") :filename "docs/assets/footnote-popup.png" :status "added"
+     :additions 0 :deletions 0 :changes 0)
+    (:sha ,(octocat-screenshots--sha "f8") :filename "docs/assets/search-index.json" :status "modified"
+     :additions 18240 :deletions 17902 :changes 36142)
+    (:sha ,(octocat-screenshots--sha "f4") :filename "src/markdown.rs" :status "modified"
      :additions 2 :deletions 1 :changes 3
      :patch "@@ -12,6 +12,7 @@ pub fn render(source: &str) -> String {
      let mut options = Options::empty();
@@ -625,7 +631,7 @@ note in a popup when its reference is hovered."
       :author ,(octocat-screenshots--user "mchen")
       :committer ,(octocat-screenshots--user "web-flow")
       :parents [(:sha ,octocat-screenshots--commit)]
-      :stats (:total 36 :additions 34 :deletions 2)
+      :stats (:total 36178 :additions 18274 :deletions 17904)
       :files ,octocat-screenshots--commit-131-files))
   "The commit that merged #131, the tip of main, as the REST API gives it.")
 
