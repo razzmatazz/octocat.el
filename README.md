@@ -13,7 +13,7 @@ pages:
 - **Pull requests** — conversation, reviews, checks, diffs, merging
 - **Issues** — lists filtered by GitHub search, comments, new issues
 - **Actions** — runs, jobs and their logs, workflows
-- **github.com links** — open in octocat wherever you follow them in Emacs
+- **github.com links** — open in octocat wherever you follow them in Emacs (opt-in)
 
 See [every page](docs/screenshots/README.md), drawn from made-up data.
 
@@ -39,6 +39,16 @@ Then clone this repository and load it:
 ```emacs-lisp
 (add-to-list 'load-path "/path/to/octocat.el")
 (require 'octocat)
+```
+
+Optional extras:
+
+```emacs-lisp
+;; Open github.com links from anywhere in Emacs in octocat
+(octocat-github-links-mode 1)
+
+;; Doom Emacs: let `q' step back to octocat pages
+(add-hook 'doom-real-buffer-functions #'octocat-buffer-p)
 ```
 
 | Command | Opens |
@@ -73,8 +83,7 @@ Then clone this repository and load it:
 | `C-c C-l` | History of the file shown |
 
 Some keys do more than fits here; see [Keys in more
-depth](docs/usage.md#keys-in-more-depth).  On Doom Emacs, let `q` reach
-octocat pages with `(add-hook 'doom-real-buffer-functions #'octocat-buffer-p)`.
+depth](docs/usage.md#keys-in-more-depth).
 
 ## More
 
