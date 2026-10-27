@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A PR's Merge box heading is underlined across the page, setting it apart
 * Issues, pull requests, comments and reviews show their reactions, such as 👍 3
 * New and edited comments and descriptions show at once, with a spinner until saved
 * Expanding a long comment no longer scrolls the window; RET still folds it back

@@ -380,10 +380,11 @@ A blocked merge is not refused: it may pass with admin rights."
   (cond ((eq (gethash "isDraft" pr) t) "Draft pull requests cannot be merged.")
         ((octocat-pr--conflicts-p pr) "This branch has conflicts that must be resolved")))
 
-(defun octocat-pr--merge-section (pr on-visit-check merging &optional awaiting approving)
+(defun octocat-pr--merge-section (pr width on-visit-check merging &optional awaiting approving)
   "Return the vnodes of the merge box of open PR, or nil.
 Like GitHub's, it holds the review, checks and conflict status, then
-the merge (or, for a draft, the ready for review) button.
+the merge (or, for a draft, the ready for review) button.  Its heading
+is underlined across WIDTH columns, setting it apart from the timeline.
 ON-VISIT-CHECK is called by RET on a check.  MERGING, a label such as
 \"Merging pull request…\", shows a change under way in place of the
 buttons.  AWAITING are the workflow runs awaiting approval, under the
@@ -393,7 +394,7 @@ under way in its place."
     (let ((draft  (eq (gethash "isDraft" pr) t))
           (checks (or (octocat--get pr "statusCheckRollup") [])))
       (append
-       (list (vui-text "Merge" :face 'octocat-section-heading))
+       (list (octocat-vui-section-heading "Merge" width))
        (mapcan (lambda (row)
                  (pcase-let ((`(,kind ,title ,subtitle ,below) row))
                    (append
@@ -1015,7 +1016,7 @@ again."
                   (alist-get 'action mutating))
                  (list (vui-newline))
                  ;; An open PR's checks are in its merge box, as on GitHub.
-                 (or (octocat-pr--merge-section pr on-visit-check
+                 (or (octocat-pr--merge-section pr (octocat--markdown-width) on-visit-check
                                                 (alist-get 'merge mutating)
                                                 awaiting (alist-get 'approve mutating))
                      (octocat-checks-block

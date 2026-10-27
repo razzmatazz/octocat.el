@@ -1107,6 +1107,12 @@ what is below it without a blank line."
                    (list (vui-text (make-string (max 0 (- width used)) ?\s)
                            :face 'underline))))))
 
+(defun octocat-vui-section-heading (label width)
+  "Return the heading LABEL, underlined across WIDTH columns.
+Drawn as a tab row of one current tab, so a full-width underline always
+heads what is below it."
+  (octocat-vui-tab-row (list (list label nil nil)) width))
+
 (defcustom octocat-repo-summary-ttl 300
   "Seconds a repo's summary, with its open issue and PR counts, is reused.
 Within this, opening a page with the repo tabs doesn't refetch it; `g',

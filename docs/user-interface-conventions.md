@@ -905,6 +905,12 @@ changed, the repo page's README / License) use `octocat-vui-tab-row`: the
 row is underlined across the page, like GitHub's tab bar, so it reads as
 a header rather than the content's first line, with no blank line after.
 
+### Section headings
+
+A full-width underline heads what is below it, as the tab row does.  The
+PR page's Merge box uses one, `octocat-vui-section-heading`, to stand
+apart from the timeline; other section headings are plain bold.
+
 ### Detail pages
 
 Detail pages (PR, issue, PR diff, commit, checks, workflow, run, job) do
