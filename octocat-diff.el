@@ -42,22 +42,27 @@
 
 (defface octocat-commit-file-modified
   '((t :inherit default))
-  "Face for a modified file in the commit view."
+  "Face for the letter of a modified file in a diff."
   :group 'octocat)
 
 (defface octocat-commit-file-added
-  '((t :inherit diff-added))
-  "Face for an added file in the commit view."
+  '((t :inherit success))
+  "Face for the letter of an added file in a diff."
   :group 'octocat)
 
 (defface octocat-commit-file-removed
-  '((t :inherit diff-removed))
-  "Face for a removed file in the commit view."
+  '((t :inherit error))
+  "Face for the letter of a removed file in a diff."
   :group 'octocat)
 
 (defface octocat-commit-file-renamed
   '((t :inherit octocat-branch))
-  "Face for a renamed file in the commit view."
+  "Face for the letter of a renamed file in a diff."
+  :group 'octocat)
+
+(defface octocat-diff-file-name
+  '((t :inherit bold))
+  "Face for a file's name in a diff, set apart from the code below it."
   :group 'octocat)
 
 (defface octocat-diff-hunk-heading
@@ -67,13 +72,6 @@
 
 
 ;;;; File status
-
-(defun octocat-diff--file-face (status)
-  "Return a face for a file with given STATUS string."
-  (cond ((equal status "added")    'octocat-commit-file-added)
-        ((equal status "removed")  'octocat-commit-file-removed)
-        ((equal status "renamed")  'octocat-commit-file-renamed)
-        (t                         'octocat-commit-file-modified)))
 
 (defun octocat-diff--file-icon (status)
   "Return a one-char icon string for STATUS."
@@ -324,7 +322,7 @@ are as for `octocat-diff--comment-lines'."
                      (and (stringp p) (not (string-empty-p p)) p)))
          (title    (concat (octocat-diff--file-icon status)
                            " "
-                           (propertize filename 'face (octocat-diff--file-face status))
+                           (propertize filename 'face 'octocat-diff-file-name)
                            (propertize (format "  +%d -%d"
                                                (or (gethash "additions" file) 0)
                                                (or (gethash "deletions" file) 0))
