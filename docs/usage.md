@@ -378,6 +378,14 @@ links again, and `<details>`, folds and expanded entries are back as
 first drawn.  Point, filters, the branch shown and what "load more"
 added stay.
 
+Pages on screen also refresh on their own: every minute
+(`octocat-sync-poll-interval`), every 10 s while a run, job or checks
+are under way.  They slow down when you are idle for 5 minutes
+(`octocat-sync-poll-idle-after`), switch to another app or run on
+battery, and stop after half an hour idle or on low battery; coming
+back refreshes at once.  `M-x octocat-doctor` shows which pages are
+refreshing, how often and why, and the recent requests to GitHub.
+
 ### Another view (`C-c C-v`)
 
 `C-c C-v` is the one key for seeing a page another way: wherever a page

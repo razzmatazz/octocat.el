@@ -500,6 +500,7 @@ hash-table; a nil JOB-NAME is not shown."
 
 
 (octocat-sync-define-resource job (repo run-id job-id)
+  :poll (lambda (data) (octocat-sync-poll-status (octocat--get data "job" "status")))
   :fetch (lambda (done) (octocat--fetch-job repo run-id job-id done)))
 
 

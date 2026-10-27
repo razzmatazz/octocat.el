@@ -145,11 +145,13 @@ Pinned gists, which come back as empty nodes, are left out."
                                         nodes))))))
 
 (octocat-sync-define-resource user-profile (login)
+  :poll octocat-sync-poll-slow
   :fetch (lambda (done)
            (octocat--run-gh "user-profile" (list "api" (format "users/%s" login))
                             #'octocat-user--parse-profile done)))
 
 (octocat-sync-define-resource user-repos (login limit)
+  :poll octocat-sync-poll-slow
   ;; The limit is in the URL so that `gh api' issues a GET.
   :fetch (lambda (done)
            (octocat--run-gh "user-repos"
@@ -158,6 +160,7 @@ Pinned gists, which come back as empty nodes, are left out."
                             #'octocat-user--parse-repos done)))
 
 (octocat-sync-define-resource user-pinned (login)
+  :poll octocat-sync-poll-slow
   :fetch (lambda (done)
            (octocat--run-gh "user-pinned"
                             (list "api" "graphql"

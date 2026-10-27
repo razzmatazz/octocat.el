@@ -130,6 +130,7 @@ the commit, the commit being behind it or at its head, else :null."
     out))
 
 (octocat-sync-define-resource commit-branch (repo sha)
+  :poll octocat-sync-poll-slow
   :fetch (lambda (done)
            (let ((parts (split-string repo "/")))
              (octocat--run-gh

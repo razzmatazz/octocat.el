@@ -166,6 +166,9 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
           (octocat-sync--queue nil)
           (octocat-sync--prefetches nil)
           (octocat-sync--prefetching nil)
+          (octocat-sync--polls nil)
+          (octocat-sync--quiet (make-hash-table :test #'equal))
+          (octocat-sync--poll-intervals (make-hash-table :test #'equal))
           (octocat-sync--pending nil)
           (octocat-sync--running 0)
           (octocat-sync--resources (make-hash-table :test #'eq))
@@ -536,6 +539,117 @@ dropped."
           (should-not (plist-get snap :loading))
           (should (equal (gethash "n" (plist-get snap :data)) "new")))
         (should (= octocat-sync--running 0))))))
+
+;;;; Timed refetches
+
+(ert-deftest octocat-sync-test-poll-slowdown ()
+  "Refetches slow while away, unfocused or on battery, and stop past a long pause."
+  (let ((octocat-sync-poll-idle-after 300))
+    (should (eql (octocat-sync-poll-slowdown 10 t 'mains nil) 1))
+    (should (eql (octocat-sync-poll-slowdown 400 t 'mains nil) 4))
+    (should (eql (octocat-sync-poll-slowdown 10 nil 'mains nil) 4))
+    ;; The slowest state wins; they don't compound.
+    (should (eql (octocat-sync-poll-slowdown 400 nil 'battery nil) 4))
+    (should-not (octocat-sync-poll-slowdown 1800 t 'mains nil))
+    (should-not (octocat-sync-poll-slowdown 10 t 'low nil))
+    (should-not (octocat-sync-poll-slowdown 10 t 'mains t))))
+
+(ert-deftest octocat-sync-test-poll-status ()
+  "Runs, jobs and checks under way refetch fast, and never once completed."
+  (should (eql (octocat-sync-poll-status "in_progress") octocat-sync-poll-active))
+  (should (eql (octocat-sync-poll-status "completed" "QUEUED") octocat-sync-poll-active))
+  (should-not (octocat-sync-poll-status "completed" "COMPLETED"))
+  (should-not (octocat-sync-poll-status nil)))
+
+(ert-deftest octocat-sync-test-poll-quiet ()
+  "A due resource refetches quietly, after prefetches; a page request shows it."
+  (octocat-sync-tests--with-sync
+    (let* ((octocat-sync-poll-interval 60)
+           (loading nil)
+           (octocat-sync-loading-functions
+            (list (lambda (key on) (push (cons key on) loading))))
+           (now (float-time)))
+      (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1)
+                           (- now 100))
+      (octocat-sync--write octocat-sync--db "(thing 2)" (octocat-sync-tests--table "n" 2)
+                           (- now 10))
+      (octocat-sync-poll '((thing 1) (thing 2)) 1 t)
+      ;; Only the one fetched over a minute ago, and not reported as loading.
+      (should (equal (mapcar #'car pending) '(1)))
+      (should (gethash "(thing 1)" octocat-sync--quiet))
+      (should-not loading)
+      ;; Four times slower: not due.
+      (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
+      (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1)
+                           (- now 100))
+      (setq pending nil loading nil)
+      (octocat-sync-poll '((thing 1)) 4 t)
+      (should-not pending)
+      ;; Behind a prefetch, then shown as loading once a page asks for it.
+      (octocat-sync-prefetch '((thing 3)))
+      (setq loading nil)
+      (octocat-sync-poll '((thing 1)) 1 t)
+      (should (equal (mapcar #'car octocat-sync--polls) '("(thing 1)")))
+      (should-not loading)
+      (octocat-sync-request '(thing 1))
+      (should (equal (car loading) '("(thing 1)" . t)))
+      (should-not octocat-sync--polls)
+      (should (equal (mapcar #'car pending) '(1 3))))))
+
+(ert-deftest octocat-sync-test-poll-drops-buried ()
+  "A queued timed refetch of a page no longer on screen is dropped."
+  (octocat-sync-tests--with-sync
+    (let ((octocat-sync-poll-interval 60))
+      (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1)
+                           (- (float-time) 100))
+      (octocat-sync-prefetch '((thing 2)))
+      (octocat-sync-poll '((thing 1)) 1 t)
+      (should (assoc "(thing 1)" octocat-sync--polls))
+      (octocat-sync-poll nil 1 t)
+      (should-not octocat-sync--polls)
+      (should-not (plist-get (octocat-sync-read '(thing 1)) :loading))
+      (should-not (gethash "(thing 1)" octocat-sync--quiet)))))
+
+(ert-deftest octocat-sync-test-poll-catch-up ()
+  "A catch-up is a page request; a resource of no :poll, or off, never refetches."
+  (octocat-sync-tests--with-sync
+    (let ((octocat-sync-poll-interval 60)
+          (old (- (float-time) 100)))
+      (octocat-sync-define-resource fixed (n)
+        :poll nil
+        :fetch (lambda (done) (push (cons n done) pending)))
+      (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1) old)
+      (octocat-sync--write octocat-sync--db "(fixed 2)" (octocat-sync-tests--table "n" 2) old)
+      (octocat-sync-poll '((thing 1) (fixed 2)) 1 nil)
+      (should (equal (mapcar #'car pending) '(1)))
+      (should-not (gethash "(thing 1)" octocat-sync--quiet))
+      (let ((octocat-sync-poll-interval nil))
+        (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
+        (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1) old)
+        (setq pending nil)
+        (octocat-sync-poll '((thing 1)) 1 nil)
+        (should-not pending)))))
+
+(ert-deftest octocat-sync-test-poll-interval ()
+  "A :poll function sees the data, once per fetch; :max-age is the least."
+  (octocat-sync-tests--with-sync
+    (let ((octocat-sync-poll-interval 60)
+          (calls 0))
+      (octocat-sync-define-resource run (n)
+        :poll (lambda (data) (cl-incf calls) (octocat-sync-poll-status (gethash "status" data)))
+        :fetch (lambda (done) (push (cons n done) pending)))
+      (octocat-sync-define-resource old (n)
+        :max-age 3600
+        :fetch (lambda (done) (push (cons n done) pending)))
+      (octocat-sync--write octocat-sync--db "(run 1)"
+                           (octocat-sync-tests--table "status" "in_progress") 1.0)
+      (should (eql (octocat-sync--poll-interval '(run 1) "(run 1)" 1.0) octocat-sync-poll-active))
+      (should (eql (octocat-sync--poll-interval '(run 1) "(run 1)" 1.0) octocat-sync-poll-active))
+      (should (= calls 1))
+      (octocat-sync--write octocat-sync--db "(run 1)"
+                           (octocat-sync-tests--table "status" "completed") 2.0)
+      (should-not (octocat-sync--poll-interval '(run 1) "(run 1)" 2.0))
+      (should (= (octocat-sync--poll-interval '(old 1) "(old 1)" 1.0) 3600)))))
 
 (provide 'octocat-sync-tests)
 ;;; octocat-sync-tests.el ends here

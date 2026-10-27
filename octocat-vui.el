@@ -247,14 +247,18 @@ hook."
     (vui-use-effect (key)
       (let ((entry (cons buf version)))
         (push entry (gethash key octocat-vui--subscriptions))
-        (when (gethash key octocat-sync--loading)
+        (when (and (gethash key octocat-sync--loading)
+                   (not (gethash key octocat-sync--quiet)))
           (octocat-vui--set-key-loading buf key t))
+        (octocat-vui--poll-start)
         (lambda ()
           (octocat-vui--set-key-loading buf key nil)
           (let ((rest (delq entry (gethash key octocat-vui--subscriptions))))
             (if rest
                 (puthash key rest octocat-vui--subscriptions)
-              (remhash key octocat-vui--subscriptions))))))
+              (remhash key octocat-vui--subscriptions)
+              (when (hash-table-empty-p octocat-vui--subscriptions)
+                (octocat-vui--poll-stop t)))))))
     (vui-use-effect (key tick)
       ;; Only a new tick for a key this buffer asked for before is a refresh.
       (let* ((ticks (or octocat-vui--resource-ticks
@@ -290,6 +294,117 @@ moving through rows prefetches nothing."
         (when-let* ((specs (and octocat-sync-prefetch
                                 (get-text-property (point) 'octocat-sync-prefetch))))
           (run-with-timer octocat-sync-prefetch-delay nil #'octocat-sync-prefetch specs))))
+
+;; Pages on screen refetch what they show; see "Keeping shown pages up to
+;; date" in docs/user-interface-conventions.md.  The timer runs only
+;; while a page is on screen; showing one starts it again.
+
+(defconst octocat-vui--poll-tick 5
+  "Seconds between checks for what pages on screen have due.")
+
+(defvar octocat-vui--poll-timer nil
+  "Timer of `octocat-vui--poll', while a page is on screen.")
+
+(defvar octocat-vui--poll-shown nil
+  "The buffers of the pages on screen at the last check.")
+
+(defvar octocat-vui--poll-state nil
+  "The last check, (TIME SLOWDOWN IDLE FOCUSED POWER), for `octocat-doctor'.")
+
+(defun octocat-vui--shown-pages ()
+  "Return the live buffers of the pages in a window of a visible frame."
+  (let (bufs)
+    (maphash (lambda (_ subs)
+               (pcase-dolist (`(,buf . ,_) subs)
+                 (when (and (not (memq buf bufs)) (buffer-live-p buf)
+                            (get-buffer-window buf 'visible))
+                   (push buf bufs))))
+             octocat-vui--subscriptions)
+    bufs))
+
+(defun octocat-vui--page-specs (buffers)
+  "Return the specs of the resources the pages in BUFFERS read."
+  (let (specs)
+    (maphash (lambda (key subs)
+               (when (seq-some (lambda (s) (memq (car s) buffers)) subs)
+                 (push (car (read-from-string key)) specs)))
+             octocat-vui--subscriptions)
+    specs))
+
+(defun octocat-vui--focused-p ()
+  "Return non-nil if an Emacs frame has focus, or none can tell."
+  (seq-some #'frame-focus-state (frame-list)))
+
+(defun octocat-vui--catch-up (&optional buffers)
+  "Refetch at once what is due on the pages in BUFFERS, or on screen."
+  (when-let* ((bufs (or buffers (octocat-vui--shown-pages))))
+    (octocat-sync-poll (octocat-vui--page-specs bufs) 1 nil)))
+
+(defun octocat-vui--resume ()
+  "Catch up on the first command after a pause, see `octocat-vui--poll'."
+  (remove-hook 'pre-command-hook #'octocat-vui--resume)
+  (octocat-vui--catch-up))
+
+(defun octocat-vui--on-focus ()
+  "Catch up when an Emacs frame gets focus again.
+Outside the hook, which runs during redisplay."
+  (when (octocat-vui--focused-p)
+    (run-at-time 0 nil #'octocat-vui--catch-up)))
+
+(defun octocat-vui--on-window-buffers (&optional _frame)
+  "Check the pages on screen once what windows show changed.
+Outside the hook, which runs during redisplay."
+  (run-at-time 0 nil #'octocat-vui--poll-shown-changed))
+
+(defun octocat-vui--poll-shown-changed ()
+  "Catch up on the pages newly on screen, and run the timer while there are any.
+Return the pages on screen."
+  (let* ((shown (octocat-vui--shown-pages))
+         (new   (seq-difference shown octocat-vui--poll-shown #'eq)))
+    (setq octocat-vui--poll-shown shown)
+    (when new (octocat-vui--catch-up new))
+    (if shown
+        (unless (timerp octocat-vui--poll-timer)
+          (setq octocat-vui--poll-timer
+                (run-with-timer octocat-vui--poll-tick octocat-vui--poll-tick
+                                #'octocat-vui--poll)))
+      (octocat-vui--poll-stop))
+    shown))
+
+(defun octocat-vui--poll ()
+  "Refetch quietly what the pages on screen have due, see `octocat-sync-poll'.
+Past a long pause, catch up on the first command instead."
+  (let* ((shown    (octocat-vui--poll-shown-changed))
+         (idle     (float-time (or (current-idle-time) 0)))
+         (focused  (octocat-vui--focused-p))
+         (power    (octocat-power))
+         (slowdown (octocat-sync-poll-slowdown idle focused power octocat-sync--offline)))
+    (setq octocat-vui--poll-state (list (float-time) slowdown idle focused power))
+    ;; Nil specs drop the refetches still queued.
+    (octocat-sync-poll (and slowdown (octocat-vui--page-specs shown)) (or slowdown 1) t)
+    (when (>= idle (* 6 octocat-sync-poll-idle-after))
+      (add-hook 'pre-command-hook #'octocat-vui--resume))))
+
+(defun octocat-vui--poll-start ()
+  "Watch for pages coming on screen and focus coming back, and check now.
+Nothing when `octocat-sync-poll-interval' is nil."
+  (when octocat-sync-poll-interval
+    (add-hook 'window-buffer-change-functions #'octocat-vui--on-window-buffers)
+    (add-function :after after-focus-change-function #'octocat-vui--on-focus)
+    (unless (timerp octocat-vui--poll-timer)
+      (octocat-vui--on-window-buffers))))
+
+(defun octocat-vui--poll-stop (&optional unwatch)
+  "Stop the timer and drop the timed refetches queued; with UNWATCH, the hooks too."
+  (when (timerp octocat-vui--poll-timer)
+    (cancel-timer octocat-vui--poll-timer))
+  (setq octocat-vui--poll-timer nil)
+  (octocat-sync-poll nil 1 t)
+  (when unwatch
+    (setq octocat-vui--poll-shown nil)
+    (remove-hook 'window-buffer-change-functions #'octocat-vui--on-window-buffers)
+    (remove-hook 'pre-command-hook #'octocat-vui--resume)
+    (remove-function after-focus-change-function #'octocat-vui--on-focus)))
 
 (defun octocat-vui-snapshot-status (snap)
   "Return the state a page draws for the sync snapshot SNAP.
@@ -1184,6 +1299,7 @@ render, like any hook."
                               nodes))))))
 
 (octocat-sync-define-resource counts (kind repo)
+  :poll octocat-sync-poll-slow
   :fetch (lambda (done)
            (let ((tree (make-hash-table :test #'equal)))
              (if (null kind)
@@ -1506,6 +1622,7 @@ See `octocat-vui-list--qualifiers'."
   (octocat-vui-list--apply query))
 
 (octocat-sync-define-resource labels (repo)
+  :poll octocat-sync-poll-slow
   :fetch (lambda (done)
            (octocat--list-labels
             repo (lambda (r)
@@ -1515,6 +1632,7 @@ See `octocat-vui-list--qualifiers'."
                                            r)))))))
 
 (octocat-sync-define-resource assignees (repo)
+  :poll octocat-sync-poll-slow
   :fetch (lambda (done)
            (octocat--list-people
             repo (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))

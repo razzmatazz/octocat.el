@@ -78,6 +78,26 @@ The file is named after the host, such as \"sync-github.com.sqlite\"."
   :type 'number
   :group 'octocat)
 
+(defcustom octocat-sync-poll-interval 60
+  "Seconds between refetches of what a page on screen shows, or nil for none.
+A resource's :poll may ask for another interval, see
+`octocat-sync-define-resource'.  Refetches slow down while the user is
+away or on battery, see `octocat-sync-poll-slowdown'."
+  :type '(choice (number :tag "Seconds") (const :tag "Never" nil))
+  :group 'octocat)
+
+(defcustom octocat-sync-poll-idle-after 300
+  "Seconds without input after which refetches of pages on screen slow down.
+After six times this, they stop until the user is back."
+  :type 'number
+  :group 'octocat)
+
+(defconst octocat-sync-poll-active 10
+  "Seconds between refetches of something under way, such as a run.")
+
+(defconst octocat-sync-poll-slow 300
+  "Seconds between refetches of what rarely changes, such as a user's profile.")
+
 (defcustom octocat-sync-stuck-after 10
   "Seconds after which `g' gives up on a fetch still running and starts anew.
 Before, the fetch running is the refresh: pressing `g' again neither
@@ -490,7 +510,11 @@ a function returning the specs, `_' matching anything, of the lists
 that a change to that entity may move it in or out of: a fetch that
 changes it outdates them.  :max-age, optional, is how
 many seconds a fetch stays good for data that rarely changes, such as a
-commit's: within it, opening doesn't refetch, but `g' does."
+commit's: within it, opening doesn't refetch, but `g' does.  :poll,
+optional, is the seconds between refetches while a page on screen
+shows the resource, nil for none, or a function of its data returning
+that; by default `octocat-sync-poll-interval'.  Either way it is at
+least :max-age."
   (declare (indent 2))
   `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--resources))
 
@@ -532,7 +556,16 @@ Kept in memory only, and cleared by the next success.")
   "Queued prefetches, as (KEY . SPEC), run after the page requests.")
 
 (defvar octocat-sync--prefetching nil
-  "The key of the prefetch running, or nil.")
+  "The key of the prefetch or timed refetch running, or nil.")
+
+(defvar octocat-sync--polls nil
+  "Queued timed refetches, as (KEY . SPEC), run after the prefetches.")
+
+(defvar octocat-sync--quiet (make-hash-table :test #'equal)
+  "Keys of the resources loading by a timed refetch, not shown as loading.")
+
+(defvar octocat-sync--poll-intervals (make-hash-table :test #'equal)
+  "Resource key to (FETCHED-AT . INTERVAL), its :poll for the data of then.")
 
 (defun octocat-sync--notify (keys)
   "Tell `octocat-sync-change-functions' that the resources KEYS changed."
@@ -614,9 +647,12 @@ before the retry time of a failure."
 (defun octocat-sync-request (spec &optional force)
   "Queue a fetch of SPEC unless it is running or was fetched just now.
 See `octocat-sync--wanted-p' for FORCE.  A queued prefetch of SPEC is
-raised to a page request.  Return immediately; the store reports the
-result."
+raised to a page request, as is a timed refetch, which then shows as
+loading.  Return immediately; the store reports the result."
   (let ((key (octocat-sync-spec-key spec)))
+    (when (gethash key octocat-sync--quiet)
+      (remhash key octocat-sync--quiet)
+      (run-hook-with-args 'octocat-sync-loading-functions key t))
     (cond
      ;; Forced while running a while: take over, see `octocat-sync--fetches'.
      ((and force
@@ -625,8 +661,9 @@ result."
       (octocat-sync--drop-fetch key)
       (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
       (octocat-sync--pump))
-     ((assoc key octocat-sync--prefetches)
-      (setq octocat-sync--prefetches (assoc-delete-all key octocat-sync--prefetches))
+     ((or (assoc key octocat-sync--prefetches) (assoc key octocat-sync--polls))
+      (setq octocat-sync--prefetches (assoc-delete-all key octocat-sync--prefetches)
+            octocat-sync--polls      (assoc-delete-all key octocat-sync--polls))
       (setq octocat-sync--queue (append octocat-sync--queue (list (cons key spec))))
       (octocat-sync--pump))
      ((and (not (gethash key octocat-sync--loading))
@@ -645,15 +682,18 @@ Its `gh' calls still running are killed, and their answers dropped."
     (when (equal key octocat-sync--prefetching)
       (setq octocat-sync--prefetching nil))))
 
-(defun octocat-sync--set-loading (key loading)
-  "Record whether resource KEY is LOADING, and report it.
+(defun octocat-sync--set-loading (key loading &optional quiet)
+  "Record whether resource KEY is LOADING, and report it unless QUIET.
 Starting to load a resource with no data yet, or with outdated data, is
 also notified as a change: its page draws grey bars, or says it is
 refreshing outdated data."
   (if loading
       (puthash key t octocat-sync--loading)
     (remhash key octocat-sync--loading))
-  (run-hook-with-args 'octocat-sync-loading-functions key loading)
+  (if (and loading quiet)
+      (puthash key t octocat-sync--quiet)
+    (remhash key octocat-sync--quiet)
+    (run-hook-with-args 'octocat-sync-loading-functions key loading))
   (when (and loading
              (not (eql 1 (caar (sqlite-select
                                 (octocat-sync--db)
@@ -710,7 +750,8 @@ first again."
       (octocat-sync--set-loading key t)
       (let ((token (list key nil (float-time))))
         (puthash key token octocat-sync--fetches)
-        (let ((octocat--gh-owner token))
+        (let ((octocat--gh-owner token)
+              (octocat--gh-reason 'more))
           (funcall more cursor
                    (lambda (result)
                      (if (not (eq (gethash key octocat-sync--fetches) token))
@@ -750,8 +791,98 @@ It only writes the store."
                             specs)))
     (octocat-sync--pump)))
 
-(defun octocat-sync--start (key spec)
-  "Start fetching SPEC, whose key is KEY.
+(defun octocat-sync-poll-slowdown (idle focused power offline)
+  "Return how many times slower timed refetches run, or nil when they stop.
+IDLE is the seconds since the last input, FOCUSED whether an Emacs frame
+has focus, POWER as `octocat-power' returns it, and OFFLINE whether
+GitHub was out of reach.  See \"Keeping shown pages up to date\" in
+docs/user-interface-conventions.md."
+  (cond ((or offline (eq power 'low) (>= idle (* 6 octocat-sync-poll-idle-after))) nil)
+        ((or (>= idle octocat-sync-poll-idle-after) (not focused) (eq power 'battery)) 4)
+        (t 1)))
+
+(defun octocat-sync--poll-interval (spec key fetched-at)
+  "Return the seconds between timed refetches of SPEC, or nil for none.
+KEY is its key and FETCHED-AT when its data was; see :poll in
+`octocat-sync-define-resource'.  A function's answer is kept until the
+data changes, as reading the data may be costly, say a job's log."
+  (let ((cached (gethash key octocat-sync--poll-intervals)))
+    (if (equal (car cached) fetched-at)
+        (cdr cached)
+      (let* ((props    (octocat-sync--props spec))
+             (poll     (if (plist-member props :poll)
+                           (plist-get props :poll)
+                         octocat-sync-poll-interval))
+             (interval (if (functionp poll)
+                           (funcall poll (plist-get (octocat-sync-read spec) :data))
+                         poll)))
+        (cdr (puthash key (cons fetched-at
+                                (and interval
+                                     (max interval (or (plist-get props :max-age) 0))))
+                      octocat-sync--poll-intervals))))))
+
+(defun octocat-sync-poll (specs slowdown quiet)
+  "Refetch those of SPECS whose timed refetch is due, SLOWDOWN times slower.
+That is those with data at least their interval old, see
+`octocat-sync--poll-interval', and not waiting out a failure.  QUIET
+ones run after the prefetches, one at a time, and don't show as loading;
+they replace the quiet ones still queued, so a page buried meanwhile
+is dropped.  The others are page requests.  Nothing is refetched when
+`octocat-sync-poll-interval' is nil."
+  (when quiet
+    (let* ((keys (mapcar #'octocat-sync-spec-key specs))
+           (gone (seq-remove (lambda (p) (member (car p) keys)) octocat-sync--polls)))
+      (setq octocat-sync--polls (seq-difference octocat-sync--polls gone #'eq))
+      (pcase-dolist (`(,key . ,_) gone)
+        (octocat-sync--set-loading key nil))))
+  (when octocat-sync-poll-interval
+    (let ((now (float-time)))
+      (dolist (spec specs)
+        (let ((key (octocat-sync-spec-key spec)))
+          (if (gethash key octocat-sync--loading)
+              (unless quiet (octocat-sync-request spec))
+            (pcase-let ((`(,fetched ,retry-at)
+                         (car (sqlite-select (octocat-sync--db)
+                                             "SELECT fetched_at, retry_at FROM resource
+                                              WHERE key = ? AND body IS NOT NULL"
+                                             (list key)))))
+              (when-let* (((and fetched (not (and retry-at (< now retry-at)))))
+                          (interval (octocat-sync--poll-interval spec key fetched))
+                          ((>= (- now fetched) (* slowdown interval))))
+                (octocat-sync--set-loading key t quiet)
+                (if quiet
+                    (setq octocat-sync--polls
+                          (append octocat-sync--polls (list (cons key spec))))
+                  (setq octocat-sync--queue
+                        (append octocat-sync--queue (list (cons key spec)))))))))))
+    (octocat-sync--pump)))
+
+(defun octocat-sync-poll-info (spec)
+  "Return how SPEC is refetched on screen, as (FETCHED-AT INTERVAL STATE).
+INTERVAL is as `octocat-sync--poll-interval' gives, nil before SPEC has
+data; STATE is `queued' or `quiet' for a timed refetch, `loading' for
+another fetch, or nil.  For `octocat-doctor'."
+  (let* ((key     (octocat-sync-spec-key spec))
+         (fetched (caar (sqlite-select (octocat-sync--db)
+                                       "SELECT fetched_at FROM resource
+                                        WHERE key = ? AND body IS NOT NULL"
+                                       (list key)))))
+    (list fetched
+          (and fetched (octocat-sync--poll-interval spec key fetched))
+          (cond ((assoc key octocat-sync--polls) 'queued)
+                ((gethash key octocat-sync--quiet) 'quiet)
+                ((gethash key octocat-sync--loading) 'loading)))))
+
+(defun octocat-sync-poll-status (&rest statuses)
+  "Return the :poll interval of a run, a job or a check of status STATUSES.
+While any is under way, they are refetched every
+`octocat-sync-poll-active' seconds; once all are completed, never."
+  (and (seq-some (lambda (s) (and (stringp s) (not (equal (downcase s) "completed"))))
+                 statuses)
+       octocat-sync-poll-active))
+
+(defun octocat-sync--start (key spec reason)
+  "Start fetching SPEC, whose key is KEY, for REASON, see `octocat--gh-reason'.
 A fetch that signals as it starts fails like any other, so it can't
 leave KEY loading for good."
   (cl-incf octocat-sync--running)
@@ -759,7 +890,8 @@ leave KEY loading for good."
         (token (list key t (float-time))))
     (puthash key token octocat-sync--fetches)
     (condition-case err
-        (let ((octocat--gh-owner token))
+        (let ((octocat--gh-owner token)
+              (octocat--gh-reason reason))
           (funcall (plist-get (octocat-sync--props spec) :fetch)
                    (lambda (result)
                      (setq answered t)
@@ -771,18 +903,21 @@ leave KEY loading for good."
 
 (defun octocat-sync--pump ()
   "Start queued fetches while fewer than `octocat-sync-max-requests' run.
-Page requests go first; a prefetch only when none is queued, and only
-when no other prefetch runs."
+Page requests go first; a prefetch, then a timed refetch, only when
+none is queued, and only when no other prefetch or timed refetch runs."
   (while (and octocat-sync--queue
               (< octocat-sync--running octocat-sync-max-requests))
     (pcase-let ((`(,key . ,spec) (pop octocat-sync--queue)))
-      (octocat-sync--start key spec)))
-  (when (and octocat-sync--prefetches
+      (octocat-sync--start key spec 'page)))
+  (when (and (or octocat-sync--prefetches octocat-sync--polls)
              (null octocat-sync--prefetching)
              (< octocat-sync--running octocat-sync-max-requests))
-    (pcase-let ((`(,key . ,spec) (pop octocat-sync--prefetches)))
+    (pcase-let ((`(,reason ,key . ,spec)
+                 (if octocat-sync--prefetches
+                     (cons 'prefetch (pop octocat-sync--prefetches))
+                   (cons 'poll (pop octocat-sync--polls)))))
       (setq octocat-sync--prefetching key)
-      (octocat-sync--start key spec))))
+      (octocat-sync--start key spec reason))))
 
 (defun octocat-sync--done (key result)
   "Store RESULT, the outcome of fetching resource KEY, and notify."
@@ -925,15 +1060,16 @@ the resources it acts on refetched: GitHub may have made it anyway."
                 :slot (or (plist-get props :slot) 'action))))
     (setq octocat-sync--pending (append octocat-sync--pending (list mutation)))
     (octocat-sync--notify (octocat-sync--touched db mutation))
-    (funcall (plist-get props :send)
-             (lambda (result)
-               (octocat-sync--answered
-                mutation result
-                (and (plist-get props :edits) (not (eq (car-safe result) 'error))
-                     (octocat-sync--keyed (funcall (plist-get props :edits) t result)))
-                (and (plist-get props :invalidates)
-                     (funcall (plist-get props :invalidates))))
-               (when on-done (funcall on-done result))))))
+    (let ((octocat--gh-reason 'mutation))
+      (funcall (plist-get props :send)
+               (lambda (result)
+                 (octocat-sync--answered
+                  mutation result
+                  (and (plist-get props :edits) (not (eq (car-safe result) 'error))
+                       (octocat-sync--keyed (funcall (plist-get props :edits) t result)))
+                  (and (plist-get props :invalidates)
+                       (funcall (plist-get props :invalidates))))
+                 (when on-done (funcall on-done result)))))))
 
 (defun octocat-sync--answered (mutation result edits patterns)
   "Settle MUTATION once GitHub answered RESULT; outdate PATTERNS on success.

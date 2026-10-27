@@ -83,6 +83,12 @@ Requests up to 100 check-runs; pagination is not yet supported."
 
 
 (octocat-sync-define-resource checks (repo sha)
+  ;; None yet: they may still start.
+  :poll (lambda (data)
+          (if (seq-empty-p data)
+              octocat-sync-poll-interval
+            (apply #'octocat-sync-poll-status
+                   (mapcar (lambda (c) (gethash "status" c)) data))))
   :fetch (lambda (done)
            (octocat--fetch-checks
             repo sha

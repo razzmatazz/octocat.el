@@ -49,6 +49,7 @@
 (defvar octocat-mode-map)
 (defvar octocat-repo-mode-map)
 (defvar octocat-user-mode-map)
+(defvar octocat-doctor-mode-map)
 (declare-function octocat-user-browse "octocat-user" ())
 (declare-function octocat-search-repo "octocat-search" ())
 (defvar octocat-pr-list-mode-map)
@@ -225,6 +226,11 @@ Off an entry, such as on the header, move left."
     (kbd "C-c C-o") #'octocat-user-browse
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
+
+  ;; ── octocat-doctor-mode ───────────────────────────────────────────────
+  (evil-define-key* 'normal octocat-doctor-mode-map
+    (kbd "gr")      #'revert-buffer
+    (kbd "q")       #'quit-window)
 
   ;; ── PR / issue list pages and the run list ──────────────────────────────────
   ;; Normal state is bound per buffer by `octocat-evil--list-setup'.

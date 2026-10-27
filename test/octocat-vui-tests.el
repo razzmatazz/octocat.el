@@ -320,6 +320,40 @@ unsubscribes it."
         (octocat-vui-revisit-page)))
     (should (equal requests '(((a 1)))))))
 
+;;;; Timed refetches
+
+(ert-deftest octocat-vui-test-poll-only-shown ()
+  "Only pages on screen refetch; with none, the timer stops."
+  (let* ((octocat-vui--subscriptions (make-hash-table :test #'equal))
+         (octocat-vui--poll-timer nil)
+         (octocat-vui--poll-shown nil)
+         (shown  (generate-new-buffer " *octocat-shown*"))
+         (buried (generate-new-buffer " *octocat-buried*"))
+         (polled nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'octocat-sync-poll)
+                   (lambda (specs _slowdown quiet) (push (cons quiet specs) polled))))
+          (puthash "(thing 1)" (list (cons shown (list 0))) octocat-vui--subscriptions)
+          (puthash "(thing 2)" (list (cons buried (list 0))) octocat-vui--subscriptions)
+          (save-window-excursion
+            (switch-to-buffer shown)
+            (should (equal (octocat-vui--shown-pages) (list shown)))
+            (should (equal (octocat-vui--page-specs (list shown)) '((thing 1))))
+            ;; Newly on screen: caught up at once, and the timer runs.
+            (should (equal (octocat-vui--poll-shown-changed) (list shown)))
+            (should (equal (car polled) '(nil (thing 1))))
+            (should (timerp octocat-vui--poll-timer))
+            (switch-to-buffer buried)
+            (remhash "(thing 2)" octocat-vui--subscriptions)
+            (setq polled nil)
+            (should-not (octocat-vui--poll-shown-changed))
+            (should-not octocat-vui--poll-timer)
+            ;; Stopping drops the quiet refetches still queued.
+            (should (equal polled '((t))))))
+      (when (timerp octocat-vui--poll-timer) (cancel-timer octocat-vui--poll-timer))
+      (kill-buffer shown)
+      (kill-buffer buried))))
+
 (ert-deftest octocat-vui-test-low-battery-no-animation ()
   "On low battery an unfolding jumps to its end."
   (let ((octocat--power (cons (float-time) 'low)))

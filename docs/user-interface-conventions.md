@@ -641,20 +641,66 @@ resizes the window; a refetch stays in the mode line.
 `octocat-vui-resource-view` draws the skeleton, the error or the page
 from a snapshot, so a page gives only those pieces.
 
+## Keeping shown pages up to date
+
+A page shown in a window of a visible frame refetches what it shows on
+its own, so new comments or finished checks appear without `g`.  Buried
+buffers and hidden tabs don't.
+
+**How often.**  Every `octocat-sync-poll-interval` seconds (60; nil
+turns it off), unless the resource's `:poll` says otherwise.  `:poll`
+may be a function of the data:
+
+| Resource                                         | Refreshes                          |
+|--------------------------------------------------|------------------------------------|
+| A run, job or checks in progress                 | every 10 s; never once completed   |
+| PRs, issues, their timelines, lists, dashboard   | every `octocat-sync-poll-interval` |
+| Repo summaries, counts, labels, assignees, users | every 5 min                        |
+| Anything named by a SHA (commits, trees, blobs)  | never                              |
+
+**While the user is away.**  Emacs can't see a locked screen, but its
+idle time keeps growing through one, so that is the signal:
+
+- After `octocat-sync-poll-idle-after` (5 min) without input, or with
+  no Emacs frame focused, refreshes slow to a quarter of the rate: a
+  page may be watched on another monitor.
+- After six times that, and while offline, they stop.
+
+**On battery** they slow down or stop too, see [On
+battery](#on-battery).  The slowest state that applies wins; they don't
+compound.
+
+**Coming back.**  Focus returning to a frame, the first command after a
+pause, or a page being shown again refetches at once what is due on
+screen, so the fetch is usually under way before the first key, even
+on low battery.
+
+**What it shows.**  A refresh re-renders in place, and only when
+something changed; point stays on its text.  A timed refresh shows
+nothing in the mode line, as once a minute it would flicker; one on
+coming back shows `:loading`, as `g` does.  Nothing goes in the header
+line but a failure's notice.  Refreshes queue behind the fetches of
+pages being opened, like prefetches.
+
+`M-x octocat-doctor` shows which pages are refreshing, at what rate and
+why, and the recent requests to GitHub.
+
 ## On battery
 
 octocat spends less power on battery, as `battery-status-function`
 reports it (`octocat-power`).  With no battery, or none reported, it
 counts as mains power.
 
-| Power                                  | Animations |
-|----------------------------------------|------------|
-| Mains                                  | yes        |
-| Battery                                | yes        |
-| Battery at or below `battery-load-low` | none       |
+| Power                                  | Timed refreshes   | Animations |
+|----------------------------------------|-------------------|------------|
+| Mains                                  | full rate         | yes        |
+| Battery                                | a quarter of it   | yes        |
+| Battery at or below `battery-load-low` | none              | none       |
 
-Without animations, folds open and close in one step, and spinners
-stand still on one frame.
+What the user does still fetches at once on low battery: `g`, opening a
+page, and coming back (see [Keeping shown pages up to
+date](#keeping-shown-pages-up-to-date)).  Without animations, folds open
+and close in one step, and spinners stand still on one frame.
 
 ---
 

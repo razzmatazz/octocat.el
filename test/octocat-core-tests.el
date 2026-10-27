@@ -538,5 +538,15 @@ browser, skip it."
   (should (eq (octocat--power-state '((?L . "N/A")) 25) 'mains))
   (should (eq (octocat--power-state nil 25) 'mains)))
 
+(ert-deftest octocat-core-test-gh-log ()
+  "The log keeps the calls of the last hour, newest first, with their reason."
+  (let ((octocat--gh-log nil))
+    (octocat--gh-log-start "old" 1000.0)
+    (let ((octocat--gh-reason 'poll))
+      (octocat--gh-log-start "new" 4000.0)
+      (octocat--gh-log-start "newer" 4700.0))
+    (should (equal (mapcar (lambda (e) (aref e 2)) octocat--gh-log) '("newer" "new")))
+    (should (eq (aref (car octocat--gh-log) 4) 'poll))))
+
 (provide 'octocat-core-tests)
 ;;; octocat-core-tests.el ends here

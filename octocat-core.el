@@ -488,6 +488,23 @@ A sync fetch binds it to its token (see `octocat-sync--fetches'); a call
 started from another's callback belongs to the same owner, so a fetch
 of several calls is stopped whole.")
 
+(defvar octocat--gh-reason nil
+  "Why the `gh' calls started now run, such as `page' or `poll'.
+For `octocat--gh-log'; bound and passed on as `octocat--gh-owner' is.")
+
+(defvar octocat--gh-log nil
+  "The `gh' calls of the last hour, newest first, for `octocat-doctor'.
+Each is a vector [START END NAME OK REASON]; END is nil while it runs.")
+
+(defun octocat--gh-log-start (name now)
+  "Record a `gh' call NAME starting at NOW, and return its entry.
+Calls over an hour old are dropped."
+  (let ((entry (vector now nil name nil octocat--gh-reason)))
+    (setq octocat--gh-log
+          (cons entry (seq-take-while (lambda (e) (> (aref e 0) (- now 3600)))
+                                      octocat--gh-log)))
+    entry))
+
 (defun octocat--gh-stop (owner)
   "Stop OWNER's `gh' processes, each then answering as failed."
   (when owner
@@ -509,6 +526,8 @@ propagate normally so they appear in the *Backtrace* buffer."
     (if (not gh-executable)
         (funcall callback '(error . "`gh' executable not found"))
       (let* ((owner   octocat--gh-owner)
+             (reason  octocat--gh-reason)
+             (entry   (octocat--gh-log-start name (float-time)))
              (buf     (generate-new-buffer (format " *octocat-gh-%s*" name)))
              (err-buf (generate-new-buffer (format " *octocat-gh-%s-stderr*" name)))
              (cmd     (cons gh-executable args))
@@ -536,6 +555,8 @@ propagate normally so they appear in the *Backtrace* buffer."
                                   (buffer-string)))
                      (stderr    (with-current-buffer err-buf
                                   (buffer-string))))
+                (aset entry 1 (float-time))
+                (aset entry 3 (= exit-code 0))
                 (kill-buffer (process-buffer proc))
                 (when (buffer-live-p err-buf)
                   ;; The stderr pipe-process attached by `make-process :stderr'
@@ -567,7 +588,8 @@ propagate normally so they appear in the *Backtrace* buffer."
                                 ((< exit-code 0)
                                  (format "gh was stopped (%s)" (process-status proc)))
                                 (t (format "gh exited with code %d" exit-code)))))))
-                  (let ((octocat--gh-owner owner))
+                  (let ((octocat--gh-owner owner)
+                        (octocat--gh-reason reason))
                     (funcall callback result))))))))))))
 
 (defun octocat--gh-track (owner proc)

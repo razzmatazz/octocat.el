@@ -219,6 +219,7 @@ vector: a shape the store can hold as JSON."
 (octocat-sync-define-resource run (repo run-id)
   :entity (format "run:%s/%s" (downcase repo) run-id)
   :invalidates (lambda () `((runs ,repo _ _) (workflow ,repo _ _)))
+  :poll (lambda (data) (octocat-sync-poll-status (octocat--get data "item" "status")))
   :fetch (lambda (done)
            (octocat--fetch-run
             repo run-id
