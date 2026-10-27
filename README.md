@@ -95,7 +95,8 @@ depth](docs/usage.md#keys-in-more-depth).
 `M-x octocat-doctor` reports, as text to paste into a bug report, which
 files are loaded (and whether a compiled one is stale), the store's size
 and largest resources, which pages refresh on their own and why, and
-the requests to GitHub of the last hour.  It names the resources it
+the requests to GitHub of the last hour: how many, how often, and how
+much data they brought in.  It names the resources it
 stores, but not your token.
 
 ## License

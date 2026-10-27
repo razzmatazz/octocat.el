@@ -28,15 +28,22 @@
 
 (ert-deftest octocat-doctor-test-requests ()
   "Requests are summed by reason, failures counted, the newest listed first."
-  (let ((log (list (vector 990.0 nil "pr-view" nil 'page)
-                   (vector 900.0 901.5 "checks" nil 'poll)
-                   (vector 800.0 800.5 "checks" t 'poll)
-                   (vector 100.0 100.5 "user" t nil))))
+  (let ((log (list (vector 990.0 nil "pr-view" nil 'page nil)
+                   (vector 900.0 901.5 "checks" nil 'poll 0)
+                   (vector 800.0 800.5 "checks" t 'poll 60000)
+                   (vector 100.0 100.5 "user" t nil 1200000))))
     (let ((text (octocat-doctor--requests log 1000.0)))
       (should (string-match-p "Last 5 min     3 (poll 2, page 1), 1 failed" text))
       (should (string-match-p "Last hour      4 (poll 2, other 1, page 1), 1 failed" text))
+      (should (string-match-p " 0.6 requests/min, 60 kB received, 200 B/s" text))
+      (should (string-match-p " 0.1 requests/min, 1.3 MB received, 350 B/s" text))
       (should (string-match-p "Running        1" text))
-      (should (string-match-p "1.5 s  poll      failed checks" text)))))
+      (should (string-match-p "1.5 s       0 B  poll      failed checks" text))
+      (should (string-match-p "0.5 s     60 kB  poll      ok     checks" text))))
+  ;; An entry logged before BYTES was added counts as none.
+  (should (string-match-p "0 B received"
+                          (octocat-doctor--requests
+                           (list (vector 990.0 991.0 "checks" t 'poll)) 1000.0))))
 
 (ert-deftest octocat-doctor-test-rate ()
   "The rate says why it is slowed or stopped."

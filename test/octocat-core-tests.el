@@ -511,6 +511,20 @@ browser, skip it."
     (funcall wait)
     (should (eq (car-safe (car answers)) 'error))))
 
+(ert-deftest octocat-core-test-run-gh-logs-bytes ()
+  "A finished `gh' call logs the size of what it printed."
+  (let ((octocat--gh-log nil) (answer nil))
+    ;; `echo' stands in for `gh', printing \"hello\\n\".
+    (cl-letf (((symbol-function 'executable-find) (lambda (_) "echo")))
+      (octocat--run-gh "test" '("hello") #'identity (lambda (r) (setq answer r))))
+    (should-not (aref (car octocat--gh-log) 5))
+    (let ((n 0))
+      (while (and (null answer) (< n 100))
+        (accept-process-output nil 0.05)
+        (cl-incf n)))
+    (should (equal answer "hello\n"))
+    (should (= (aref (car octocat--gh-log) 5) 6))))
+
 (ert-deftest octocat-core-test-clip-line ()
   "A long line keeps its text, its tail drawn as a button that shows it."
   (should (equal (octocat--clip-line "short" 10) "short"))

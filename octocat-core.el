@@ -494,12 +494,13 @@ For `octocat--gh-log'; bound and passed on as `octocat--gh-owner' is.")
 
 (defvar octocat--gh-log nil
   "The `gh' calls of the last hour, newest first, for `octocat-doctor'.
-Each is a vector [START END NAME OK REASON]; END is nil while it runs.")
+Each is a vector [START END NAME OK REASON BYTES]; END and BYTES, the
+size of what `gh' printed, are nil while it runs.")
 
 (defun octocat--gh-log-start (name now)
   "Record a `gh' call NAME starting at NOW, and return its entry.
 Calls over an hour old are dropped."
-  (let ((entry (vector now nil name nil octocat--gh-reason)))
+  (let ((entry (vector now nil name nil octocat--gh-reason nil)))
     (setq octocat--gh-log
           (cons entry (seq-take-while (lambda (e) (> (aref e 0) (- now 3600)))
                                       octocat--gh-log)))
@@ -557,6 +558,7 @@ propagate normally so they appear in the *Backtrace* buffer."
                                   (buffer-string))))
                 (aset entry 1 (float-time))
                 (aset entry 3 (= exit-code 0))
+                (aset entry 5 (string-bytes output))
                 (kill-buffer (process-buffer proc))
                 (when (buffer-live-p err-buf)
                   ;; The stderr pipe-process attached by `make-process :stderr'

@@ -23,9 +23,9 @@
 ;; `octocat-doctor' writes a plain-text report to paste into a bug
 ;; report: the sync store's size and its largest resources; which pages
 ;; on screen refresh on their own, how often and why; the `gh' calls of
-;; the last hour; and which files are loaded, and whether a compiled
-;; one is older than its source.  It names the host and resources,
-;; never a token.
+;; the last hour, with how often they ran and the data they received;
+;; and which files are loaded, and whether a compiled one is older than
+;; its source.  It names the host and resources, never a token.
 
 ;;; Code:
 
@@ -224,23 +224,39 @@ OFFLINE is whether GitHub was out of reach, and IDLE-AFTER
   (or (> (cdr a) (cdr b))
       (and (= (cdr a) (cdr b)) (string< (car a) (car b)))))
 
+(defun octocat-doctor--bytes (entry)
+  "Return the bytes `gh' printed for ENTRY of `octocat--gh-log', or nil."
+  ;; Entries logged by code from before BYTES was added have no slot.
+  (and (length> entry 5) (aref entry 5)))
+
+(defun octocat-doctor--size (bytes)
+  "Return BYTES as a short size, such as \"1.2 MB\"."
+  (file-size-human-readable bytes 'si " " "B"))
+
 (defun octocat-doctor--requests (log now)
-  "Return the report's lines on LOG, the `gh' log `octocat--gh-log', at NOW."
+  "Return the report's lines on LOG, the `gh' log `octocat--gh-log', at NOW.
+Rates are averaged over the whole span, idle time included."
   (let ((sum (lambda (seconds label)
                (let* ((calls  (seq-filter (lambda (e) (> (aref e 0) (- now seconds))) log))
                       (failed (seq-count (lambda (e) (and (aref e 1) (not (aref e 3)))) calls))
+                      (bytes  (apply #'+ (delq nil (mapcar #'octocat-doctor--bytes calls))))
                       (counts nil))
                  (dolist (e calls)
                    (let ((reason (or (aref e 4) 'other)))
                      (setf (alist-get reason counts) (1+ (alist-get reason counts 0)))))
-                 (format "  %-11s %4d%s, %d failed\n" label (length calls)
-                         (if counts
-                             (format " (%s)"
-                                     (mapconcat (pcase-lambda (`(,r . ,n)) (format "%s %d" r n))
-                                                (sort counts #'octocat-doctor--more-p)
-                                                ", "))
-                           "")
-                         failed)))))
+                 (concat
+                  (format "  %-11s %4d%s, %d failed\n" label (length calls)
+                          (if counts
+                              (format " (%s)"
+                                      (mapconcat (pcase-lambda (`(,r . ,n)) (format "%s %d" r n))
+                                                 (sort counts #'octocat-doctor--more-p)
+                                                 ", "))
+                            "")
+                          failed)
+                  (format "  %-11s %.1f requests/min, %s received, %s/s\n" ""
+                          (/ (length calls) (/ seconds 60.0))
+                          (octocat-doctor--size bytes)
+                          (octocat-doctor--size (/ bytes (float seconds)))))))))
     (concat
      "Requests to GitHub through gh, last hour\n"
      (funcall sum 300 "Last 5 min")
@@ -248,9 +264,12 @@ OFFLINE is whether GitHub was out of reach, and IDLE-AFTER
      (format "  %-11s %4d\n" "Running" (seq-count (lambda (e) (null (aref e 1))) log))
      "\nMost recent requests\n"
      (mapconcat (lambda (e)
-                  (format "  %s  %7s  %-9s %-6s %s\n"
+                  (format "  %s  %7s  %8s  %-9s %-6s %s\n"
                           (format-time-string "%H:%M:%S" (aref e 0))
                           (if (aref e 1) (format "%.1f s" (- (aref e 1) (aref e 0))) "…")
+                          (if-let* ((bytes (octocat-doctor--bytes e)))
+                              (octocat-doctor--size bytes)
+                            "")
                           (or (aref e 4) 'other)
                           (cond ((null (aref e 1)) "")
                                 ((aref e 3) "ok")
