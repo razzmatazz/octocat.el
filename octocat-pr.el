@@ -203,7 +203,7 @@ On a field such as Labels: pick its values."
     (user-error "Octocat: Buffer is not associated with a pull request"))
   (let* ((target (octocat-timeline-target))
          (url    (and (hash-table-p target) (gethash "url" target)))
-         (gh     (executable-find "gh")))
+         (gh     (octocat--gh-executable)))
     (cond
      ((stringp url)
       (message "Octocat: Opening comment in browser…")

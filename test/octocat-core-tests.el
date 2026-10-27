@@ -450,6 +450,25 @@ browser, skip it."
     (should (equal (octocat--key-help 'octocat-core-test-key-help "go")
                    "RET, C-c C-m: go"))))
 
+(ert-deftest octocat-core-test-load-keeps-exec-path ()
+  "Loading octocat leaves `exec-path' as it was."
+  (let ((before (copy-sequence exec-path)))
+    (load (locate-library "octocat-core") nil t)
+    (should (equal exec-path before))))
+
+(ert-deftest octocat-core-test-gh-executable ()
+  "`gh' is found on `exec-path', else where Homebrew installs it."
+  (let ((octocat-gh-program "gh"))
+    (cl-letf (((symbol-function 'executable-find)
+               (lambda (name)
+                 (and (equal name "gh") (member "/opt/homebrew/bin" exec-path)
+                      "/opt/homebrew/bin/gh"))))
+      (let ((exec-path '("/usr/bin")))
+        (should (equal (octocat--gh-executable) "/opt/homebrew/bin/gh"))
+        (should (equal exec-path '("/usr/bin")))))
+    (cl-letf (((symbol-function 'executable-find) (lambda (_) nil)))
+      (should-not (octocat--gh-executable)))))
+
 (ert-deftest octocat-core-test-run-gh-answers-every-end ()
   "A `gh' call that hangs is stopped and answered, as is one killed."
   (let* ((answers nil)

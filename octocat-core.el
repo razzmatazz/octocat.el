@@ -73,6 +73,12 @@
   :type 'boolean
   :group 'octocat)
 
+(defcustom octocat-gh-program "gh"
+  "The `gh' executable: a file name, or a name to look for.
+A name is looked for in the variable `exec-path'."
+  :type 'string
+  :group 'octocat)
+
 (defcustom octocat-gh-timeout 60
   "Seconds a `gh' call may take before it is stopped as failed, or nil.
 A call can hang without failing, say after the network changed under an
@@ -339,15 +345,17 @@ with a floor of 1."
   :group 'octocat)
 
 
-;;;; exec-path augmentation
+;;;; Finding gh
 
-;; Ensure Homebrew and common user-local paths are in `exec-path' so that
-;; `executable-find' can locate `gh' even when Emacs is launched as a GUI app
-;; (which does not inherit the shell's PATH).
-(dolist (dir '("/opt/homebrew/bin"   ; Apple-silicon Homebrew
-               "/usr/local/bin"      ; Intel Homebrew / manual installs
-               "/opt/local/bin"))    ; MacPorts
-  (add-to-list 'exec-path dir))
+(defun octocat--gh-executable ()
+  "Return the absolute file name of `octocat-gh-program', or nil.
+Looked for in the variable `exec-path', then where Homebrew and
+MacPorts install it: a GUI Emacs on macOS does not get the shell's PATH."
+  (or (executable-find octocat-gh-program)
+      (let ((exec-path '("/opt/homebrew/bin"    ; Apple-silicon Homebrew
+                         "/usr/local/bin"       ; Intel Homebrew
+                         "/opt/local/bin")))    ; MacPorts
+        (executable-find octocat-gh-program))))
 
 
 ;;;; Internal helpers
@@ -497,7 +505,7 @@ CALLBACK receives a cons cell \\=(error . MESSAGE) where MESSAGE is the
 human-readable reason.  A call still running after `octocat-gh-timeout'
 is stopped, and so is answered too.  Errors raised inside CALLBACK
 propagate normally so they appear in the *Backtrace* buffer."
-  (let* ((gh-executable (executable-find "gh")))
+  (let* ((gh-executable (octocat--gh-executable)))
     (if (not gh-executable)
         (funcall callback '(error . "`gh' executable not found"))
       (let* ((owner   octocat--gh-owner)

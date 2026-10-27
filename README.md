@@ -29,7 +29,9 @@ You need:
   (`(json-available-p)`); Emacs 30 and later always have it.
 - **[`gh`](https://cli.github.com/)**, installed (`brew install gh`,
   `apt install gh`, `winget install GitHub.cli`) and logged in with
-  `gh auth login`.
+  `gh auth login`.  Octocat looks for it on `exec-path`, then in the
+  Homebrew and MacPorts directories; set `octocat-gh-program` to its
+  file name if it is elsewhere.
 - **[vui.el](https://melpa.org/#/vui)**, from MELPA.
 
 Then clone this repository and load it:

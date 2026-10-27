@@ -226,7 +226,7 @@ The first line is the title, the rest the body."
     (user-error "Octocat: Buffer is not associated with an issue"))
   (let* ((target (octocat-timeline-target))
          (url    (and (hash-table-p target) (gethash "url" target)))
-         (gh     (executable-find "gh")))
+         (gh     (octocat--gh-executable)))
     (cond
      ((stringp url)
       (message "Octocat: Opening comment in browser…")
