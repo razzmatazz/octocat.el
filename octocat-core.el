@@ -999,6 +999,48 @@ point is saved around it."
       (min width octocat-max-width)
     width))
 
+;;;; Power
+
+;; From battery.el, loaded on first use.
+(defvar battery-status-function)
+(defvar battery-load-low)
+
+(defun octocat--power-state (status low)
+  "Return the power state STATUS describes: `mains', `battery' or `low'.
+STATUS is as `battery-status-function' returns it; `low' is on battery
+at or below LOW percent.  No battery, or none reported, is `mains'."
+  (let ((line (alist-get ?L status))
+        (load (alist-get ?p status)))
+    (cond ((not (and (stringp line)
+                     ;; Each backend names it its own way.
+                     (or (member line '("off-line" "BAT"))
+                         (string-prefix-p "Battery" line))))
+           'mains)
+          ((and (stringp load) (string-match-p "\\`[0-9.]+\\'" load)
+                (<= (string-to-number load) low))
+           'low)
+          (t 'battery))))
+
+(defvar octocat--power nil
+  "The last power state read, as (TIME . STATE), see `octocat-power'.")
+
+(defun octocat-power ()
+  "Return the power state: `mains', `battery' or `low' (`battery-load-low').
+Read at most once a minute, as on macOS it runs `pmset'."
+  (let ((now (float-time)))
+    (unless (and octocat--power (< (- now (car octocat--power)) 60))
+      (setq octocat--power
+            (cons now (octocat--power-state
+                       (and (require 'battery nil t)
+                            battery-status-function
+                            (condition-case err
+                                (funcall battery-status-function)
+                              (error (octocat--debug-log "battery status failed"
+                                                         (error-message-string err))
+                                     nil)))
+                       (or (bound-and-true-p battery-load-low) 25)))))
+    (cdr octocat--power)))
+
 ;;;; Long lines and large content
 ;;
 ;; Emacs draws long lines fast since 29.1, but highlighting or

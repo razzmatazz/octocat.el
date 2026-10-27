@@ -526,5 +526,17 @@ browser, skip it."
       ;; The tail keeps its face.
       (should (eq (get-text-property 7 'face) 'bold)))))
 
+;;;; Power
+
+(ert-deftest octocat-core-test-power-state ()
+  "Each battery backend's way of saying it is on battery is understood."
+  (should (eq (octocat--power-state '((?L . "AC") (?p . "40")) 25) 'mains))
+  (should (eq (octocat--power-state '((?L . "on-line") (?p . "10")) 25) 'mains))
+  (should (eq (octocat--power-state '((?L . "Battery") (?p . "60")) 25) 'battery))
+  (should (eq (octocat--power-state '((?L . "off-line") (?p . "25")) 25) 'low))
+  (should (eq (octocat--power-state '((?L . "BAT") (?p . "N/A")) 25) 'battery))
+  (should (eq (octocat--power-state '((?L . "N/A")) 25) 'mains))
+  (should (eq (octocat--power-state nil 25) 'mains)))
+
 (provide 'octocat-core-tests)
 ;;; octocat-core-tests.el ends here

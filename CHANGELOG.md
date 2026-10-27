@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* On low battery, folds open at once and spinners stand still, saving power
 * `C-c C-l` reacts to the PR, issue or comment at point, or takes a reaction back
 * Loading octocat no longer changes `exec-path`; `octocat-gh-program` names `gh`
 * github.com links elsewhere in Emacs open in octocat only with `octocat-github-links-mode`

@@ -39,8 +39,9 @@ builds it, for `octocat-vui-fold`:
 10:32:34 make compile                   ← the body: copyable, not indented
 ```
 
-Unfolding and folding are animated like the timeline's long entries, and
-a body that is costly to lay out (a step's log) is built only once
+Unfolding and folding are animated like the timeline's long entries
+(not on low battery, see [On battery](#on-battery)),
+and a body that is costly to lay out (a step's log) is built only once
 unfolded.
 
 ### Expand all
@@ -640,6 +641,21 @@ resizes the window; a refetch stays in the mode line.
 `octocat-vui-resource-view` draws the skeleton, the error or the page
 from a snapshot, so a page gives only those pieces.
 
+## On battery
+
+octocat spends less power on battery, as `battery-status-function`
+reports it (`octocat-power`).  With no battery, or none reported, it
+counts as mains power.
+
+| Power                                  | Animations |
+|----------------------------------------|------------|
+| Mains                                  | yes        |
+| Battery                                | yes        |
+| Battery at or below `battery-load-low` | none       |
+
+Without animations, folds open and close in one step, and spinners
+stand still on one frame.
+
 ---
 
 ## Never block the UI on the network
@@ -668,7 +684,8 @@ Lead the in-progress line with the turning block spinner the mode line
 shows while loading, `octocat-vui-spinner`: `▘ Merging pull request…`.
 The mode line's `:loading` is for fetching; an action under way is shown
 where its button was.  The spinner animates through its `display`
-property, without re-rendering the page.
+property, without re-rendering the page; not on low battery, see [On
+battery](#on-battery).
 
 A dialog whose text the user typed (a comment, a description) must not
 lose it: `octocat-timeline-submit` sends its mutation, closes the dialog

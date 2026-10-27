@@ -484,6 +484,13 @@ Starts fast and eases out, see `octocat-vui-unfold-growth'."
                            (ceiling (* octocat-vui-unfold-growth (abs (- to now))))))))
     (if (< from to) (min to (+ now step)) (max to (- now step)))))
 
+(defun octocat-vui--unfold-next (now from to)
+  "Return the next frame of an animation going FROM to TO, now at NOW.
+On low battery, it is TO: no animation, see `octocat-power'."
+  (if (eq (octocat-power) 'low)
+      to
+    (octocat-vui-unfold-step now from to)))
+
 (vui-defcomponent octocat-vui-fold-rest (total limit render prefix noun key)
   "Show the first LIMIT of TOTAL things, the rest folded behind a marker row.
 RENDER is a function of the number of things to show, returning a vnode.
@@ -522,13 +529,13 @@ line RET was pressed on, where the rest starts."
     ;; that is going on.
     (let ((now visible))
       (octocat-vui-use-timer (unfolding) octocat-vui-unfold-interval unfolding
-        (setq now (octocat-vui-unfold-step now limit total))
+        (setq now (octocat-vui--unfold-next now limit total))
         (vui-set-state :shown now)
         (< now total)))
     ;; Fold back the same way, in reverse.
     (let ((now visible))
       (octocat-vui-use-timer (closing) octocat-vui-unfold-interval closing
-        (setq now (octocat-vui-unfold-step now total limit))
+        (setq now (octocat-vui--unfold-next now total limit))
         (if (> now limit)
             (vui-set-state :shown now)
           (vui-set-state :shown nil)
@@ -619,7 +626,7 @@ The timer exists only while items are being revealed."
            (unfolding  (< visible total)))
       (octocat-vui-use-timer (unfolding) octocat-vui-unfold-interval unfolding
         (let ((all (aref v 1)))
-          (aset v 0 (octocat-vui-unfold-step (aref v 0) (aref v 2) all))
+          (aset v 0 (octocat-vui--unfold-next (aref v 0) (aref v 2) all))
           (vui-set-state :tick (lambda (n) (1+ n)))
           (< (aref v 0) all)))
       (funcall render (seq-take items visible)))))
@@ -663,7 +670,7 @@ called during render, like any hook."
          (target (if open total 0))
          (moving (/= now target)))
     (octocat-vui-use-timer (moving open total) octocat-vui-unfold-interval moving
-      (setq now (octocat-vui-unfold-step now (- total target) target))
+      (setq now (octocat-vui--unfold-next now (- total target) target))
       (vui-set-state :shown now)
       ;; Done at the target: setting the same value again would not
       ;; re-render, so the timer would never be cleaned up.
@@ -749,8 +756,9 @@ this, so they do not shift as the new rows appear."
 (defvar octocat-vui--spinner-timer nil)
 
 (defun octocat-vui--spinner-start ()
-  "Start the spinner timer unless it is running."
-  (unless (timerp octocat-vui--spinner-timer)
+  "Start the spinner timer unless it is running, or on low battery.
+Without it, spinners stand still on their first frame."
+  (unless (or (timerp octocat-vui--spinner-timer) (eq (octocat-power) 'low))
     (setq octocat-vui--spinner-timer
           (run-at-time 0.1 0.1 #'octocat-vui--spinner-tick))))
 
@@ -795,7 +803,7 @@ Stop the timer once no buffer shows it."
       (when (and (buffer-local-value 'octocat-vui--page-spinner buf)
                  (octocat-vui--turn-page-spinners buf))
         (setq busy t)))
-    (unless busy
+    (unless (and busy (not (eq (octocat-power) 'low)))
       (cancel-timer octocat-vui--spinner-timer)
       (setq octocat-vui--spinner-timer nil))))
 

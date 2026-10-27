@@ -320,5 +320,12 @@ unsubscribes it."
         (octocat-vui-revisit-page)))
     (should (equal requests '(((a 1)))))))
 
+(ert-deftest octocat-vui-test-low-battery-no-animation ()
+  "On low battery an unfolding jumps to its end."
+  (let ((octocat--power (cons (float-time) 'low)))
+    (should (= (octocat-vui--unfold-next 0 0 100) 100)))
+  (let ((octocat--power (cons (float-time) 'mains)))
+    (should (< (octocat-vui--unfold-next 0 0 100) 100))))
+
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here
