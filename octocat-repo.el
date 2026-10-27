@@ -388,11 +388,6 @@ case, is STEM, a regexp, with or without an extension.")
   "Return non-nil when file NAME is markdown, by its extension."
   (string-match-p "\\.\\(?:md\\|markdown\\|mdown\\|mkdn?\\)\\'" (downcase name)))
 
-(defun octocat-repo--image-file-p (name)
-  "Return non-nil when file NAME is an image, by its extension."
-  (string-match-p "\\.\\(?:png\\|jpe?g\\|gif\\|svg\\|webp\\|bmp\\|ico\\|tiff?\\)\\'"
-                  (downcase name)))
-
 (defun octocat-repo--docs (entries)
   "Return the documents among ENTRIES, the root's `tree-dir' entries.
 Each is (KIND LABEL ENTRY), in the order of `octocat-repo--doc-kinds'.
@@ -1428,15 +1423,15 @@ branch."
 (defun octocat-repo--file-text (repo ref path content raw width)
   "Return file PATH's CONTENT as the file viewer is to show it.
 Markdown is rendered, unless RAW, its relative links into REPO at REF,
-to fit WIDTH; an image is shown, see `octocat-repo--image-text';
+to fit WIDTH; an image is shown, see `octocat--image-text';
 anything else is highlighted as its major mode would.  A file larger
 than `octocat--max-file-size', shown when asked, is plain text.  Long
 lines are clipped, see `octocat--clip-line'."
   (let ((large (> (length content) octocat--max-file-size)))
     (cond ((and (not raw) (not large) (octocat-repo--markdown-file-p path))
            (octocat-repo--doc-text repo ref path content nil width))
-          ((octocat-repo--image-file-p path)
-           (octocat-repo--image-text content width))
+          ((octocat--image-file-p path)
+           (octocat--image-text content width))
           (t (let ((text (decode-coding-string content 'utf-8)))
                (octocat--clip-lines (if large text (octocat-tree--fontify path text))
                                     octocat--max-line-length))))))
@@ -1446,7 +1441,7 @@ lines are clipped, see `octocat--clip-line'."
 HEAD is PATH's `repo-head'.  A file that is not text, or is larger than
 `octocat--max-file-size', is not fetched; an image always is."
   (let ((size (gethash "size" head)))
-    (unless (octocat-repo--image-file-p path)
+    (unless (octocat--image-file-p path)
       (cond ((gethash "binary" head)
              (format "A binary file%s; C-c C-o opens it on GitHub."
                      (if (integerp size)
@@ -1455,17 +1450,6 @@ HEAD is PATH's `repo-head'.  A file that is not text, or is larger than
             ((and (integerp size) (> size octocat--max-file-size))
              (format "A file of %s, too large to show at once; C-c C-o opens it on GitHub."
                      (file-size-human-readable size)))))))
-
-(defun octocat-repo--image-text (content width)
-  "Return a line showing image CONTENT, no wider than WIDTH columns.
-Where it cannot be shown, as in a terminal, the line says so."
-  (let ((type (image-type-from-data content)))
-    (if (and type (display-images-p) (image-type-available-p type))
-        (propertize " " 'display (create-image content type t
-                                               :max-width (* width (frame-char-width))))
-      (propertize (format "An image of %s; C-c C-o opens it on GitHub."
-                          (file-size-human-readable (length content)))
-                  'face 'octocat-dimmed))))
 
 (vui-defcomponent octocat-repo-vui--file-content (repo ref path blob raw)
   "The content of file PATH, BLOB, of REPO at REF.

@@ -34,6 +34,7 @@
 (require 'seq)
 (require 'diff-mode) ; The diff faces.
 (require 'octocat-core)
+(require 'octocat-tree) ; The `blob' resource.
 (require 'octocat-vui)
 (require 'vui)
 
@@ -422,10 +423,34 @@ has no lines changed.  A rename alone has no diff to explain."
         ((eql changes 0) "binary or empty")
         (t "diff too large to show")))
 
-(defun octocat-diff--file (file comments bulk raw width last)
-  "Return one changed FILE (a files-endpoint hash-table) with its inline COMMENTS.
-It is folded unless BULK, as for `octocat-vui-fold', says otherwise; a
-file without a patch is just its heading, which says why, see
+(vui-defcomponent octocat-diff--image (repo sha width last)
+  "The image of blob SHA of REPO, no wider than WIDTH columns.
+Unless LAST, a line across WIDTH follows it, see
+`octocat-diff--underline-last'."
+  :render
+  (let* ((snap (octocat-vui-use-resource (list 'blob repo sha) nil))
+         (data (plist-get snap :data))
+         (text (vui-use-memo (data width last)
+                 (and data
+                      (let ((image (octocat--image-text
+                                    (octocat-tree--blob-content data) width)))
+                        ;; Under the image: on its line, the underline
+                        ;; would cross it at the text's baseline.
+                        (if last image
+                          (concat image "\n" (octocat-diff--underline-last "" width))))))))
+    (pcase (octocat-vui-snapshot-status snap)
+      ('pending (vui-text (octocat-vui-skeleton '(("" 24)))))
+      ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
+      (_        (vui-text text)))))
+
+(defun octocat-diff--file (repo file comments bulk raw width last)
+  "Return one changed FILE (a files-endpoint hash-table) of REPO.
+Its inline COMMENTS are placed in its diff.  It is folded unless BULK,
+as for `octocat-vui-fold', says otherwise.  An image added or modified
+unfolds to the image, see `octocat-diff--image', but only by its own
+RET: \"Expand all\" leaves it folded, so no image is fetched unasked.
+Another file without
+a patch is just its heading, which says why, see
 `octocat-diff--no-diff-note'.  RAW and WIDTH
 are as for `octocat-diff--comment-lines'.  Unless LAST, the file being
 the last one, its diff ends underlined, see
@@ -435,6 +460,10 @@ the last one, its diff ends underlined, see
          (patch    (let ((p (gethash "patch" file)))
                      (and (stringp p) (not (string-empty-p p)) p)))
          (changes  (or (gethash "changes" file) 0))
+         (sha      (gethash "sha" file))
+         (image    (and (null patch) (stringp sha)
+                        (member status '("added" "modified"))
+                        (octocat--image-file-p filename)))
          (title    (concat (octocat-diff--file-icon status)
                            " "
                            (propertize filename 'face 'octocat-diff-file-name)
@@ -444,10 +473,23 @@ the last one, its diff ends underlined, see
                                                  (or (gethash "additions" file) 0)
                                                  (or (gethash "deletions" file) 0))
                                          'face 'octocat-dimmed)))))
-    (if (null patch)
-        (vui-text (concat "  " title
-                          (when-let* ((note (octocat-diff--no-diff-note status changes)))
-                            (propertize (concat "  " note) 'face 'octocat-dimmed))))
+    (cond
+     (image
+      (vui-component 'octocat-vui-fold
+        :key (intern filename)
+        :header (lambda (open toggle)
+                  (octocat-vui-fold-header "" open toggle title
+                                           '("RET: show image" . "RET: hide image")))
+        :deps (list repo sha width last)
+        :prepare (lambda ()
+                   (cons 1 (lambda (_n)
+                             (list (vui-component 'octocat-diff--image
+                                     :repo repo :sha sha :width width :last last)))))))
+     ((null patch)
+      (vui-text (concat "  " title
+                        (when-let* ((note (octocat-diff--no-diff-note status changes)))
+                          (propertize (concat "  " note) 'face 'octocat-dimmed)))))
+     (t
       (vui-component 'octocat-vui-fold
         :key (intern filename)
         :bulk bulk
@@ -459,7 +501,7 @@ the last one, its diff ends underlined, see
                    (let ((text (octocat-diff--patch-text
                                 patch filename (octocat-diff--index comments) raw width)))
                      (octocat-vui-text-body
-                      (if last text (octocat-diff--underline-last text width)))))))))
+                      (if last text (octocat-diff--underline-last text width))))))))))
 
 (defun octocat-diff--line-count (files)
   "Return how many lines FILES take with every patch shown."
@@ -485,8 +527,8 @@ Opening the page shows them again.")
   (setq octocat-diff--hide-comments (not octocat-diff--hide-comments))
   (octocat-vui-update-page :hide-comments octocat-diff--hide-comments))
 
-(vui-defcomponent octocat-diff--files (files by-path hide fits raw width underline)
-  "The Files section: FILES with the review comments BY-PATH, folded.
+(vui-defcomponent octocat-diff--files (repo files by-path hide fits raw width underline)
+  "The Files section: FILES of REPO with the review comments BY-PATH, folded.
 They start unfolded when FITS, the whole diff fitting in the window.
 HIDE leaves the comments out.  RAW and WIDTH are as for
 `octocat-diff--comment-lines'; UNDERLINE underlines the heading across
@@ -528,20 +570,21 @@ when the diff shows some comment, runs `octocat-diff-toggle-comments'."
          (vui-text "  (no files changed)" :face 'octocat-dimmed)
        (vui-list (append files nil)
                  (lambda (f)
-                   (octocat-diff--file f (and (not hide)
-                                              (cdr (assoc (gethash "filename" f) by-path)))
+                   (octocat-diff--file repo f (and (not hide)
+                                                   (cdr (assoc (gethash "filename" f) by-path)))
                                        bulk raw width
                                        (eq f (aref files (1- (length files))))))
                  (lambda (f) (gethash "filename" f)))))))
 
-(defun octocat-diff-files-section (files by-path hide raw width &optional underline)
+(defun octocat-diff-files-section (repo files by-path hide raw width &optional underline)
   "Return the vnode of the Files section: the heading and one entry per file.
-FILES is the files vector and BY-PATH the review comments by file path,
+FILES is REPO's files vector and BY-PATH the review comments by file path,
 left out when HIDE.
 Files start folded, unless the whole diff fits in the window.  The
 comments are markdown, rendered unless RAW, to fit WIDTH columns.
 UNDERLINE underlines the heading across WIDTH."
   (vui-component 'octocat-diff--files
+    :repo repo
     :files files
     :by-path by-path
     :hide hide

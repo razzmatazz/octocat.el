@@ -1096,6 +1096,22 @@ Read at most once a minute, as on macOS it runs `pmset'."
     map)
   "Keymap of the button standing for the rest of a long line.")
 
+(defun octocat--image-file-p (name)
+  "Return non-nil when file NAME is an image, by its extension."
+  (string-match-p "\\.\\(?:png\\|jpe?g\\|gif\\|svg\\|webp\\|bmp\\|ico\\|tiff?\\)\\'"
+                  (downcase name)))
+
+(defun octocat--image-text (content width)
+  "Return a line showing image CONTENT, no wider than WIDTH columns.
+Where it cannot be shown, as in a terminal, the line says so."
+  (let ((type (image-type-from-data content)))
+    (if (and type (display-images-p) (image-type-available-p type))
+        (propertize " " 'display (create-image content type t
+                                               :max-width (* width (frame-char-width))))
+      (propertize (format "An image of %s; C-c C-o opens it on GitHub."
+                          (file-size-human-readable (length content)))
+                  'face 'octocat-dimmed))))
+
 (defun octocat--clip-line (line max)
   "Return LINE with all past MAX characters drawn as a button to reveal them.
 As `compilation-max-output-line-length' does: the text stays, so it is

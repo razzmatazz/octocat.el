@@ -334,7 +334,7 @@ fetches them again."
                       (when-let* ((section (octocat-commit--checks repo sha checks width)))
                         (vui-fragment section (vui-newline)))
                       (octocat-diff-files-section
-                       (or (gethash "files" data) []) by-path hide-comments raw md-width t)
+                       repo (or (gethash "files" data) []) by-path hide-comments raw md-width t)
                       ;; Most commits have none, so the section is left
                       ;; out unless there are any, or they failed to load.
                       (when (or (not (seq-empty-p (plist-get comments :data)))

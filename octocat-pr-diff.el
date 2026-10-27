@@ -249,7 +249,7 @@ everything again."
      (pcase (octocat-vui-snapshot-status files)
        ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
        ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
-       (_ (octocat-diff-files-section (plist-get files :data) by-path
+       (_ (octocat-diff-files-section repo (plist-get files :data) by-path
                                       hide-comments raw (octocat--markdown-width))))
      (vui-newline)
      (octocat-diff-comments-section "Review Comments" comments

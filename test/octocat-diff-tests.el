@@ -199,5 +199,19 @@ A line added whole, and a change of spaces alone, are not."
   (should (equal (octocat-diff--no-diff-note "modified" 36142) "diff too large to show"))
   (should-not (octocat-diff--no-diff-note "renamed" 0)))
 
+(ert-deftest octocat-diff-test-image-stays-folded ()
+  "An image is unfolded only by its own RET, not with the rest of the diff."
+  (let ((out (with-temp-buffer
+               (vui-render (vui-component 'octocat-diff--files
+                                          :repo "o/r"
+                                          :files (vector (json-parse-string
+                                                          "{\"filename\":\"a.png\",\"status\":\"added\",\"sha\":\"abc\",\"changes\":0}")
+                                                         (json-parse-string
+                                                          "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}"))
+                                          :fits t :raw nil :width 80))
+               (buffer-substring-no-properties (point-min) (point-max)))))
+    (should (string-search "▸ A a.png" out))
+    (should (string-search "+x" out))))
+
 (provide 'octocat-diff-tests)
 ;;; octocat-diff-tests.el ends here

@@ -550,6 +550,14 @@ Closes #97"
       :files ,octocat-screenshots--pr-128-files))
   "The commit that merged #128, as the REST API gives it.")
 
+(defconst octocat-screenshots--footnote-popup
+  (with-temp-buffer
+    (set-buffer-multibyte nil)
+    (insert-file-contents-literally
+     (expand-file-name "footnote-popup.png" (file-name-directory (macroexp-file-name))))
+    (buffer-string))
+  "The bytes of the made-up image commit #131 adds.")
+
 (defconst octocat-screenshots--commit-131-files
   ;; GitHub leaves out the patch of a binary file, and of one whose diff
   ;; is too large.
@@ -894,6 +902,8 @@ FIELDS, a plist, override the rest."
       ("commit" (,(concat "commits/" octocat-screenshots--commit)) ,octocat-screenshots--commit-rest)
       ("commit" (,(concat "commits/" octocat-screenshots--head)) ,octocat-screenshots--commit-131-rest)
       ("commit-comments" (,(concat "commits/" octocat-screenshots--head)) [])
+      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "f7") 0 8)) ()
+       ,(base64-encode-string octocat-screenshots--footnote-popup))
       ("checks" ("check-runs")
        (:total_count 4
         :check_runs [,(octocat-screenshots--check-run 27100200310 "lint" "success" (* 6 h) 2)
