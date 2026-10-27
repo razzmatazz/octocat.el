@@ -18,8 +18,8 @@ Checks (4)  CI: ✓
   ✓ docs           GitHub Actions  3m00s  6 hours ago
 
 Files (5)  [Collapse all]
-  A docs/assets/footnote-popup.png  +0 -0  binary, or too large to show
-  M docs/assets/search-index.json  +18240 -17902  binary, or too large to show
+  A docs/assets/footnote-popup.png  binary or empty
+  M docs/assets/search-index.json  +18240 -17902  diff too large to show
 ▾ M src/markdown.rs  +2 -1
 @@ -12,6 +12,7 @@ pub fn render(source: &str) -> String {
      let mut options = Options::empty();

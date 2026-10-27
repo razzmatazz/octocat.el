@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A diff tells a binary or empty file apart from one too large to show
 * An unfolded file's diff ends in a line across the page, setting it apart from the next file
 * Diffs mark the words changed within a line, as `diff-refine-hunk` does
 * A diff's file names are bold; only the A, D or R before one is coloured

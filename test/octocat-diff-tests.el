@@ -193,5 +193,11 @@ A line added whole, and a change of spaces alone, are not."
     (should (memq 'underline (octocat-diff-tests--face-at text 4)))
     (should (equal (get-text-property 5 'display text) '(space :align-to 10)))))
 
+(ert-deftest octocat-diff-test-no-diff-note ()
+  "A file without a patch says why: binary or empty, or too large."
+  (should (equal (octocat-diff--no-diff-note "added" 0) "binary or empty"))
+  (should (equal (octocat-diff--no-diff-note "modified" 36142) "diff too large to show"))
+  (should-not (octocat-diff--no-diff-note "renamed" 0)))
+
 (provide 'octocat-diff-tests)
 ;;; octocat-diff-tests.el ends here

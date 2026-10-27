@@ -413,11 +413,20 @@ file; it shows only once the diff is unfolded to its end."
     (add-face-text-property start (length text) 'underline t text)
     (concat text (propertize " " 'face 'underline 'display `(space :align-to ,width)))))
 
+(defun octocat-diff--no-diff-note (status changes)
+  "Return why a file of STATUS has no patch, or nil.
+CHANGES is how many of its lines changed.  GitHub sends no patch for a
+binary file, nor for a diff too large; an empty file, as a binary one,
+has no lines changed.  A rename alone has no diff to explain."
+  (cond ((and (equal status "renamed") (eql changes 0)) nil)
+        ((eql changes 0) "binary or empty")
+        (t "diff too large to show")))
+
 (defun octocat-diff--file (file comments bulk raw width last)
   "Return one changed FILE (a files-endpoint hash-table) with its inline COMMENTS.
 It is folded unless BULK, as for `octocat-vui-fold', says otherwise; a
-file without a patch is just its heading, which says why when the file
-changed: it is binary, or too large for GitHub to show.  RAW and WIDTH
+file without a patch is just its heading, which says why, see
+`octocat-diff--no-diff-note'.  RAW and WIDTH
 are as for `octocat-diff--comment-lines'.  Unless LAST, the file being
 the last one, its diff ends underlined, see
 `octocat-diff--underline-last'."
@@ -425,20 +434,20 @@ the last one, its diff ends underlined, see
          (status   (or (gethash "status" file) "modified"))
          (patch    (let ((p (gethash "patch" file)))
                      (and (stringp p) (not (string-empty-p p)) p)))
+         (changes  (or (gethash "changes" file) 0))
          (title    (concat (octocat-diff--file-icon status)
                            " "
                            (propertize filename 'face 'octocat-diff-file-name)
-                           (propertize (format "  +%d -%d"
-                                               (or (gethash "additions" file) 0)
-                                               (or (gethash "deletions" file) 0))
-                                       'face 'octocat-dimmed))))
+                           ;; Nothing to count in a file with no lines changed.
+                           (unless (and (null patch) (eql changes 0))
+                             (propertize (format "  +%d -%d"
+                                                 (or (gethash "additions" file) 0)
+                                                 (or (gethash "deletions" file) 0))
+                                         'face 'octocat-dimmed)))))
     (if (null patch)
         (vui-text (concat "  " title
-                          ;; Not a rename alone, which has no diff.
-                          (unless (and (equal status "renamed")
-                                       (eql (gethash "changes" file) 0))
-                            (propertize "  binary, or too large to show"
-                                        'face 'octocat-dimmed))))
+                          (when-let* ((note (octocat-diff--no-diff-note status changes)))
+                            (propertize (concat "  " note) 'face 'octocat-dimmed))))
       (vui-component 'octocat-vui-fold
         :key (intern filename)
         :bulk bulk
