@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A `*`, `~` or `(` in an HTML link's href no longer breaks the markdown around it
+* Markdown decodes more HTML entities, like `&ensp;` and `&mdash;`, and hex `&#x…;` ones
 * Merges, comments, reviews and other changes sent to GitHub show in every mode line
 * `#123` refs and branch links opened in another window no longer open in the same one
 * Markdown keeps the blank line written after a list, as GitHub shows it

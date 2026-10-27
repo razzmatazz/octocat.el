@@ -128,8 +128,21 @@
 
 (defconst octocat-markdown--entities
   '(("amp" . "&") ("lt" . "<") ("gt" . ">") ("quot" . "\"")
-    ("apos" . "'") ("nbsp" . " "))
-  "Named character references understood by the inline renderer.")
+    ("apos" . "'")
+    ;; Plain spaces, so `nobreak-char-display' does not mark them.
+    ("nbsp" . " ") ("ensp" . " ") ("emsp" . " ") ("thinsp" . " ")
+    ("zwj" . "\u200d") ("zwnj" . "\u200c") ("shy" . "")
+    ("ndash" . "–") ("mdash" . "—") ("hellip" . "…") ("bull" . "•")
+    ("middot" . "·") ("lsquo" . "‘") ("rsquo" . "’") ("ldquo" . "“")
+    ("rdquo" . "”") ("laquo" . "«") ("raquo" . "»") ("copy" . "©")
+    ("reg" . "®") ("trade" . "™") ("deg" . "°") ("times" . "×")
+    ("divide" . "÷") ("plusmn" . "±") ("larr" . "←") ("rarr" . "→")
+    ("uarr" . "↑") ("darr" . "↓") ("harr" . "↔") ("check" . "✓")
+    ("cross" . "✗") ("star" . "☆") ("starf" . "★") ("hearts" . "♥")
+    ("sect" . "§") ("para" . "¶") ("euro" . "€") ("pound" . "£")
+    ("cent" . "¢") ("yen" . "¥"))
+  "Named character references understood by the inline renderer.
+The ones READMEs use; any other can be written as `&#NNN;' or `&#xHHH;'.")
 
 (defun octocat-markdown--face (string &rest faces)
   "Return STRING with FACES added on top of any faces it already has."
@@ -537,12 +550,15 @@ Group 2 is its content."
     (,"</?[a-zA-Z][^<>\n]*>" ,(lambda (_m) ""))
     (,"&\\(#?[a-zA-Z0-9]+\\);"
      ,(lambda (m)
-        (let ((name (nth 1 m)) (whole (nth 0 m)))
+        (let* ((name (nth 1 m))
+               (code (cond ((string-match "\\`#\\([0-9]+\\)\\'" name)
+                            (string-to-number (match-string 1 name)))
+                           ((string-match "\\`#[xX]\\([[:xdigit:]]+\\)\\'" name)
+                            (string-to-number (match-string 1 name) 16)))))
           (cond ((assoc name octocat-markdown--entities)
                  (cdr (assoc name octocat-markdown--entities)))
-                ((string-match "\\`#\\([0-9]+\\)\\'" name)
-                 (string (string-to-number (match-string 1 name))))
-                (t whole))))))
+                ((and code (< 0 code (1+ (max-char t)))) (string code))
+                (t (nth 0 m)))))))
   "Inline rules for HTML, as in `octocat-markdown--inline-rules'.
 They alone apply inside <pre>, where markdown is not rendered.")
 
@@ -702,13 +718,29 @@ lines.  Tags in code spans are skipped unless HTML (inside <pre>)."
 (defvar octocat-markdown--rules nil
   "Inline rules in force, or nil for `octocat-markdown--inline-rules'.")
 
+(defun octocat-markdown--mask-attributes (text)
+  "Return TEXT with the attributes of its HTML tags blanked out.
+Markdown rules match against it, so that a `*', `~' or `(' in an href
+does not start or end emphasis or a link: tags bind tighter."
+  (let ((pos 0) (masked text))
+    (while (string-match "</?[a-zA-Z][a-zA-Z0-9-]*\\([ \t/][^<>\n]*\\)>" text pos)
+      (when (eq masked text) (setq masked (copy-sequence text)))
+      (cl-loop for i from (match-beginning 1) below (match-end 1)
+               do (aset masked i ?\s))
+      (setq pos (match-end 0)))
+    masked))
+
 (defun octocat-markdown--inline (text)
   "Return TEXT (a single line) with inline markdown rendered."
-  (let ((pos 0) (out nil) (len (length text)))
+  (let ((pos 0) (out nil) (len (length text))
+        (masked (octocat-markdown--mask-attributes text)))
     (while (< pos len)
       (let (best)                       ; (BEG END DATA RULE)
         (dolist (rule (or octocat-markdown--rules octocat-markdown--inline-rules))
-          (when (string-match (car rule) text pos)
+          ;; HTML rules, which start with `<', read the attributes.
+          (when (string-match (car rule)
+                              (if (string-prefix-p "<" (car rule)) text masked)
+                              pos)
             (let ((group (or (nth 2 rule) 0)))
               (when (or (null best) (< (match-beginning group) (car best)))
                 (setq best (list (match-beginning group) (match-end group)

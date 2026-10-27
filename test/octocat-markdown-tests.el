@@ -99,6 +99,24 @@ the window's point; mid-render that scrambled the page."
     (should (equal (get-text-property 0 'octocat-markdown-image out)
                    '(:url "https://x/y.png" :width nil :cols nil)))))
 
+(ert-deftest octocat-markdown-test-entities ()
+  "Named, decimal and hex character references are decoded; unknown ones kept."
+  (should (equal (substring-no-properties
+                  (octocat-markdown-render
+                   "<a>x</a>&ensp;Vulns &mdash; &#x2713; &#65; &bogus; &#x110000;" ""))
+                 "x Vulns — ✓ A &bogus; &#x110000;\n")))
+
+(ert-deftest octocat-markdown-test-emphasis-around-tag ()
+  "Markdown in a tag's attributes is not rendered, nor ends emphasis."
+  (dolist (src '("*<a href=\"https://x.org/s/*a*\" target=\"_blank\">view</a>*"
+                 "*<a href=\"https://x.org/~~a(b)%20[c](d)\">view</a>*"
+                 "_<a href=\"https://x.org/a_b\" target=\"_blank\">view</a>_"))
+    (let ((out (octocat-markdown-render src "")))
+      (should (equal (substring-no-properties out) "view\n"))
+      (should (memq 'italic (ensure-list (octocat-markdown-tests--prop out "view" 'face))))
+      (should (string-prefix-p "https://x.org/"
+                               (octocat-markdown-tests--prop out "view" 'octocat-markdown-url))))))
+
 (ert-deftest octocat-markdown-test-inline-html ()
   "Inline HTML formatting tags become faces and <a href> a link."
   (let ((out (octocat-markdown-render
