@@ -664,6 +664,21 @@ OBJ is as for `octocat--reaction-counts'."
                          (propertize (number-to-string (cdr c)) 'face 'octocat-dimmed)))
                counts "  ")))
 
+(defun octocat--toggle-reaction (groups content add)
+  "Return GROUPS, a \"reactionGroups\" vector, with one CONTENT more, or less.
+ADD non-nil adds one, else takes one away.  GROUPS is not changed."
+  (let* ((groups (append groups nil))
+         (old    (seq-find (lambda (g) (equal (octocat--get g "content") content)) groups))
+         (n      (max 0 (+ (or (octocat--get old "users" "totalCount") 0) (if add 1 -1))))
+         (new    (make-hash-table :test #'equal))
+         (users  (make-hash-table :test #'equal)))
+    (puthash "totalCount" n users)
+    (puthash "content" content new)
+    (puthash "users" users new)
+    (vconcat (if old
+                 (mapcar (lambda (g) (if (eq g old) new g)) groups)
+               (append groups (list new))))))
+
 (defun octocat--run-icon (status conclusion)
   "Return a propertized status icon for STATUS and CONCLUSION strings.
 STATUS takes priority over CONCLUSION for in-progress detection."

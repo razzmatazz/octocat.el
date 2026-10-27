@@ -219,6 +219,13 @@ The first line is the title, the rest the body."
      nil
      (list :repo repo))))
 
+(defun octocat-issue-react ()
+  "Pick a reaction to toggle on the issue or comment at point."
+  (interactive)
+  (unless (and octocat--issue-repo octocat--issue-number)
+    (user-error "Octocat: Buffer is not associated with an issue"))
+  (octocat-timeline-react "issue" octocat--issue-repo octocat--issue-number))
+
 (defun octocat-issue-browse ()
   "Open the comment at point, or else the whole issue, in the browser."
   (interactive)
@@ -275,7 +282,7 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
                    (list "issue" "view"
                          (number-to-string number)
                          "--repo" repo
-                         "--json" (concat "number,title,author,state,body,"
+                         "--json" (concat "id,number,title,author,state,body,"
                                           "createdAt,closedAt,"
                                           "labels,comments,url,assignees,milestone,reactionGroups,"
                                           "closedByPullRequestsReferences"))
@@ -367,6 +374,7 @@ A new TICK fetches everything again."
     (define-key map (kbd "C-c C-o") #'octocat-issue-browse)
     (define-key map (kbd "C-c C-a") #'octocat-issue-add-comment)
     (define-key map (kbd "C-c C-e") #'octocat-issue-edit)
+    (define-key map (kbd "C-c C-l") #'octocat-issue-react)
     (define-key map (kbd "C-c C-n") #'octocat-issue-new)
     (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)

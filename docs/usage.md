@@ -363,6 +363,14 @@ Request changes.  `C-c C-m` merges the PR: edit the commit message,
 in the repo, if still allowed), `C-c C-d` toggles deleting the branch,
 and `C-c C-c` merges.
 
+### Reacting (`C-c C-l`)
+
+`C-c C-l` on an issue's or PR's opening post, or on a comment, gives or
+takes back a reaction, such as 👍 or 🎉.  It asks with one key per
+reaction (`+`, `-`, `l`augh, `t`ada, `c`onfused, `h`eart, `r`ocket,
+`e`yes) and ticks the ones you gave; picking one of those takes it
+back.  The count beside the date changes at once.
+
 ### Refreshing (`g` / `gr`)
 
 A refresh shows the page as when it opened: images shown in place are

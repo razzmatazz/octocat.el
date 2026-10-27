@@ -303,12 +303,13 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
     (should (equal submitted '(edit-values "issue" "o/r" 3 "assignee" ("cy") ("ann"))))))
 
 (defconst octocat-timeline-tests--mine-json
-  (concat "{\"number\":7,\"state\":\"OPEN\",\"body\":\"opening\","
+  (concat "{\"id\":\"I_7\",\"number\":7,\"state\":\"OPEN\",\"body\":\"opening\","
           "\"createdAt\":\"2026-01-01T10:00:00Z\",\"author\":{\"login\":\"me\"},\"labels\":[],"
-          "\"comments\":[{\"author\":{\"login\":\"me\"},\"body\":\"mine\","
+          "\"comments\":[{\"id\":\"IC_5\",\"author\":{\"login\":\"me\"},\"body\":\"mine\","
           "\"createdAt\":\"2026-01-02T10:00:00Z\",\"viewerDidAuthor\":true,"
+          "\"reactionGroups\":[{\"content\":\"HEART\",\"users\":{\"totalCount\":1}}],"
           "\"url\":\"https://github.com/o/r/issues/7#issuecomment-5\"}]}")
-  "An open issue by \"me\", with one comment of mine.")
+  "An open issue by \"me\", with one comment of mine, given a ❤️.")
 
 (defmacro octocat-timeline-tests--with-issue (&rest body)
   "Run BODY with issue o/r#7 of `octocat-timeline-tests--mine-json' stored.
@@ -409,6 +410,54 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
     (let ((post (car (octocat-timeline-items (issue) "opened this issue" nil nil))))
       (should (equal (plist-get post :body) "new body"))
       (should-not (plist-get post :pending)))))
+
+(ert-deftest octocat-timeline-test-react ()
+  "A reaction given or taken back shows at once, and stays once GitHub has it."
+  (octocat-timeline-tests--with-issue
+    (octocat-sync--write octocat-sync--db (octocat-sync-spec-key '(viewer-reactions "IC_5"))
+                         (json-parse-string "{\"given\":[\"HEART\"]}")
+                         (float-time))
+    (cl-flet ((reactions ()
+                (mapcar (lambda (i) (and (plist-get i :reactions)
+                                         (substring-no-properties (plist-get i :reactions))))
+                        (octocat-timeline-items (issue) "opened this issue" nil nil)))
+              (given ()
+                (octocat--get (plist-get (octocat-sync-read '(viewer-reactions "IC_5")) :data)
+                              "given")))
+      (octocat-sync-submit '(react "issue" "o/r" 7 "I_7" "HOORAY" t))
+      (octocat-sync-submit '(react "issue" "o/r" 7 "IC_5" "HEART" nil))
+      (should (equal (reactions) '("🎉 1" nil)))
+      (should (equal (given) []))
+      (let ((args (car (nth 1 calls))))
+        (should (string-match-p "addReaction" (nth 3 args)))
+        (should (equal (nthcdr 4 args) '("-f" "id=I_7" "-f" "content=HOORAY"))))
+      (should (string-match-p "removeReaction" (nth 3 (car (car calls)))))
+      (octocat-timeline-tests--answer (nth 1 calls) "{}")
+      (octocat-timeline-tests--answer (car calls) "{}")
+      (should-not octocat-sync--pending)
+      (should (equal (reactions) '("🎉 1" nil)))
+      (should (equal (given) [])))))
+
+(ert-deftest octocat-timeline-test-react-picks ()
+  "Picking a reaction you gave takes it back; the picker ticks it."
+  (let (prompted submitted)
+    (cl-letf (((symbol-function 'octocat-timeline-target) (lambda () 'body))
+              ((symbol-function 'octocat-sync-detail-read)
+               (lambda (_) (json-parse-string "{\"id\":\"I_7\"}")))
+              ((symbol-function 'octocat-sync-get)
+               (lambda (spec cb)
+                 (should (equal spec '(viewer-reactions "I_7")))
+                 (funcall cb (json-parse-string "{\"given\":[\"THUMBS_UP\"]}"))))
+              ((symbol-function 'run-at-time) (lambda (_ _ f) (funcall f)))
+              ((symbol-function 'octocat--still-selected-p) (lambda (_) t))
+              ((symbol-function 'read-multiple-choice)
+               (lambda (_prompt choices) (setq prompted choices) (assq ?+ choices)))
+              ((symbol-function 'octocat-sync-submit)
+               (lambda (spec &rest _) (setq submitted spec))))
+      (octocat-timeline-react "issue" "o/r" 7))
+    (should (equal (car prompted) '(?+ "👍 +1 ✓")))
+    (should (equal (nth 1 prompted) '(?- "👎 -1")))
+    (should (equal submitted '(react "issue" "o/r" 7 "I_7" "THUMBS_UP" nil)))))
 
 (provide 'octocat-timeline-tests)
 ;;; octocat-timeline-tests.el ends here

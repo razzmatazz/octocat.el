@@ -27,6 +27,21 @@
     (should-not (octocat--reactions-string (json-parse-string "{\"reactionGroups\":null}")))
     (should-not (octocat--reactions-string (json-parse-string "{}")))))
 
+(ert-deftest octocat-core-test-toggle-reaction ()
+  "A reaction is counted up, down to nothing, or added; the old groups stay."
+  (let* ((old (json-parse-string
+               "[{\"content\":\"HEART\",\"users\":{\"totalCount\":1}}]"))
+         (counts (lambda (groups)
+                   (let ((h (make-hash-table :test #'equal)))
+                     (puthash "reactionGroups" groups h)
+                     (octocat--reaction-counts h)))))
+    (should (equal (funcall counts (octocat--toggle-reaction old "HEART" t)) '(("❤️" . 2))))
+    (should-not (funcall counts (octocat--toggle-reaction old "HEART" nil)))
+    (should (equal (funcall counts (octocat--toggle-reaction old "EYES" t))
+                   '(("❤️" . 1) ("👀" . 1))))
+    (should (equal (funcall counts (octocat--toggle-reaction nil "EYES" t)) '(("👀" . 1))))
+    (should (equal (funcall counts old) '(("❤️" . 1))))))
+
 (ert-deftest octocat-core-test-settings ()
   "Settings survive a reload of the file; nil removes one."
   (let* ((dir (make-temp-file "octocat-settings" t))

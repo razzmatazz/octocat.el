@@ -64,6 +64,7 @@ Then clone this repository and load it:
 | `C-c C-v` | Another view: raw markdown, compact lists, review comments in diffs |
 | `C-c C-a` | Comment on a PR or issue |
 | `C-c C-e` | Edit the title, body, comment, labels, assignees or reviewers at point |
+| `C-c C-l` | React to the PR, issue or comment at point, or take a reaction back |
 | `C-c C-n` | Write a new issue |
 | `C-c C-r` | Review the PR |
 | `C-c C-m` | Merge the PR |

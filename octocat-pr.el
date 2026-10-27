@@ -196,6 +196,13 @@ On a field such as Labels: pick its values."
      (t
       (user-error "Octocat: Nothing to edit here")))))
 
+(defun octocat-pr-react ()
+  "Pick a reaction to toggle on the PR or comment at point."
+  (interactive)
+  (unless (and octocat--pr-repo octocat--pr-number)
+    (user-error "Octocat: Buffer is not associated with a pull request"))
+  (octocat-timeline-react "pr" octocat--pr-repo octocat--pr-number))
+
 (defun octocat-pr-browse ()
   "Open the comment at point, or else the whole PR, in the browser."
   (interactive)
@@ -701,7 +708,7 @@ Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
                    (list "pr" "view"
                          (number-to-string number)
                          "--repo" repo
-                         "--json" (concat "number,title,author,state,body,"
+                         "--json" (concat "id,number,title,author,state,body,"
                                           "createdAt,mergedAt,closedAt,"
                                           "baseRefName,headRefName,headRepositoryOwner,"
                                           "isDraft,mergeable,mergeStateStatus,"
@@ -1058,6 +1065,7 @@ A new TICK fetches them again."
     (define-key map (kbd "C-c C-o") #'octocat-pr-browse)
     (define-key map (kbd "C-c C-a") #'octocat-pr-add-comment)
     (define-key map (kbd "C-c C-e") #'octocat-pr-edit)
+    (define-key map (kbd "C-c C-l") #'octocat-pr-react)
     (define-key map (kbd "C-c C-n") #'octocat-issue-new)
     (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
     (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)

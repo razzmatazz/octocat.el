@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `C-c C-l` reacts to the PR, issue or comment at point, or takes a reaction back
 * Loading octocat no longer changes `exec-path`; `octocat-gh-program` names `gh`
 * github.com links elsewhere in Emacs open in octocat only with `octocat-github-links-mode`
 * A commit's message starts at the left edge, so it copies without an indent

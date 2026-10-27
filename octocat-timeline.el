@@ -777,6 +777,142 @@ what is being done to it, such as \"saving…\"."
                    (timeline-events ,repo ,number)
                    (list-items ,(if (equal kind "pr") 'pulls 'issues) ,repo _ _))))
 
+;;;; Reactions
+
+(defconst octocat-timeline--reaction-query
+  (concat "query($id:ID!){node(id:$id){"
+          "...on Reactable{reactionGroups{content viewerHasReacted}}}}")
+  "GraphQL query for the reactions you gave to a post or comment.
+`gh ... view' leaves out whose they are.")
+
+;; Kept long: only you change them, and `react' keeps them up to date.
+(octocat-sync-define-resource viewer-reactions (subject)
+  :max-age 3600
+  :fetch (lambda (done)
+           (octocat--run-gh
+            "viewer-reactions"
+            (list "api" "graphql" "-f" (concat "query=" octocat-timeline--reaction-query)
+                  "-f" (concat "id=" subject))
+            (lambda (output)
+              (let ((groups (octocat--get (json-parse-string output) "data" "node"
+                                          "reactionGroups"))
+                    (tree   (make-hash-table :test #'equal)))
+                (puthash "given"
+                         (vconcat (delq nil (mapcar (lambda (g)
+                                                      (and (eq (gethash "viewerHasReacted" g) t)
+                                                           (gethash "content" g)))
+                                                    groups)))
+                         tree)
+                tree))
+            done)))
+
+(defun octocat-timeline--react-comment (data subject content add)
+  "Return DATA, a page resource's body, with one CONTENT more on comment SUBJECT.
+SUBJECT is the comment's node id; ADD nil takes one away instead."
+  (puthash "comments"
+           (cl-map 'vector
+                   (lambda (c)
+                     (if (not (equal (gethash "id" c) subject))
+                         c
+                       (let ((c (copy-hash-table c)))
+                         (puthash "reactionGroups"
+                                  (octocat--toggle-reaction (gethash "reactionGroups" c)
+                                                            content add)
+                                  c)
+                         c)))
+                   (gethash "comments" data))
+           data)
+  data)
+
+(octocat-sync-define-mutation react (kind repo number subject content add)
+  :label (if add "Reacting…" "Taking reaction back…")
+  ;; The changed count is all a page shows of it.
+  :slot 'reaction
+  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)
+                              `(viewer-reactions ,subject)))
+  :optimistic (lambda ()
+                (let ((item (octocat-sync-detail-read
+                             (octocat-timeline--detail-spec kind repo number))))
+                  (when (equal (octocat--get item "id") subject)
+                    `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
+                       ("reactionGroups" . ,(octocat--toggle-reaction
+                                             (gethash "reactionGroups" item) content add)))))))
+  :edits (lambda (_answered _)
+           (list (cons (octocat-timeline--detail-spec kind repo number)
+                       (lambda (data) (octocat-timeline--react-comment data subject content add)))
+                 (cons `(viewer-reactions ,subject)
+                       (lambda (data)
+                         (let ((given (remove content (append (gethash "given" data) nil))))
+                           (puthash "given" (vconcat (if add (cons content given) given)) data)
+                           data)))))
+  :send (lambda (done)
+          (octocat--run-gh
+           "react"
+           (list "api" "graphql"
+                 "-f" (format (concat "query=mutation($id:ID!,$content:ReactionContent!){"
+                                      "%s(input:{subjectId:$id,content:$content}){"
+                                      "clientMutationId}}")
+                              (if add "addReaction" "removeReaction"))
+                 "-f" (concat "id=" subject)
+                 "-f" (concat "content=" content))
+           #'ignore done)))
+
+(defconst octocat-timeline--reaction-keys
+  '(("THUMBS_UP" ?+ "+1") ("THUMBS_DOWN" ?- "-1") ("LAUGH" ?l "laugh")
+    ("HOORAY" ?t "tada") ("CONFUSED" ?c "confused") ("HEART" ?h "heart")
+    ("ROCKET" ?r "rocket") ("EYES" ?e "eyes"))
+  "Each reaction's GraphQL name, its key in the picker and its name there.")
+
+(defun octocat-timeline--reaction-choices (given)
+  "Return the `read-multiple-choice' choices, a ✓ on each of GIVEN.
+GIVEN lists the GraphQL names of the reactions you gave."
+  (mapcar (pcase-lambda (`(,content ,key ,name))
+            (list key (concat (nth 2 (assoc content octocat--reactions)) " " name
+                              (if (member content given) " ✓" ""))))
+          octocat-timeline--reaction-keys))
+
+(defun octocat-timeline-react (kind repo number)
+  "Pick a reaction to toggle on the post or comment at point.
+It is in issue or PR (KIND) NUMBER of REPO.  The reactions you gave are
+ticked; picking one of them takes it back."
+  (let* ((target  (octocat-timeline-target))
+         (subject (cond
+                   ((memq target '(title body))
+                    (or (octocat--get (octocat-sync-detail-read
+                                       (octocat-timeline--detail-spec kind repo number))
+                                      "id")
+                        ;; Stored before the page fetched ids.
+                        (user-error "Octocat: Refresh the page first")))
+                   ((hash-table-p target)
+                    (or (octocat--get target "id")
+                        (user-error "Octocat: Wait for the comment to be posted")))
+                   (t (user-error "Octocat: Nothing to react to here"))))
+         (buf     (current-buffer))
+         (called  nil))
+    (octocat-sync-get
+     `(viewer-reactions ,subject)
+     (lambda (data)
+       (setq called t)
+       ;; Outside the process sentinel, as `octocat-timeline-edit-values'.
+       (run-at-time
+        0 nil
+        (lambda ()
+          (cond
+           ((eq (car-safe data) 'error) (message "Octocat: %s" (cdr data)))
+           ((octocat--still-selected-p buf)
+            (with-current-buffer buf
+              (let* ((given   (append (octocat--get data "given") nil))
+                     (key     (car (read-multiple-choice
+                                    "Toggle your reaction"
+                                    (octocat-timeline--reaction-choices given))))
+                     (content (car (seq-find (lambda (r) (eq (nth 1 r) key))
+                                             octocat-timeline--reaction-keys))))
+                (octocat-sync-submit
+                 `(react ,kind ,repo ,number ,subject ,content
+                         ,(not (member content given))))))))))))
+    (unless called
+      (message "Octocat: Fetching your reactions…"))))
+
 (defun octocat-timeline-state-change (kind verb repo number)
   "Close or reopen issue or PR NUMBER of REPO after asking.
 KIND is \"issue\" or \"pr\" (the `gh' subcommand) and VERB is \"close\" or

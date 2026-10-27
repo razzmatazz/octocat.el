@@ -85,6 +85,7 @@
 (declare-function octocat-pr-add-comment     "octocat-pr"        ())
 (declare-function octocat-pr-edit-body       "octocat-pr"        ())
 (declare-function octocat-pr-edit            "octocat-pr"        ())
+(declare-function octocat-pr-react           "octocat-pr"        ())
 (declare-function octocat-pr-merge           "octocat-pr"        ())
 (declare-function octocat-commit-refresh     "octocat-commit"
                   (&optional _ignore-auto _noconfirm))
@@ -105,6 +106,7 @@
 (declare-function octocat-issue-browse       "octocat-issue"     ())
 (declare-function octocat-pr-browse          "octocat-pr"        ())
 (declare-function octocat-issue-edit         "octocat-issue"     ())
+(declare-function octocat-issue-react        "octocat-issue"     ())
 (declare-function octocat-feed-load-more     "octocat"           ())
 (declare-function octocat-dashboard-browse   "octocat"           ())
 (declare-function octocat-repo-browse        "octocat-repo"      ())
@@ -243,6 +245,7 @@ Off an entry, such as on the header, move left."
     (kbd "C-c C-o") #'octocat-pr-browse
     (kbd "C-c C-a") #'octocat-pr-add-comment
     (kbd "C-c C-e") #'octocat-pr-edit
+    (kbd "C-c C-l") #'octocat-pr-react
     (kbd "C-c C-n") #'octocat-issue-new
     (kbd "C-c C-m") #'octocat-pr-merge
     (kbd "C-c C-r") #'octocat-pr-diff-review
@@ -304,6 +307,7 @@ Off an entry, such as on the header, move left."
     (kbd "C-c C-o") #'octocat-issue-browse
     (kbd "C-c C-a") #'octocat-issue-add-comment
     (kbd "C-c C-e") #'octocat-issue-edit
+    (kbd "C-c C-l") #'octocat-issue-react
     (kbd "C-c C-n") #'octocat-issue-new
     (kbd "C-c C-v") #'octocat-toggle-markdown
     (kbd "gs")      #'octocat-search-repo
