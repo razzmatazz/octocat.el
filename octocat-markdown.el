@@ -1662,7 +1662,8 @@ DEPTH is the list nesting depth, which picks the bullet."
                            (octocat-markdown--tidy
                             (octocat-markdown--blocks quoted depth))))
                 (push (octocat-markdown--standout
-                       (cons (concat bar (car l)) (concat bar (cdr l))))
+                       (cons (concat bar (car l)) (concat bar (cdr l)))
+                       'quote)
                       out)))))
          ((string-match octocat-markdown--item-re line)
           (let* ((indent  (length (match-string 1 line)))
@@ -1740,7 +1741,8 @@ DEPTH is the list nesting depth, which picks the bullet."
 
 (defun octocat-markdown--standout (row &optional kind)
   "Return ROW marked as a block that needs no blank row beside it.
-KIND `list' marks a list's row, which keeps a blank row after it."
+KIND `list' or `quote' marks a list's or quote's row, which keeps a
+blank row after it: a quote's bar stops without closing it off."
   (let ((s (copy-sequence (car row))))
     (put-text-property 0 (length s) 'octocat-markdown-standout (or kind t) s)
     (cons s (cdr row))))
@@ -1759,7 +1761,7 @@ KIND `list' marks a list's row, which keeps a blank row after it."
   "Return ROWS packed tightly, to save vertical space.
 Blank rows at either end, doubled blank rows, and blank rows next to a
 block that stands out by itself (rule, table, heading, quote) are
-dropped, but for one after a list, which GitHub shows too.  Blank rows
+dropped, but for one after a list or quote, which GitHub shows too.  Blank rows
 beside a code box or between paragraphs are kept.
 A heading after other rows always gets one blank row above it, so
 sections are easy to tell apart."

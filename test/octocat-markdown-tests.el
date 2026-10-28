@@ -519,6 +519,13 @@ the window's point; mid-render that scrambled the page."
   ;; A heading after a list still gets just one blank row.
   (should (equal (octocat-markdown-tests--md "- a\n\n\n# h") "• a\n\nh\n")))
 
+(ert-deftest octocat-markdown-test-blank-row-after-quote ()
+  "A blank line after a quote or alert is kept, as on GitHub; one before it is not."
+  (should (equal (octocat-markdown-tests--md "text\n\n> a\n\nafter")
+                 "text\n│ a\n\nafter\n"))
+  (should (equal (octocat-markdown-tests--md "> [!NOTE]\n> a\n\nafter")
+                 "│ Note\n│ a\n\nafter\n")))
+
 (ert-deftest octocat-markdown-test-quote-lazy-continuation ()
   "A paragraph in a quote runs on into lines with fewer `>', as on GitHub."
   (should (equal (octocat-markdown-tests--md "> a\nb") "│ a\n│ b\n"))
@@ -526,7 +533,7 @@ the window's point; mid-render that scrambled the page."
   (should (equal (octocat-markdown-tests--md "> - a\nb") "│ • a\n│   b\n"))
   ;; A heading or blank line ends the paragraph, and a block the quote.
   (should (equal (octocat-markdown-tests--md "> # h\nb") "│ h\nb\n"))
-  (should (equal (octocat-markdown-tests--md "> > a\n>\n> b") "│ │ a\n│ b\n"))
+  (should (equal (octocat-markdown-tests--md "> > a\n>\n> b") "│ │ a\n│ \n│ b\n"))
   (should (equal (octocat-markdown-tests--md "> a\n- b") "│ a\n• b\n")))
 
 (ert-deftest octocat-markdown-test-nested-quote-wraps ()

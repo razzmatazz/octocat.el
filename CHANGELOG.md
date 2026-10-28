@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Markdown keeps the blank line after a quote or `> [!NOTE]` alert, as GitHub does
 * An image in a diff shows inline when RET unfolds it, fetched only then
 * A diff tells a binary or empty file apart from one too large to show
 * An unfolded file's diff ends in a line across the page, setting it apart from the next file
