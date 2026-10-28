@@ -61,6 +61,7 @@
 
 (declare-function octocat--markdown-open-ref "octocat-core" (kind repo id))
 (declare-function octocat-follow-url "octocat-core" (url))
+(declare-function octocat--web-url "octocat-core" (path &rest args))
 
 ;;;; Faces
 
@@ -191,16 +192,16 @@ A link to a directory keeps its trailing slash."
               (and (string-suffix-p "/" path) parts "/")))))
 
 (defun octocat-markdown--absolute (url kind)
-  "Return URL, or its github.com page when it is relative.
+  "Return URL, or its web page when it is relative.
 See `octocat-markdown-base'.  KIND is the page of a file: \"blob\" to
 read it, \"raw\" for its bytes; a directory's is its \"tree\"."
   (if-let* ((path (octocat-markdown--relative-path url)))
-      (format "https://github.com/%s/%s/%s/%s%s"
-              (nth 0 octocat-markdown-base)
-              (if (string-suffix-p "/" path) "tree" kind)
-              (nth 1 octocat-markdown-base)
-              (string-remove-suffix "/" path)
-              (if (string-match "#.*\\'" url) (match-string 0 url) ""))
+      (octocat--web-url "%s/%s/%s/%s%s"
+                        (nth 0 octocat-markdown-base)
+                        (if (string-suffix-p "/" path) "tree" kind)
+                        (nth 1 octocat-markdown-base)
+                        (string-remove-suffix "/" path)
+                        (if (string-match "#.*\\'" url) (match-string 0 url) ""))
     url))
 
 (defun octocat-markdown--unlink (label)
@@ -242,9 +243,9 @@ As on GitHub, a link's label links only to the link's target."
    (format "RET: open %s" name)
    'octocat-markdown-url
    (if (string-match "\\`@\\([^/]+\\)/\\(.+\\)\\'" name)
-       (format "https://github.com/orgs/%s/teams/%s"
-               (match-string 1 name) (match-string 2 name))
-     (concat "https://github.com/" (substring name 1)))))
+       (octocat--web-url "orgs/%s/teams/%s"
+                         (match-string 1 name) (match-string 2 name))
+     (octocat--web-url "%s" (substring name 1)))))
 
 (defun octocat-markdown--ensure-invisibility ()
   "Make folded <details> bodies invisible in the current buffer."

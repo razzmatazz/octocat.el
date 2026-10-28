@@ -590,10 +590,10 @@ commit.  Works from the repo page and from a file viewer."
                (octocat-tree--open-file-by-path repo label path)))))))))
 
 (defun octocat-tree--entry-url (repo ref type path)
-  "Return the github.com URL of the tree entry at PATH of REPO at REF.
+  "Return the web URL of the tree entry at PATH of REPO at REF.
 TYPE is `file' or `dir'."
-  (format "https://github.com/%s/%s/%s/%s"
-          repo (if (eq type 'file) "blob" "tree") ref path))
+  (octocat--web-url "%s/%s/%s/%s"
+                    repo (if (eq type 'file) "blob" "tree") ref path))
 
 
 ;;;; Interactive commands — file mode
@@ -620,10 +620,10 @@ On a link or image of rendered markdown, open what it links to."
                octocat-tree--file-path)
     (user-error "Octocat: Buffer has no file context"))
   (let ((url (or (octocat-markdown-url-at)
-                 (format "https://github.com/%s/blob/%s/%s"
-                         octocat-tree--file-repo
-                         octocat-tree--file-branch
-                         octocat-tree--file-path))))
+                 (octocat--web-url "%s/blob/%s/%s"
+                                   octocat-tree--file-repo
+                                   octocat-tree--file-branch
+                                   octocat-tree--file-path))))
     (message "Octocat: Opening %s in browser…" url)
     (octocat-browse-external url)))
 

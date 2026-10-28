@@ -474,21 +474,22 @@ set when the buffer was opened.
 
 | Page | URL opened |
 |---|---|
-| PR | `gh pr view --web NUMBER --repo REPO` |
-| Issue | `gh issue view --web NUMBER --repo REPO` |
+| PR | `https://github.com/REPO/pull/NUMBER` |
+| Issue | `https://github.com/REPO/issues/NUMBER` |
 | Commit | `https://github.com/REPO/commit/SHA` |
 | Checks | `https://github.com/REPO/commit/SHA/checks` |
 | Workflow | `https://github.com/REPO/actions/workflows/FILE` |
 | Run | `https://github.com/REPO/actions/runs/ID` |
 | Job | `https://github.com/REPO/actions/runs/RUN_ID/job/JOB_ID` |
 
-### Using `gh` vs. `browse-url`
+### Emacs opens the browser, never `gh --web`
 
-PRs and issues are opened via `gh pr view --web` / `gh issue view --web`
-rather than a hard-coded URL.  This ensures the correct GitHub host is used
-when `gh` is configured for GitHub Enterprise or an alternative host.  All
-other items are opened with `octocat-browse-external` using a constructed
-URL.
+Every browse command works out the page's URL in Emacs and opens it with
+`octocat-browse-external`; none runs `gh … --web`.  Emacs then picks the
+browser from the user's `browse-url` settings, and the same URL serves
+anything else that needs one, such as copying it.
+Where the data GitHub sent for the item has its `url`, use that: it has
+the right host on GitHub Enterprise.  Otherwise build a github.com URL.
 
 ### Following links vs. opening in the browser
 

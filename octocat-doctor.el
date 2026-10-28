@@ -285,7 +285,7 @@ Rates are averaged over the whole span, idle time included."
   "Return, as a string, the report of `octocat-doctor'."
   (let ((now (float-time)))
     (concat (format "octocat-doctor at %s, host %s\n\n"
-                    (format-time-string "%F %T") (octocat-sync--host))
+                    (format-time-string "%F %T") (octocat--host))
             (octocat-doctor--store (octocat-sync--db) (octocat-sync--file) now)
             "\n"
             (octocat-doctor--refreshes now)

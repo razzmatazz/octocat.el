@@ -347,6 +347,15 @@ with a floor of 1."
 
 ;;;; Finding gh
 
+(defun octocat--host ()
+  "Return the GitHub host `gh' talks to, such as \"github.com\"."
+  (or (getenv "GH_HOST") "github.com"))
+
+(defun octocat--web-url (path &rest args)
+  "Return the URL of the web page at PATH, formatted with ARGS, on the host.
+The host is `octocat--host', so links follow `gh' to GitHub Enterprise."
+  (concat "https://" (octocat--host) "/" (apply #'format path args)))
+
 (defun octocat--gh-executable ()
   "Return the absolute file name of `octocat-gh-program', or nil.
 Looked for in the variable `exec-path', then where Homebrew and

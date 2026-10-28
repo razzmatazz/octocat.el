@@ -360,7 +360,7 @@ A new TICK fetches everything again."
   (unless octocat-user--login
     (user-error "Octocat: Buffer is not associated with a GitHub user"))
   (message "Octocat: Opening @%s in browser…" octocat-user--login)
-  (octocat-browse-external (concat "https://github.com/" octocat-user--login)))
+  (octocat-browse-external (octocat--web-url "%s" octocat-user--login)))
 
 (defvar octocat-user-mode-map
   (let ((map (make-sparse-keymap)))

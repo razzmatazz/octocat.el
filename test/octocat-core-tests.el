@@ -12,6 +12,14 @@
 (require 'ert)
 (require 'octocat)
 
+(ert-deftest octocat-core-test-web-url ()
+  "Web URLs are on the host `gh' talks to, as GH_HOST names it."
+  (let ((process-environment (cons "GH_HOST" process-environment)))
+    (should (equal (octocat--web-url "%s/pull/%d" "a/b" 7) "https://github.com/a/b/pull/7")))
+  (let ((process-environment (cons "GH_HOST=ghe.example" process-environment)))
+    (should (equal (octocat--web-url "%s/pull/%d" "a/b" 7) "https://ghe.example/a/b/pull/7"))
+    (should (equal (octocat--web-url "") "https://ghe.example/"))))
+
 (ert-deftest octocat-core-test-reactions ()
   "Reactions read from `gh' and from REST, in GitHub's order, none left out."
   (let ((gh (json-parse-string

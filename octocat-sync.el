@@ -163,13 +163,9 @@ Signal a `user-error' when DB was made by a newer octocat."
       (sqlite-execute db (format "PRAGMA user_version = %d" octocat-sync--schema))))
     db))
 
-(defun octocat-sync--host ()
-  "Return the GitHub host `gh' talks to, such as \"github.com\"."
-  (or (getenv "GH_HOST") "github.com"))
-
 (defun octocat-sync--file ()
   "Return the file name of the store of the current GitHub host."
-  (expand-file-name (concat "sync-" (octocat-sync--host) ".sqlite") octocat-sync-directory))
+  (expand-file-name (concat "sync-" (octocat--host) ".sqlite") octocat-sync-directory))
 
 (defun octocat-sync--db ()
   "Return the store of the current GitHub host, opening it on first use."

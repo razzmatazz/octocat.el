@@ -592,8 +592,9 @@ unfolded, until the fresh data replaces it."
   (unless (and octocat--job-repo octocat--job-run-id octocat--job-id)
     (user-error "Octocat: Buffer is not associated with a job"))
   (message "Octocat: Opening job in browser…")
-  (octocat-browse-external (format "https://github.com/%s/actions/runs/%s/job/%s"
-                                   octocat--job-repo octocat--job-run-id octocat--job-id)))
+  (octocat-browse-external (octocat--web-url "%s/actions/runs/%s/job/%s"
+                                             octocat--job-repo octocat--job-run-id
+                                             octocat--job-id)))
 
 (defvar octocat-job-mode-map
   (let ((map (make-sparse-keymap)))

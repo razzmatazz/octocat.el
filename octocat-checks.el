@@ -276,8 +276,8 @@ A new TICK fetches them again."
   (unless (and octocat--checks-repo octocat--checks-sha)
     (user-error "Octocat: Buffer is not associated with a commit"))
   (message "Octocat: Opening checks in browser…")
-  (octocat-browse-external (format "https://github.com/%s/commit/%s/checks"
-                                   octocat--checks-repo octocat--checks-sha)))
+  (octocat-browse-external (octocat--web-url "%s/commit/%s/checks"
+                                             octocat--checks-repo octocat--checks-sha)))
 
 (defvar octocat-checks-mode-map
   (let ((map (make-sparse-keymap)))

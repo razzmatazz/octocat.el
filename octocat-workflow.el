@@ -75,10 +75,10 @@ Calls CALLBACK with a hash-table of it, or a cons \\=(error . MSG)."
   (if (equal state "active") 'success 'octocat-dimmed))
 
 (defun octocat-workflow--url (repo id path)
-  "Return the github.com page of workflow ID of REPO.
+  "Return the web page of workflow ID of REPO.
 GitHub names it by its file, the last part of PATH, when known."
-  (format "https://github.com/%s/actions/workflows/%s" repo
-          (if (octocat--nonempty path) (file-name-nondirectory path) id)))
+  (octocat--web-url "%s/actions/workflows/%s" repo
+                    (if (octocat--nonempty path) (file-name-nondirectory path) id)))
 
 
 ;;;; Page

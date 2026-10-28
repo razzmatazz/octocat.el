@@ -142,5 +142,13 @@ One stays on the line of the other fields; the stacks follow it in order."
                                           (cons "Milestone" "v1"))))
                    '("Reviewers @ann · Milestone v1")))))
 
+(ert-deftest octocat-pr-test-url ()
+  "The URL is the item's own, so an Enterprise host is kept, or else github.com's."
+  (should (equal (octocat-pr--url
+                  (json-parse-string "{\"url\":\"https://ghe.example/a/b/pull/7\"}")
+                  "a/b" 7)
+                 "https://ghe.example/a/b/pull/7"))
+  (should (equal (octocat-pr--url nil "a/b" 7) "https://github.com/a/b/pull/7")))
+
 (provide 'octocat-pr-tests)
 ;;; octocat-pr-tests.el ends here

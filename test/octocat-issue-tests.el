@@ -52,5 +52,13 @@
              42))
   (should-error (octocat-issue--parse-created "oops")))
 
+(ert-deftest octocat-issue-test-url ()
+  "The URL is the item's own, so an Enterprise host is kept, or else github.com's."
+  (should (equal (octocat-issue--url
+                  (json-parse-string "{\"url\":\"https://ghe.example/a/b/issues/7\"}")
+                  "a/b" 7)
+                 "https://ghe.example/a/b/issues/7"))
+  (should (equal (octocat-issue--url nil "a/b" 7) "https://github.com/a/b/issues/7")))
+
 (provide 'octocat-issue-tests)
 ;;; octocat-issue-tests.el ends here

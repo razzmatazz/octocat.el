@@ -1124,8 +1124,8 @@ The choice is remembered for this page of this repository."
   (unless (and octocat-vui-list--repo octocat-vui-list--path)
     (user-error "Octocat: Buffer is not associated with a repository"))
   (message "Octocat: Opening %s in browser…" octocat-vui-list--repo)
-  (octocat-browse-external (format "https://github.com/%s/%s"
-                                   octocat-vui-list--repo octocat-vui-list--path)))
+  (octocat-browse-external (octocat--web-url "%s/%s"
+                                             octocat-vui-list--repo octocat-vui-list--path)))
 
 (defvar octocat-vui-list-mode-map
   (let ((map (make-sparse-keymap)))

@@ -100,10 +100,10 @@ Falls back to the user's GitHub page when point is not on a row."
            (octocat-browse-external url))
           (repo
            (message "Octocat: Opening %s in browser…" repo)
-           (octocat-browse-external (format "https://github.com/%s" repo)))
+           (octocat-browse-external (octocat--web-url "%s" repo)))
           (t
            (message "Octocat: Opening GitHub in browser…")
-           (octocat-browse-external "https://github.com")))))
+           (octocat-browse-external (octocat--web-url ""))))))
 
 (defvar octocat-mode-map
   (let ((map (make-sparse-keymap)))
@@ -399,8 +399,8 @@ pages' two lines, cut to WIDTH; BG is as for `octocat--label-face'."
                   (octocat-repo-vui--cells repo item bg)
                   '(:review :ci :prs :comments) width)
                  "\n")
-      'octocat-dashboard-url (format "https://github.com/%s/%s/%d"
-                                     repo (if pr "pull" "issues") number)
+      'octocat-dashboard-url (octocat--web-url "%s/%s/%d"
+                                               repo (if pr "pull" "issues") number)
       'octocat-sync-prefetch `((,(if pr 'pr 'issue) ,repo ,number)
                                (timeline-events ,repo ,number)))
      (lambda () (if pr (octocat-pr-open repo number) (octocat-issue-open repo number)))

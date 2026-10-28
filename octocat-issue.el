@@ -232,19 +232,21 @@ The first line is the title, the rest the body."
   (unless (and octocat--issue-repo octocat--issue-number)
     (user-error "Octocat: Buffer is not associated with an issue"))
   (let* ((target (octocat-timeline-target))
-         (url    (and (hash-table-p target) (gethash "url" target)))
-         (gh     (octocat--gh-executable)))
-    (cond
-     ((stringp url)
-      (message "Octocat: Opening comment in browser…")
-      (octocat-browse-external url))
-     (gh
+         (url    (and (hash-table-p target) (gethash "url" target))))
+    (if (stringp url)
+        (message "Octocat: Opening comment in browser…")
       (message "Octocat: Opening issue #%d in browser…" octocat--issue-number)
-      (start-process "octocat-browse" nil gh
-                     "issue" "view" "--web"
-                     (number-to-string octocat--issue-number)
-                     "--repo" octocat--issue-repo))
-     (t (user-error "Octocat: `gh' executable not found")))))
+      (setq url (octocat-issue--url
+                 (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number))
+                 octocat--issue-repo octocat--issue-number)))
+    (octocat-browse-external url)))
+
+(defun octocat-issue--url (data repo number)
+  "Return the URL of issue NUMBER in REPO: DATA's own, or else built.
+DATA, the item's data, is nil before it loads."
+  (let ((url (and data (gethash "url" data))))
+    (if (stringp url) url
+      (octocat--web-url "%s/issues/%d" repo number))))
 
 (defun octocat-issue--change-state (verb)
   "Close or reopen (VERB) the current issue, after asking."

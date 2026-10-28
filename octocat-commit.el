@@ -354,8 +354,8 @@ fetches them again."
     (user-error "Octocat: Buffer is not associated with a commit"))
   (message "Octocat: Opening commit %s in browser…"
            (substring octocat--commit-sha 0 (min 7 (length octocat--commit-sha))))
-  (octocat-browse-external (format "https://github.com/%s/commit/%s"
-                                   octocat--commit-repo octocat--commit-sha)))
+  (octocat-browse-external (octocat--web-url "%s/commit/%s"
+                                             octocat--commit-repo octocat--commit-sha)))
 
 (defvar octocat-commit-mode-map
   (let ((map (make-sparse-keymap)))

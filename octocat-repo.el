@@ -1561,13 +1561,13 @@ commits page its commits."
          (type   (octocat-tree--type-at-point))
          (url    (cond ((octocat-markdown-url-at))
                        ((derived-mode-p 'octocat-commit-list-mode)
-                        (concat "https://github.com/" repo "/commits"
-                                (cond (path (concat "/" branch "/" path))
-                                      (ref  (concat "/" ref)))))
+                        (octocat--web-url "%s/commits" repo
+                                          (cond (path (concat "/" branch "/" path))
+                                                (ref  (concat "/" ref)))))
                        ((memq type '(file dir))
                         (octocat-tree--entry-url repo branch type (octocat-tree--path-at-point)))
-                       (ref  (format "https://github.com/%s/tree/%s" repo ref))
-                       (t    (concat "https://github.com/" repo)))))
+                       (ref  (octocat--web-url "%s/tree/%s" repo ref))
+                       (t    (octocat--web-url "%s" repo)))))
     (message "Octocat: Opening %s in browser…" url)
     (octocat-browse-external url)))
 

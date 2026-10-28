@@ -168,8 +168,8 @@ new TICK fetches it again."
 ;;;; Major mode
 
 (defun octocat-compare--url (repo refs)
-  "Return the github.com page comparing REFS, as `octocat--compare-refs', of REPO."
-  (format "https://github.com/%s/compare/%s" repo (apply #'concat refs)))
+  "Return the web page comparing REFS, as `octocat--compare-refs', of REPO."
+  (octocat--web-url "%s/compare/%s" repo (apply #'concat refs)))
 
 (defun octocat-compare-browse ()
   "Open this comparison in a browser."

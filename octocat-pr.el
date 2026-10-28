@@ -209,19 +209,21 @@ On a field such as Labels: pick its values."
   (unless (and octocat--pr-repo octocat--pr-number)
     (user-error "Octocat: Buffer is not associated with a pull request"))
   (let* ((target (octocat-timeline-target))
-         (url    (and (hash-table-p target) (gethash "url" target)))
-         (gh     (octocat--gh-executable)))
-    (cond
-     ((stringp url)
-      (message "Octocat: Opening comment in browser…")
-      (octocat-browse-external url))
-     (gh
+         (url    (and (hash-table-p target) (gethash "url" target))))
+    (if (stringp url)
+        (message "Octocat: Opening comment in browser…")
       (message "Octocat: Opening PR #%d in browser…" octocat--pr-number)
-      (start-process "octocat-browse" nil gh
-                     "pr" "view" "--web"
-                     (number-to-string octocat--pr-number)
-                     "--repo" octocat--pr-repo))
-     (t (user-error "Octocat: `gh' executable not found")))))
+      (setq url (octocat-pr--url
+                 (octocat-sync-detail-read (list 'pr octocat--pr-repo octocat--pr-number))
+                 octocat--pr-repo octocat--pr-number)))
+    (octocat-browse-external url)))
+
+(defun octocat-pr--url (data repo number)
+  "Return the URL of PR NUMBER in REPO: DATA's own, or else built.
+DATA, the item's data, is nil before it loads."
+  (let ((url (and data (gethash "url" data))))
+    (if (stringp url) url
+      (octocat--web-url "%s/pull/%d" repo number))))
 
 (defun octocat-pr--change-state (verb)
   "Close or reopen (VERB) the current PR, after asking."
@@ -1132,8 +1134,8 @@ the background, in place: what is unfolded stays so."
   (unless (and octocat--pr-commits-repo octocat--pr-commits-number)
     (user-error "Octocat: Buffer is not associated with a pull request"))
   (message "Octocat: Opening PR #%d commits in browser…" octocat--pr-commits-number)
-  (octocat-browse-external (format "https://github.com/%s/pull/%d/commits"
-                                   octocat--pr-commits-repo octocat--pr-commits-number)))
+  (octocat-browse-external (octocat--web-url "%s/pull/%d/commits"
+                                             octocat--pr-commits-repo octocat--pr-commits-number)))
 
 (defvar octocat-pr-commits-mode-map
   (let ((map (make-sparse-keymap)))
