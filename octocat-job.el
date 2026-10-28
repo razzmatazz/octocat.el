@@ -586,20 +586,16 @@ unfolded, until the fresh data replaces it."
 
 ;;;; Major mode
 
-(defun octocat-job-browse ()
-  "Open this job in a browser."
-  (interactive)
-  (unless (and octocat--job-repo octocat--job-run-id octocat--job-id)
-    (user-error "Octocat: Buffer is not associated with a job"))
-  (message "Octocat: Opening job in browser…")
-  (octocat-browse-external (octocat--web-url "%s/actions/runs/%s/job/%s"
-                                             octocat--job-repo octocat--job-run-id
-                                             octocat--job-id)))
+(defun octocat-job--page-url ()
+  "Return the URL of this job."
+  (and octocat--job-repo octocat--job-run-id octocat--job-id
+       (octocat--web-url "%s/actions/runs/%s/job/%s"
+                         octocat--job-repo octocat--job-run-id octocat--job-id)))
 
 (defvar octocat-job-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-job-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     map)
   "Keymap for `octocat-job-mode'.")
 
@@ -611,7 +607,8 @@ unfolded, until the fresh data replaces it."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-job-refresh)
-  (octocat--ts-eldoc-setup))
+  (octocat--ts-eldoc-setup)
+  (setq-local octocat--url-function #'octocat-job--page-url))
 
 
 ;;;; Refresh

@@ -336,10 +336,23 @@
                 ((symbol-function 'message) #'ignore))
         (dolist (tracked '("main" "dev"))
           (setq octocat-repo--tracked tracked)
-          (octocat-repo-browse)))
+          (octocat-browse)))
       (should (equal (nreverse browsed)
                      '("https://github.com/o/r"
                        "https://github.com/o/r/tree/dev"))))))
+
+(ert-deftest octocat-repo-commits-page-url ()
+  "The commits page's URL is of the ref and path it shows."
+  (with-temp-buffer
+    (octocat-commit-list-mode)
+    (setq octocat-repo--repo "o/r"
+          octocat-repo--default-branch "main"
+          octocat-repo--tracked "main")
+    (should (equal (octocat--url-at-point) "https://github.com/o/r/commits"))
+    (setq octocat-repo--tracked "dev")
+    (should (equal (octocat--url-at-point) "https://github.com/o/r/commits/dev"))
+    (setq octocat-repo--path "src/a.el")
+    (should (equal (octocat--url-at-point) "https://github.com/o/r/commits/dev/src/a.el"))))
 
 (provide 'octocat-repo-tests)
 ;;; octocat-repo-tests.el ends here

@@ -1544,32 +1544,25 @@ touched it, as GitHub's History."
 
 ;;;; Major mode
 
-(defun octocat-repo-browse ()
-  "Open what point is on, or else the page, on GitHub.
-On a tree entry that is the file or directory; on a link or image of
-the README, what it links to; elsewhere the ref shown, or on the
-commits page its commits."
-  (interactive)
-  (unless octocat-repo--repo
-    (user-error "Octocat: Buffer is not associated with a repository"))
-  (let* ((repo   octocat-repo--repo)
-         (shown  (or octocat-repo--ref octocat-repo--tracked))
-         (branch (or shown octocat-repo--default-branch "HEAD"))
-         ;; The default branch is what the bare repository URL shows.
-         (ref    (unless (equal shown octocat-repo--default-branch) shown))
-         (path   (and (derived-mode-p 'octocat-commit-list-mode) octocat-repo--path))
-         (type   (octocat-tree--type-at-point))
-         (url    (cond ((octocat-markdown-url-at))
-                       ((derived-mode-p 'octocat-commit-list-mode)
-                        (octocat--web-url "%s/commits" repo
-                                          (cond (path (concat "/" branch "/" path))
-                                                (ref  (concat "/" ref)))))
-                       ((memq type '(file dir))
-                        (octocat-tree--entry-url repo branch type (octocat-tree--path-at-point)))
-                       (ref  (octocat--web-url "%s/tree/%s" repo ref))
-                       (t    (octocat--web-url "%s" repo)))))
-    (message "Octocat: Opening %s in browser…" url)
-    (octocat-browse-external url)))
+(defun octocat-repo--page-url ()
+  "Return the URL of the tree entry at point, or else of the page.
+That is the ref shown, or on the commits page its commits."
+  (when-let* ((repo octocat-repo--repo))
+    (let* ((shown  (or octocat-repo--ref octocat-repo--tracked))
+           (branch (or shown octocat-repo--default-branch "HEAD"))
+           ;; The default branch is what the bare repository URL shows.
+           (ref    (unless (equal shown octocat-repo--default-branch) shown))
+           (path   (and (derived-mode-p 'octocat-commit-list-mode) octocat-repo--path))
+           (type   (octocat-tree--type-at-point)))
+      (cond ((derived-mode-p 'octocat-commit-list-mode)
+             (octocat--web-url "%s/commits%s" repo
+                               (cond (path (concat "/" branch "/" path))
+                                     (ref  (concat "/" ref))
+                                     (t    ""))))
+            ((memq type '(file dir))
+             (octocat-tree--entry-url repo branch type (octocat-tree--path-at-point)))
+            (ref (octocat--web-url "%s/tree/%s" repo ref))
+            (t   (octocat--web-url "%s" repo))))))
 
 (defun octocat-repo--show-ref (ref)
   "Show REF on this page, nil to follow the clone, in place.
@@ -1613,7 +1606,7 @@ The tree browser stays in its directory, as GitHub's does."
     (define-key map (kbd "^") #'octocat-repo-up)
     (define-key map (kbd "C-c C-f") #'octocat-tree-find-file)
     (define-key map (kbd "C-c C-b") #'octocat-repo-switch-branch)
-    (define-key map (kbd "C-c C-o") #'octocat-repo-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-repo-mode'.")
@@ -1631,7 +1624,8 @@ The tree browser stays in its directory, as GitHub's does."
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup)
   (add-hook 'window-buffer-change-functions #'octocat-repo--follow-checkout nil t)
-  (add-hook 'window-selection-change-functions #'octocat-repo--follow-checkout nil t))
+  (add-hook 'window-selection-change-functions #'octocat-repo--follow-checkout nil t)
+  (setq-local octocat--url-function #'octocat-repo--page-url))
 
 ;; The commits page and the tree browser derive from the repo page, for
 ;; its state: so `C-c C-b', `C-c C-f' and `C-c C-o' work on them alike.

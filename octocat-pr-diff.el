@@ -264,21 +264,17 @@ everything again."
 
 ;;;; Major mode
 
-(defun octocat-pr-diff-browse ()
-  "Open the files changed of this pull request in a browser."
-  (interactive)
-  (unless (and octocat--pr-diff-repo octocat--pr-diff-number)
-    (user-error "Octocat: Buffer is not associated with a pull request diff"))
-  (message "Octocat: Opening PR #%d diff in browser…" octocat--pr-diff-number)
-  (octocat-browse-external (octocat--web-url "%s/pull/%d/files"
-                                             octocat--pr-diff-repo octocat--pr-diff-number)))
+(defun octocat-pr-diff--page-url ()
+  "Return the URL of the files changed of this pull request."
+  (and octocat--pr-diff-repo octocat--pr-diff-number
+       (octocat--web-url "%s/pull/%d/files" octocat--pr-diff-repo octocat--pr-diff-number)))
 
 (defvar octocat-pr-diff-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
     (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
     (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
-    (define-key map (kbd "C-c C-o") #'octocat-pr-diff-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-v") #'octocat-diff-toggle-comments)
     map)
   "Keymap for `octocat-pr-diff-mode'.")
@@ -294,7 +290,8 @@ everything again."
   (setq-local octocat--refresh-fn #'octocat-pr-diff-refresh)
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
-  (octocat--max-width-setup))
+  (octocat--max-width-setup)
+  (setq-local octocat--url-function #'octocat-pr-diff--page-url))
 
 
 ;;;; Refresh

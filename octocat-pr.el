@@ -203,20 +203,15 @@ On a field such as Labels: pick its values."
     (user-error "Octocat: Buffer is not associated with a pull request"))
   (octocat-timeline-react "pr" octocat--pr-repo octocat--pr-number))
 
-(defun octocat-pr-browse ()
-  "Open the comment at point, or else the whole PR, in the browser."
-  (interactive)
-  (unless (and octocat--pr-repo octocat--pr-number)
-    (user-error "Octocat: Buffer is not associated with a pull request"))
+(defun octocat-pr--page-url ()
+  "Return the URL of the comment at point, or else of the whole PR."
   (let* ((target (octocat-timeline-target))
          (url    (and (hash-table-p target) (gethash "url" target))))
-    (if (stringp url)
-        (message "Octocat: Opening comment in browser…")
-      (message "Octocat: Opening PR #%d in browser…" octocat--pr-number)
-      (setq url (octocat-pr--url
-                 (octocat-sync-detail-read (list 'pr octocat--pr-repo octocat--pr-number))
-                 octocat--pr-repo octocat--pr-number)))
-    (octocat-browse-external url)))
+    (cond ((stringp url) url)
+          ((and octocat--pr-repo octocat--pr-number)
+           (octocat-pr--url
+            (octocat-sync-detail-read (list 'pr octocat--pr-repo octocat--pr-number))
+            octocat--pr-repo octocat--pr-number)))))
 
 (defun octocat-pr--url (data repo number)
   "Return the URL of PR NUMBER in REPO: DATA's own, or else built.
@@ -1064,7 +1059,7 @@ A new TICK fetches them again."
 (defvar octocat-pr-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-pr-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-a") #'octocat-pr-add-comment)
     (define-key map (kbd "C-c C-e") #'octocat-pr-edit)
     (define-key map (kbd "C-c C-l") #'octocat-pr-react)
@@ -1085,7 +1080,8 @@ A new TICK fetches them again."
   (setq-local revert-buffer-function #'octocat-pr-refresh)
   (setq-local octocat--refresh-fn #'octocat-pr-refresh)
   (octocat--ts-eldoc-setup)
-  (octocat--max-width-setup))
+  (octocat--max-width-setup)
+  (setq-local octocat--url-function #'octocat-pr--page-url))
 
 (defvar-local octocat--pr-number nil
   "The PR number this buffer is displaying.")
@@ -1128,19 +1124,16 @@ the background, in place: what is unfolded stays so."
 (defvar-local octocat--pr-commits-number nil
   "The PR number this buffer is listing the commits of.")
 
-(defun octocat-pr-commits-browse ()
-  "Open the commits of this pull request in a browser."
-  (interactive)
-  (unless (and octocat--pr-commits-repo octocat--pr-commits-number)
-    (user-error "Octocat: Buffer is not associated with a pull request"))
-  (message "Octocat: Opening PR #%d commits in browser…" octocat--pr-commits-number)
-  (octocat-browse-external (octocat--web-url "%s/pull/%d/commits"
-                                             octocat--pr-commits-repo octocat--pr-commits-number)))
+(defun octocat-pr-commits--page-url ()
+  "Return the URL of the commits of this pull request."
+  (and octocat--pr-commits-repo octocat--pr-commits-number
+       (octocat--web-url "%s/pull/%d/commits"
+                         octocat--pr-commits-repo octocat--pr-commits-number)))
 
 (defvar octocat-pr-commits-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-pr-commits-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
     (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
     map)
@@ -1156,7 +1149,8 @@ the background, in place: what is unfolded stays so."
   (setq-local revert-buffer-function #'octocat-pr-commits-refresh)
   (setq-local octocat--refresh-fn #'octocat-pr-commits-refresh)
   (octocat--ts-eldoc-setup)
-  (octocat--max-width-setup))
+  (octocat--max-width-setup)
+  (setq-local octocat--url-function #'octocat-pr-commits--page-url))
 
 (defun octocat-pr-commits-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current PR commits buffer."

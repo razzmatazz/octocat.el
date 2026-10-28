@@ -1075,8 +1075,8 @@ would pull the user back to it (see docs/using-vui.md)."
 ;;
 ;; Skeleton shared by the PR, issue, run and workflow list pages (defined
 ;; next to their detail pages, in octocat-pr.el and so on): the repo they
-;; show, the github.com path `octocat-vui-list-browse' opens, and the
-;; common keymap.  Each page derives from this mode, sets its own
+;; show, the github.com path `octocat-browse' opens, and the common
+;; keymap.  Each page derives from this mode, sets its own
 ;; `revert-buffer-function', and is opened via `octocat--open-list'
 ;; (octocat.el).
 
@@ -1118,19 +1118,15 @@ The choice is remembered for this page of this repository."
     (or (octocat-vui-update-page :compact compact)
         (revert-buffer nil t))))
 
-(defun octocat-vui-list-browse ()
-  "Open the GitHub page matching the current list buffer in a browser."
-  (interactive)
-  (unless (and octocat-vui-list--repo octocat-vui-list--path)
-    (user-error "Octocat: Buffer is not associated with a repository"))
-  (message "Octocat: Opening %s in browser…" octocat-vui-list--repo)
-  (octocat-browse-external (octocat--web-url "%s/%s"
-                                             octocat-vui-list--repo octocat-vui-list--path)))
+(defun octocat-vui-list--page-url ()
+  "Return the URL of the GitHub page matching this list."
+  (and octocat-vui-list--repo octocat-vui-list--path
+       (octocat--web-url "%s/%s" octocat-vui-list--repo octocat-vui-list--path)))
 
 (defvar octocat-vui-list-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-vui-list-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-v") #'octocat-vui-list-toggle-compact)
     (define-key map (kbd "F") #'octocat-vui-list-filter)
     map)
@@ -1148,7 +1144,8 @@ The choice is remembered for this page of this repository."
             #'octocat-vui-list--qualifier-capf nil t)
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
   (octocat--ts-eldoc-setup)
-  (octocat--max-width-setup))
+  (octocat--max-width-setup)
+  (setq-local octocat--url-function #'octocat-vui-list--page-url))
 
 (defun octocat-vui-repo-heading (repo)
   "Return REPO, \"owner/name\", as the heading vnode at the top of a page.

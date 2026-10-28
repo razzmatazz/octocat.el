@@ -226,20 +226,15 @@ The first line is the title, the rest the body."
     (user-error "Octocat: Buffer is not associated with an issue"))
   (octocat-timeline-react "issue" octocat--issue-repo octocat--issue-number))
 
-(defun octocat-issue-browse ()
-  "Open the comment at point, or else the whole issue, in the browser."
-  (interactive)
-  (unless (and octocat--issue-repo octocat--issue-number)
-    (user-error "Octocat: Buffer is not associated with an issue"))
+(defun octocat-issue--page-url ()
+  "Return the URL of the comment at point, or else of the whole issue."
   (let* ((target (octocat-timeline-target))
          (url    (and (hash-table-p target) (gethash "url" target))))
-    (if (stringp url)
-        (message "Octocat: Opening comment in browser…")
-      (message "Octocat: Opening issue #%d in browser…" octocat--issue-number)
-      (setq url (octocat-issue--url
-                 (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number))
-                 octocat--issue-repo octocat--issue-number)))
-    (octocat-browse-external url)))
+    (cond ((stringp url) url)
+          ((and octocat--issue-repo octocat--issue-number)
+           (octocat-issue--url
+            (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number))
+            octocat--issue-repo octocat--issue-number)))))
 
 (defun octocat-issue--url (data repo number)
   "Return the URL of issue NUMBER in REPO: DATA's own, or else built.
@@ -373,7 +368,7 @@ A new TICK fetches everything again."
 (defvar octocat-issue-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-issue-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-a") #'octocat-issue-add-comment)
     (define-key map (kbd "C-c C-e") #'octocat-issue-edit)
     (define-key map (kbd "C-c C-l") #'octocat-issue-react)
@@ -392,7 +387,8 @@ A new TICK fetches everything again."
   (setq-local revert-buffer-function #'octocat-issue-refresh)
   (setq-local octocat--refresh-fn #'octocat-issue-refresh)
   (octocat--ts-eldoc-setup)
-  (octocat--max-width-setup))
+  (octocat--max-width-setup)
+  (setq-local octocat--url-function #'octocat-issue--page-url))
 
 
 ;;;; Refresh

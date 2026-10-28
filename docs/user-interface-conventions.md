@@ -462,15 +462,17 @@ re-call the helper per line.
 
 ---
 
-## Opening items in the browser (`C-c C-o`)
+## Opening and copying a page's URL (`C-c C-o`, `octocat-copy-url`)
 
-Every mode binds `C-c C-o` to its own browse command, which opens the item
-the buffer shows, and no other key opens the browser (bare `o` is free
-for opening in Emacs, as Evil's `o`/`O` on every page): `octocat-pr-browse`, `octocat-issue-browse`,
-`octocat-commit-browse`, `octocat-checks-browse`, `octocat-workflow-browse`,
-`octocat-run-browse`, `octocat-job-browse`, `octocat-repo-browse`,
-`octocat-vui-list-browse` and so on.  Each reads the buffer-local variables
-set when the buffer was opened.
+`C-c C-o` (`octocat-browse`) opens what point is on, or else the page,
+in the browser; no other key does (bare `o` opens in Emacs).
+`octocat-copy-url` copies that URL instead, or with `C-u` its short
+reference (`owner/repo#12`).
+
+The URL is a markdown link or reference at point, or else what the
+mode's `octocat--url-function` returns, such as `octocat-pr--page-url`.
+That may depend on point: the comment, tree entry or dashboard row.  A
+new page sets it in its mode body.
 
 | Page | URL opened |
 |---|---|
@@ -484,12 +486,10 @@ set when the buffer was opened.
 
 ### Emacs opens the browser, never `gh --web`
 
-Every browse command works out the page's URL in Emacs and opens it with
-`octocat-browse-external`; none runs `gh … --web`.  Emacs then picks the
-browser from the user's `browse-url` settings, and the same URL serves
-anything else that needs one, such as copying it.
-Where the data GitHub sent for the item has its `url`, use that: it has
-the right host on GitHub Enterprise.  Otherwise build a github.com URL.
+URLs are built in Emacs and opened with `octocat-browse-external`, so
+the user's `browse-url` settings apply.  Prefer the item's own `url`
+from GitHub's data, which has the right host; else build one with
+`octocat--web-url`.
 
 ### Following links vs. opening in the browser
 

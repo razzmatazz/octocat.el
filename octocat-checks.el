@@ -270,19 +270,15 @@ A new TICK fetches them again."
 
 ;;;; Major mode
 
-(defun octocat-checks-browse ()
-  "Open the CI results of this commit in a browser."
-  (interactive)
-  (unless (and octocat--checks-repo octocat--checks-sha)
-    (user-error "Octocat: Buffer is not associated with a commit"))
-  (message "Octocat: Opening checks in browser…")
-  (octocat-browse-external (octocat--web-url "%s/commit/%s/checks"
-                                             octocat--checks-repo octocat--checks-sha)))
+(defun octocat-checks--page-url ()
+  "Return the URL of the CI results of this commit."
+  (and octocat--checks-repo octocat--checks-sha
+       (octocat--web-url "%s/commit/%s/checks" octocat--checks-repo octocat--checks-sha)))
 
 (defvar octocat-checks-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-checks-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     map)
   "Keymap for `octocat-checks-mode'.")
 
@@ -294,7 +290,8 @@ A new TICK fetches them again."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-checks-refresh)
-  (octocat--ts-eldoc-setup))
+  (octocat--ts-eldoc-setup)
+  (setq-local octocat--url-function #'octocat-checks--page-url))
 
 
 ;;;; Refresh

@@ -89,27 +89,20 @@ Each `octocat-feed-load-more' call fetches this many additional events."
   "Per-buffer feed event fetch limit.
 Starts at `octocat-feed-limit' and grows with `octocat-feed-load-more'.")
 
-(defun octocat-dashboard-browse ()
-  "Open the pull request, issue or repository at point in a browser.
-Falls back to the user's GitHub page when point is not on a row."
-  (interactive)
+(defun octocat-dashboard--page-url ()
+  "Return the URL of the pull request, issue or repository at point.
+Off a row, that of GitHub's own front page."
   (let ((url  (get-text-property (point) 'octocat-dashboard-url))
         (repo (get-text-property (point) 'octocat-dashboard-repo)))
-    (cond (url
-           (message "Octocat: Opening %s in browser…" url)
-           (octocat-browse-external url))
-          (repo
-           (message "Octocat: Opening %s in browser…" repo)
-           (octocat-browse-external (octocat--web-url "%s" repo)))
-          (t
-           (message "Octocat: Opening GitHub in browser…")
-           (octocat-browse-external (octocat--web-url ""))))))
+    (cond (url)
+          (repo (octocat--web-url "%s" repo))
+          (t    (octocat--web-url "")))))
 
 (defvar octocat-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
     (define-key map (kbd "+")       #'octocat-feed-load-more)
-    (define-key map (kbd "C-c C-o") #'octocat-dashboard-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     map)
   "Keymap for `octocat-mode' (GitHub account dashboard).")
 (define-derived-mode octocat-mode vui-mode "Octocat"
@@ -121,7 +114,8 @@ Falls back to the user's GitHub page when point is not on a row."
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-refresh)
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
-  (octocat--ts-eldoc-setup))
+  (octocat--ts-eldoc-setup)
+  (setq-local octocat--url-function #'octocat-dashboard--page-url))
 
 
 ;;;; Dashboard fetch helpers
@@ -640,7 +634,7 @@ the handle instead (a leading \"@\" is optional)."
 (defun octocat--open-list (mode name path &optional repo)
   "Open (or switch to) the list page for the current repository.
 MODE is the list major mode to enable, NAME the suffix of the buffer
-name, and PATH the github.com sub-path `octocat-vui-list-browse' opens.
+name, and PATH the github.com sub-path `octocat-browse' opens.
 REPO, an \"owner/name\" string, overrides the repository below.
 Inside an octocat repo or list buffer the page is for that buffer's
 repository and local clone; elsewhere the repository is derived from

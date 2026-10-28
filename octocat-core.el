@@ -1350,6 +1350,70 @@ The handler `octocat-github-links-mode' adds to `browse-url-handlers'."
   "Open URL in a browser, even one octocat or another Emacs package handles."
   (browse-url-with-browser-kind 'external url))
 
+;;;; The URL of what is at point
+
+(defvar-local octocat--url-function nil
+  "Function of no arguments returning the URL of the page, or nil.
+Each page's mode sets it.  It may look at point too, as a PR's page
+does for the comment there.")
+
+(defun octocat--ref-url (ref)
+  "Return the URL of the markdown reference REF, (KIND REPO ID), or nil.
+A REPO of nil is the buffer's."
+  (pcase-let ((`(,kind ,repo ,id) ref))
+    (when-let* ((repo (or repo (octocat--search-repo--current-repo))))
+      (if (eq kind 'issue)
+          ;; GitHub redirects a PR's /issues/N to its /pull/N.
+          (octocat--web-url "%s/issues/%d" repo id)
+        (octocat--web-url "%s/commit/%s" repo id)))))
+
+(defun octocat--url-at-point ()
+  "Return the URL of what point is on, or else of the page, or nil.
+That is a link or reference in markdown, or what the page's
+`octocat--url-function' returns."
+  (or (octocat-markdown-url-at)
+      (when-let* ((ref (get-text-property (point) 'octocat-markdown-ref)))
+        (octocat--ref-url ref))
+      (and octocat--url-function (funcall octocat--url-function))))
+
+(defun octocat--short-ref (url)
+  "Return the short reference of URL, as GitHub writes one, or nil.
+Such as owner/repo#12 for a PR or issue, owner/repo@abc1234 for a
+commit, owner/repo for a repository and @login for a user."
+  (let ((path (and (string-match "\\`https?://[^/]+/\\([^?#]*?\\)/?\\'" url)
+                   (split-string (match-string 1 url) "/"))))
+    (pcase path
+      (`(,login) (and (not (string-empty-p login)) (concat "@" login)))
+      (`(,owner ,name) (concat owner "/" name))
+      (`(,owner ,name ,(or "pull" "issues") ,(and n (pred (string-match-p "\\`[0-9]+\\'"))))
+       (format "%s/%s#%s" owner name n))
+      ((or `(,owner ,name "commit" ,sha)
+           `(,owner ,name "pull" ,_ "commits" ,sha))
+       (and (string-match-p "\\`[0-9a-f]\\{7,40\\}\\'" sha)
+            (format "%s/%s@%s" owner name (substring sha 0 7)))))))
+
+(defun octocat-browse ()
+  "Open what point is on, or else the page, in a browser.
+That is a row, a comment or a link; see `octocat-copy-url'."
+  (interactive)
+  (let ((url (or (octocat--url-at-point)
+                 (user-error "Octocat: Nothing here has a page on GitHub"))))
+    (message "Octocat: Opening %s in browser…" url)
+    (octocat-browse-external url)))
+
+(defun octocat-copy-url (&optional short)
+  "Copy the URL of what point is on, or else of the page, to the kill ring.
+That is a link or reference in markdown, a comment, or the page itself.
+With prefix argument SHORT, copy its short reference instead, such as
+owner/repo#12, where it has one."
+  (interactive "P")
+  (let* ((url  (or (octocat--url-at-point)
+                   (user-error "Octocat: Nothing here has a page on GitHub")))
+         (text (or (and short (octocat--short-ref url)) url)))
+    (kill-new text)
+    (message "Octocat: Copied %s%s" text
+             (if (and short (equal text url)) " (it has no short reference)" ""))))
+
 (defun octocat-toggle-markdown ()
   "Toggle between rendered and raw markdown display in the current buffer.
 When raw mode is active the body text is shown verbatim; when rendered mode

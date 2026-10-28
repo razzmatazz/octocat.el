@@ -290,19 +290,15 @@ data replaces it."
 
 ;;;; Major mode
 
-(defun octocat-run-browse ()
-  "Open this workflow run in a browser."
-  (interactive)
-  (unless (and octocat--run-repo octocat--run-id)
-    (user-error "Octocat: Buffer is not associated with a workflow run"))
-  (message "Octocat: Opening run #%s in browser…" octocat--run-id)
-  (octocat-browse-external (octocat--web-url "%s/actions/runs/%s"
-                                             octocat--run-repo octocat--run-id)))
+(defun octocat-run--page-url ()
+  "Return the URL of this workflow run."
+  (and octocat--run-repo octocat--run-id
+       (octocat--web-url "%s/actions/runs/%s" octocat--run-repo octocat--run-id)))
 
 (defvar octocat-run-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-run-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     map)
   "Keymap for `octocat-run-mode'.")
 
@@ -314,7 +310,8 @@ data replaces it."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-run-refresh)
-  (octocat--ts-eldoc-setup))
+  (octocat--ts-eldoc-setup)
+  (setq-local octocat--url-function #'octocat-run--page-url))
 
 
 ;;;; Refresh

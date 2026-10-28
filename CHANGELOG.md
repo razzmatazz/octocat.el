@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `M-x octocat-copy-url` copies the URL of the thing at point, or `C-u` its short ref
+* `C-c C-o` on a link, `#123` or commit in markdown opens it, on every page
 * Pages opened in the browser are on the host `GH_HOST` names, as for `gh`
 * `C-c C-o` on a PR or issue opens it in your `browse-url` browser, not via `gh`
 * Markdown keeps the blank line after a quote or `> [!NOTE]` alert, as GitHub does

@@ -418,10 +418,52 @@ browser, skip it."
     (cl-letf (((symbol-function 'browse-url-with-browser-kind)
                (lambda (kind url &rest _) (push (list kind url) kinds))))
       (with-temp-buffer
+        (setq-local octocat--url-function #'octocat-dashboard--page-url)
         (insert (propertize "row" 'octocat-dashboard-repo "o/r"))
         (goto-char (point-min))
-        (octocat-dashboard-browse)))
+        (octocat-browse)))
     (should (equal kinds '((external "https://github.com/o/r"))))))
+
+;;;; The URL at point
+
+(ert-deftest octocat-core-test-url-at-point ()
+  "A markdown link or reference at point wins over the page's own URL."
+  (cl-letf (((symbol-function 'octocat--search-repo--current-repo) (lambda () "o/r")))
+    (with-temp-buffer
+      (setq-local octocat--url-function (lambda () "https://github.com/o/r/pull/1"))
+      (insert (octocat-markdown-render "<https://x.org/a> #7 abc1234 plain" ""))
+      (cl-flet ((at (needle) (goto-char (point-min)) (search-forward needle)
+                    (backward-char 1) (octocat--url-at-point)))
+        (should (equal (at "x.org") "https://x.org/a"))
+        (should (equal (at "#7") "https://github.com/o/r/issues/7"))
+        (should (equal (at "abc1234") "https://github.com/o/r/commit/abc1234"))
+        (should (equal (at "plain") "https://github.com/o/r/pull/1"))))))
+
+(ert-deftest octocat-core-test-short-ref ()
+  "A URL's short reference is written as GitHub writes one."
+  (should (equal (octocat--short-ref "https://github.com/o/r/pull/12") "o/r#12"))
+  (should (equal (octocat--short-ref "https://ghe.example/o/r/issues/3") "o/r#3"))
+  (should (equal (octocat--short-ref "https://github.com/o/r/commit/0123456789abcdef")
+                 "o/r@0123456"))
+  (should (equal (octocat--short-ref "https://github.com/o/r/pull/1/commits/0123456789")
+                 "o/r@0123456"))
+  (should (equal (octocat--short-ref "https://github.com/o/r") "o/r"))
+  (should (equal (octocat--short-ref "https://github.com/octo") "@octo"))
+  (should-not (octocat--short-ref "https://github.com/"))
+  (should-not (octocat--short-ref "https://github.com/o/r/pull/12#issuecomment-1"))
+  (should-not (octocat--short-ref "https://github.com/o/r/actions/runs/5")))
+
+(ert-deftest octocat-core-test-copy-url ()
+  "The URL at point is copied, or with a prefix argument its short reference."
+  (with-temp-buffer
+    (setq-local octocat--url-function (lambda () "https://github.com/o/r/pull/12"))
+    (cl-letf (((symbol-function 'message) #'ignore))
+      (let ((kill-ring nil))
+        (octocat-copy-url)
+        (octocat-copy-url t)
+        (should (equal kill-ring '("o/r#12" "https://github.com/o/r/pull/12"))))
+      (setq-local octocat--url-function #'ignore)
+      (should-error (octocat-copy-url) :type 'user-error))))
 
 ;;;; Dashboard: open pull requests and issues
 
@@ -455,8 +497,9 @@ browser, skip it."
       (with-temp-buffer
         (insert (propertize "row" 'octocat-dashboard-url "https://github.com/o/r/pull/5"
                             'octocat-dashboard-repo "o/r"))
+        (setq-local octocat--url-function #'octocat-dashboard--page-url)
         (goto-char (point-min))
-        (octocat-dashboard-browse)))
+        (octocat-browse)))
     (should (equal urls '("https://github.com/o/r/pull/5")))))
 
 (ert-deftest octocat-core-test-link-eldoc ()

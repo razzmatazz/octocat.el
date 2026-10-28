@@ -171,19 +171,15 @@ new TICK fetches it again."
   "Return the web page comparing REFS, as `octocat--compare-refs', of REPO."
   (octocat--web-url "%s/compare/%s" repo (apply #'concat refs)))
 
-(defun octocat-compare-browse ()
-  "Open this comparison in a browser."
-  (interactive)
-  (unless (and octocat--compare-repo octocat--compare-refs)
-    (user-error "Octocat: Buffer is not associated with a comparison"))
-  (message "Octocat: Opening comparison in browser…")
-  (octocat-browse-external (octocat-compare--url octocat--compare-repo
-                                                 octocat--compare-refs)))
+(defun octocat-compare--page-url ()
+  "Return the URL of this comparison."
+  (and octocat--compare-repo octocat--compare-refs
+       (octocat-compare--url octocat--compare-repo octocat--compare-refs)))
 
 (defvar octocat-compare-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-compare-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-compare-mode'.")
@@ -199,7 +195,8 @@ new TICK fetches it again."
   (setq-local octocat--refresh-fn #'octocat-compare-refresh)
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
-  (octocat--max-width-setup))
+  (octocat--max-width-setup)
+  (setq-local octocat--url-function #'octocat-compare--page-url))
 
 
 ;;;; Refresh

@@ -183,9 +183,9 @@ A refresh asks GitHub again, which never answers."
                   (goto-char (point-min))
                   (search-forward "shots")
                   (backward-char)
-                  (octocat-file-browse)
+                  (octocat-browse)
                   (goto-char (point-min))
-                  (octocat-file-browse))
+                  (octocat-browse))
                 (should (equal (nreverse browsed)
                                '("https://github.com/owner/repo/blob/dev/docs/shots/README.md"
                                  "https://github.com/owner/repo/blob/dev/docs/GUIDE.md"))))

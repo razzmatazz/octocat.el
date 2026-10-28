@@ -354,18 +354,14 @@ A new TICK fetches everything again."
 
 ;;;; Major mode
 
-(defun octocat-user-browse ()
-  "Open the current user's or organization's GitHub page in a browser."
-  (interactive)
-  (unless octocat-user--login
-    (user-error "Octocat: Buffer is not associated with a GitHub user"))
-  (message "Octocat: Opening @%s in browser…" octocat-user--login)
-  (octocat-browse-external (octocat--web-url "%s" octocat-user--login)))
+(defun octocat-user--page-url ()
+  "Return the URL of the current user's or organization's GitHub page."
+  (and octocat-user--login (octocat--web-url "%s" octocat-user--login)))
 
 (defvar octocat-user-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-user-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     map)
   "Keymap for `octocat-user-mode'.")
 
@@ -377,7 +373,8 @@ A new TICK fetches everything again."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-user-refresh)
-  (octocat--ts-eldoc-setup))
+  (octocat--ts-eldoc-setup)
+  (setq-local octocat--url-function #'octocat-user--page-url))
 
 (defun octocat-user-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current octocat-user buffer."

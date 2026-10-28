@@ -50,7 +50,6 @@
 (defvar octocat-repo-mode-map)
 (defvar octocat-user-mode-map)
 (defvar octocat-doctor-mode-map)
-(declare-function octocat-user-browse "octocat-user" ())
 (declare-function octocat-search-repo "octocat-search" ())
 (defvar octocat-pr-list-mode-map)
 (defvar octocat-issue-list-mode-map)
@@ -76,7 +75,6 @@
 (declare-function octocat-file-refresh       "octocat-tree"
                   (&optional _ignore-auto _noconfirm))
 (declare-function octocat-vui-refresh        "octocat-vui"       ())
-(declare-function octocat-file-browse        "octocat-tree"      ())
 (declare-function octocat-file-log-open      "octocat-tree"      ())
 (declare-function octocat-file-switch-branch "octocat-tree"      ())
 (declare-function octocat-jump               "octocat-core"      (&optional other))
@@ -90,29 +88,19 @@
 (declare-function octocat-pr-merge           "octocat-pr"        ())
 (declare-function octocat-commit-refresh     "octocat-commit"
                   (&optional _ignore-auto _noconfirm))
-(declare-function octocat-pr-diff-browse    "octocat-pr-diff"   ())
-(declare-function octocat-pr-commits-browse "octocat-pr"        ())
 (declare-function octocat-pr-diff-review    "octocat-pr-diff"   ())
 (declare-function octocat-diff-toggle-comments "octocat-diff"   ())
-(declare-function octocat-commit-browse     "octocat-commit"    ())
-(declare-function octocat-compare-browse    "octocat-compare"   ())
 (declare-function octocat-compare-refresh   "octocat-compare"   (&optional _ignore-auto _noconfirm))
-(declare-function octocat-checks-browse     "octocat-checks"    ())
 (declare-function octocat-checks-refresh    "octocat-checks"    (&optional _ignore-auto _noconfirm))
 (declare-function octocat-issue-refresh      "octocat-issue"
                   (&optional _ignore-auto _noconfirm))
 (declare-function octocat-issue-add-comment  "octocat-issue"     ())
 (declare-function octocat-issue-new          "octocat-issue"     ())
 (declare-function octocat-issue-edit-body    "octocat-issue"     ())
-(declare-function octocat-issue-browse       "octocat-issue"     ())
-(declare-function octocat-pr-browse          "octocat-pr"        ())
 (declare-function octocat-issue-edit         "octocat-issue"     ())
 (declare-function octocat-issue-react        "octocat-issue"     ())
 (declare-function octocat-feed-load-more     "octocat"           ())
-(declare-function octocat-dashboard-browse   "octocat"           ())
-(declare-function octocat-repo-browse        "octocat-repo"      ())
 (declare-function octocat-repo-switch-branch "octocat-repo"      ())
-(declare-function octocat-vui-list-browse    "octocat-vui"       ())
 (declare-function octocat-vui-list-toggle-compact "octocat-vui"  ())
 (declare-function octocat-vui-list-filter    "octocat-vui"       ())
 (declare-function octocat-vui-list-edit-query "octocat-vui"      ())
@@ -141,7 +129,7 @@ insert a newline into it."
   '(("RET"     . octocat-evil-list-ret)
     ("o"       . octocat-visit)
     ("O"       . octocat-visit-other-window)
-    ("C-c C-o" . octocat-vui-list-browse)
+    ("C-c C-o" . octocat-browse)
     ("C-c C-j" . octocat-jump)
     ("C-c C-v" . octocat-vui-list-toggle-compact)
     ("gs"      . octocat-search-repo)
@@ -165,13 +153,10 @@ would start recording a macro."
   (when evil-local-mode
     (evil-normal-state)))
 
-(declare-function octocat-workflow-browse    "octocat-workflow"  ())
 (declare-function octocat-workflow-refresh   "octocat-workflow"
                   (&optional _ignore-auto _noconfirm))
-(declare-function octocat-run-browse         "octocat-run"       ())
 (declare-function octocat-run-refresh        "octocat-run"
                   (&optional _ignore-auto _noconfirm))
-(declare-function octocat-job-browse         "octocat-job"       ())
 (declare-function octocat-job-refresh        "octocat-job"
                   (&optional _ignore-auto _noconfirm))
 
@@ -200,7 +185,7 @@ Off an entry, such as on the header, move left."
   ;; RET via a `keymap' text property, so only the global bindings go here.
   (evil-define-key* 'normal octocat-mode-map
     (kbd "+")       #'octocat-feed-load-more
-    (kbd "C-c C-o") #'octocat-dashboard-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
@@ -212,7 +197,7 @@ Off an entry, such as on the header, move left."
   (evil-define-key* 'normal octocat-repo-mode-map
     (kbd "l")       #'octocat-evil-tree-l
     (kbd "h")       #'octocat-evil-tree-h
-    (kbd "C-c C-o") #'octocat-repo-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "C-c C-v") #'octocat-toggle-markdown
     (kbd "C-c C-f") #'octocat-tree-find-file
     (kbd "C-c C-b") #'octocat-repo-switch-branch
@@ -223,7 +208,7 @@ Off an entry, such as on the header, move left."
   ;; ── octocat-user-mode ─────────────────────────────────────────────────
   ;; vui.el-rendered like octocat-repo-mode: rows bind their own RET.
   (evil-define-key* 'normal octocat-user-mode-map
-    (kbd "C-c C-o") #'octocat-user-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
 
@@ -248,7 +233,7 @@ Off an entry, such as on the header, move left."
   ;; vui.el-rendered like octocat-issue-mode: row RET actions come from
   ;; per-row keymaps, so only the global commands are bound here.
   (evil-define-key* 'normal octocat-pr-mode-map
-    (kbd "C-c C-o") #'octocat-pr-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "C-c C-a") #'octocat-pr-add-comment
     (kbd "C-c C-e") #'octocat-pr-edit
     (kbd "C-c C-l") #'octocat-pr-react
@@ -264,7 +249,7 @@ Off an entry, such as on the header, move left."
   ;; vui.el-rendered like octocat-pr-diff-mode: row RET actions come from
   ;; per-row keymaps, so only the global commands are bound here.
   (evil-define-key* 'normal octocat-commit-mode-map
-    (kbd "C-c C-o") #'octocat-commit-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "C-c C-v") #'octocat-toggle-markdown
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
@@ -272,7 +257,7 @@ Off an entry, such as on the header, move left."
 
   ;; ── octocat-compare-mode ──────────────────────────────────────────────
   (evil-define-key* 'normal octocat-compare-mode-map
-    (kbd "C-c C-o") #'octocat-compare-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "C-c C-v") #'octocat-toggle-markdown
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
@@ -280,7 +265,7 @@ Off an entry, such as on the header, move left."
 
   ;; ── octocat-checks-mode ───────────────────────────────────────────────
   (evil-define-key* 'normal octocat-checks-mode-map
-    (kbd "C-c C-o") #'octocat-checks-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
@@ -291,7 +276,7 @@ Off an entry, such as on the header, move left."
   (evil-define-key* 'normal octocat-pr-diff-mode-map
     (kbd "C-c C-r") #'octocat-pr-diff-review
     (kbd "C-c C-m") #'octocat-pr-merge
-    (kbd "C-c C-o") #'octocat-pr-diff-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "C-c C-v") #'octocat-diff-toggle-comments
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
@@ -299,7 +284,7 @@ Off an entry, such as on the header, move left."
 
   ;; ── octocat-pr-commits-mode ───────────────────────────────────────────
   (evil-define-key* 'normal octocat-pr-commits-mode-map
-    (kbd "C-c C-o") #'octocat-pr-commits-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "C-c C-m") #'octocat-pr-merge
     (kbd "C-c C-r") #'octocat-pr-diff-review
     (kbd "gs")      #'octocat-search-repo
@@ -310,7 +295,7 @@ Off an entry, such as on the header, move left."
   ;; vui.el-rendered like octocat-repo-mode: row RET actions come from
   ;; per-row keymaps, so only the global commands are bound here.
   (evil-define-key* 'normal octocat-issue-mode-map
-    (kbd "C-c C-o") #'octocat-issue-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "C-c C-a") #'octocat-issue-add-comment
     (kbd "C-c C-e") #'octocat-issue-edit
     (kbd "C-c C-l") #'octocat-issue-react
@@ -322,21 +307,21 @@ Off an entry, such as on the header, move left."
 
   ;; ── octocat-workflow-mode ─────────────────────────────────────────────
   (evil-define-key* 'normal octocat-workflow-mode-map
-    (kbd "C-c C-o") #'octocat-workflow-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
 
   ;; ── octocat-run-mode ──────────────────────────────────────────────────
   (evil-define-key* 'normal octocat-run-mode-map
-    (kbd "C-c C-o") #'octocat-run-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
 
   ;; ── octocat-job-mode ──────────────────────────────────────────────────
   (evil-define-key* 'normal octocat-job-mode-map
-    (kbd "C-c C-o") #'octocat-job-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
@@ -344,7 +329,7 @@ Off an entry, such as on the header, move left."
   ;; ── octocat-file-mode ─────────────────────────────────────────────────
   ;; vui.el-rendered like octocat-repo-mode: links and buttons bind RET.
   (evil-define-key* 'normal octocat-file-mode-map
-    (kbd "C-c C-o") #'octocat-file-browse
+    (kbd "C-c C-o") #'octocat-browse
     (kbd "C-c C-f") #'octocat-tree-find-file
     (kbd "C-c C-l") #'octocat-file-log-open
     (kbd "C-c C-b") #'octocat-file-switch-branch

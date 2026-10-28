@@ -347,20 +347,15 @@ fetches them again."
 
 ;;;; Major mode
 
-(defun octocat-commit-browse ()
-  "Open this commit in a browser."
-  (interactive)
-  (unless (and octocat--commit-repo octocat--commit-sha)
-    (user-error "Octocat: Buffer is not associated with a commit"))
-  (message "Octocat: Opening commit %s in browser…"
-           (substring octocat--commit-sha 0 (min 7 (length octocat--commit-sha))))
-  (octocat-browse-external (octocat--web-url "%s/commit/%s"
-                                             octocat--commit-repo octocat--commit-sha)))
+(defun octocat-commit--page-url ()
+  "Return the URL of this commit."
+  (and octocat--commit-repo octocat--commit-sha
+       (octocat--web-url "%s/commit/%s" octocat--commit-repo octocat--commit-sha)))
 
 (defvar octocat-commit-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-commit-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-commit-mode'.")
@@ -376,7 +371,8 @@ fetches them again."
   (setq-local octocat--refresh-fn #'octocat-commit-refresh)
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
-  (octocat--max-width-setup))
+  (octocat--max-width-setup)
+  (setq-local octocat--url-function #'octocat-commit--page-url))
 
 
 ;;;; Refresh

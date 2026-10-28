@@ -76,6 +76,7 @@ Optional extras:
 | `TAB` / `S-TAB` | Fold the section at point / all sections |
 | `g` / `gr` | Refresh the page |
 | `C-c C-o` | Open the thing at point on GitHub |
+| `M-x octocat-copy-url` | Copy its URL instead (`C-u`: its short reference, as `owner/repo#12`) |
 | `C-c C-j` | Jump to a PR, issue, commit, workflow or file (`C-u`: another repo or user) |
 | `C-c C-v` | Another view: raw markdown, compact lists, review comments in diffs |
 | `C-c C-a` | Comment on a PR or issue |

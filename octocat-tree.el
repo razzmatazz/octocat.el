@@ -99,7 +99,7 @@ The rest expands on RET.  Nil never folds."
 (defvar octocat-file-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-file-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-f") #'octocat-tree-find-file)
     (define-key map (kbd "C-c C-l") #'octocat-file-log-open)
     (define-key map (kbd "C-c C-b") #'octocat-file-switch-branch)
@@ -118,7 +118,8 @@ The rest expands on RET.  Nil never folds."
   (setq-local revert-buffer-function #'octocat-file-refresh)
   (setq-local octocat--refresh-fn #'octocat-file-refresh)
   (octocat-markdown--ensure-invisibility)
-  (octocat--ts-eldoc-setup))
+  (octocat--ts-eldoc-setup)
+  (setq-local octocat--url-function #'octocat-file--page-url))
 
 
 ;;;; API fetch helpers
@@ -611,21 +612,13 @@ TYPE is `file' or `dir'."
          :path octocat-tree--file-path
          :raw octocat--markdown-raw)))
 
-(defun octocat-file-browse ()
-  "Open the current file on GitHub in the browser.
-On a link or image of rendered markdown, open what it links to."
-  (interactive)
-  (unless (and octocat-tree--file-repo
-               octocat-tree--file-branch
-               octocat-tree--file-path)
-    (user-error "Octocat: Buffer has no file context"))
-  (let ((url (or (octocat-markdown-url-at)
-                 (octocat--web-url "%s/blob/%s/%s"
-                                   octocat-tree--file-repo
-                                   octocat-tree--file-branch
-                                   octocat-tree--file-path))))
-    (message "Octocat: Opening %s in browser…" url)
-    (octocat-browse-external url)))
+(defun octocat-file--page-url ()
+  "Return the URL of the current file."
+  (and octocat-tree--file-repo octocat-tree--file-branch octocat-tree--file-path
+       (octocat--web-url "%s/blob/%s/%s"
+                         octocat-tree--file-repo
+                         octocat-tree--file-branch
+                         octocat-tree--file-path)))
 
 ;;;; File history
 

@@ -136,19 +136,16 @@ fetches them again."
 
 ;;;; Major mode
 
-(defun octocat-workflow-browse ()
-  "Open this workflow in a browser."
-  (interactive)
-  (unless (and octocat--workflow-repo octocat--workflow-id)
-    (user-error "Octocat: Buffer is not associated with a workflow"))
-  (message "Octocat: Opening workflow in browser…")
-  (octocat-browse-external (octocat-workflow--url octocat--workflow-repo octocat--workflow-id
-                                                  octocat--workflow-path)))
+(defun octocat-workflow--page-url ()
+  "Return the URL of this workflow."
+  (and octocat--workflow-repo octocat--workflow-id
+       (octocat-workflow--url octocat--workflow-repo octocat--workflow-id
+                              octocat--workflow-path)))
 
 (defvar octocat-workflow-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-workflow-browse)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     map)
   "Keymap for `octocat-workflow-mode'.")
 
@@ -161,7 +158,8 @@ fetches them again."
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-workflow-refresh)
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
-  (octocat--ts-eldoc-setup))
+  (octocat--ts-eldoc-setup)
+  (setq-local octocat--url-function #'octocat-workflow--page-url))
 
 
 ;;;; Refresh
