@@ -1144,33 +1144,31 @@ the history it pages through cannot shift under it."
 (defun octocat-repo-vui--head-row (repo ref path commit picker picker-w width)
   "Return the line atop the files: PICKER, then COMMIT, of PATH at REF.
 COMMIT is the last that touched PATH, nil for the root.  PICKER is the
-ref picker, PICKER-W columns wide, or nil.  As GitHub's, COMMIT shows
-its author and subject, then, at the right of WIDTH columns, its short
-SHA, a TAB stop, and date, RET opening it, and a button to the commits
-page of PATH at REF of REPO, with the count of its history.  The
-subject is cut so the line fits."
+ref picker, PICKER-W columns wide, or nil.  COMMIT shows its subject, a
+TAB stop, then, at the right of WIDTH columns, its short SHA and age, as
+GitHub's \"1a95462 · 2 hours ago\", RET opening it, and a button to the
+commits page of PATH at REF of REPO, with the count of its history.
+The author is left out for room: the commit page has it.  The subject
+is cut so the line fits."
   (let* ((sha       (or (gethash "sha" commit) ""))
          (subject   (octocat-repo-vui--subject commit))
-         (author    (octocat--commit-author commit))
-         (login     (octocat--commit-author-login commit))
-         (date      (octocat-repo-vui--date commit))
+         (date      (let ((ts (octocat--commit-date commit)))
+                      (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
          (count     (format "[%s commits]" (gethash "total" commit)))
-         (lead      (+ (if picker (+ picker-w 2) 0)
-                       (if (string-empty-p author) 0 (+ (string-width author) 2))))
+         (lead      (if picker (+ picker-w 2) 0))
          (tail      (+ 7 3 (string-width date) 2 (string-width count)))
          (subject-w (max 1 (min (string-width subject) (- width lead tail 2))))
          (gap       (max 2 (- width lead subject-w tail)))
          (open      (lambda () (octocat-repo-vui--open-commit repo commit))))
     (octocat-vui-row
      (append (and picker (list picker "  "))
-             (cond (login (list (octocat-repo-vui--login-link (substring login 1)) "  "))
-                   ((not (string-empty-p author))
-                    (list (propertize author 'face 'octocat-pr-author) "  ")))
-             (list (octocat--format-title subject subject-w)
+             (list (octocat-repo-vui--link
+                    (truncate-string-to-width subject subject-w nil nil "…")
+                    'default open "RET: view commit")
                    (make-string gap ?\s)
-                   (octocat-repo-vui--link (substring sha 0 (min 7 (length sha)))
-                                           'octocat-commit-sha open "RET: view commit")
-                   (concat (propertize " · " 'face 'octocat-dimmed)
+                   (concat (propertize (substring sha 0 (min 7 (length sha)))
+                                       'face 'octocat-commit-sha)
+                           (propertize " · " 'face 'octocat-dimmed)
                            (propertize date 'face 'octocat-dimmed))
                    "  "
                    (vui-button count

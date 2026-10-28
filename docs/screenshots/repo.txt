@@ -1,6 +1,6 @@
 acme/rocket  Code  [Issues (5)]  [Pull requests (6)]  [Actions]
 
-[main ▾]  @mchen  Render footnotes in Markdown page…  1a95462 · committed 2 hours ago  [342 commits]
+[main ▾]  Render footnotes in Markdown pages (#131)             1a95462 · 2 hours ago  [342 commits]
 .github/
 docs/
 examples/

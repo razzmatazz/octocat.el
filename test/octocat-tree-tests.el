@@ -163,7 +163,7 @@ A refresh asks GitHub again, which never answers."
             (should (derived-mode-p 'octocat-file-mode))
             (should (string-match-p
                      (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  \\[Browse tree\\]\n\n"
-                             "Ann  Add the guide +abc1234 · committed .*  \\[3 commits\\] \n")
+                             "Add the guide +abc1234 · .*  \\[3 commits\\] \n")
                      text))
             (should-not (string-match-p "reset" text))
             ;; The root and the directories on the way open the tree.
