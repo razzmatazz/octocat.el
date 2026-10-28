@@ -98,12 +98,14 @@ during render, like any hook."
         (funcall reset))
       nil)))
 
-(defun octocat-vui-row (line on-visit &optional help-echo)
+(defun octocat-vui-row (line on-visit &optional help-echo url)
   "Build a RET-able row vnode from already-propertized LINE.
 LINE may instead be a list of strings and vnodes, laid out on one line:
 its vnodes, such as buttons, keep their own RET and are TAB stops.
 ON-VISIT is a zero-argument function invoked when RET is pressed on the
-row.  HELP-ECHO defaults to a generic hint.
+row.  HELP-ECHO defaults to a generic hint.  URL, if non-nil, is the
+GitHub page of what the row opens, for `octocat-browse' and
+`octocat-copy-url'.
 
 A row is a `vui-region' wrapping a single `vui-text' line, with a tiny
 keymap binding RET to the row's navigation.  `vui-text' inserts its
@@ -127,18 +129,19 @@ own, so a segment such as a relative date keeps its own hover text
                m)))
     (vui-region :keymap map
                 (if (stringp line)
-                    (octocat-vui-row--text line help-echo)
+                    (octocat-vui-row--text line help-echo url)
                   (vui-hstack :spacing 0
                               (mapcar (lambda (part)
                                         (if (stringp part)
-                                            (octocat-vui-row--text part help-echo)
+                                            (octocat-vui-row--text part help-echo url)
                                           part))
                                       line))))))
 
-(defun octocat-vui-row--text (string help-echo)
-  "Return a `vui-text' of STRING highlighted as part of a row with HELP-ECHO."
+(defun octocat-vui-row--text (string help-echo url)
+  "Return a `vui-text' of STRING highlighted as part of a row with HELP-ECHO.
+URL, if non-nil, goes on it as the text property `octocat-url'."
   (vui-text (octocat-vui--default-help-echo string (or help-echo "RET: view details"))
-    'mouse-face 'highlight))
+    'mouse-face 'highlight 'octocat-url url))
 
 (defun octocat-vui--default-help-echo (string help-echo)
   "Return a copy of STRING with HELP-ECHO on the parts lacking a `help-echo'."

@@ -90,13 +90,8 @@ Each `octocat-feed-load-more' call fetches this many additional events."
 Starts at `octocat-feed-limit' and grows with `octocat-feed-load-more'.")
 
 (defun octocat-dashboard--page-url ()
-  "Return the URL of the pull request, issue or repository at point.
-Off a row, that of GitHub's own front page."
-  (let ((url  (get-text-property (point) 'octocat-dashboard-url))
-        (repo (get-text-property (point) 'octocat-dashboard-repo)))
-    (cond (url)
-          (repo (octocat--web-url "%s" repo))
-          (t    (octocat--web-url "")))))
+  "Return the URL of GitHub's front page, which the dashboard stands for."
+  (octocat--web-url ""))
 
 (defvar octocat-mode-map
   (let ((map (make-sparse-keymap)))
@@ -372,7 +367,7 @@ Dispatches on the event type:
               (propertize (format "  %-14s" lang) 'face 'octocat-dimmed)
               (propertize (format "  %-12s" date) 'face 'octocat-dimmed)
               (propertize (format "  %s" (or desc "")) 'face 'octocat-dimmed))
-      'octocat-dashboard-repo full-name)
+      'octocat-url (octocat--web-url "%s" full-name))
      (lambda () (octocat-visit-repo full-name))
      "RET: open repo  C-c C-o: browse on GitHub")))
 
@@ -393,8 +388,7 @@ pages' two lines, cut to WIDTH; BG is as for `octocat--label-face'."
                   (octocat-repo-vui--cells repo item bg)
                   '(:review :ci :prs :comments) width)
                  "\n")
-      'octocat-dashboard-url (octocat--web-url "%s/%s/%d"
-                                               repo (if pr "pull" "issues") number)
+      'octocat-url (octocat--item-url (if pr 'pr 'issue) repo number item)
       'octocat-sync-prefetch `((,(if pr 'pr 'issue) ,repo ,number)
                                (timeline-events ,repo ,number)))
      (lambda () (if pr (octocat-pr-open repo number) (octocat-issue-open repo number)))
@@ -421,7 +415,7 @@ pages' two lines, cut to WIDTH; BG is as for `octocat--label-face'."
               (octocat--format-title detail)
               "  "
               (propertize date 'face 'octocat-dimmed))
-      'octocat-dashboard-repo (octocat--nonempty repo))
+      'octocat-url (and (octocat--nonempty repo) (octocat--web-url "%s" repo)))
      (lambda () (octocat--dashboard-visit-event ev))
      "RET: open commit or repo  C-c C-o: browse repo on GitHub")))
 

@@ -419,7 +419,7 @@ browser, skip it."
                (lambda (kind url &rest _) (push (list kind url) kinds))))
       (with-temp-buffer
         (setq-local octocat--url-function #'octocat-dashboard--page-url)
-        (insert (propertize "row" 'octocat-dashboard-repo "o/r"))
+        (insert (propertize "row" 'octocat-url "https://github.com/o/r"))
         (goto-char (point-min))
         (octocat-browse)))
     (should (equal kinds '((external "https://github.com/o/r"))))))
@@ -437,7 +437,19 @@ browser, skip it."
         (should (equal (at "x.org") "https://x.org/a"))
         (should (equal (at "#7") "https://github.com/o/r/issues/7"))
         (should (equal (at "abc1234") "https://github.com/o/r/commit/abc1234"))
-        (should (equal (at "plain") "https://github.com/o/r/pull/1"))))))
+        (should (equal (at "plain") "https://github.com/o/r/pull/1"))
+        ;; A row's own URL comes before the page's.
+        (goto-char (point-max))
+        (insert (propertize "row" 'octocat-url "https://github.com/o/r/issues/2"))
+        (should (equal (at "row") "https://github.com/o/r/issues/2"))))))
+
+(ert-deftest octocat-core-test-item-url ()
+  "A PR's or issue's URL is its own, so an Enterprise host is kept, or else built."
+  (should (equal (octocat--item-url 'pr "a/b" 7
+                                    (json-parse-string "{\"url\":\"https://ghe.example/a/b/pull/7\"}"))
+                 "https://ghe.example/a/b/pull/7"))
+  (should (equal (octocat--item-url 'pr "a/b" 7) "https://github.com/a/b/pull/7"))
+  (should (equal (octocat--item-url 'issue "a/b" 7) "https://github.com/a/b/issues/7")))
 
 (ert-deftest octocat-core-test-short-ref ()
   "A URL's short reference is written as GitHub writes one."
@@ -495,8 +507,7 @@ browser, skip it."
     (cl-letf (((symbol-function 'browse-url-with-browser-kind)
                (lambda (_kind url &rest _) (push url urls))))
       (with-temp-buffer
-        (insert (propertize "row" 'octocat-dashboard-url "https://github.com/o/r/pull/5"
-                            'octocat-dashboard-repo "o/r"))
+        (insert (propertize "row" 'octocat-url "https://github.com/o/r/pull/5"))
         (setq-local octocat--url-function #'octocat-dashboard--page-url)
         (goto-char (point-min))
         (octocat-browse)))

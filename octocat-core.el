@@ -1369,12 +1369,20 @@ A REPO of nil is the buffer's."
 
 (defun octocat--url-at-point ()
   "Return the URL of what point is on, or else of the page, or nil.
-That is a link or reference in markdown, or what the page's
-`octocat--url-function' returns."
+That is a link or reference in markdown, a row's `octocat-url' (see
+`octocat-vui-row'), or what the page's `octocat--url-function' returns."
   (or (octocat-markdown-url-at)
       (when-let* ((ref (get-text-property (point) 'octocat-markdown-ref)))
         (octocat--ref-url ref))
+      (get-text-property (point) 'octocat-url)
       (and octocat--url-function (funcall octocat--url-function))))
+
+(defun octocat--item-url (kind repo number &optional data)
+  "Return the URL of the PR or issue (KIND `pr' or `issue') NUMBER in REPO.
+DATA's own `url', if it has one, has the right host on GitHub Enterprise."
+  (let ((url (and data (gethash "url" data))))
+    (if (stringp url) url
+      (octocat--web-url "%s/%s/%d" repo (if (eq kind 'pr) "pull" "issues") number))))
 
 (defun octocat--short-ref (url)
   "Return the short reference of URL, as GitHub writes one, or nil.

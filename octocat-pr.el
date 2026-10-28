@@ -209,16 +209,9 @@ On a field such as Labels: pick its values."
          (url    (and (hash-table-p target) (gethash "url" target))))
     (cond ((stringp url) url)
           ((and octocat--pr-repo octocat--pr-number)
-           (octocat-pr--url
-            (octocat-sync-detail-read (list 'pr octocat--pr-repo octocat--pr-number))
-            octocat--pr-repo octocat--pr-number)))))
-
-(defun octocat-pr--url (data repo number)
-  "Return the URL of PR NUMBER in REPO: DATA's own, or else built.
-DATA, the item's data, is nil before it loads."
-  (let ((url (and data (gethash "url" data))))
-    (if (stringp url) url
-      (octocat--web-url "%s/pull/%d" repo number))))
+           (octocat--item-url
+            'pr octocat--pr-repo octocat--pr-number
+            (octocat-sync-detail-read (list 'pr octocat--pr-repo octocat--pr-number)))))))
 
 (defun octocat-pr--change-state (verb)
   "Close or reopen (VERB) the current PR, after asking."

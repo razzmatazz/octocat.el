@@ -188,8 +188,8 @@ Under the header, as on GitHub, a tab row switches between the PR's
 pages: **Conversation** (this timeline), **Commits (N)** and **Files
 changed (N)**.  `RET` on a tab opens that page in its own buffer.  The
 Commits page lists all of the PR's commits oldest first, one per line;
-`RET` on one opens the commit and `C-c C-o` opens the PR's commits on
-GitHub.  It reuses the PR page's
+`RET` on one opens the commit and `C-c C-o` opens it on GitHub, or off
+a commit the PR's commits.  It reuses the PR page's
 data, so it fetches nothing more.
 
 ### Inline editing

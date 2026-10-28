@@ -469,10 +469,12 @@ in the browser; no other key does (bare `o` opens in Emacs).
 `octocat-copy-url` copies that URL instead, or with `C-u` its short
 reference (`owner/repo#12`).
 
-The URL is a markdown link or reference at point, or else what the
-mode's `octocat--url-function` returns, such as `octocat-pr--page-url`.
-That may depend on point: the comment, tree entry or dashboard row.  A
-new page sets it in its mode body.
+The URL is, in order, a markdown link or reference at point, the row
+at point's (the URL argument of `octocat-vui-row`, as text property
+`octocat-url`), or what the mode's `octocat--url-function` returns,
+such as `octocat-pr--page-url`.  That may look at point too: the
+comment, or the tree entry.  A new page sets it in its mode body, and a
+new kind of row passes its URL.
 
 | Page | URL opened |
 |---|---|

@@ -194,7 +194,8 @@ is the run's."
                           'face 'octocat-run-job-name)
               (if duration (propertize (concat "  " duration) 'face 'octocat-dimmed) "")))
      (lambda () (octocat-job-open repo run-id (gethash "databaseId" job) name))
-     "RET: open job")))
+     "RET: open job"
+     (octocat--web-url "%s/actions/runs/%s/job/%s" repo run-id (gethash "databaseId" job)))))
 
 (defun octocat-run--jobs-section (repo run-id jobs)
   "Return the vnodes of the Jobs section: JOBS of run RUN-ID of REPO."
@@ -526,7 +527,8 @@ column, as on a workflow's own page.  TITLE-W is that of the title,
                    'face 'octocat-dimmed))
       'octocat-sync-prefetch `((run ,repo ,run-id) (run-artifacts ,repo ,run-id)))
      (lambda () (octocat-run-open repo run-id))
-     "RET: open workflow run")))
+     "RET: open workflow run"
+     (octocat--web-url "%s/actions/runs/%s" repo run-id))))
 
 (vui-defcomponent octocat-run-list--runs (repo current-branch tick query workflow)
   "The recent runs of REPO matching QUERY, laid out as GitHub lists them.

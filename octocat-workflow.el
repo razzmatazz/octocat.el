@@ -248,7 +248,9 @@ it when longer (40 by default), so the columns line up."
     (octocat-vui-row line
                      (lambda () (octocat-workflow-open repo (gethash "id" workflow) name
                                                        (gethash "path" workflow)))
-                     "RET: open workflow")))
+                     "RET: open workflow"
+                     (octocat-workflow--url repo (gethash "id" workflow)
+                                            (gethash "path" workflow)))))
 
 (defun octocat-workflow-list--workflows (repo snap)
   "Return the workflows of REPO, from SNAP, their sync snapshot.

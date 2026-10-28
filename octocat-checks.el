@@ -122,7 +122,8 @@ workflow name, which the REST check-run does not carry."
                      ("status"       . ,(octocat--nonempty (gethash "status" check)))
                      ("conclusion"   . ,(octocat--nonempty (gethash "conclusion" check)))
                      ("startedAt"    . ,(octocat--nonempty (gethash "started_at" check)))
-                     ("completedAt"  . ,(octocat--nonempty (gethash "completed_at" check)))))
+                     ("completedAt"  . ,(octocat--nonempty (gethash "completed_at" check)))
+                     ("detailsUrl"   . ,(octocat--nonempty (gethash "html_url" check)))))
       (when (cdr field)
         (puthash (car field)
                  (if (member (car field) '("status" "conclusion"))
@@ -175,7 +176,10 @@ RET, described by HELP-ECHO.  INDENT starts the row, two spaces if nil."
               " "
               (mapconcat #'identity (delq nil cells) "  ")))
      on-visit
-     (or help-echo "RET: view checks for this commit"))))
+     (or help-echo "RET: view checks for this commit")
+     ;; A check run's page, or a commit status's target.
+     (or (octocat--nonempty (gethash "detailsUrl" check))
+         (octocat--nonempty (gethash "targetUrl" check))))))
 
 (define-obsolete-variable-alias 'octocat-pr-checks-shown 'octocat-checks-shown "0.1.0")
 (defcustom octocat-checks-shown 5

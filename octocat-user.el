@@ -239,7 +239,8 @@ AVATAR is a list of equally wide strings; the shorter list is padded."
                       (unless (string-empty-p pushed) (concat "  " pushed)))
               'face 'octocat-dimmed))
      (lambda () (octocat-visit-repo full))
-     "RET: open repository")))
+     "RET: open repository"
+     (and full (octocat--web-url "%s" full)))))
 
 
 ;;;; Components

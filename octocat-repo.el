@@ -602,14 +602,14 @@ edge when every title is short."
   (min width (1+ (apply #'max 0 (mapcar #'string-width lines)))))
 
 (defun octocat-repo-vui--item-row (state cells width on-visit help
-                                         &optional compact-line prefetch)
+                                         &optional compact-line prefetch url)
   "Return the row vnode for an item with STATE text.
 CELLS are as made by `octocat-repo-vui--cells'; each line is cut to
 WIDTH.  ON-VISIT and HELP are as for `octocat-vui-row'.  COMPACT-LINE,
 when non-nil, is the one line drawn instead, as made by
 `octocat-repo-vui--compact-line'.  PREFETCH is the sync specs ON-VISIT
 opens, fetched while point rests on the row (see
-`octocat-vui--prefetch-schedule')."
+`octocat-vui--prefetch-schedule'), and URL its GitHub page."
   (octocat-vui-row
    (propertize
     (or compact-line
@@ -618,7 +618,7 @@ opens, fetched while point rests on the row (see
                     state cells '(:review :ci :prs :comments) width)
                    "\n"))
     'octocat-sync-prefetch prefetch)
-   on-visit help))
+   on-visit help url))
 
 (defun octocat-repo-vui--number (item)
   "Return the \"#N\" of the issue or PR ITEM."
@@ -659,7 +659,8 @@ without the state when NO-STATE is non-nil."
    "RET: view pull request"
    (and compact (octocat-repo-vui--pr-compact-line repo pr bg no-state width))
    (let ((n (gethash "number" pr)))
-     `((pr ,repo ,n) (timeline-events ,repo ,n)))))
+     `((pr ,repo ,n) (timeline-events ,repo ,n)))
+   (octocat--item-url 'pr repo (gethash "number" pr) pr)))
 
 (defun octocat-repo-vui--issue-row (repo issue width bg &optional compact no-state)
   "Return a row vnode for ISSUE in REPO, cut to WIDTH.
@@ -673,7 +674,8 @@ without the state when NO-STATE is non-nil."
    "RET: view issue"
    (and compact (octocat-repo-vui--issue-compact-line repo issue bg no-state width))
    (let ((n (gethash "number" issue)))
-     `((issue ,repo ,n) (timeline-events ,repo ,n)))))
+     `((issue ,repo ,n) (timeline-events ,repo ,n)))
+   (octocat--item-url 'issue repo (gethash "number" issue) issue)))
 
 ;; The header of an issue or PR page starts as the other pages do, with
 ;; `owner/repo#N', then the title and author.  The state heads the line
@@ -941,7 +943,9 @@ highlighted.  AUTHOR-W is the width of the author column, see
 The other arguments are as for `octocat-repo-vui--commit-line'."
   (octocat-vui-row (octocat-repo-vui--commit-line commit head-info author-w subject-w date-w)
                    (lambda () (octocat-repo-vui--open-commit repo commit))
-                   "RET: view commit"))
+                   "RET: view commit"
+                   (octocat--web-url "%s/commit/%s" repo
+                                     (or (gethash "sha" commit) (gethash "oid" commit) ""))))
 
 
 (defun octocat-repo-vui--unpushed-row (commit)
@@ -1175,7 +1179,8 @@ subject is cut so the line fits."
                      :help-echo "RET: list the commits"
                      :on-click (lambda () (octocat-commit-list-open repo ref path)))))
      open
-     "RET: view commit")))
+     "RET: view commit"
+     (octocat--web-url "%s/commit/%s" repo sha))))
 
 ;;;; Docs
 
@@ -1361,7 +1366,8 @@ one summary resource and the rest from the root's `repo-head' at REF."
        (octocat-vui-row
         (concat "Forked from  " (propertize fork-parent 'face 'octocat-repo))
         (lambda () (octocat-visit-repo fork-parent))
-        "RET: open parent repo view"))
+        "RET: open parent repo view"
+        (octocat--web-url "%s" fork-parent)))
      (vui-newline)
      (when unpushed
        (octocat-repo-vui--unpushed-section unpushed))

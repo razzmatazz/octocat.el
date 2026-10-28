@@ -232,16 +232,9 @@ The first line is the title, the rest the body."
          (url    (and (hash-table-p target) (gethash "url" target))))
     (cond ((stringp url) url)
           ((and octocat--issue-repo octocat--issue-number)
-           (octocat-issue--url
-            (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number))
-            octocat--issue-repo octocat--issue-number)))))
-
-(defun octocat-issue--url (data repo number)
-  "Return the URL of issue NUMBER in REPO: DATA's own, or else built.
-DATA, the item's data, is nil before it loads."
-  (let ((url (and data (gethash "url" data))))
-    (if (stringp url) url
-      (octocat--web-url "%s/issues/%d" repo number))))
+           (octocat--item-url
+            'issue octocat--issue-repo octocat--issue-number
+            (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))))))
 
 (defun octocat-issue--change-state (verb)
   "Close or reopen (VERB) the current issue, after asking."
