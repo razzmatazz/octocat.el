@@ -1174,9 +1174,11 @@ is cut so the line fits."
          (open      (lambda () (octocat-repo-vui--open-commit repo commit))))
     (octocat-vui-row
      (append (and picker (list picker "  "))
+             ;; A face that sets nothing: nil would be `link', and
+             ;; `default' would mask the underline the file page adds.
              (list (octocat-repo-vui--link
                     (truncate-string-to-width subject subject-w nil nil "…")
-                    'default open "RET: view commit")
+                    '(:inherit nil) open "RET: view commit")
                    (make-string gap ?\s)
                    (concat (propertize (substring sha 0 (min 7 (length sha)))
                                        'face 'octocat-commit-sha)
