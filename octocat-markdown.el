@@ -1826,9 +1826,20 @@ HANG, a string, or that many spaces, as a `wrap-prefix' would show it."
                     (octocat-markdown--wrap
                      rest (max 1 (- width (max lead (string-width prefix))))))))))
 
+(defun octocat-markdown--scale (s)
+  "Return how many times wider than its `string-width' S is drawn.
+Only a heading is measured, as its face can be taller and so wider than
+the default, see `octocat-markdown-heading-1'; anything else gives 1."
+  (if (and (> (length s) 0) (get-text-property 0 'octocat-markdown-heading s))
+      (max 1.0 (/ (float (string-pixel-width s))
+                  (* (frame-char-width) (max 1 (string-width s)))))
+    1.0))
+
 (defun octocat-markdown--fill (rows width)
   "Return ROWS with those wider than WIDTH columns broken to fit it.
 Emacs would wrap them at the window's edge, past a capped page's column.
+A heading drawn wider than the default fits fewer characters, see
+`octocat-markdown--scale'.
 Prose breaks at spaces, hung as a wrap would be; code breaks anywhere,
 each continuation marked with an arrow.  Tables were already fit where
 they can be.  A row of HTML that is centred is centred in WIDTH, but an
@@ -1840,6 +1851,7 @@ ROWS as they are."
      (lambda (row)
        (let* ((s    (car row))
               (hang (cdr row))
+              (room (floor width (octocat-markdown--scale s)))
               (has  (lambda (prop) (text-property-not-all 0 (length s) prop nil s))))
          (octocat-markdown--center
           (and (not (funcall has 'octocat-markdown-image))
@@ -1847,7 +1859,7 @@ ROWS as they are."
           width
           (cond
            ;; An image's link is replaced whole by the image.
-           ((or (<= (string-width s) width) (funcall has 'octocat-markdown-table)
+           ((or (<= (string-width s) room) (funcall has 'octocat-markdown-table)
                 (funcall has 'octocat-markdown-image))
             (list row))
            ((funcall has 'octocat-markdown-code)
@@ -1873,7 +1885,7 @@ ROWS as they are."
                             (octocat-markdown--cut (substring s (length head)) room)))))
            (t
             (mapcar (lambda (l) (cons l hang))
-                    (octocat-markdown-wrap-hung s width hang)))))))
+                    (octocat-markdown-wrap-hung s room hang)))))))
      rows)))
 
 (defun octocat-markdown--center (center width rows)

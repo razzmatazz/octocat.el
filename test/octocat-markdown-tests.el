@@ -920,6 +920,17 @@ Text replaced by a `display' string shows as that string."
                  "• aaa\n  bbb\n  ccc\n"))
   (should (equal (octocat-markdown-tests--md "aaa bbb ccc ddd") "aaa bbb ccc ddd\n")))
 
+(ert-deftest octocat-markdown-test-fill-heading ()
+  "A heading drawn wider than the default breaks to fit WIDTH as drawn."
+  ;; As a graphic display draws h1, 1.5 times as wide as the default.
+  (cl-letf (((symbol-function 'frame-char-width) (lambda (&rest _) 10))
+            ((symbol-function 'string-pixel-width)
+             (lambda (s &rest _)
+               (* (string-width s)
+                  (if (get-text-property 0 'octocat-markdown-heading s) 15 10)))))
+    (should (equal (octocat-markdown-tests--md "# aaa bbb ccc\n\naaa bbb ccc" 12)
+                   "aaa bbb\nccc\naaa bbb ccc\n"))))
+
 (ert-deftest octocat-markdown-test-fill-code ()
   "A code line wider than WIDTH is cut, its continuations marked and padded."
   (let* ((out (octocat-markdown-render
