@@ -17,7 +17,9 @@ pages:
 - **Pull requests** — conversation, reviews, checks, diffs, merging
 - **Issues** — lists filtered by GitHub search, comments, new issues
 - **Actions** — runs, jobs and their logs, workflows
-- **github.com links** — open in octocat wherever you follow them in Emacs (opt-in)
+
+With `octocat-github-links-mode` on, github.com links open in octocat
+wherever you follow them in Emacs.
 
 ![A pull request in octocat.el](docs/screenshots/pr.png)
 
