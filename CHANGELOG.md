@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* The branch picker sits on the top line after a Code tab, on repo, tree, file and commit pages
 * The commit list and dashboard leave a blank line under their top line, as other pages
 * Large markdown headings wrap within the page's width instead of running past it
 * Files at the repository root, like a Dockerfile or .gitignore, are highlighted as in a directory

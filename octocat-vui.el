@@ -46,6 +46,7 @@
 ;;   `octocat-vui-actions-header'    header of workflow, run and job pages
 ;;   `octocat-vui-repo-tabs'         Code / Issues / Pull requests / Actions
 ;;                                   tab strip shared by the repo pages
+;;   `octocat-vui-code-tab'          the Code tab alone, of tree/file/commits
 ;;   `octocat-vui-list-header'       list page header with open/closed counts
 ;;   `octocat-vui-list-filter-bar'   query field + facet buttons
 
@@ -1290,14 +1291,25 @@ least `octocat-sync-fresh-for'."
                                   (puthash (substring (symbol-name (pop r)) 1) (pop r) h))
                                 h)))))))
 
-(defun octocat-vui-repo-tabs (repo current tick)
+(defun octocat-vui-code-tab (repo)
+  "Return the Code tab of REPO, current, for a page under it.
+It opens the repository page, as GitHub's does from a file or history."
+  (pcase-let ((`(,_ ,label ,help ,fn) (assq 'code octocat--repo-tabs)))
+    (vui-button label
+      :no-decoration t
+      :face '(octocat-section-heading underline)
+      :help-echo help
+      :on-click (lambda () (funcall fn repo)))))
+
+(defun octocat-vui-repo-tabs (repo current tick &optional beside-code)
   "Return a list of vnodes: the tab strip of REPO's pages, as on GitHub.
 The tabs are those of `octocat--repo-tabs'.  CURRENT is the symbol of
 the page being shown; its tab is drawn as a heading and is not
 clickable.  The others open their page for REPO.  The issue and PR tabs
 show the open counts of the `repo-summary' resource, \"…\" while it
-loads; a new TICK refetches it.  Reads the store, so call it during
-render, like any hook."
+loads; a new TICK refetches it.  BESIDE-CODE, a vnode, follows the Code
+tab, out of the underline: the repo page's ref picker.  Reads the
+store, so call it during render, like any hook."
   (let* ((snap    (octocat-vui-use-resource (list 'repo-summary repo) tick))
          (summary (plist-get snap :data))
          (count   (lambda (field)
@@ -1320,9 +1332,13 @@ render, like any hook."
                    :on-click (lambda () (funcall fn repo))))))
            octocat--repo-tabs)))
     ;; One node, so the gaps between the tabs are underlined too.
-    (list (apply #'vui-hstack :spacing 0
-                 (cdr (mapcan (lambda (n) (list (vui-text "  " :face 'underline) n))
-                              nodes))))))
+    (cl-flet ((strip (nodes)
+                (apply #'vui-hstack :spacing 0
+                       (cdr (mapcan (lambda (n) (list (vui-text "  " :face 'underline) n))
+                                    nodes)))))
+      (if beside-code
+          (list (vui-hstack :spacing 1 (car nodes) beside-code) (strip (cdr nodes)))
+        (list (strip nodes))))))
 
 (octocat-sync-define-resource counts (kind repo)
   :poll octocat-sync-poll-slow
