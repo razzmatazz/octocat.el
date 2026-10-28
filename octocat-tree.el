@@ -273,11 +273,11 @@ fetched once."
 
 (defun octocat-tree--fontify (path content)
   "Return CONTENT string with face properties from the appropriate major mode.
-PATH is used only to select the mode via `auto-mode-alist'."
+PATH, relative to the repository root, is used only to select the mode
+via `auto-mode-alist'."
   (with-temp-buffer
     (insert content)
-    (let ((buffer-file-name path))
-      (delay-mode-hooks (set-auto-mode)))
+    (octocat--set-mode-for-path path)
     ;; A mode's broken font-lock rules should not lose the file's text.
     (with-demoted-errors "Octocat: cannot highlight: %S" (font-lock-ensure))
     (buffer-string)))

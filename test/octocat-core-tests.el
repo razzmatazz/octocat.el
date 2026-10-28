@@ -12,6 +12,13 @@
 (require 'ert)
 (require 'octocat)
 
+(ert-deftest octocat-core-test-set-mode-for-path ()
+  "A file at the root matches an `auto-mode-alist' pattern anchored on \"/\"."
+  (let ((auto-mode-alist '(("/Rootfile\\'" . emacs-lisp-mode))))
+    (with-temp-buffer
+      (octocat--set-mode-for-path "Rootfile")
+      (should (eq major-mode 'emacs-lisp-mode)))))
+
 (ert-deftest octocat-core-test-web-url ()
   "Web URLs are on the host `gh' talks to, as GH_HOST names it."
   (let ((process-environment (cons "GH_HOST" process-environment)))

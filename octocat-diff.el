@@ -229,9 +229,7 @@ A note is a `\\ No newline at end of file'."
 Return nil when PATH's mode, if any, does not highlight.  The mode is
 set up once, with its hooks delayed, as for a file being visited."
   (with-temp-buffer
-    (with-demoted-errors "Octocat: cannot highlight: %S"
-      (let ((buffer-file-name path))
-        (delay-mode-hooks (set-auto-mode))))
+    (octocat--set-mode-for-path path)
     (when (font-lock-specified-p major-mode)
       (mapcar (lambda (text)
                 (erase-buffer)

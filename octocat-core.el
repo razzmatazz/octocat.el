@@ -1167,6 +1167,17 @@ is asked first and the matching view opened."
                    ((equal result "true") (octocat-pr-open repo id))
                    (t (octocat-issue-open repo id)))))))))))
 
+;;;; Syntax highlighting
+
+(defun octocat--set-mode-for-path (path)
+  "Set the current buffer's major mode as for repository file PATH.
+PATH is relative to the repository root.  Mode hooks are delayed."
+  ;; Rooted, as some patterns, such as Dockerfile's, need a "/" before
+  ;; the name.
+  (with-demoted-errors "Octocat: cannot highlight: %S"
+    (let ((buffer-file-name (concat "/" path)))
+      (delay-mode-hooks (set-auto-mode)))))
+
 ;;;; github.com links
 ;;
 ;; github.com links octocat has a view for open in it: always from its
