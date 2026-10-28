@@ -8,8 +8,6 @@
 
 A GitHub client for Emacs, powered by the [`gh`](https://cli.github.com/) command-line tool.
 
-![A pull request in octocat.el](docs/screenshots/pr.png)
-
 Browse repositories, review and merge pull requests, triage issues and
 watch Actions runs, all in Emacs buffers that read like GitHub's own
 pages:
@@ -20,6 +18,8 @@ pages:
 - **Issues** — lists filtered by GitHub search, comments, new issues
 - **Actions** — runs, jobs and their logs, workflows
 - **github.com links** — open in octocat wherever you follow them in Emacs (opt-in)
+
+![A pull request in octocat.el](docs/screenshots/pr.png)
 
 See [every page](docs/screenshots/README.md), drawn from made-up data.
 
