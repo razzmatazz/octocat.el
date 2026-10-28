@@ -87,7 +87,7 @@ GitHub's sidebar, opened down to the directory or file it was opened
 at, with point on it:
 
 ```
-owner/repo[main ▾]:/
+owner/repo  [main ▾]:/
 
 @alice  Show open issue and PR counts …  a9fc167 · committed 1 day ago  [62 commits]
 ▸ .github/
@@ -114,7 +114,7 @@ path (`/tree/main/src/parser`) opens the browser at it.
 `[N commits]` on the repo page lists the history of the ref shown, or of
 the directory shown, newest first, `octocat-repo-commits-page-size` (25) at a time with a button to
 load more; `C-c C-l` in the file viewer lists a file's.  Its top line is
-the tree browser's, `owner/repo[main ▾]:/dir`, with how many commits
+the tree browser's, `owner/repo  [main ▾]:/dir`, with how many commits
 there are, underlined: the picker shows another branch's history, and
 a directory of the path its own.  Each row reads as on GitHub: the
 subject, the author, when it was committed, then the short SHA.  The
@@ -298,7 +298,7 @@ relative image shows it in place.  `C-c C-v` shows the Markdown source
 instead.  Any other file is shown with the syntax highlighting of its
 major mode.
 
-The top of the page is the tree browser's: `owner/repo[main ▾]:/dir/file`,
+The top of the page is the tree browser's: `owner/repo  [main ▾]:/dir/file`,
 the branch picker and the path, whose directories open the tree browser
 down to them, and `[Browse tree]`, which opens it down to the file.
 Under it, after a blank line, are the file's last commit and a

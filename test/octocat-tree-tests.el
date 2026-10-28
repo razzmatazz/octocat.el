@@ -162,7 +162,7 @@ A refresh asks GitHub again, which never answers."
             (should (equal (buffer-name) "*owner/repo@dev:docs/GUIDE.md*"))
             (should (derived-mode-p 'octocat-file-mode))
             (should (string-match-p
-                     (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  \\[Browse tree\\]\n\n"
+                     (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md  \\[Browse tree\\]\n\n"
                              "Add the guide +abc1234 · .*  \\[3 commits\\] \n")
                      text))
             (should-not (string-match-p "reset" text))
@@ -402,7 +402,7 @@ It does not fold, however long."
             (let ((text (buffer-substring-no-properties (point-min) (point-max))))
               (should (derived-mode-p 'octocat-commit-list-mode))
               (should (string-match-p
-                       (concat "\\`owner/repo\\[dev ▾\\]:/docs/GUIDE.md  3 commits  "
+                       (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md  3 commits  "
                                "\\[reset to main\\] \nAdd the guide +Ann +committed .* +abc1234$")
                        text))
               ;; A directory on the way shows its own commits.

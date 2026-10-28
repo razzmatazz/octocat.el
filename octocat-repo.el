@@ -1302,12 +1302,13 @@ is plain."
 
 (defun octocat-repo-vui--top-line (repo label path current-branch switch on-dir &rest after)
   "Return the top line of a page of PATH of REPO at the ref named LABEL.
-That is owner/repo[LABEL ▾]:/PATH, the picker of `octocat-repo-vui--ref-picker'
-running SWITCH, highlighted when LABEL is the local CURRENT-BRANCH, and
-the directories of PATH buttons calling ON-DIR, see
-`octocat-repo-vui--path-nodes'.  AFTER, nodes or nils, follow it."
+That is owner/repo  [LABEL ▾]:/PATH, the picker of
+`octocat-repo-vui--ref-picker' running SWITCH, highlighted when LABEL is
+the local CURRENT-BRANCH, and the directories of PATH buttons calling
+ON-DIR, see `octocat-repo-vui--path-nodes'.  AFTER, nodes or nils, follow it."
   (apply #'vui-hstack :spacing 0
          (octocat-vui-repo-heading repo)
+         (vui-text "  ")
          (or (octocat-repo-vui--ref-picker label current-branch nil nil switch)
              (vui-text (octocat-vui-skeleton '((8)))))
          (vui-text ":")
