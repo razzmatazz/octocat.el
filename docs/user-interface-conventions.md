@@ -916,7 +916,8 @@ A new page starts the same way, using `octocat-vui-repo-heading`.
 
 On the repository page, the tree browser and the file viewer a blank
 line sets the last commit's line apart from the top line, so it reads
-as content, not as part of the page's name.
+as content, not as part of the page's name.  Every page leaves a blank
+line under its top line and the details below it.
 
 ### The owner links, the repo name does not
 

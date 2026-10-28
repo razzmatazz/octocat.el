@@ -1078,7 +1078,7 @@ The commits are those of REF, or of the default branch when nil, that
 touched PATH, or all of them when nil.  The top line is the picker of
 the ref, highlighted when it is the local CURRENT-BRANCH, then PATH,
 whose directories show their own commits, how many commits there are,
-and a button back to DEFAULT-BRANCH when REF is another, underlined.
+and a button back to DEFAULT-BRANCH when REF is another.
 HEAD-INFO is the plist from `octocat--head-info', used to highlight
 the local HEAD commit.  The
 first page is a sync resource; \"load more\" fetches a page at a time,
@@ -1098,16 +1098,15 @@ pinned to the head shown."
          (label   (or ref default-branch)))
     (octocat-vui-use-mode-line-loading fetching)
     (vui-vstack
-     (octocat-vui-underlined
-      (octocat-vui-window-width)
-      (octocat-repo-vui--top-line
-       repo label path current-branch nil
-       (lambda (dir) (octocat-commit-list-open repo ref (octocat--nonempty dir)))
-       (when-let* ((total (and first (gethash "total" (car first)))))
-         (vui-text (format "%d commit%s" total (if (= total 1) "" "s"))
-           :face 'octocat-dimmed))
-       (and (octocat-repo--resettable-p ref default-branch)
-            (octocat-repo-vui--reset-button default-branch))))
+     (octocat-repo-vui--top-line
+      repo label path current-branch nil
+      (lambda (dir) (octocat-commit-list-open repo ref (octocat--nonempty dir)))
+      (when-let* ((total (and first (gethash "total" (car first)))))
+        (vui-text (format "%d commit%s" total (if (= total 1) "" "s"))
+          :face 'octocat-dimmed))
+      (and (octocat-repo--resettable-p ref default-branch)
+           (octocat-repo-vui--reset-button default-branch)))
+     (vui-newline)
      (pcase status
        ('pending (vui-text (octocat-vui-line-skeleton)))
        ('error   (vui-text (octocat-vui-error-text snap) :face 'octocat-dimmed))

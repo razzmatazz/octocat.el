@@ -496,6 +496,7 @@ until the fresh data arrives; a new TICK fetches them all again."
     (when (plist-get feed :data) (setcar shown (append (plist-get feed :data) nil)))
     (vui-vstack
      (vui-text "GitHub Dashboard" :face 'octocat-repo)
+     (vui-newline)
      (octocat--dashboard-items-section "Pull Requests" 'pulls prs width bg)
      (vui-newline)
      (octocat--dashboard-items-section "Issues" 'issues issues width bg)
