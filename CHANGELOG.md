@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Org files, such as a README.org, are rendered like markdown ones
 * The last-commit line above a repo's files drops its author and "committed", as GitHub's
 * `octocat-doctor` gives the speed over the time requests ran, not the whole hour
 * `C-c C-o` on a row of a list opens that PR, issue, commit, run, job or check

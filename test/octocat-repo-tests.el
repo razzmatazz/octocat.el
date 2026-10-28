@@ -273,6 +273,33 @@
     (should (equal (gethash "path" (nth 2 (assq 'readme docs))) "readme.md"))
     (should (equal (gethash "path" (nth 2 (assq 'license docs))) "LICENSE"))))
 
+(ert-deftest octocat-repo-test-docs-org ()
+  "An org README wins over plain text, and a markdown one over it."
+  (let ((readme (lambda (&rest names)
+                  (gethash "path"
+                           (nth 2 (assq 'readme
+                                        (octocat-repo--docs
+                                         (mapcar (lambda (name)
+                                                   (let ((h (make-hash-table :test #'equal)))
+                                                     (puthash "path" name h)
+                                                     (puthash "type" "blob" h)
+                                                     h))
+                                                 names))))))))
+    (should (equal (funcall readme "README" "README.txt" "README.org") "README.org"))
+    (should (equal (funcall readme "README.org" "README.md") "README.md"))
+    (should (equal (funcall readme "README.markdown" "README.org") "README.org"))))
+
+(ert-deftest octocat-repo-test-doc-org ()
+  "An org document is rendered, its links relative; raw, it is the org source."
+  (let ((text (octocat-repo--doc-text "o/r" "dev" "docs/GUIDE.org"
+                                      "* Guide\nSee [[file:shots/README.org][shots]]." nil 80)))
+    (should (string-prefix-p "Guide\n" text))
+    (should (equal (get-text-property (string-search "shots" text)
+                                      'octocat-markdown-url text)
+                   "https://github.com/o/r/blob/dev/docs/shots/README.org")))
+  (should (string-prefix-p "* Guide" (octocat-repo--doc-text "o/r" "dev" "GUIDE.org"
+                                                             "* Guide" t 80))))
+
 (ert-deftest octocat-repo-test-doc-relative-links ()
   "A document's relative links open its repository's files at the ref shown."
   (let ((text (octocat-repo--doc-text "o/r" "dev" "docs/GUIDE.md"

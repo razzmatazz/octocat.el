@@ -57,6 +57,16 @@ table of screenshots shown side by side, and an HTML list.
 [As text](file-html.txt)
 <!-- /screenshot -->
 
+An org file, rendered as GitHub renders it: its title, an HTML block,
+emphasis and verbatim, a list with checkboxes, a src block, a quote and
+a table; the drawer under a heading is left out.
+
+<!-- screenshot: (tree--open-file-by-path "acme/rocket" "main" "docs/themes.org") :name "file-org" -->
+![file-org](file-org.png)
+
+[As text](file-org.txt)
+<!-- /screenshot -->
+
 `[342 commits]` lists the history of the branch:
 
 <!-- screenshot: (commit-list "acme/rocket") -->

@@ -26,7 +26,7 @@
 ;; one file:
 ;;
 ;;   `octocat-tree--dir'     — one directory of the repo page, as on GitHub
-;;   octocat-file-mode     — one file at one ref, highlighted, or rendered if markdown
+;;   octocat-file-mode     — one file at one ref, highlighted or rendered
 ;;
 ;; Entry points:
 ;;   the repo page (`octocat-visit-repo'), which lists the root's first
@@ -109,7 +109,7 @@ The rest expands on RET.  Nil never folds."
   "Keymap for `octocat-file-mode'.")
 
 (define-derived-mode octocat-file-mode vui-mode "Octocat-File"
-  "Major mode for viewing a GitHub file: highlighted, or rendered if markdown.
+  "Major mode for a GitHub file: highlighted, or rendered if markdown or org.
 
 \\{octocat-file-mode-map}"
   :group 'octocat

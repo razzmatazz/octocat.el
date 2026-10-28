@@ -46,6 +46,7 @@
 (require 'octocat-job)
 (require 'octocat-checks)
 (require 'octocat-tree)
+(require 'octocat-org)
 (require 'octocat-search) ; `octocat--read-branch'
 (require 'octocat-vui)
 
@@ -384,15 +385,24 @@ branch; PATH nil is the root.  Calls CALLBACK with the commit from
 Each is (KIND LABEL STEM): a root file is one when its name, ignoring
 case, is STEM, a regexp, with or without an extension.")
 
-(defun octocat-repo--markdown-file-p (name)
-  "Return non-nil when file NAME is markdown, by its extension."
-  (string-match-p "\\.\\(?:md\\|markdown\\|mdown\\|mkdn?\\)\\'" (downcase name)))
+(defconst octocat-repo--formats
+  '(("\\.\\(?:md\\|markdown\\|mdown\\|mkdn?\\)\\'" . identity)
+    ("\\.org\\'" . octocat-org-to-markdown))
+  "The formats of files shown rendered, in order of preference.
+Each is (REGEXP . FUNCTION): a file whose name matches REGEXP, ignoring
+case, is turned into markdown by FUNCTION, then rendered.")
+
+(defun octocat-repo--format (name)
+  "Return the entry of `octocat-repo--formats' file NAME is in, or nil."
+  (let ((case-fold-search t))
+    (seq-find (lambda (f) (string-match-p (car f) name)) octocat-repo--formats)))
 
 (defun octocat-repo--docs (entries)
   "Return the documents among ENTRIES, the root's `tree-dir' entries.
 Each is (KIND LABEL ENTRY), in the order of `octocat-repo--doc-kinds'.
-Of several files of a kind a markdown one wins, then the shortest name,
-so README.md beats README.txt and README."
+Of several files of a kind a rendered one wins, see
+`octocat-repo--formats', then the shortest name, then the earlier
+format, so README.md beats README.txt, README and README.org."
   (delq nil
         (mapcar
          (pcase-lambda (`(,kind ,label ,stem))
@@ -404,8 +414,10 @@ so README.md beats README.txt and README."
                                     entries))
                   (rank (lambda (e)
                           (let ((n (gethash "path" e)))
-                            (+ (if (octocat-repo--markdown-file-p n) 0 1000)
-                               (length n))))))
+                            (let ((fmt (octocat-repo--format n)))
+                              (+ (if fmt 0 100000)
+                                 (* 10 (length n))
+                                 (or (seq-position octocat-repo--formats fmt) 0)))))))
              (when hits
                (list kind label
                      (car (sort hits (lambda (a b) (< (funcall rank a)
@@ -1195,17 +1207,19 @@ SHOWN is the kind of the one shown.  See `octocat-vui-tab-row' for WIDTH."
 
 (defun octocat-repo--doc-text (repo ref name content raw width)
   "Return the rows of file NAME's CONTENT, rendered when it is markdown.
-NAME is its path in REPO at REF, which its relative links point into.
-RAW and WIDTH are as for `octocat--markdown-string'.  Not indented, so
-it copies as from the file.  Markdown larger than
-`octocat--max-file-size' is shown as it is, its long lines clipped,
-see `octocat--clip-line'."
+Another format of `octocat-repo--formats' is turned into markdown
+first, unless RAW.  NAME is its path in REPO at REF, which its
+relative links point into.  RAW and WIDTH are as for
+`octocat--markdown-string'.  Not indented, so it copies as from the
+file.  A document larger than `octocat--max-file-size' is shown as it
+is, its long lines clipped, see `octocat--clip-line'."
   (let ((text (decode-coding-string content 'utf-8))
+        (fmt (octocat-repo--format name))
         (octocat-markdown-base (list repo (or ref "HEAD") (or (file-name-directory name) ""))))
     (string-remove-suffix
-     "\n" (if (and (octocat-repo--markdown-file-p name)
-                   (<= (length content) octocat--max-file-size))
-              (octocat--markdown-string text "" raw width)
+     "\n" (if (and fmt (<= (length content) octocat--max-file-size))
+              (octocat--markdown-string (if raw text (funcall (cdr fmt) text))
+                                        "" raw width)
             (octocat-markdown-render-verbatim
              (octocat--clip-lines text octocat--max-line-length)
              "")))))
@@ -1426,13 +1440,14 @@ branch."
 
 (defun octocat-repo--file-text (repo ref path content raw width)
   "Return file PATH's CONTENT as the file viewer is to show it.
-Markdown is rendered, unless RAW, its relative links into REPO at REF,
-to fit WIDTH; an image is shown, see `octocat--image-text';
-anything else is highlighted as its major mode would.  A file larger
+Markdown, or another format of `octocat-repo--formats', is rendered,
+unless RAW, its relative links into REPO at REF, to fit WIDTH; an
+image is shown, see `octocat--image-text'; anything else is
+highlighted as its major mode would.  A file larger
 than `octocat--max-file-size', shown when asked, is plain text.  Long
 lines are clipped, see `octocat--clip-line'."
   (let ((large (> (length content) octocat--max-file-size)))
-    (cond ((and (not raw) (not large) (octocat-repo--markdown-file-p path))
+    (cond ((and (not raw) (not large) (octocat-repo--format path))
            (octocat-repo--doc-text repo ref path content nil width))
           ((octocat--image-file-p path)
            (octocat--image-text content width))

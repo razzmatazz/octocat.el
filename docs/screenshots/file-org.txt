@@ -1,0 +1,24 @@
+acme/rocket[main ▾]:/docs/themes.org  [Browse tree]
+
+Bump toml from 0.8.12 to 0.8.19                                     a625406 · 1 day ago  [2 commits]
+Themes
+[image: light]
+
+A theme is a directory of templates and static files, picked by
+theme in rocket.toml.  See the configuration.
+
+Writing one
+1. Copy the default theme: rocket theme new mine
+2. Edit its templates
+   ☑ page.html
+   ☐ index.html
+ theme = "mine"
+│ Themes are plain files; there is no build step.
+
+Settings
+┌─────────┬─────────┬─────────────────────┐
+│ Setting │ Default │ Meaning             │
+├─────────┼─────────┼─────────────────────┤
+│ accent  │ blue    │ The colour of links │
+│ fonts   │ system  │ Fonts, by CSS name  │
+└─────────┴─────────┴─────────────────────┘

@@ -234,6 +234,44 @@ O(n<sup>2</sup>) time no more &mdash; H<sub>2</sub>O &amp; friends &copy; 2026.
 "
   "The docs/html.md of acme/rocket: HTML as READMEs write it.")
 
+(defconst octocat-screenshots--org
+  "#+TITLE: Themes
+#+AUTHOR: acme
+
+#+begin_html
+<p align=\"center\"><img src=\"images/theme-light.png\" alt=\"light\" width=\"300\"></p>
+#+end_html
+
+A theme is a directory of /templates/ and *static files*, picked by
+=theme= in =rocket.toml=.  See [[file:configuration.md][the configuration]].
+
+* Writing one
+:PROPERTIES:
+:CUSTOM_ID: writing
+:END:
+
+1. Copy the default theme: ~rocket theme new mine~
+2. Edit its templates
+   - [X] =page.html=
+   - [ ] =index.html=
+
+#+begin_src toml
+theme = \"mine\"
+#+end_src
+
+#+begin_quote
+Themes are plain files; there is no build step.
+#+end_quote
+
+* Settings
+
+| Setting  | Default | Meaning                  |
+|----------+---------+--------------------------|
+| =accent= | blue    | The colour of links      |
+| =fonts=  | system  | Fonts, by CSS name       |
+"
+  "The docs/themes.org of acme/rocket: org, as some READMEs are.")
+
 (defconst octocat-screenshots--src
   `[,(octocat-screenshots--tree-entry "src/build.rs" "blob" 8120)
     ,(octocat-screenshots--tree-entry "src/cache.rs" "blob" 2304)
@@ -872,6 +910,12 @@ FIELDS, a plist, override the rest."
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/html.md"))))))
       (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "docs/html.md") 0 8)) ()
        ,(octocat-screenshots--base64 octocat-screenshots--html))
+      ("repo-head" ("dir=main:docs/themes.org")
+       (:data (:repository (:object (:history (:totalCount 2 :nodes [,(octocat-screenshots--history-node
+                                                                       (nth 2 octocat-screenshots--commits))]))
+                            :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/themes.org"))))))
+      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "docs/themes.org") 0 8)) ()
+       ,(octocat-screenshots--base64 octocat-screenshots--org))
       (,(format "tree-dir-%s" (substring (octocat-screenshots--sha "root") 0 8)) ()
        (:sha ,(octocat-screenshots--sha "root") :tree ,octocat-screenshots--root :truncated :false))
       (,(format "tree-dir-%s" (substring (octocat-screenshots--sha "src") 0 8)) ()

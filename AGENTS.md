@@ -72,8 +72,8 @@ edit.  **Issue one `emacs__eval-elisp` call per phase** — `dolist` returns
 `nil`, so a single call with multiple phases returns `nil` whether it
 succeeded or crashed; splitting makes failures attributable.
 
-Load order: `octocat-mermaid.el` first (standalone), then
-`octocat-markdown.el` (requires it), then `octocat-image.el` (requires
+Load order: `octocat-mermaid.el` and `octocat-org.el` first (standalone), then
+`octocat-markdown.el` (requires mermaid), then `octocat-image.el` (requires
 that; `octocat-core.el` requires both), then
 `octocat-core.el` (everything else depends on it), then `octocat-sync.el`
 (`octocat-vui.el` requires it), then `octocat-vui.el`
@@ -122,7 +122,7 @@ source; `make ci` recreates `.elc`, so always delete even after a CI run):
 string rather than `ok` is an error — fix it before proceeding):
 ```elisp
 (let (results)
-  (dolist (f (list "octocat-mermaid.el" "octocat-markdown.el"
+  (dolist (f (list "octocat-mermaid.el" "octocat-org.el" "octocat-markdown.el"
                    "octocat-image.el" "octocat-core.el" "octocat-sync.el" "octocat-vui.el"
                    "octocat-diff.el"
                    "octocat-edit.el"
