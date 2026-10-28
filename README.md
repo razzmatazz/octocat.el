@@ -1,5 +1,11 @@
 # octocat.el
 
+> [!NOTE]
+> **Written with LLM assistance.** Most of this project was written with
+> the help of Claude.  Every source file names the models that worked on
+> it in an `Assisted-by:` header line, per the
+> [MELPA attribution convention](https://github.com/melpa/melpa/blob/master/CONTRIBUTING.org).
+
 A GitHub client for Emacs, powered by the [`gh`](https://cli.github.com/) command-line tool.
 
 ![A pull request in octocat.el](docs/screenshots/pr.png)
@@ -16,9 +22,6 @@ pages:
 - **github.com links** — open in octocat wherever you follow them in Emacs (opt-in)
 
 See [every page](docs/screenshots/README.md), drawn from made-up data.
-
-> **Note:** This project was largely written with the assistance of LLMs (Claude).
-> Source files carry an `Assisted-by:` header line per the [MELPA attribution convention](https://github.com/melpa/melpa/blob/master/CONTRIBUTING.org).
 
 ## Getting started
 
