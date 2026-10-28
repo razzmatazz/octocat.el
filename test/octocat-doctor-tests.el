@@ -35,8 +35,9 @@
     (let ((text (octocat-doctor--requests log 1000.0)))
       (should (string-match-p "Last 5 min     3 (poll 2, page 1), 1 failed" text))
       (should (string-match-p "Last hour      4 (poll 2, other 1, page 1), 1 failed" text))
-      (should (string-match-p " 0.6 requests/min, 60 kB received, 200 B/s" text))
-      (should (string-match-p " 0.1 requests/min, 1.3 MB received, 350 B/s" text))
+      ;; The speed is over the 2 s and 2.5 s the finished requests ran.
+      (should (string-match-p " 0.6 requests/min, 60 kB received in 2.0 s, 30 kB/s" text))
+      (should (string-match-p " 0.1 requests/min, 1.3 MB received in 2.5 s, 504 kB/s" text))
       (should (string-match-p "Running        1" text))
       (should (string-match-p "1.5 s       0 B  poll      failed checks" text))
       (should (string-match-p "0.5 s     60 kB  poll      ok     checks" text))))
@@ -44,6 +45,14 @@
   (should (string-match-p "0 B received"
                           (octocat-doctor--requests
                            (list (vector 990.0 991.0 "checks" t 'poll)) 1000.0))))
+
+(ert-deftest octocat-doctor-test-busy ()
+  "Requests running at once count once; running ones not at all."
+  (should (= (octocat-doctor--busy
+              (list (vector 10.0 14.0) (vector 12.0 13.0) (vector 13.0 16.0)
+                    (vector 20.0 21.0) (vector 30.0 nil)))
+             7.0))
+  (should (= (octocat-doctor--busy nil) 0)))
 
 (ert-deftest octocat-doctor-test-rate ()
   "The rate says why it is slowed or stopped."

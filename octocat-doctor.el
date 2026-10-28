@@ -234,13 +234,27 @@ OFFLINE is whether GitHub was out of reach, and IDLE-AFTER
   "Return BYTES as a short size, such as \"1.2 MB\"."
   (file-size-human-readable bytes 'si " " "B"))
 
+(defun octocat-doctor--busy (entries)
+  "Return how many seconds any of ENTRIES of `octocat--gh-log' ran.
+Those still running are left out, and time two ran at once counts once:
+a speed over it is that of the transfers, not of the idle time between."
+  (let ((total 0) end)
+    (dolist (e (sort (seq-filter (lambda (e) (aref e 1)) entries)
+                     (lambda (a b) (< (aref a 0) (aref b 0)))))
+      (let ((s (aref e 0)) (f (aref e 1)))
+        (cond ((or (null end) (> s end)) (setq total (+ total (- f s))) (setq end f))
+              ((> f end) (setq total (+ total (- f end))) (setq end f)))))
+    total))
+
 (defun octocat-doctor--requests (log now)
   "Return the report's lines on LOG, the `gh' log `octocat--gh-log', at NOW.
-Rates are averaged over the whole span, idle time included."
+Requests per minute are over the whole span; the speed is over the time
+requests ran, see `octocat-doctor--busy'."
   (let ((sum (lambda (seconds label)
                (let* ((calls  (seq-filter (lambda (e) (> (aref e 0) (- now seconds))) log))
                       (failed (seq-count (lambda (e) (and (aref e 1) (not (aref e 3)))) calls))
                       (bytes  (apply #'+ (delq nil (mapcar #'octocat-doctor--bytes calls))))
+                      (busy   (octocat-doctor--busy calls))
                       (counts nil))
                  (dolist (e calls)
                    (let ((reason (or (aref e 4) 'other)))
@@ -254,10 +268,15 @@ Rates are averaged over the whole span, idle time included."
                                                  ", "))
                             "")
                           failed)
-                  (format "  %-11s %.1f requests/min, %s received, %s/s\n" ""
+                  (format "  %-11s %.1f requests/min, %s received%s\n" ""
                           (/ (length calls) (/ seconds 60.0))
                           (octocat-doctor--size bytes)
-                          (octocat-doctor--size (/ bytes (float seconds)))))))))
+                          (if (> busy 0)
+                              (format " in %s, %s/s"
+                                      (if (< busy 90) (format "%.1f s" busy)
+                                        (octocat-doctor--duration busy))
+                                      (octocat-doctor--size (/ bytes busy)))
+                            "")))))))
     (concat
      "Requests to GitHub through gh, last hour\n"
      (funcall sum 300 "Last 5 min")
