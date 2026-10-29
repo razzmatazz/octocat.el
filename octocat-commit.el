@@ -152,19 +152,24 @@ the commit, the commit being behind it or at its head, else :null."
 ;; PR diff's file component: commit comments have the same shape as PR
 ;; review comments.
 
-(defun octocat-commit--top-line (repo sha)
+(defun octocat-commit--top-line (repo sha width)
   "Return the top line of commit SHA of REPO, as the tree browser's.
-That is owner/repo@SHA, in full, then a button to browse the files of
-the repository at it."
-  (vui-hstack :spacing 0
-              (octocat-vui-repo-heading repo)
-              (vui-text (concat "@" sha) :face 'octocat-commit-sha)
-              (vui-text "  ")
-              (vui-button "[Browse files]"
-                :no-decoration t
-                :face 'octocat-dimmed
-                :help-echo "RET: browse the repository's files at this commit"
-                :on-click (lambda () (octocat-tree-open repo sha)))))
+That is owner/repo@SHA, then a button to browse the files of the
+repository at it.  SHA is cut to keep the line within WIDTH columns,
+ElDoc showing it whole."
+  (let ((browse "[Browse files]"))
+    (vui-hstack :spacing 0
+                (octocat-vui-repo-heading repo)
+                (vui-text (concat "@" (octocat-vui--fit
+                                       sha (- width (string-width repo) 1 2
+                                              (string-width browse))))
+                  :face 'octocat-commit-sha)
+                (vui-text "  ")
+                (vui-button browse
+                  :no-decoration t
+                  :face 'octocat-dimmed
+                  :help-echo "RET: browse the repository's files at this commit"
+                  :on-click (lambda () (octocat-tree-open repo sha))))))
 
 (defun octocat-commit--person (commit role)
   "Return who COMMIT's ROLE is, as `git show' prints it, as nodes.
@@ -317,7 +322,7 @@ fetches them again."
          (message  (vui-use-memo (data)
                      (and data (octocat-commit--message data)))))
     (vui-vstack
-     (octocat-commit--top-line repo (or (and data (gethash "sha" data)) sha))
+     (octocat-commit--top-line repo (or (and data (gethash "sha" data)) sha) width)
      (octocat-vui-resource-view
       commit
       :skeleton (lambda (_) (vui-text (octocat-commit--skeleton width)))

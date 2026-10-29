@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 * A job's steps show their log again, now that GitHub labels no line with its step
 * On tree, file and commit pages, the repo name opens the repo page
 * Commit lists show a commit's age without "committed", as the repo page does
+* The commit page cuts its SHA with … when the top line would wrap; ElDoc shows it whole
 * The compare page counts its commits and changed files on its top line
 * The repo page's branch picker sits on the top line, after the repo name
 * The commit list and dashboard leave a blank line under their top line, as other pages
