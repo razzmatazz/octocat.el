@@ -42,7 +42,7 @@
 (require 'octocat-sync)
 (require 'octocat-vui)
 
-(declare-function octocat-vui-repo-heading "octocat-vui" (repo))
+(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional linked))
 (require 'vui)
 
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
@@ -83,24 +83,30 @@ Unlike a branch or tag, it names the same commit for good."
 
 ;;;; Sections
 
+(defun octocat-compare--counts (data)
+  "Return the count of commits and files of the comparison DATA, for its top row."
+  (let ((total  (or (gethash "total_commits" data) 0))
+        (files  (length (gethash "files" data)))
+        (behind (or (gethash "behind_by" data) 0))
+        (plural (lambda (n word) (format "%d %s%s" n word (if (= n 1) "" "s")))))
+    (if (equal (gethash "status" data) "identical")
+        "identical"
+      (string-join
+       (delq nil (list (funcall plural total "commit")
+                       (concat (funcall plural files "file") " changed")
+                       (and (> behind 0) (format "%d behind" behind))))
+       " · "))))
+
 (defun octocat-compare--summary (data dots)
-  "Return the dimmed summary lines of the comparison DATA.
+  "Return the dimmed notes on the comparison DATA, under its top row.
 DOTS is as in `octocat--compare-refs': a two-dot comparison of refs that
 have diverged gets a note that the three-dot one is shown."
-  (let* ((total   (or (gethash "total_commits" data) 0))
-         (shown   (length (gethash "commits" data)))
-         (files   (length (gethash "files" data)))
-         (behind  (or (gethash "behind_by" data) 0))
-         (plural  (lambda (n word) (format "%d %s%s" n word (if (= n 1) "" "s")))))
+  (let ((total  (or (gethash "total_commits" data) 0))
+        (shown  (length (gethash "commits" data)))
+        (files  (length (gethash "files" data)))
+        (behind (or (gethash "behind_by" data) 0)))
     (delq nil
           (list
-           (if (equal (gethash "status" data) "identical")
-               "These refs are identical"
-             (string-join
-              (delq nil (list (funcall plural total "commit")
-                              (concat (funcall plural files "file") " changed")
-                              (and (> behind 0) (format "%d behind" behind))))
-              " · "))
            (and (equal dots "..") (> behind 0)
                 "Compared from the merge base (...): GitHub's API has no two-dot compare")
            (and (< shown total)
@@ -124,15 +130,19 @@ COMMITS is a REST commits vector of REPO."
                          commits)
                  (list (vui-newline))))))
 
-(defun octocat-compare--top-row (repo base dots head)
+(defun octocat-compare--top-row (repo base dots head data)
   "Return the top row of the comparison of BASE and HEAD of REPO.
-That is `owner/repo BASE...HEAD', as the commit page's `owner/repo@sha'."
+That is `owner/repo BASE...HEAD', as the commit page's `owner/repo@sha',
+then the counts of DATA, the comparison, once it is loaded."
   (vui-hstack :spacing 0
               (octocat-vui-repo-heading repo)
               (vui-text (concat "  "
                                 (propertize base 'face 'octocat-branch)
                                 (propertize dots 'face 'octocat-dimmed)
-                                (propertize head 'face 'octocat-branch)))))
+                                (propertize head 'face 'octocat-branch)
+                                (and data
+                                     (propertize (concat " · " (octocat-compare--counts data))
+                                                 'face 'octocat-dimmed))))))
 
 
 ;;;; Page
@@ -145,13 +155,13 @@ new TICK fetches it again."
   (let* ((width    (octocat--markdown-width))
          (snap     (octocat-vui-use-resource (list 'compare repo base head) tick)))
     (vui-vstack
-     (octocat-compare--top-row repo base dots head)
+     (octocat-compare--top-row repo base dots head (plist-get snap :data))
      (octocat-vui-resource-view
       snap
       :skeleton (lambda (_)
                   (vui-text (octocat-vui-skeleton
-                             '((30) nil (26) ("  " 7 "  " 40) ("  " 7 "  " 34) nil
-                               (12) ("  " 40) ("  " 28))
+                             '(nil (26) ("  " 7 "  " 40) ("  " 7 "  " 34) nil
+                                   (12) ("  " 40) ("  " 28))
                              (octocat-vui-window-width))))
       :render
       (lambda (data)

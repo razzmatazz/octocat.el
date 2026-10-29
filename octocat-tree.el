@@ -68,7 +68,7 @@
 (declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
 (declare-function octocat-commit-list-open "octocat-repo" (repo &optional ref path))
 (declare-function octocat-user-open "octocat-user" (login))
-(declare-function octocat-vui-repo-heading "octocat-vui" (repo))
+(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional linked))
 
 
 ;;;; User options

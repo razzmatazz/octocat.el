@@ -22,7 +22,10 @@
 (ert-deftest octocat-vui-test-repo-heading-links-owner ()
   "The owner links to its page; the repo name is plain."
   (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r"))
-                 '((link "o") "/r"))))
+                 '((link "o") "/r")))
+  ;; Linked, on a page under the repo, the name opens the repo page.
+  (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r" t))
+                 '((link "o") "/" (link "r")))))
 
 (ert-deftest octocat-vui-test-filter-active-p ()
   "Only a query other than the default counts as an active filter."

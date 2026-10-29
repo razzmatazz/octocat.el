@@ -956,9 +956,11 @@ owner/repo  [Code]  [Issues (N)]  [Pull requests (N)]  [Actions]
 - Code is the repo page itself, as on GitHub, so it is current there.
   The repo page lists the root's first files; the whole tree, as
   GitHub's sidebar, is the tree browser.  It, the file page and the
-  commits page show only Code, current but RET-able to the repo page.
-- The branch picker follows Code, one space apart, on every page that
-  has one.
+  commits page leave the strip out; their repo name leads back.
+- The branch picker follows the repo name on every page that has one;
+  on the repo page it comes before the strip.  On the others the path
+  follows it after a `:`, its directories RET-able:
+  `owner/repo  [main ▾]:/docs/guide.md  [Browse tree]`.
 - The strip is underlined, gaps included, so it reads as a tab bar
   rather than a row of buttons.  Unlike `octocat-vui-tab-row` it stops at
   the last tab: it shares its line with the repo name.

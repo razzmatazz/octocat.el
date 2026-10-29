@@ -1,9 +1,8 @@
-acme/rocket  main...template-cache
-2 commits · 3 files changed
+acme/rocket  main...template-cache · 2 commits · 3 files changed
 
 Commits (2)
-Cache parsed templates by path                      @srivera  committed 2 days ago  dc0c893
-Invalidate a template when one it includes changes  @srivera  committed 1 day ago   8ee9a2c
+Cache parsed templates by path                      @srivera  2 days ago  dc0c893
+Invalidate a template when one it includes changes  @srivera  1 day ago   8ee9a2c
 
 Files (3)  [Expand all]
 ▸ A src/cache.rs  +18 -0

@@ -1,12 +1,12 @@
-acme/rocket  Code [main ▾]:/  342 commits
+acme/rocket  [main ▾]:/  342 commits
 
-Render footnotes in Markdown pages (#131)            @mchen           committed 2 hours ago  1a95462
-Cache parsed templates between builds (#128)         @srivera         committed 6 hours ago  3f9c2a1
-Bump toml from 0.8.12 to 0.8.19                      dependabot[bot]  committed 1 day ago    a625406
-Watch mode: rebuild only the pages that changed      @aokafor         committed 2 days ago   e4666a6
-Fix broken links to pages with spaces in their nam…  @jlindqvist      committed 3 days ago   8dc29fc
-Document the [build] section of rocket.toml          @pnair           committed 4 days ago   555c3f9
-Serve the site over HTTP/2 in `rocket serve`         @mchen           committed 6 days ago   dd61a9b
-Release 0.9.0                                        @srivera         committed 1 week ago   9f84ad6
-Sort the sitemap by date, newest first               @aokafor         committed 1 week ago   68ee74f
-Add a --drafts flag to `rocket build`                @srivera         committed 1 week ago   48c7489
+Render footnotes in Markdown pages (#131)             @mchen           2 hours ago  1a95462
+Cache parsed templates between builds (#128)          @srivera         6 hours ago  3f9c2a1
+Bump toml from 0.8.12 to 0.8.19                       dependabot[bot]  1 day ago    a625406
+Watch mode: rebuild only the pages that changed       @aokafor         2 days ago   e4666a6
+Fix broken links to pages with spaces in their names  @jlindqvist      3 days ago   8dc29fc
+Document the [build] section of rocket.toml           @pnair           4 days ago   555c3f9
+Serve the site over HTTP/2 in `rocket serve`          @mchen           6 days ago   dd61a9b
+Release 0.9.0                                         @srivera         1 week ago   9f84ad6
+Sort the sitemap by date, newest first                @aokafor         1 week ago   68ee74f
+Add a --drafts flag to `rocket build`                 @srivera         1 week ago   48c7489

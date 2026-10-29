@@ -50,7 +50,7 @@
 (require 'octocat-search) ; `octocat--read-branch'
 (require 'octocat-vui)
 
-(declare-function octocat-vui-repo-heading "octocat-vui" (repo))
+(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional linked))
 (require 'vui)
 (require 'vui-components) ; vui-collapsible, vui-heading-*, etc.
 
@@ -917,13 +917,11 @@ line up with no more padding than the different names require."
   "Narrowest subject column, so short subjects still leave a gap before the author.")
 
 (defun octocat-repo-vui--date (commit)
-  "Return when COMMIT was committed, \"committed 2 days ago\", as on its row.
+  "Return when COMMIT was committed, \"2 days ago\", as on its row.
 The commit date, not the author's, as GitHub shows: it is when the
 commit landed where it is, after a rebase or a merge on GitHub."
   (let ((ts (octocat--commit-date commit)))
-    (if (string-empty-p ts)
-        ""
-      (concat "committed " (octocat--format-ts-relative ts)))))
+    (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
 
 (defun octocat-repo-vui--date-width (commits)
   "Return the width of the date column for COMMITS: the longest date."
@@ -1316,15 +1314,14 @@ is plain."
 
 (defun octocat-repo-vui--top-line (repo label path current-branch switch on-dir &rest after)
   "Return the top line of a page of PATH of REPO at the ref named LABEL.
-That is owner/repo  Code [LABEL ▾]:/PATH, the Code tab and the picker of
-`octocat-repo-vui--ref-picker' running SWITCH, highlighted when LABEL is
-the local CURRENT-BRANCH, and the directories of PATH buttons calling
-ON-DIR, see `octocat-repo-vui--path-nodes'.  AFTER, nodes or nils, follow it."
+That is owner/repo  [LABEL ▾]:/PATH, repo opening the repository page,
+the picker of `octocat-repo-vui--ref-picker' running SWITCH, highlighted
+when LABEL is the local CURRENT-BRANCH, and the directories of PATH
+buttons calling ON-DIR, see `octocat-repo-vui--path-nodes'.  AFTER,
+nodes or nils, follow it."
   (apply #'vui-hstack :spacing 0
-         (octocat-vui-repo-heading repo)
+         (octocat-vui-repo-heading repo t)
          (vui-text "  ")
-         (octocat-vui-code-tab repo)
-         (vui-text " ")
          (or (octocat-repo-vui--ref-picker label current-branch nil nil switch)
              (vui-text (octocat-vui-skeleton '((8)))))
          (vui-text ":")
@@ -1344,8 +1341,8 @@ underlined: it heads the files."
      (_ (vui-text (octocat-vui-skeleton '((7 "  " 40 "  " 12))))))))
 
 (vui-defcomponent octocat-repo-vui--root (repo ref tracked local-dir unpushed raw tick)
-  "Root component for the repo buffer, as GitHub's Code tab: header and
-tabs with the picker of REF, local-head/fork-parent info, the UNPUSHED
+  "Root component for the repo buffer, as GitHub's Code tab: header, the
+picker of REF and tabs, local-head/fork-parent info, the UNPUSHED
 section, then REF's last commit, the root's first files and its README.  REF
 is a branch, tag or SHA, nil for TRACKED, the clone's branch, or else
 the default branch.  RAW shows markdown verbatim.  The header comes from
@@ -1369,13 +1366,12 @@ one summary resource and the rest from the root's `repo-head' at REF."
     (vui-vstack
      (apply #'vui-hstack :spacing 2
             (octocat-vui-repo-heading repo)
-            (octocat-vui-repo-tabs
-             repo 'code tick
-             (or (octocat-repo-vui--ref-picker
-                  (or shown default-branch) current-branch
-                  (octocat-repo--resettable-p ref (or tracked default-branch))
-                  (or tracked default-branch))
-                 (vui-text (octocat-vui-skeleton '((8)))))))
+            (or (octocat-repo-vui--ref-picker
+                 (or shown default-branch) current-branch
+                 (octocat-repo--resettable-p ref (or tracked default-branch))
+                 (or tracked default-branch))
+                (vui-text (octocat-vui-skeleton '((8)))))
+            (octocat-vui-repo-tabs repo 'code tick))
      (when local-dir
        (vui-text
            (concat (propertize "Local clone:" 'face 'octocat-dimmed)

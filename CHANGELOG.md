@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 * PRs in a stack (`gh stack`) show their place in it, `≡ 2/3`; a PR page lists the stack
 * A job's steps show their log again, now that GitHub labels no line with its step
-* The branch picker sits on the top line after a Code tab, on repo, tree, file and commit pages
+* On tree, file and commit pages, the repo name opens the repo page
+* Commit lists show a commit's age without "committed", as the repo page does
+* The compare page counts its commits and changed files on its top line
+* The repo page's branch picker sits on the top line, after the repo name
 * The commit list and dashboard leave a blank line under their top line, as other pages
 * Large markdown headings wrap within the page's width instead of running past it
 * Files at the repository root, like a Dockerfile or .gitignore, are highlighted as in a directory

@@ -17,24 +17,23 @@
   (json-parse-string s))
 
 (ert-deftest octocat-compare-test-summary ()
-  "The summary counts commits and files, and notes what differs from github.com."
+  "The top row counts commits and files; notes say what differs from github.com."
   (let ((ahead (octocat-compare-tests--json
                 "{\"status\":\"ahead\",\"total_commits\":1,\"behind_by\":0,
                   \"commits\":[{}],\"files\":[{},{}]}"))
         (diverged (octocat-compare-tests--json
                    "{\"status\":\"diverged\",\"total_commits\":3,\"behind_by\":2,
                      \"commits\":[{},{}],\"files\":[]}")))
-    (should (equal (octocat-compare--summary ahead "..")
-                   '("1 commit · 2 files changed")))
+    (should (equal (octocat-compare--counts ahead) "1 commit · 2 files changed"))
+    (should-not (octocat-compare--summary ahead ".."))
+    (should (equal (octocat-compare--counts diverged) "3 commits · 0 files changed · 2 behind"))
     (should (equal (octocat-compare--summary diverged "...")
-                   '("3 commits · 0 files changed · 2 behind"
-                     "2 of the 3 commits listed, as GitHub's API returns at most 2")))
-    (should (string-search "two-dot" (nth 1 (octocat-compare--summary diverged ".."))))
-    (should (equal (octocat-compare--summary
+                   '("2 of the 3 commits listed, as GitHub's API returns at most 2")))
+    (should (string-search "two-dot" (car (octocat-compare--summary diverged ".."))))
+    (should (equal (octocat-compare--counts
                     (octocat-compare-tests--json
-                     "{\"status\":\"identical\",\"total_commits\":0,\"commits\":[],\"files\":[]}")
-                    "...")
-                   '("These refs are identical")))))
+                     "{\"status\":\"identical\",\"total_commits\":0,\"commits\":[],\"files\":[]}"))
+                   "identical"))))
 
 (ert-deftest octocat-compare-test-max-age ()
   "Only a comparison of two commits is kept, as a commit is; refs move."

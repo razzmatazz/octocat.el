@@ -29,7 +29,8 @@
                 "{\"oid\":\"a\",\"messageHeadline\":\"s\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":null}"))))
     (should (equal (octocat--commit-date both) "2026-10-02T10:00:00Z"))
     (should (equal (octocat--commit-date old) "2026-10-01T10:00:00Z"))
-    (should (string-prefix-p "committed " (octocat-repo-vui--date both)))))
+    (should (equal (octocat-repo-vui--date both)
+                   (octocat--format-ts-relative "2026-10-02T10:00:00Z")))))
 
 (ert-deftest octocat-commit-test-parse-branch ()
   "The default branch holds a commit behind its head or at it, not one ahead."
