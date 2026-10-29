@@ -9,6 +9,12 @@ ifeq ($(DOCKER),)
   $(error Neither docker nor podman found on PATH)
 endif
 
+# Podman's multi-stage builds ask the registry about a base image it has,
+# for some 30s a stage (containers/podman#27779), so one stored is used as
+# is.  BASE_IMAGE is the Dockerfiles' FROM.
+BASE_IMAGE := ubuntu:26.04
+NO_PULL = $(if $(findstring podman,$(DOCKER)),$(shell $(DOCKER) image inspect $(BASE_IMAGE) >/dev/null 2>&1 && echo --pull=never))
+
 # Every container runs as the host's user, with no capabilities nor
 # privileges to gain, and no network but where it fetches something.  The
 # tree is read-only but for what a check writes: .eldev, where Eldev keeps
@@ -59,7 +65,7 @@ ci-all:
 	exit $$failed
 
 image:
-	$(DOCKER) build --build-arg EMACS=$(EMACS) -t $(IMAGE) .
+	$(DOCKER) build $(NO_PULL) --build-arg EMACS=$(EMACS) -t $(IMAGE) .
 
 # The linters too, as lint and test run at once, against the same .eldev.
 deps:
@@ -139,7 +145,7 @@ SCREENSHOTS_IMAGE := octocat-screenshots
 # under a virtual X display.  After compile, which checks the driver: a GUI
 # Emacs failing to load it would wait for good.
 screenshots: compile
-	$(DOCKER) build -q -t $(SCREENSHOTS_IMAGE) -f test/screenshots/Dockerfile .
+	$(DOCKER) build $(NO_PULL) -q -t $(SCREENSHOTS_IMAGE) -f test/screenshots/Dockerfile .
 	$(DOCKER) run $(ISOLATED) --init --network=none -v "$(CURDIR)":/src:ro \
 	  -v "$(CURDIR)/docs/screenshots":/src/docs/screenshots -w /src $(SCREENSHOTS_IMAGE) \
 	  test/screenshots/run.sh
