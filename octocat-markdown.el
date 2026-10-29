@@ -1439,12 +1439,14 @@ draw it, the source is shown, labelled as such."
        (list (cons (octocat-markdown--face "mermaid diagram (source)"
                                            'octocat-markdown-dimmed 'italic)
                    "")))
-     (mapcar (lambda (l)
-               (let ((s (concat " " l (make-string (max 0 (- width (string-width l))) ?\s) " ")))
-                 (add-face-text-property 0 (length s) 'octocat-markdown-code-block t s)
-                 (put-text-property 0 (length s) 'octocat-markdown-code t s)
-                 (cons s "")))
-             (or code '(""))))))
+     (cl-loop for (l . more) on (or code '(""))
+              collect (let ((s (concat " " l (make-string (max 0 (- width (string-width l))) ?\s)
+                                       " ")))
+                        (add-face-text-property 0 (length s) 'octocat-markdown-code-block t s)
+                        ;; `end' on the last line tells `octocat-markdown--tidy'
+                        ;; where the box stops, even when another follows.
+                        (put-text-property 0 (length s) 'octocat-markdown-code (if more t 'end) s)
+                        (cons s ""))))))
 
 (defun octocat-markdown--alert (label)
   "Return the heading line for the GitHub alert LABEL, or nil."
@@ -1812,10 +1814,10 @@ blank row after it: a quote's bar stops without closing it off."
   (and (> (length (car row)) 0)
        (get-text-property 0 'octocat-markdown-heading (car row))))
 
-(defun octocat-markdown--code-row-p (row)
-  "Return non-nil if ROW is a line of a code box."
+(defun octocat-markdown--code-end-p (row)
+  "Return non-nil if ROW is the last line of a code box."
   (and row (> (length (car row)) 0)
-       (get-text-property 0 'octocat-markdown-code (car row))))
+       (eq (get-text-property 0 'octocat-markdown-code (car row)) 'end)))
 
 (defun octocat-markdown--tidy (rows)
   "Return ROWS packed tightly, to save vertical space.
@@ -1824,8 +1826,8 @@ block that stands out by itself (rule, table, heading, quote) are
 dropped, but for one after a list or quote, which GitHub shows too.  Blank rows
 beside a code box or between paragraphs are kept.
 A code box always has one blank row after it, before whatever follows,
-and a heading after other rows one above it, so sections are easy to
-tell apart."
+another box too, and a heading after other rows one above it, so
+sections are easy to tell apart."
   (let (out)
     (dolist (r rows)
       (unless (and (string-empty-p (car r))
@@ -1836,15 +1838,14 @@ tell apart."
     (let (tight prev)
       (while out
         (let ((r (pop out)))
-          (when (and (octocat-markdown--code-row-p prev)
-                     (not (string-empty-p (car r)))
-                     (not (octocat-markdown--code-row-p r)))
+          (when (and (octocat-markdown--code-end-p prev)
+                     (not (string-empty-p (car r))))
             (push (cons "" "") tight))
           (when (and tight (octocat-markdown--heading-p r)
                      (not (string-empty-p (caar tight))))
             (push (cons "" "") tight))
           (unless (and (string-empty-p (car r))
-                       (not (octocat-markdown--code-row-p prev))
+                       (not (octocat-markdown--code-end-p prev))
                        (or (eq (octocat-markdown--standout-p prev) t)
                            (octocat-markdown--standout-p (car out))))
             (push r tight))

@@ -479,6 +479,9 @@ the window's point; mid-render that scrambled the page."
                  (concat " x \n\n1. a\n\n y \n\n" (make-string 40 ?─) "\n")))
   (should (equal (octocat-markdown-tests--md "<pre>x</pre>\n- a")
                  " x \n\n• a\n"))
+  ;; Two boxes in a row stay two.
+  (should (equal (octocat-markdown-tests--md "```\na\nb\n```\n```\nc\n```")
+                 " a \n b \n\n c \n"))
   (should (equal (octocat-markdown-tests--md "```\ncore\nlonger\n```")
                  " core   \n longer \n"))
   (should (equal (octocat-markdown-tests--md "- a\n  - b\n- [x] c\n- [ ] d\n1. e")
