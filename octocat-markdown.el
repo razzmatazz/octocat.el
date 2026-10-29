@@ -675,15 +675,16 @@ It may hold bracketed text, and so an image, as badges are linked:
           (concat "[" (octocat-markdown--inline (nth 1 m)) "]"))))
     (,"https?://[^[:space:]<>]*[^[:space:]<>.,;:!?)\"']"
      ,(lambda (m) (octocat-markdown--link (nth 0 m) (nth 0 m))))
-    (,"\\*\\*\\*\\([^[:space:]]\\(?:.*?[^[:space:]]\\)?\\)\\*\\*\\*"
+    ;; Emphasis may span the lines of a paragraph.
+    (,"\\*\\*\\*\\([^[:space:]]\\(?:\\(?:.\\|\n\\)*?[^[:space:]]\\)?\\)\\*\\*\\*"
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 1 m))
                                           'bold 'italic)))
-    (,"\\*\\*\\([^[:space:]]\\(?:.*?[^[:space:]]\\)?\\)\\*\\*"
+    (,"\\*\\*\\([^[:space:]]\\(?:\\(?:.\\|\n\\)*?[^[:space:]]\\)?\\)\\*\\*"
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 1 m))
                                           'bold)))
     ;; Underscore emphasis needs non-word neighbours (snake_case stays).
     (,(concat "\\(?:\\`\\|[^[:alnum:]_]\\)\\(__\\([^[:space:]_]"
-              "\\(?:.*?[^[:space:]_]\\)?\\)__\\)\\(?:[^[:alnum:]_]\\|\\'\\)")
+              "\\(?:\\(?:.\\|\n\\)*?[^[:space:]_]\\)?\\)__\\)\\(?:[^[:alnum:]_]\\|\\'\\)")
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
                                           'bold))
      1)
@@ -695,7 +696,7 @@ It may hold bracketed text, and so an image, as badges are linked:
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 2 m))
                                           'italic))
      1)
-    (,"~~\\([^[:space:]~]\\(?:.*?[^[:space:]~]\\)?\\)~~"
+    (,"~~\\([^[:space:]~]\\(?:\\(?:.\\|\n\\)*?[^[:space:]~]\\)?\\)~~"
      ,(lambda (m) (octocat-markdown--face (octocat-markdown--inline (nth 1 m))
                                           'octocat-markdown-strike)))
     (,"\\(?:\\`\\|[^[:alnum:]_/]\\)\\(@[A-Za-z0-9][A-Za-z0-9-]*\\(?:/[A-Za-z0-9_.-]+\\)?\\)"
@@ -777,9 +778,10 @@ does not start or end emphasis or a link: tags bind tighter."
     masked))
 
 (defun octocat-markdown--inline (text)
-  "Return TEXT (a single line) with inline markdown rendered.
+  "Return TEXT (a paragraph's lines) with inline markdown rendered.
 The rules match TEXT with its tags' attributes masked.  What they
-render is held out of the text between, which is read as HTML."
+render is held out of the text between, which is read as HTML.  TEXT's
+newlines are kept; any the HTML itself renders become spaces."
   (let ((pos 0) (out nil) (len (length text))
         (masked (octocat-markdown--mask-attributes text)))
     (while (< pos len)
@@ -802,14 +804,20 @@ render is held out of the text between, which is read as HTML."
     (if (not (and (libxml-available-p)
                   (cl-some (lambda (o) (and (stringp o) (string-match-p "[<&]" o))) out)))
         (mapconcat (lambda (o) (if (stringp o) o (car o))) out "")
-      (let ((octocat-markdown--held (delq nil (mapcar (lambda (o) (and (consp o) (car o))) out)))
-            (i -1))
+      ;; TEXT's newlines go through the HTML as a private-use character.
+      (let* ((nl ?\uE000)
+             (octocat-markdown--held
+              (delq nil (mapcar (lambda (o) (and (consp o) (subst-char-in-string ?\n nl (car o))))
+                                out)))
+             (i -1))
         (subst-char-in-string
-         ?\n ?\s
-         (octocat-markdown--html-text
-          (mapconcat (lambda (o) (if (stringp o) o
-                                   (format "<x-md i=\"%d\"></x-md>" (cl-incf i))))
-                     out "")))))))
+         nl ?\n
+         (subst-char-in-string
+          ?\n ?\s
+          (octocat-markdown--html-text
+           (mapconcat (lambda (o) (if (stringp o) (subst-char-in-string ?\n nl o)
+                                    (format "<x-md i=\"%d\"></x-md>" (cl-incf i))))
+                      out ""))))))))
 
 ;;;; Blocks
 ;;
@@ -837,8 +845,7 @@ render is held out of the text between, which is read as HTML."
 
 (defun octocat-markdown--indentation (line)
   "Return the number of leading spaces of LINE."
-  (string-match "[^ ]" line)
-  (or (match-beginning 0) (length line)))
+  (if (string-match "[^ ]" line) (match-beginning 0) (length line)))
 
 (defun octocat-markdown--blank-p (line)
   "Return non-nil if LINE is empty or whitespace."
@@ -1733,12 +1740,38 @@ DEPTH is the list nesting depth, which picks the bullet."
          ((and lines (string-match octocat-markdown--setext-re (car lines)))
           (let ((level (if (string-prefix-p "=" (string-trim-left (pop lines))) 1 2)))
             (push (octocat-markdown--heading-row (string-trim line) level) out)))
+         ;; Paragraph: its lines go through the inline rules together, so
+         ;; emphasis can span them, and stay a row each.
          (t
-          (pcase-let ((`(,l . ,o) (octocat-markdown--balance (string-trim line) carry)))
-            (setq open o)
-            (push (cons (octocat-markdown--image-row (octocat-markdown--inline l)) "")
-                  out))))))
+          (let ((rest (octocat-markdown--paragraph-rest lines)) para)
+            (setq lines (nthcdr (length rest) lines))
+            (dolist (l (cons line rest))
+              (pcase-let ((`(,b . ,o) (octocat-markdown--balance (string-trim l) carry)))
+                (setq carry o)
+                (push b para)))
+            (setq open carry)
+            (dolist (l (split-string (octocat-markdown--inline
+                                      (string-join (nreverse para) "\n"))
+                                     "\n"))
+              (push (cons (octocat-markdown--image-row l) "") out)))))))
     (nreverse out)))
+
+(defun octocat-markdown--paragraph-rest (lines)
+  "Return the first of LINES that continue the paragraph line above them.
+A line does not when it opens a block, or when the line after it makes
+it a setext heading or a table's header."
+  (let (rest)
+    (while (let ((next (car lines)) (after (cadr lines)))
+             (and next
+                  (not (octocat-markdown--blank-p next))
+                  (not (octocat-markdown--block-start-p next))
+                  (not (string-match-p "\\`[ \t]*<!--" next))
+                  (not (and after (string-match-p octocat-markdown--setext-re after)))
+                  (not (and after (string-match-p "|" next)
+                            (string-match-p octocat-markdown--table-delim-re after)
+                            (string-match-p "|" after)))))
+      (push (pop lines) rest))
+    (nreverse rest)))
 
 (defun octocat-markdown--standout (row &optional kind)
   "Return ROW marked as a block that needs no blank row beside it.

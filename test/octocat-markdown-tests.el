@@ -108,6 +108,20 @@ the window's point; mid-render that scrambled the page."
   ;; In a code span, an entity is as written.
   (should (equal (octocat-markdown-tests--md "`&amp;`") "&amp;\n")))
 
+(ert-deftest octocat-markdown-test-emphasis-spans-lines ()
+  "Emphasis may span a paragraph's lines, which stay a row each."
+  (let ((out (octocat-markdown-render "a **b\nc** d ~~e\nf~~ *g\nh*\n<b>i\nj</b> k" "")))
+    (should (equal (substring-no-properties out) "a b\nc d e\nf g\nh\ni\nj k\n"))
+    (dolist (c '("b" "c" "i" "j"))
+      (should (memq 'bold (ensure-list (octocat-markdown-tests--prop out c 'face)))))
+    (should (eq (octocat-markdown-tests--prop out "f" 'face) 'octocat-markdown-strike))
+    (should (eq (octocat-markdown-tests--prop out "h" 'face) 'italic))
+    (should-not (octocat-markdown-tests--prop out "d" 'face))
+    (should-not (octocat-markdown-tests--prop out "k" 'face)))
+  ;; A block ends the paragraph, so emphasis does not run into it.
+  (should (equal (octocat-markdown-tests--md "a **b\n# h\nc** d")
+                 "a **b\n\nh\nc** d\n")))
+
 (ert-deftest octocat-markdown-test-html-parsed ()
   "HTML is read by a parser: nesting, quoted `>', unclosed tags, spacing."
   (let ((out (octocat-markdown-render "<b><b>x</b> y</b> z" "")))
@@ -516,6 +530,11 @@ the window's point; mid-render that scrambled the page."
   "A blank line after a list is kept, as on GitHub; one before it is not."
   (should (equal (octocat-markdown-tests--md "text\n\n- a\n- b\n\nafter")
                  "text\n• a\n• b\n\nafter\n"))
+  ;; Also after an item with a nested list, numbered or not.
+  (should (equal (octocat-markdown-tests--md "1. a\n   - b\n\nafter")
+                 "1. a\n   ◦ b\n\nafter\n"))
+  (should (equal (octocat-markdown-tests--md "- a\n  - b\n\n```\nc\n```")
+                 "• a\n  ◦ b\n\n c \n"))
   ;; A heading after a list still gets just one blank row.
   (should (equal (octocat-markdown-tests--md "- a\n\n\n# h") "• a\n\nh\n")))
 

@@ -12,8 +12,10 @@ open    Assignees @srivera · Labels  performance
 │ 1. rocket new big-site
 │ 2. Generate 1,000 pages into content/
 │ 3. time rocket build
+│    ◦ with a warm disk cache
 │
-│ The same site built in 0.9s on 0.8.
+│ The same site built in 0.9s on 0.8, before templates
+│ could include one another.
 │
 ● @srivera commented  1 week ago
 │ Confirmed.  Parsing each template once per build should fix most of it; I'll take this.

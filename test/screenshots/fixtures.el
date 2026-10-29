@@ -565,8 +565,10 @@ Profiling it, most of the time goes to `Template::parse`, which runs once per pa
 1. `rocket new big-site`
 2. Generate 1,000 pages into `content/`
 3. `time rocket build`
+   - with a warm disk cache
 
-The same site built in 0.9s on 0.8."
+The same site built in 0.9s on 0.8, **before templates
+could include one another**."
       :comments [(:id "IC_10" :author (:login "srivera") :createdAt ,(octocat-screenshots--ago (* 8 d))
                   :body "Confirmed.  Parsing each template once per build should fix most of it; I'll take this." :url "")
                  (:id "IC_11" :author (:login "kwong") :createdAt ,(octocat-screenshots--ago (+ (* 7 d) (* 3 h)))

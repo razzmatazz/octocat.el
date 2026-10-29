@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Markdown bold, italic and strikethrough can span the lines of a paragraph
+* A list whose last item has indented lines keeps the blank line after it
 * The file page drops its `[Browse tree]` button: the directories of its path open the tree
 * PRs in a stack (`gh stack`) show their place in it, `≡ 2/3`; a PR page lists the stack
 * A job's steps show their log again, now that GitHub labels no line with its step

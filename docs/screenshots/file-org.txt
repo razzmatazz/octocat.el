@@ -12,6 +12,7 @@ Writing one
 2. Edit its templates
    ☑ page.html
    ☐ index.html
+
  theme = "mine"
 │ Themes are plain files; there is no build step.
 

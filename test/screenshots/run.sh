@@ -4,7 +4,7 @@
 set -e
 # Its socket shows before it takes connections; -displayfd says when it does.
 Xvfb :99 -screen 0 2560x4000x24 -nolisten tcp -displayfd 3 3> /tmp/xvfb-ready &
-for i in $(seq 200); do [ -s /tmp/xvfb-ready ] && break; sleep 0.02; done
+for i in $(seq 1000); do [ -s /tmp/xvfb-ready ] && break; sleep 0.02; done
 # A GUI Emacs shows an error in its frame and waits for good, so one in
 # loading the driver is printed, and exits.
 DISPLAY=:99 timeout 60 emacs -Q --eval '
