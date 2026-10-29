@@ -4,8 +4,8 @@ Bump toml from 0.8.12 to 0.8.19                                     a625406 · 1
 Themes
 [image: light]
 
-A theme is a directory of templates and static files, picked by
-theme in rocket.toml.  See the configuration.
+A theme is a directory of templates and static files, picked by theme in rocket.toml.  See the
+configuration.
 
 Writing one
 1. Copy the default theme: rocket theme new mine

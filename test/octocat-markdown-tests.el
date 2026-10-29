@@ -122,6 +122,26 @@ the window's point; mid-render that scrambled the page."
   (should (equal (octocat-markdown-tests--md "a **b\n# h\nc** d")
                  "a **b\n\nh\nc** d\n")))
 
+(ert-deftest octocat-markdown-test-file-joins-lines ()
+  "A file's paragraph is one row, as GitHub shows a README, but at a hard break."
+  (let ((file (lambda (text &optional width)
+                (substring-no-properties (octocat-markdown-render text "" width t)))))
+    (should (equal (funcall file "Open an [issue](u) and\npaste `x`; see\n[D](d).")
+                   "Open an issue and paste x; see D.\n"))
+    ;; Two spaces or a backslash at the end break the line.
+    (should (equal (funcall file "a  \nb\\\nc\nd") "a\nb\nc d\n"))
+    ;; In a list item and a quote too, and emphasis still spans them.
+    (should (equal (funcall file "- a **b\n  c** d") "• a b c d\n"))
+    (should (equal (funcall file "> e\n> f") "│ e f\n"))
+    (should (memq 'bold (ensure-list (octocat-markdown-tests--prop
+                                      (octocat-markdown-render "a **b\nc**" "" nil t)
+                                      "c" 'face))))
+    ;; Joined, a long paragraph is wrapped to the width.
+    (should (equal (funcall file "aaa bbb\nccc ddd" 8) "aaa bbb\nccc ddd\n"))
+    (should (equal (funcall file "aa\nbb\ncc dd" 9) "aa bb cc\ndd\n")))
+  ;; A comment keeps its lines.
+  (should (equal (octocat-markdown-tests--md "a\nb") "a\nb\n")))
+
 (ert-deftest octocat-markdown-test-html-parsed ()
   "HTML is read by a parser: nesting, quoted `>', unclosed tags, spacing."
   (let ((out (octocat-markdown-render "<b><b>x</b> y</b> z" "")))

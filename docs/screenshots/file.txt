@@ -2,13 +2,13 @@ acme/rocket  [main ▾]:/docs/guide.md   Preview  Code  Blame
 
 Bump toml from 0.8.12 to 0.8.19                                    a625406 · 1 day ago  [12 commits]
 Writing pages
-A page is a Markdown file in content/, with a TOML header between
-+++ lines that names its title and template.
+A page is a Markdown file in content/, with a TOML header between +++ lines that names its title and
+template.
 
 [image: A page and the site it builds]
 
-rocket serve rebuilds a page as soon as you save it.  The header's
-settings are in the configuration.
+rocket serve rebuilds a page as soon as you save it.  The header's settings are in the
+configuration.
 ┌──────────┬───────────┬───────────────────────┐
 │ Setting  │ Default   │ Meaning               │
 ├──────────┼───────────┼───────────────────────┤

@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* READMEs and markdown files join a paragraph's lines, as GitHub shows them
 * After a push, the repo page keeps its files and README until the new ones load
 * Until a new commit's are fetched, the last commits stored for an older one show
 * The file page shows the blame; a Preview | Code | Blame switch, or `C-c C-v`, picks the view

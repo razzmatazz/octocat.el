@@ -26,8 +26,9 @@
 ;; This module has no dependencies on the rest of octocat (or on any
 ;; markdown package), so `octocat-core' can require it.  The renderer
 ;; turns markdown source into a propertized string, one source line per
-;; row (GitHub shows single newlines in comments as line breaks), with
-;; the markup characters removed and faces applied instead.
+;; row (GitHub shows single newlines in comments as line breaks), or, for
+;; a file such as a README, a paragraph's lines joined, as GitHub shows a
+;; file, with the markup characters removed and faces applied instead.
 ;;
 ;; Block level: ATX and setext headings, horizontal rules, fenced and
 ;; indented code (syntax-highlighted by language), block quotes
@@ -873,6 +874,24 @@ newlines are kept; any the HTML itself renders become spaces."
 (defvar octocat-markdown--avail nil
   "Columns available to the block being rendered, or nil for no limit.
 Bound by `octocat-markdown-render' and narrowed inside quotes and lists.")
+
+(defvar octocat-markdown--file nil
+  "Non-nil when the markdown rendered is a file, such as a README.
+GitHub breaks a line at a newline in a paragraph of a comment, but in a
+file it joins the lines with a space, and only a line ending in two
+spaces or a backslash breaks.  Bound by `octocat-markdown-render'.")
+
+(defun octocat-markdown--line-end (line last)
+  "Return (TEXT . AFTER) of paragraph LINE: it trimmed, and what follows it.
+AFTER is \"\" when LINE is the LAST, else a newline, or a space when
+it does not break, see `octocat-markdown--file'.  A backslash
+that breaks it is dropped."
+  (let ((hard (string-match-p "\\(?:  \\|\\\\\\)[ \t]*\\'" line))
+        (text (string-trim line)))
+    (cons (if (and hard (not last) (string-suffix-p "\\" text)) (substring text 0 -1) text)
+          (cond (last "")
+                ((or hard (not octocat-markdown--file)) "\n")
+                (t " ")))))
 
 (defun octocat-markdown--image-row (s)
   "Return paragraph line S, marked if it is an image alone.
@@ -1741,17 +1760,19 @@ DEPTH is the list nesting depth, which picks the bullet."
           (let ((level (if (string-prefix-p "=" (string-trim-left (pop lines))) 1 2)))
             (push (octocat-markdown--heading-row (string-trim line) level) out)))
          ;; Paragraph: its lines go through the inline rules together, so
-         ;; emphasis can span them, and stay a row each.
+         ;; emphasis can span them, and stay a row each, or join as in a
+         ;; file, see `octocat-markdown--file'.
          (t
           (let ((rest (octocat-markdown--paragraph-rest lines)) para)
             (setq lines (nthcdr (length rest) lines))
-            (dolist (l (cons line rest))
-              (pcase-let ((`(,b . ,o) (octocat-markdown--balance (string-trim l) carry)))
-                (setq carry o)
-                (push b para)))
+            (cl-loop for (l . more) on (cons line rest)
+                     do (pcase-let* ((`(,text . ,after) (octocat-markdown--line-end l (null more)))
+                                     (`(,b . ,o) (octocat-markdown--balance text carry)))
+                          (setq carry o)
+                          (push (concat b after) para)))
             (setq open carry)
             (dolist (l (split-string (octocat-markdown--inline
-                                      (string-join (nreverse para) "\n"))
+                                      (apply #'concat (nreverse para)))
                                      "\n"))
               (push (cons (octocat-markdown--image-row l) "") out)))))))
     (nreverse out)))
@@ -2005,9 +2026,11 @@ long lines.  Windows-style CR characters are stripped first."
    (mapcar (lambda (l) (cons l "")) (octocat-markdown--lines text))
    (or indent "  ")))
 
-(defun octocat-markdown-render (text &optional indent width)
+(defun octocat-markdown-render (text &optional indent width file)
   "Return markdown TEXT rendered for display, one line per row.
-INDENT is as for `octocat-markdown-render-verbatim'.
+INDENT is as for `octocat-markdown-render-verbatim'.  FILE renders TEXT
+as GitHub does a file, joining a paragraph's lines, rather than a
+comment, see `octocat-markdown--file'.
 
 WIDTH is the number of columns the output, INDENT included, should fit,
 or nil for no limit.  Longer lines are broken to fit, see
@@ -2019,6 +2042,7 @@ is left at its natural width.
 Markup is replaced by faces; see the Commentary for what is understood."
   (let* ((indent (or indent "  "))
          (octocat-markdown--avail (and width (- width (string-width indent))))
+         (octocat-markdown--file file)
          (octocat-markdown--definitions (make-hash-table :test #'equal))
          (octocat-markdown--footnotes nil)
          (octocat-markdown--footnote-order nil)

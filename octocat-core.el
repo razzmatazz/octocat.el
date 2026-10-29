@@ -1010,7 +1010,7 @@ When nil (the default) body text is rendered by
 Each markdown-displaying mode sets this to its own refresh command so the
 toggle can re-render the buffer after flipping `octocat--markdown-raw'.")
 
-(defun octocat--markdown-string (text indent raw width)
+(defun octocat--markdown-string (text indent raw width &optional file)
   "Return TEXT rendered by `octocat-markdown-render', one line per row.
 Each line is prefixed with INDENT (a string, nil for \"  \") and ends in a
 newline; INDENT is also repeated on the wrapped continuation lines of
@@ -1020,12 +1020,13 @@ When RAW is non-nil the text is returned verbatim, without any
 rendering.  Otherwise images uploaded to GitHub can be shown in the
 current buffer, see `octocat-image-enable'.
 
-WIDTH is the columns to fit, as for `octocat-markdown-render'; callers
-read it from the window once, with `octocat--markdown-width'."
+WIDTH is the columns to fit, and FILE whether TEXT is a file rather than
+a comment, as for `octocat-markdown-render'; callers read WIDTH from the
+window once, with `octocat--markdown-width'."
   (if raw
       (octocat-markdown-render-verbatim text indent)
     (octocat-image-enable)
-    (octocat-markdown-render text indent width)))
+    (octocat-markdown-render text indent width file)))
 
 (defun octocat--markdown-width ()
   "Return the columns rendered markdown should fit in the current buffer.

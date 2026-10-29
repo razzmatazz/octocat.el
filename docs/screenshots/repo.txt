@@ -30,8 +30,7 @@ Usage
 │ rocket build │ Build the site into public/                │
 │ rocket serve │ Serve the site, rebuilding on every change │
 └──────────────┴────────────────────────────────────────────┘
-Pages live in content/, templates in templates/.  See the
-docs for the rocket.toml settings.
+Pages live in content/, templates in templates/.  See the docs for the rocket.toml settings.
 
 License
 MIT

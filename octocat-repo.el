@@ -1283,7 +1283,7 @@ is, its long lines clipped, see `octocat--clip-line'."
     (string-remove-suffix
      "\n" (if (and fmt (<= (length content) octocat--max-file-size))
               (octocat--markdown-string (if raw text (funcall (cdr fmt) text))
-                                        "" raw width)
+                                        "" raw width t)
             (octocat-markdown-render-verbatim
              (octocat--clip-lines text octocat--max-line-length)
              "")))))
