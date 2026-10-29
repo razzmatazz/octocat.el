@@ -25,6 +25,20 @@ wherever you follow them in Emacs.
 
 See [every page](docs/screenshots/README.md), drawn from made-up data.
 
+## More
+
+- [Using octocat.el](docs/usage.md) — every page, in detail
+- [Screenshots](docs/screenshots/README.md) — every page, pictured
+- [CHANGELOG.md](CHANGELOG.md) — what changed in each release
+- [CONTRIBUTING.md](CONTRIBUTING.md) — code conventions, building, testing, CI
+
+`M-x octocat-doctor` reports, as text to paste into a bug report, which
+files are loaded (and whether a compiled one is stale), the store's size
+and largest resources, which pages refresh on their own and why, and
+the requests to GitHub of the last hour: how many, how often, and how
+much data they brought in.  It names the resources it
+stores, but not your token.
+
 ## Getting started
 
 You need:
@@ -93,20 +107,6 @@ Optional extras:
 
 Some keys do more than fits here; see [Keys in more
 depth](docs/usage.md#keys-in-more-depth).
-
-## More
-
-- [Using octocat.el](docs/usage.md) — every page, in detail
-- [Screenshots](docs/screenshots/README.md) — every page, pictured
-- [CHANGELOG.md](CHANGELOG.md) — what changed in each release
-- [CONTRIBUTING.md](CONTRIBUTING.md) — code conventions, building, testing, CI
-
-`M-x octocat-doctor` reports, as text to paste into a bug report, which
-files are loaded (and whether a compiled one is stale), the store's size
-and largest resources, which pages refresh on their own and why, and
-the requests to GitHub of the last hour: how many, how often, and how
-much data they brought in.  It names the resources it
-stores, but not your token.
 
 ## License
 
