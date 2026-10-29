@@ -54,6 +54,7 @@
 (load (expand-file-name "test/screenshots/fixtures" octocat-screenshots-root) nil t)
 (defvar octocat-screenshots-fixtures)
 (defvar octocat-screenshots-now)
+(defvar modus-vivendi-tinted-palette-overrides)
 
 (defvar octocat-screenshots-directory
   (expand-file-name "docs/screenshots/" octocat-screenshots-root)
@@ -148,7 +149,12 @@ PARSE-FN and CALLBACK are as there."
   (advice-add 'octocat-vui-window-height :override (lambda () 40))
   (advice-add 'octocat--markdown-width :override (lambda () octocat-screenshots-width))
   (when (display-graphic-p)
-    (load-theme 'modus-operandi t)
+    ;; Dark, but dim enough to sit well on GitHub's light pages too:
+    ;; the greys of its own "dark dimmed" theme.
+    (setq modus-vivendi-tinted-palette-overrides
+          '((bg-main "#22272e") (bg-dim "#2d333b") (bg-inactive "#2d333b")
+            (fg-main "#d1d7e0")))
+    (load-theme 'modus-vivendi-tinted t)
     (set-frame-font octocat-screenshots-font nil t)
     (menu-bar-mode -1)
     (tool-bar-mode -1)
