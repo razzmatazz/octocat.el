@@ -126,6 +126,7 @@ PARSE-FN and CALLBACK are as there."
     (setq octocat-sync-directory (expand-file-name "sync/" dir)
           octocat-settings-file (expand-file-name "settings.eld" dir)
           octocat-sync-prefetch nil
+          octocat-sync-poll-interval nil
           octocat-max-width octocat-screenshots-width
           ;; Not in a clone: pages show GitHub's data only.
           default-directory (file-name-as-directory dir)))
@@ -135,6 +136,9 @@ PARSE-FN and CALLBACK are as there."
   (advice-add 'octocat-image--fetch :override
               (lambda (_url _hops callback) (run-at-time 0 nil callback nil)))
   (advice-add 'octocat-repo--local-dir-for :override #'ignore)
+  ;; No animations: a slide or spinner turns through `display'
+  ;; properties, which the text a shot waits on to settle does not show.
+  (advice-add 'octocat-power :override (lambda () 'low))
   (advice-add 'current-time :override
               (lambda () (time-convert octocat-screenshots-now 'list)))
   (advice-add 'float-time :around
