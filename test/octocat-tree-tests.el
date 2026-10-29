@@ -312,6 +312,53 @@ the margin as wide whatever the window."
     (should (equal (gethash "sha" (gethash "README.md" got)) "a1"))
     (should-not (gethash "gone" got))))
 
+(ert-deftest octocat-tree-test-older-last-commits ()
+  "An older commit's last commits stand in, the newest at the same tree first."
+  (let* ((table (lambda (sha)
+                  (let ((h (make-hash-table :test #'equal)))
+                    (puthash "a.el" sha h)
+                    h)))
+         (spec  (lambda (commit sha) (list 'tree-commits "owner/repo" commit "" sha)))
+         (other (list (funcall spec "c1" "t1") (funcall table "x1") 30))
+         (same  (list (funcall spec "c2" "t2") (funcall table "x2") 10))
+         (newer (list (funcall spec "c3" "t3") (funcall table "x3") 20)))
+    (should (equal (gethash "a.el" (octocat-tree--older-last-commits
+                                    (list other same newer) "c9" "t2"))
+                   "x2"))
+    (should (equal (gethash "a.el" (octocat-tree--older-last-commits
+                                    (list other same newer) "c9" "t9"))
+                   "x1"))
+    ;; Not the commit itself, nor one with none.
+    (should-not (octocat-tree--older-last-commits
+                 (list (list (funcall spec "c9" "t9") (funcall table "x9") 40)
+                       (list (funcall spec nil "t9") (make-hash-table :test #'equal) 50))
+                 "c9" "t9"))))
+
+(ert-deftest octocat-tree-test-older-last-commits-stand-in ()
+  "While the last commits load, a stored older commit's show; a new entry's load."
+  (octocat-tree-tests--with-store
+    (let ((old (make-hash-table :test #'equal)))
+      (puthash "a.el" (octocat-repo--history-commit
+                       (octocat-tree-tests--json
+                        "{\"oid\":\"abc\",\"messageHeadline\":\"Old subject\",\"author\":null}"))
+               old)
+      (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
+                                 (vector (octocat-tree-tests--entry "a.el" "blob" "b1")
+                                         (octocat-tree-tests--entry "new.el" "blob" "b2")))
+      (octocat-tree-tests--store '(tree-commits "owner/repo" "c1" "" "rootsha") old)
+      (octocat-tree-tests--store '(tree-commits "other/repo" "c5" "" "rootsha")
+                                 (make-hash-table :test #'equal))
+      (with-temp-buffer
+        (octocat-repo-mode)
+        (cl-letf (((symbol-function 'octocat-tree--fetch-last-commits) #'ignore))
+          (octocat-vui-refresh-page 'octocat-tree--dir "tree"
+                                    (list :repo "owner/repo" :branch "main" :sha "rootsha"
+                                          :commit "c2")))
+        (goto-char (point-min))
+        (should (re-search-forward "^a\\.el +Old subject" nil t))
+        (should-not (re-search-forward "Old subject" nil t)))
+      (should (eq (octocat-tree--last-of (cons 'loading old) "new.el") 'loading)))))
+
 (ert-deftest octocat-tree-test-image-file-page ()
   "An image file is shown as the image, or, where it cannot be, said to be one."
   (let ((png "\211PNG\r\n\032\nbytes"))

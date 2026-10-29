@@ -622,10 +622,11 @@ FIELDS have their refs resolved, as `octocat-sync-read' gives them."
             (sqlite-select db "SELECT key, fields, fetched_at FROM entity WHERE type = ?"
                            (list (symbol-name type))))))
 
-(defun octocat-sync-stored (name)
+(defun octocat-sync-stored (name &rest args)
   "Return the stored data of every resource NAME, as (SPEC DATA FETCHED-AT).
-Only for resources whose data holds no entities: refs are left unresolved."
-  (let ((prefix (format "(%s " name)))
+Only those whose spec starts with ARGS, as (NAME . ARGS).  Only for
+resources whose data holds no entities: refs are left unresolved."
+  (let ((prefix (concat (substring (prin1-to-string (cons name args)) 0 -1) " ")))
     (mapcar (pcase-lambda (`(,key ,body ,at)) (list (read key) (octocat-sync--parse body) at))
             (sqlite-select (octocat-sync--db)
                            "SELECT key, body, fetched_at FROM resource

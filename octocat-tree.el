@@ -490,22 +490,49 @@ A hook: call it during render."
         (run-at-time 0 nil #'octocat-tree--jump-to buf focus))
       nil)))
 
+(defun octocat-tree--older-last-commits (stored commit sha)
+  "Return the last commits that STORED has of a directory, or nil.
+STORED is `octocat-sync-stored' of its `tree-commits' resources, of any
+commit but COMMIT.  The newest fetched of those at its tree SHA, whose
+entries are as at COMMIT, else the newest of all."
+  (let ((older (seq-filter (pcase-lambda (`((,_ ,_ ,c ,_ ,_) ,data ,_))
+                             (and c (not (equal c commit))
+                                  (hash-table-p data) (not (hash-table-empty-p data))))
+                           stored)))
+    (nth 1 (car (sort older
+                      (pcase-lambda (`((,_ ,_ ,_ ,_ ,sa) ,_ ,ta) `((,_ ,_ ,_ ,_ ,sb) ,_ ,tb))
+                        (let ((a (equal sa sha)) (b (equal sb sha)))
+                          (if (eq a b) (> (or ta 0) (or tb 0)) a))))))))
+
 (defun octocat-tree--use-last-commits (repo commit dir sha)
   "Return the last commits of the entries of DIR, tree SHA, of REPO.
-A hash-table of path to commit, from COMMIT back, or `loading' while
-it loads; read it with `octocat-tree--last-of'.  Empty when COMMIT is
-nil or the fetch failed.  Pass COMMIT only once the listing is shown:
-the fetch reads it from the store.  A hook: call it during render."
-  (let* ((snap (octocat-vui-use-resource (list 'tree-commits repo commit dir sha) nil))
-         (data (plist-get snap :data)))
+A hash-table of path to commit, from COMMIT back, or, while it loads,
+`loading', or (loading . TABLE) when an older commit's are stored: those
+stand in meanwhile, see `octocat-tree--older-last-commits'.  Read it with
+`octocat-tree--last-of'.  Empty when COMMIT is nil or the fetch failed.
+Pass COMMIT only once the listing is shown: the fetch reads it from the
+store.  A hook: call it during render."
+  (let* ((snap    (octocat-vui-use-resource (list 'tree-commits repo commit dir sha) nil))
+         (data    (plist-get snap :data))
+         (waiting (and commit (not (hash-table-p data))
+                       (eq (octocat-vui-snapshot-status snap) 'pending)))
+         (older   (vui-use-memo (repo commit dir sha waiting)
+                    (and waiting
+                         (octocat-tree--older-last-commits
+                          (seq-filter (lambda (s) (equal (nth 3 (car s)) dir))
+                                      (octocat-sync-stored 'tree-commits repo))
+                          commit sha)))))
     (cond ((hash-table-p data) data)
-          ((and commit (eq (octocat-vui-snapshot-status snap) 'pending)) 'loading)
+          (waiting (if older (cons 'loading older) 'loading))
           (t (make-hash-table :test #'equal)))))
 
 (defun octocat-tree--last-of (last path)
   "Return the last commit of PATH in LAST, of `octocat-tree--use-last-commits'.
-That is `loading' while LAST is."
-  (if (hash-table-p last) (gethash path last) last))
+That is `loading' while LAST is, or while it is an older commit's
+without PATH."
+  (cond ((hash-table-p last) (gethash path last))
+        ((consp last) (gethash path (cdr last) 'loading))
+        (t last)))
 
 (vui-defcomponent octocat-tree--dir (repo branch sha commit on-dir on-browse)
   "The root's entries, its tree SHA of REPO at BRANCH, as GitHub lists them.
