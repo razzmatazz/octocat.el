@@ -283,6 +283,24 @@ hook."
             (octocat-vui--show-notice buf))))
       snap)))
 
+(defun octocat-vui-use-latest-resource (spec tick &optional same)
+  "Return the snapshot of SPEC, or, while it has none, the last that had data.
+That is of the last spec this component showed with data, for the same
+SAME, so a page whose spec moves on, such as to a new tree SHA after a
+push, keeps showing the old data until the new comes, rather than
+flashing grey bars.  SAME tells apart specs that show different things,
+such as another document.  See `octocat-vui-use-resource', whose TICK it
+passes; a hook."
+  (let* ((snap (octocat-vui-use-resource spec tick))
+         (last (vui-use-ref nil)))
+    (cond ((plist-get snap :data)
+           (setcar last (cons same snap))
+           snap)
+          ((and (car last) (equal (caar last) same)
+                (eq (octocat-vui-snapshot-status snap) 'pending))
+           (cdar last))
+          (t snap))))
+
 (defvar-local octocat-vui--prefetch-timer nil
   "Timer that prefetches what the row at point opens, see below.")
 

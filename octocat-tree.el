@@ -542,7 +542,7 @@ Only the first `octocat-tree-entries' show, so the README below is near;
 a Browse code button after them, saying how many more there are, calls
 ON-BROWSE, for the whole tree."
   :render
-  (let* ((result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
+  (let* ((result  (octocat-vui-use-latest-resource (list 'tree-dir repo sha) nil))
          (entries (octocat-tree--sorted-entries (plist-get result :data)))
          (shown   (if octocat-tree-entries (seq-take entries octocat-tree-entries) entries))
          (more    (- (length entries) (length shown)))
@@ -587,7 +587,7 @@ path, once it is listed.  Unlike the root's listing it does not fold:
 it is for browsing."
   :render
   (let* ((indent  (make-string (* depth 2) ?\s))
-         (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
+         (result  (octocat-vui-use-latest-resource (list 'tree-dir repo sha) nil path))
          (entries (octocat-tree--sorted-entries (plist-get result :data)))
          (last    (octocat-tree--use-last-commits repo (and entries commit) path sha)))
     (octocat-tree--use-focus

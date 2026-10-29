@@ -1298,13 +1298,13 @@ tree's own and a file is stored under its blob SHA, so while the branch
 stays put no request is made."
   :state ((kind nil))
   :render
-  (let* ((root  (octocat-vui-use-resource (list 'tree-dir repo tree) nil))
+  (let* ((root  (octocat-vui-use-latest-resource (list 'tree-dir repo tree) nil))
          (docs  (and (plist-get root :data)
                      (octocat-repo--docs (append (plist-get root :data) nil))))
          (doc   (or (assq kind docs) (car docs)))
          (entry (nth 2 doc))
          (oid   (and entry (gethash "sha" entry)))
-         (blob  (octocat-vui-use-resource (list 'blob repo oid) nil))
+         (blob  (octocat-vui-use-latest-resource (list 'blob repo oid) nil (car doc)))
          (width (octocat--markdown-width))
          (text  (vui-use-memo ((plist-get blob :data) ref raw width)
                   (and entry (plist-get blob :data)

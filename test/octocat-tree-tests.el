@@ -359,6 +359,24 @@ the margin as wide whatever the window."
         (should-not (re-search-forward "Old subject" nil t)))
       (should (eq (octocat-tree--last-of (cons 'loading old) "new.el") 'loading)))))
 
+(ert-deftest octocat-tree-test-keeps-listing-while-new-tree-loads ()
+  "Moved on to a tree not yet fetched, as after a push, the old listing stays."
+  (octocat-tree-tests--with-store
+    (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
+                               (vector (octocat-tree-tests--entry "old.el" "blob" "b1")))
+    (with-temp-buffer
+      (octocat-repo-mode)
+      (cl-letf (((symbol-function 'octocat-tree--fetch-dir) #'ignore))
+        (dolist (sha '("rootsha" "newsha"))
+          (octocat-vui-refresh-page 'octocat-tree--dir "tree"
+                                    (list :repo "owner/repo" :branch "main" :sha sha))))
+      (should (string-match-p "^old\\.el" (buffer-string)))
+      (octocat-tree-tests--store '(tree-dir "owner/repo" "newsha")
+                                 (vector (octocat-tree-tests--entry "new.el" "blob" "b2")))
+      (octocat-sync--notify (list (octocat-sync-spec-key '(tree-dir "owner/repo" "newsha"))))
+      (should (string-match-p "^new\\.el" (buffer-string)))
+      (should-not (string-match-p "old\\.el" (buffer-string))))))
+
 (ert-deftest octocat-tree-test-image-file-page ()
   "An image file is shown as the image, or, where it cannot be, said to be one."
   (let ((png "\211PNG\r\n\032\nbytes"))
