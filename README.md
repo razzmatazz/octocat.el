@@ -1,10 +1,8 @@
 # octocat.el
 
 > [!NOTE]
-> **Written with LLM assistance.** Most of this project was written with
-> the help of Claude.  Every source file names the models that worked on
-> it in an `Assisted-by:` header line, per the
-> [MELPA attribution convention](https://github.com/melpa/melpa/blob/master/CONTRIBUTING.org).
+> Written mostly with Claude; each file's `Assisted-by:` lines name the
+> models, per [MELPA's convention](https://github.com/melpa/melpa/blob/master/CONTRIBUTING.org).
 
 A GitHub client for Emacs, powered by the [`gh`](https://cli.github.com/) command-line tool.
 
@@ -23,21 +21,12 @@ wherever you follow them in Emacs.
 
 ![A pull request in octocat.el](docs/screenshots/pr.png)
 
-See [every page](docs/screenshots/README.md), drawn from made-up data.
-
-## More
+## Documentation
 
 - [Using octocat.el](docs/usage.md) — every page, in detail
-- [Screenshots](docs/screenshots/README.md) — every page, pictured
+- [Screenshots](docs/screenshots/README.md) — every page, pictured from made-up data
 - [CHANGELOG.md](CHANGELOG.md) — what changed in each release
 - [CONTRIBUTING.md](CONTRIBUTING.md) — code conventions, building, testing, CI
-
-`M-x octocat-doctor` reports, as text to paste into a bug report, which
-files are loaded (and whether a compiled one is stale), the store's size
-and largest resources, which pages refresh on their own and why, and
-the requests to GitHub of the last hour: how many, how often, and how
-much data they brought in.  It names the resources it
-stores, but not your token.
 
 ## Getting started
 
@@ -107,6 +96,12 @@ Optional extras:
 
 Some keys do more than fits here; see [Keys in more
 depth](docs/usage.md#keys-in-more-depth).
+
+## Reporting bugs
+
+Open an [issue](https://github.com/razzmatazz/octocat.el/issues) and
+paste in what `M-x octocat-doctor` reports; see
+[Diagnostics](docs/usage.md#diagnostics-m-x-octocat-doctor).
 
 ## License
 

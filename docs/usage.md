@@ -415,8 +415,8 @@ are under way.  They slow down when you are idle for 5 minutes
 (`octocat-sync-poll-idle-after`), switch to another app or run on
 battery, and stop after half an hour idle or on low battery; coming
 back refreshes at once.  `M-x octocat-doctor` shows which pages are
-refreshing, how often and why, and the recent requests to GitHub,
-along with the code loaded and the store.
+refreshing, how often and why (see
+[Diagnostics](#diagnostics-m-x-octocat-doctor)).
 
 ### Another view (`C-c C-v`)
 
@@ -465,3 +465,12 @@ Org links, mail, other packages), turn on `octocat-github-links-mode`,
 e.g. with `(octocat-github-links-mode 1)` in your init file.  It is off
 by default, as loading a package should not change how Emacs opens
 links.
+
+## Diagnostics (`M-x octocat-doctor`)
+
+`M-x octocat-doctor` reports, as text to paste into a bug report, which
+files are loaded (and whether a compiled one is stale), the store's size
+and largest resources, which pages refresh on their own and why, and
+the requests to GitHub of the last hour: how many, how often, and how
+much data they brought in.  It names the resources it stores, but not
+your token.
