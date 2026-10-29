@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Images show at their own size, not enlarged and blurred by `image-scaling-factor`
 * Markdown bold, italic and strikethrough can span the lines of a paragraph
 * A list whose last item has indented lines keeps the blank line after it
 * The file page drops its `[Browse tree]` button: the directories of its path open the tree

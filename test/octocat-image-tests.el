@@ -43,6 +43,14 @@
   ;; Never negative, though the image should not be wider than its columns.
   (should (= (octocat-image--fill-margin 300 19 10) 0)))
 
+(ert-deftest octocat-image-test-own-size ()
+  "An image is drawn at its own size, only shrunk to fit, never enlarged."
+  (cl-letf (((symbol-function 'create-image)
+             (lambda (_data _type _data-p &rest props) (cons 'image props))))
+    (let ((image (octocat-image--image "GIF89a" '(:cols 10))))
+      (should (equal (image-property image :scale) 1))
+      (should (image-property image :max-width)))))
+
 (ert-deftest octocat-image-test-fetched-redirect ()
   "A redirect is followed only to an allowed host, and only so many times."
   (let (calls result)

@@ -187,7 +187,8 @@ With :fill, as in a table's row of images, it is centred in its :cols,
 so the text after it stays in its column."
   (let* ((cols  (plist-get plist :cols))
          (width (plist-get plist :width))
-         (image (apply #'create-image data nil t
+         ;; At its own size: `image-scaling-factor' would blur it.
+         (image (apply #'create-image data nil t :scale 1
                        :max-height (* octocat-image-max-lines (frame-char-height))
                        (when-let* ((max (delq nil (list width
                                                         (and cols (* cols (frame-char-width)))))))

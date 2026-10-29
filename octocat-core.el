@@ -1115,7 +1115,8 @@ Read at most once a minute, as on macOS it runs `pmset'."
 Where it cannot be shown, as in a terminal, the line says so."
   (let ((type (image-type-from-data content)))
     (if (and type (display-images-p) (image-type-available-p type))
-        (propertize " " 'display (create-image content type t
+        ;; At its own size: `image-scaling-factor' would blur it.
+        (propertize " " 'display (create-image content type t :scale 1
                                                :max-width (* width (frame-char-width))))
       (propertize (format "An image of %s; C-c C-o opens it on GitHub."
                           (file-size-human-readable (length content)))
