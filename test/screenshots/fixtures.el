@@ -742,27 +742,38 @@ TITLE, WORKFLOW, BRANCH, STATUS, CONCLUSION and AGO are its own."
 
 (defconst octocat-screenshots--job-log
   (let ((lines
-         '(("Set up job" "Current runner version: '2.329.0'")
-           ("Set up job" "Runner Image: ubuntu-24.04")
-           ("Check out" "Syncing repository: acme/rocket")
-           ("Check out" "HEAD is now at 1c0ffee Invalidate a template when one it includes changes")
-           ("Install Rust" "info: installing component 'rustc'")
-           ("Install Rust" "rustc 1.91.0 (f8297e351 2026-10-28)")
-           ("Run cargo" "   Compiling rocket v0.10.0 (/home/runner/work/rocket/rocket)")
-           ("Run cargo" "    Finished `test` profile [unoptimized + debuginfo] target(s) in 41.20s")
-           ("Run cargo" "     Running unittests src/main.rs (target/debug/deps/rocket-3a1d)")
-           ("Run cargo" "running 48 tests")
-           ("Run cargo" "test cache::tests::hit_when_unchanged ... ok")
-           ("Run cargo" "test cache::tests::miss_when_include_changed ... ok")
-           ("Run cargo" "test markdown::tests::footnotes ... ok")
-           ("Run cargo" "test result: ok. 48 passed; 0 failed; 0 ignored; finished in 1.84s")
-           ("Complete job" "Cleaning up orphan processes")))
-        (at (octocat-screenshots--ago (+ octocat-screenshots--d octocat-screenshots--h))))
+         '((1 "Current runner version: '2.329.0'")
+           (1 "Runner Image: ubuntu-24.04")
+           (2 "##[group]Run actions/checkout@v5")
+           (2 "with:")
+           (2 "##[endgroup]")
+           (2 "Syncing repository: acme/rocket")
+           (2 "HEAD is now at 1c0ffee Invalidate a template when one it includes changes")
+           (3 "##[group]Run dtolnay/rust-toolchain@stable")
+           (3 "##[endgroup]")
+           (3 "info: installing component 'rustc'")
+           (3 "rustc 1.91.0 (f8297e351 2026-10-28)")
+           (4 "##[group]Run cargo test")
+           (4 "cargo test")
+           (4 "##[endgroup]")
+           (4 "   Compiling rocket v0.10.0 (/home/runner/work/rocket/rocket)")
+           (4 "    Finished `test` profile [unoptimized + debuginfo] target(s) in 41.20s")
+           (4 "     Running unittests src/main.rs (target/debug/deps/rocket-3a1d)")
+           (4 "running 48 tests")
+           (4 "test cache::tests::hit_when_unchanged ... ok")
+           (4 "test cache::tests::miss_when_include_changed ... ok")
+           (4 "test markdown::tests::footnotes ... ok")
+           (4 "test result: ok. 48 passed; 0 failed; 0 ignored; finished in 1.84s")
+           (5 "Cleaning up orphan processes"))))
     (mapconcat (pcase-lambda (`(,step ,text))
-                 (format "test (stable)\t%s\t%s %s\n"
-                         step (replace-regexp-in-string "Z\\'" ".1234567Z" at) text))
+                 ;; Each step starts as `octocat-screenshots--step' has it.
+                 (let ((at (octocat-screenshots--ago
+                            (+ octocat-screenshots--d octocat-screenshots--h (* -2 step 60)))))
+                   (format "test (stable)\tUNKNOWN STEP\t%s %s\n"
+                           (replace-regexp-in-string "Z\\'" ".1234567Z" at) text)))
                lines ""))
-  "The log of job 27100200300, as `gh run view --log' prints it.")
+  "The log of job 27100200300, as `gh run view --log' prints it.
+It names no step, as GitHub keeps one log for the whole job.")
 
 (defconst octocat-screenshots--artifacts
   `(:total_count 1

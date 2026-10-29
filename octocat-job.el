@@ -161,7 +161,7 @@ notation, \"^[[36;1m\"."
 (defun octocat--job-parse-log-line (rest)
   "Parse one raw log REST field (TIMESTAMP MESSAGE) into a tagged entry.
 Returns a plist:
-  (:ts FORMATTED-TIME :kind KIND :text CONTENT)
+  (:ts FORMATTED-TIME :at TIMESTAMP :kind KIND :text CONTENT)
 where KIND is one of `normal', `group-start', `group-end', or `command',
 and CONTENT is the ANSI-stripped message text.
 For `group-start' lines CONTENT is the group name.
@@ -196,37 +196,73 @@ For `group-end' lines CONTENT is nil."
                    ('group-start (match-string 1 content))
                    ('group-end   nil)
                    (_            content))))
-      (list :ts fmt :kind kind :text text))))
+      (list :ts fmt :at ts-raw :kind kind :text text))))
 
-(defun octocat--job-parse-log (raw)
-  "Parse RAW log text from `gh run view --log' into an alist.
-Returns an alist of (STEP-NAME . ENTRIES) in source order.
-Each entry is a plist (:ts TS :kind KIND :text TEXT) where KIND is one of
-`normal', `group-start', `group-end', or `command'.
-ANSI codes are removed.  Lines that don't match the expected
-tab-delimited format are ignored."
-  (let ((sections '())
-        (current-step nil)
-        (current-lines '()))
-    (dolist (line (split-string (string-trim raw) "\n"))
-      ;; Format: JOB_NAME<TAB>STEP_NAME<TAB>TIMESTAMP MESSAGE
-      ;; Some lines begin with a UTF-8 BOM (#xFEFF); discard it.
-      (let* ((clean (if (and (> (length line) 0)
-                             (= (aref line 0) #xFEFF))
-                        (substring line 1)
-                      line))
-             (parts (split-string clean "\t" nil)))
-        (when (>= (length parts) 3)
-          (let* ((step  (string-trim (nth 1 parts)))
-                 (entry (octocat--job-parse-log-line (nth 2 parts))))
-            (unless (equal step current-step)
-              (when current-step
-                (push (cons current-step (nreverse current-lines)) sections))
-              (setq current-step  step
-                    current-lines '()))
-            (push entry current-lines)))))
-    (when current-step
-      (push (cons current-step (nreverse current-lines)) sections))
+(defun octocat--job-log-step-start-p (bom entry boms)
+  "Return non-nil if log ENTRY, BOM if its line had one, may start a step.
+Some runners open each step's log with a byte-order mark: when BOMS, the
+log is from one, and only those count.  On others a step opens with
+\"Run ...\" as a group, or as a post step or the job's end does; that
+misses a step whose log opens otherwise, and takes a runner hook's Run
+for one, so those are the fallback."
+  (if boms
+      bom
+    (or (and (eq (plist-get entry :kind) 'group-start)
+             (string-prefix-p "Run " (or (plist-get entry :text) "")))
+        (member (plist-get entry :text)
+                '("Post job cleanup." "Cleaning up orphan processes")))))
+
+(defun octocat--job-log-second (timestamp)
+  "Return ISO-8601 TIMESTAMP cut to the second, to compare as a string."
+  (and timestamp (>= (length timestamp) 19) (substring timestamp 0 19)))
+
+(defun octocat--job-parse-log (raw steps)
+  "Split RAW job log text by step.
+Return, for STEPS, its REST step hash-tables in order, an alist of
+\(STEP-NUMBER . ENTRIES); each entry is a plist from
+`octocat--job-parse-log-line'.
+
+RAW is the job's log as one file, as the REST API gives it, or as `gh
+run view --log' prints it, each line led by the job's and a step's name.
+That name is \"UNKNOWN STEP\" now that GitHub keeps no log per step, so
+lines are split at step starts (see `octocat--job-log-step-start-p'),
+handed in turn to the steps that ran.  A start counts only once that step
+has started, and a step that ended before it never wrote one: so the
+\"Run\" groups of a composite action stay in its step."
+  (let* ((queue (seq-filter (lambda (step)
+                              (and (octocat--nonempty (gethash "started_at" step))
+                                   (not (equal (gethash "conclusion" step) "skipped"))))
+                            steps))
+         ;; Drop the JOB<TAB>STEP<TAB> of `gh run view --log'.
+         (raw-lines (mapcar (lambda (line)
+                              (if (string-match "\\`\uFEFF?[0-9]\\{4\\}-" line)
+                                  line
+                                (replace-regexp-in-string "\\`[^\t]*\t[^\t]*\t" "" line)))
+                            (split-string (string-trim-right raw) "\n")))
+         (boms (seq-some (lambda (line) (string-prefix-p "\uFEFF" line)) (cdr raw-lines)))
+         (current (pop queue))
+         sections lines)
+    (dolist (line raw-lines)
+      (let* ((bom   (string-prefix-p "\uFEFF" line))
+             (entry (octocat--job-parse-log-line line))
+             (at    (octocat--job-log-second (plist-get entry :at))))
+        (when (and current lines at queue
+                   (octocat--job-log-step-start-p bom entry boms))
+          ;; Steps that ended before this start wrote no start of their own.
+          (while (and (cdr queue)
+                      (let ((end (octocat--job-log-second
+                                  (octocat--nonempty (gethash "completed_at" (car queue))))))
+                        (and end (string< end at))))
+            (pop queue))
+          (let ((next (octocat--job-log-second (gethash "started_at" (car queue)))))
+            (unless (and next (string< at next))
+              (push (cons (gethash "number" current) (nreverse lines)) sections)
+              (setq current (pop queue)
+                    lines   nil))))
+        (when current
+          (push entry lines))))
+    (when (and current lines)
+      (push (cons (gethash "number" current) (nreverse lines)) sections))
     (nreverse sections)))
 
 
@@ -427,7 +463,7 @@ groups: BULK and ON-BULK are as for `octocat-vui-expand-all-button'."
        (mapcar (lambda (step)
                  (octocat-job--step step
                                     (unless failed
-                                      (cdr (assoc (or (gethash "name" step) "") log)))
+                                      (cdr (assoc (gethash "number" step) log)))
                                     bulk))
                steps))
      (when failed
@@ -554,9 +590,10 @@ unfolded, until the fresh data replaces it."
          (crumbs  (octocat-job--crumbs repo run-id run name))
          (data    (plist-get result :data))
          (raw     (and data (gethash "log" data)))
-         (log     (vui-use-memo (raw)
+         (steps   (and data (append (octocat--get data "job" "steps") nil)))
+         (log     (vui-use-memo (raw steps)
                     (if raw
-                        (octocat--job-parse-log raw)
+                        (octocat--job-parse-log raw steps)
                       (cons 'error (or (and data (gethash "log_error" data)) ""))))))
     (apply #'vui-vstack
            (append
