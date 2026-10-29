@@ -1812,14 +1812,20 @@ blank row after it: a quote's bar stops without closing it off."
   (and (> (length (car row)) 0)
        (get-text-property 0 'octocat-markdown-heading (car row))))
 
+(defun octocat-markdown--code-row-p (row)
+  "Return non-nil if ROW is a line of a code box."
+  (and row (> (length (car row)) 0)
+       (get-text-property 0 'octocat-markdown-code (car row))))
+
 (defun octocat-markdown--tidy (rows)
   "Return ROWS packed tightly, to save vertical space.
 Blank rows at either end, doubled blank rows, and blank rows next to a
 block that stands out by itself (rule, table, heading, quote) are
 dropped, but for one after a list or quote, which GitHub shows too.  Blank rows
 beside a code box or between paragraphs are kept.
-A heading after other rows always gets one blank row above it, so
-sections are easy to tell apart."
+A code box always has one blank row after it, before whatever follows,
+and a heading after other rows one above it, so sections are easy to
+tell apart."
   (let (out)
     (dolist (r rows)
       (unless (and (string-empty-p (car r))
@@ -1830,10 +1836,15 @@ sections are easy to tell apart."
     (let (tight prev)
       (while out
         (let ((r (pop out)))
+          (when (and (octocat-markdown--code-row-p prev)
+                     (not (string-empty-p (car r)))
+                     (not (octocat-markdown--code-row-p r)))
+            (push (cons "" "") tight))
           (when (and tight (octocat-markdown--heading-p r)
                      (not (string-empty-p (caar tight))))
             (push (cons "" "") tight))
           (unless (and (string-empty-p (car r))
+                       (not (octocat-markdown--code-row-p prev))
                        (or (eq (octocat-markdown--standout-p prev) t)
                            (octocat-markdown--standout-p (car out))))
             (push r tight))

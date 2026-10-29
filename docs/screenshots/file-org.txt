@@ -14,6 +14,7 @@ Writing one
    ☐ index.html
 
  theme = "mine"
+
 │ Themes are plain files; there is no build step.
 
 Settings

@@ -248,6 +248,7 @@ the window's point; mid-render that scrambled the page."
          (plain (substring-no-properties out)))
     (should (equal plain (concat "   a  *b*  <c>  \n"
                                  " link bold kode \n"
+                                 "\n"
                                  "after\n")))
     (should (equal (octocat-markdown-tests--prop out "link" 'octocat-markdown-url)
                    "https://x.org"))
@@ -473,6 +474,11 @@ the window's point; mid-render that scrambled the page."
   ;; Blank rows next to standalone blocks are dropped; prose keeps one.
   (should (equal (octocat-markdown-tests--md "*a* **b**\n\n---\n\n```\nx\n```\n\none\n\ntwo")
                  (concat "a b\n" (make-string 40 ?─) "\n x \n\none\n\ntwo\n")))
+  ;; But a code box keeps one blank row below it, or gets one.
+  (should (equal (octocat-markdown-tests--md "```\nx\n```\n\n1. a\n\n```\ny\n```\n---")
+                 (concat " x \n\n1. a\n\n y \n\n" (make-string 40 ?─) "\n")))
+  (should (equal (octocat-markdown-tests--md "<pre>x</pre>\n- a")
+                 " x \n\n• a\n"))
   (should (equal (octocat-markdown-tests--md "```\ncore\nlonger\n```")
                  " core   \n longer \n"))
   (should (equal (octocat-markdown-tests--md "- a\n  - b\n- [x] c\n- [ ] d\n1. e")
