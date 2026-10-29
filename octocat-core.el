@@ -107,7 +107,7 @@ clearing the cache keeps them."
   :group 'octocat)
 
 (defcustom octocat-max-width 112
-  "Most columns a repo, list, issue or pull request page takes, or nil.
+  "Most columns a repo, file, list, issue or pull request page takes, or nil.
 The list pages are the issues, pull requests and Actions of a repo.
 The page keeps to the left of a wider window, as GitHub bounds its
 conversation column; what does not fit the column, such as a diff's long
@@ -1047,14 +1047,18 @@ point is saved around it."
 (defvar-local octocat--capped nil
   "Non-nil when the page's text is capped at `octocat-max-width' columns.")
 
+(defvar-local octocat--cap-extra 0
+  "Columns the page's cap is widened by, as for the blame column.")
+
 (defun octocat--max-width-setup ()
   "Cap the current buffer's page at `octocat-max-width' columns."
   (setq-local octocat--capped t))
 
 (defun octocat--cap-width (width)
-  "Return WIDTH, no more than `octocat-max-width' on a capped page."
+  "Return WIDTH, no more than `octocat-max-width' on a capped page.
+The cap is widened by `octocat--cap-extra'."
   (if (and octocat--capped octocat-max-width)
-      (min width octocat-max-width)
+      (min width (+ octocat-max-width octocat--cap-extra))
     width))
 
 ;;;; Power

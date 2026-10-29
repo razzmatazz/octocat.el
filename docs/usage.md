@@ -168,7 +168,7 @@ and **[Actor]** buttons (or `F`).  The qualifiers are `branch:`,
 `gh run list` option, and anything else in the query is ignored, with a
 note saying so.
 
-Like the repo page and the issue and pull request pages, the list pages
+Like the repo and file pages and the issue and pull request pages, the list pages
 keep within `octocat-max-width` columns (112 by default, nil for the
 whole window); the titles of rows take whatever the other columns leave.
 
@@ -321,8 +321,10 @@ Preview | Code | Blame for a Markdown or org file, Code | Blame for any
 other, drawn as one outlined pill with the view shown filled in.  `RET`
 on one shows it, and `C-c C-v` shows the next, in turn; hovering over a view names the key.  The blame shows each
 line, numbered, beside the commit that last changed it, with its
-subject and age at the head of each run of lines; `RET` on it opens the
-commit and `C-c C-o` opens it on GitHub.  It slides in from the left
+subject and age at the head of each run of lines, and a faint rule
+under each run; `RET` on it opens the commit and `C-c C-o` opens it on
+GitHub.  The page widens by the blame's column, past `octocat-max-width`,
+so the code keeps its width.  It slides in from the left
 edge and back out of it (not on low battery, nor in a file of more
 than 300 lines).  Like the file, it is
 stored by commit, so it opens at once the next time.

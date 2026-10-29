@@ -227,7 +227,11 @@ The top line has a tab for each view, the one shown plain."
             (should (eq (get-text-property (point) 'face) 'octocat-segment-current))
             (octocat-file-cycle-view)
             (should (string-match-p "^# Guide$" (buffer-string)))
+            (should (= (octocat--cap-width 1000) octocat-max-width))
             (octocat-file-cycle-view)
+            ;; The blame widens the page by its column, the code as wide.
+            (should (= (octocat--cap-width 1000)
+                       (+ octocat-max-width (octocat-repo--blame-column-width))))
             (let ((text (buffer-substring-no-properties (point-min) (point-max))))
               (should (string-match-p "^Add the guide +.* │ 1 # Guide$" text))
               (should (string-match-p "^ + │ 3 Text\\.$" text)))
@@ -242,6 +246,7 @@ The top line has a tab for each view, the one shown plain."
             (search-forward "Blame")
             (should (eq (get-text-property (1- (point)) 'face) 'octocat-segment-current))
             (octocat-file-cycle-view)
+            (should (= (octocat--cap-width 1000) octocat-max-width))
             (should (string-match-p "^Guide$" (buffer-string))))
         (kill-buffer))))))
 
@@ -263,7 +268,7 @@ The top line has a tab for each view, the one shown plain."
 
 (ert-deftest octocat-tree-test-blame-skeleton ()
   "Before the blame lands the source shows, grey bars heading every few lines."
-  (let* ((text  (octocat-repo--blame-text "owner/repo" "a\nb\nc\nd\ne" nil))
+  (let* ((text  (octocat-repo--blame-text "owner/repo" "a\nb\nc\nd\ne" nil 80))
          (lines (split-string text "\n")))
     (should (equal (length lines) 5))
     (should (string-suffix-p "│ 1 a" (nth 0 lines)))
@@ -272,8 +277,8 @@ The top line has a tab for each view, the one shown plain."
     (should (eq (get-text-property 0 'face (nth 4 lines)) 'octocat-skeleton))))
 
 (ert-deftest octocat-tree-test-blame-rule ()
-  "Each commit's run of lines but the last ends underlined, the margin as wide
-whatever the window."
+  "Each commit's run of lines but the last ends underlined to the edge given,
+the margin as wide whatever the window."
   (let* ((range (lambda (start end sha)
                   (let ((h (make-hash-table :test #'equal))
                         (c (make-hash-table :test #'equal)))
@@ -284,13 +289,16 @@ whatever the window."
                     h)))
          (text  (octocat-repo--blame-text
                  "owner/repo" "a\nb\nc"
-                 (vector (funcall range 1 2 "a1") (funcall range 3 3 "b2"))))
+                 (vector (funcall range 1 2 "a1") (funcall range 3 3 "b2"))
+                 70))
          (lines (split-string text "\n"))
          (ruled (lambda (s)
                   (let ((f (get-text-property 0 'face s)))
                     (or (eq f 'octocat-blame-rule) (memq 'octocat-blame-rule (ensure-list f)))))))
     (should-not (funcall ruled (nth 0 lines)))
     (should (funcall ruled (nth 1 lines)))
+    (should (equal (get-text-property (1- (length (nth 1 lines))) 'display (nth 1 lines))
+                   '(space :align-to 70)))
     (should-not (funcall ruled (nth 2 lines)))
     (should (equal (string-search "│" (nth 0 lines)) (1+ octocat-repo--blame-width)))))
 

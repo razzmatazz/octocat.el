@@ -1547,15 +1547,19 @@ blame shows it, RET opening the commit."
 It is fixed, not a share of the window, so resizing it does not reflow
 the blame.")
 
-(defun octocat-repo--blame-text (repo text ranges)
+(defun octocat-repo--blame-column-width ()
+  "Return the columns of the blame before the code: its margin and rule."
+  (+ octocat-repo--blame-width 3))
+
+(defun octocat-repo--blame-text (repo text ranges edge)
   "Return TEXT, a file of REPO, with the blame RANGES in a margin.
 RANGES are as `octocat-repo--parse-blame' gives them.  The first line
 of each range is headed by its commit, see `octocat-repo--blame-margin',
 in `octocat-repo--blame-width' columns; every line is numbered, and the
-last of a range is underlined to the window's edge, parting it from the
-next.  RET on a range's margin opens its commit, and \\[octocat-browse]
-browses it.  RANGES nil, while they load, puts grey bars at the head of
-every few lines instead."
+last of a range is underlined to column EDGE, parting it from the next.
+RET on a range's margin opens its commit, and \\[octocat-browse] browses
+it.  RANGES nil, while they load, puts grey bars at the head of every
+few lines instead."
   (let* ((lines   (vconcat (split-string text "\n")))
          (num-w   (length (number-to-string (length lines))))
          (margin  octocat-repo--blame-width)
@@ -1602,9 +1606,8 @@ every few lines instead."
                                              'octocat-url (octocat--web-url "%s/commit/%s"
                                                                             repo sha)))))
                          (when (and (= n last) (< n (length lines)))
-                           ;; Short of the edge, which would mark the line cut.
                            (setq s (concat s (propertize " " 'display
-                                                         '(space :align-to (- right 1)))))
+                                                         `(space :align-to ,edge))))
                            (add-face-text-property 0 (length s) 'octocat-blame-rule t s))
                          (push s out)))))
        ranges))
@@ -1622,13 +1625,18 @@ each line beside the commit that last changed it, as GitHub's Blame."
   :render
   (let* ((file  (octocat-vui-use-resource (list 'blob repo blob) nil))
          (snap  (octocat-vui-use-resource (list 'blame repo commit path) nil))
+         (win   (get-buffer-window (current-buffer) t))
+         (width (octocat-vui-window-width))
+         ;; The page's width, but short of the window's edge, which
+         ;; would mark the line cut.
+         (edge  (if (and win (>= width (window-body-width win))) (1- width) width))
          ;; The source shows at once, grey bars beside it until the blame lands.
-         (text  (vui-use-memo ((plist-get file :data) (plist-get snap :data))
+         (text  (vui-use-memo ((plist-get file :data) (plist-get snap :data) edge)
                   (and (plist-get file :data)
                        (octocat-repo--blame-text
                         repo (octocat-repo--source-text
                               path (octocat-tree--blob-content (plist-get file :data)))
-                        (plist-get snap :data))))))
+                        (plist-get snap :data) edge)))))
     (cond ((eq (octocat-vui-snapshot-status file) 'error)
            (vui-text (octocat-vui-error-text file) :face 'error))
           ((eq (octocat-vui-snapshot-status snap) 'error)

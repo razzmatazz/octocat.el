@@ -71,6 +71,7 @@
 (declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional linked))
 (declare-function octocat-repo--history-commit "octocat-repo" (node))
 (declare-function octocat-repo--format "octocat-repo" (name))
+(declare-function octocat-repo--blame-column-width "octocat-repo" ())
 
 
 ;;;; User options
@@ -124,6 +125,7 @@ The rest expands on RET.  Nil never folds."
   (setq-local octocat--refresh-fn #'octocat-file-refresh)
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
+  (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-file--page-url))
 
 
@@ -786,13 +788,17 @@ It is one of `octocat-file--views'."
 
 (defun octocat-file-show-view (view)
   "Show the file in VIEW, one of `octocat-file--views'.
-The blame slides in from the left edge, and back out of it."
+The blame slides in from the left edge, and back out of it; the page's
+cap widens by its column, so the code keeps its width."
   (unless (and (derived-mode-p 'octocat-file-mode) octocat-tree--file-path)
     (user-error "Octocat: Not in a file viewer buffer"))
   (let ((buf  (current-buffer))
         (show (lambda ()
                 (setq octocat-tree--file-blame (eq view 'blame)
-                      octocat--markdown-raw (eq view 'code))
+                      octocat--markdown-raw (eq view 'code)
+                      octocat--cap-extra (if octocat-tree--file-blame
+                                             (octocat-repo--blame-column-width)
+                                           0))
                 (octocat-vui-update-page :raw octocat--markdown-raw
                                          :blame octocat-tree--file-blame))))
     (cond ((eq view (octocat-file--view octocat-tree--file-path octocat--markdown-raw
