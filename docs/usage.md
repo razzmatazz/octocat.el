@@ -307,7 +307,7 @@ major mode.
 
 The top of the page is the tree browser's: `owner/repo  [main ▾]:/dir/file`,
 the branch picker and the path, whose directories open the tree browser
-down to them, and `[Browse tree]`, which opens it down to the file.
+down to them.
 Under it, after a blank line, are the file's last commit and a
 `[N commits]` button to its history, underlined.  A branch name longer than `octocat-ref-max-width`
 is cut in its middle, there and in every branch picker; hovering over

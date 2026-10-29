@@ -1498,9 +1498,9 @@ RAW shows markdown as is."
   "Root component of the file viewer: file PATH of REPO at REF.
 REF is a branch, tag or SHA, nil for the default branch.  Its top is
 the tree browser's, so one reads on from the other: the picker of REF
-and PATH, its directories RET-able, and a button to the tree, then the
-last commit of PATH, underlined above the content.  Picking another ref
-opens the file at it in its own buffer, see `octocat-file-switch-branch'.
+and PATH, its directories RET-able, then the last commit of PATH,
+underlined above the content.  Picking another ref opens the file at it
+in its own buffer, see `octocat-file-switch-branch'.
 RAW shows markdown as is.  A file too large to show unasked, see
 `octocat-repo--file-notice', has a button to show it ANYWAY."
   :state ((anyway nil))
@@ -1517,12 +1517,7 @@ RAW shows markdown as is.  A file too large to show unasked, see
     (vui-vstack
      (octocat-repo-vui--top-line
       repo (or ref default-branch) path current-branch #'octocat-file-switch-branch
-      (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir)))
-      (vui-button "[Browse tree]"
-        :no-decoration t
-        :face 'octocat-dimmed
-        :help-echo "RET: browse the repository's tree at this file"
-        :on-click (lambda () (octocat-tree-open repo ref path))))
+      (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir))))
      (vui-newline)
      (octocat-repo-vui--head-line repo ref path head-snap)
      (cond (notice
