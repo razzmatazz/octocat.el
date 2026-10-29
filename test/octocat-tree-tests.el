@@ -162,7 +162,7 @@ A refresh asks GitHub again, which never answers."
             (should (equal (buffer-name) "*owner/repo@dev:docs/GUIDE.md*"))
             (should (derived-mode-p 'octocat-file-mode))
             (should (string-match-p
-                     (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md\n\n"
+                     (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md   Preview  Code  Blame \n\n"
                              "Add the guide +abc1234 · .*  \\[3 commits\\] \n")
                      text))
             (should-not (string-match-p "reset" text))
@@ -201,6 +201,108 @@ A refresh asks GitHub again, which never answers."
             (octocat-toggle-markdown)
             (should (string-match-p "^# Guide$" (buffer-string))))
         (kill-buffer)))))
+
+(ert-deftest octocat-tree-test-file-cycle-view ()
+  "C-c C-v takes markdown from rendered to raw to blame and back.
+The top line has a tab for each view, the one shown plain."
+  (octocat-tree-tests--with-file-page
+   (cl-letf (((symbol-function 'octocat-power) (lambda () 'low)))
+    (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n\nText.\n")
+    (octocat-tree-tests--store
+     '(blame "owner/repo" "abc1234def" "docs/GUIDE.md")
+     (octocat-repo--parse-blame
+      (concat "{\"data\":{\"repository\":{\"object\":{\"blame\":{\"ranges\":["
+              "{\"startingLine\":1,\"endingLine\":3,\"commit\":{\"oid\":\"abc1234def\","
+              "\"messageHeadline\":\"Add the guide\",\"committedDate\":\"2026-10-01T10:00:00Z\","
+              "\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}}]}}}}}")))
+    (save-current-buffer
+      (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md")
+      (unwind-protect
+          (progn
+            (should (eq (key-binding (kbd "C-c C-v")) #'octocat-file-cycle-view))
+            (should (string-match-p "^Guide$" (buffer-string)))
+            (should (string-match-p ":/docs/GUIDE.md   Preview  Code  Blame $" (buffer-string)))
+            (goto-char (point-min))
+            (search-forward "Preview")
+            (should (eq (get-text-property (point) 'face) 'octocat-segment-current))
+            (octocat-file-cycle-view)
+            (should (string-match-p "^# Guide$" (buffer-string)))
+            (octocat-file-cycle-view)
+            (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+              (should (string-match-p "^Add the guide +.* │ 1 # Guide$" text))
+              (should (string-match-p "^ + │ 3 Text\\.$" text)))
+            (let (opened)
+              (cl-letf (((symbol-function 'octocat-commit-open)
+                         (lambda (repo sha) (push (list repo sha) opened))))
+                (goto-char (point-min))
+                (search-forward "Add the guide" nil t 2)
+                (call-interactively (key-binding (kbd "RET"))))
+              (should (equal opened '(("owner/repo" "abc1234def")))))
+            (goto-char (point-min))
+            (search-forward "Blame")
+            (should (eq (get-text-property (1- (point)) 'face) 'octocat-segment-current))
+            (octocat-file-cycle-view)
+            (should (string-match-p "^Guide$" (buffer-string))))
+        (kill-buffer))))))
+
+(ert-deftest octocat-tree-test-last-commit-text ()
+  "A tree entry is followed by its last commit's subject and, at the right, its age."
+  (let* ((commit (octocat-repo--history-commit
+                  (octocat-tree-tests--json
+                   "{\"oid\":\"abc\",\"messageHeadline\":\"Fix the build\",\"committedDate\":\"2026-10-01T10:00:00Z\",\"author\":null}")))
+         (text   (concat "src/" (octocat-tree--last-commit-text "src/" commit 60))))
+    (should (equal (string-width text) 60))
+    (should (string-match-p "\\`src/ +Fix the build +[0-9a-z ]+ago\\'" text))
+    (should (equal (string-match "Fix" text) 20))
+    (should (equal (octocat-tree--last-commit-text "src/" nil 60) ""))
+    ;; While it loads, grey bars stand where the subject and age go.
+    (let ((bars (concat "src/" (octocat-tree--last-commit-text "src/" 'loading 60))))
+      (should (equal (string-width bars) 60))
+      (should (eq (get-text-property 20 'face bars) 'octocat-skeleton))
+      (should (eq (get-text-property 59 'face bars) 'octocat-skeleton)))))
+
+(ert-deftest octocat-tree-test-blame-skeleton ()
+  "Before the blame lands the source shows, grey bars heading every few lines."
+  (let* ((text  (octocat-repo--blame-text "owner/repo" "a\nb\nc\nd\ne" nil))
+         (lines (split-string text "\n")))
+    (should (equal (length lines) 5))
+    (should (string-suffix-p "│ 1 a" (nth 0 lines)))
+    (should (eq (get-text-property 0 'face (nth 0 lines)) 'octocat-skeleton))
+    (should (string-prefix-p " " (nth 1 lines)))
+    (should (eq (get-text-property 0 'face (nth 4 lines)) 'octocat-skeleton))))
+
+(ert-deftest octocat-tree-test-blame-rule ()
+  "Each commit's run of lines but the last ends underlined, the margin as wide
+whatever the window."
+  (let* ((range (lambda (start end sha)
+                  (let ((h (make-hash-table :test #'equal))
+                        (c (make-hash-table :test #'equal)))
+                    (puthash "sha" sha c)
+                    (puthash "start" start h)
+                    (puthash "end" end h)
+                    (puthash "commit" c h)
+                    h)))
+         (text  (octocat-repo--blame-text
+                 "owner/repo" "a\nb\nc"
+                 (vector (funcall range 1 2 "a1") (funcall range 3 3 "b2"))))
+         (lines (split-string text "\n"))
+         (ruled (lambda (s)
+                  (let ((f (get-text-property 0 'face s)))
+                    (or (eq f 'octocat-blame-rule) (memq 'octocat-blame-rule (ensure-list f)))))))
+    (should-not (funcall ruled (nth 0 lines)))
+    (should (funcall ruled (nth 1 lines)))
+    (should-not (funcall ruled (nth 2 lines)))
+    (should (equal (string-search "│" (nth 0 lines)) (1+ octocat-repo--blame-width)))))
+
+(ert-deftest octocat-tree-test-parse-last-commits ()
+  "Each path gets the commit of its alias; one with no history is left out."
+  (let ((got (octocat-tree--parse-last-commits
+              (concat "{\"data\":{\"repository\":{\"object\":{"
+                      "\"e0\":{\"nodes\":[{\"oid\":\"a1\",\"messageHeadline\":\"One\"}]},"
+                      "\"e1\":{\"nodes\":[]}}}}}")
+              '("README.md" "gone"))))
+    (should (equal (gethash "sha" (gethash "README.md" got)) "a1"))
+    (should-not (gethash "gone" got))))
 
 (ert-deftest octocat-tree-test-image-file-page ()
   "An image file is shown as the image, or, where it cannot be, said to be one."

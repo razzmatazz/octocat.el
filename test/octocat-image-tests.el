@@ -201,7 +201,7 @@
         (octocat-image-show)
         ;; Asked twice, it is still one image loading.
         (octocat-image-show)
-        (should (equal (car mode-line-process) ":loading "))
+        (should (equal (car (last mode-line-process)) ":loading"))
         (octocat-image--fontify (point-min) (point-max))
         (should (equal (substring-no-properties (get-text-property (point) 'display))
                        "… [image: a]"))

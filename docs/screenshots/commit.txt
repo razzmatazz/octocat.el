@@ -1,4 +1,4 @@
-acme/rocket@3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f  [Browse files]
+acme/rocket@3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f  [Browse files]   Diff  Patch
 Author:     Sam Rivera <srivera@example.com> @srivera
 AuthorDate: Fri Oct 23 06:00:00 2026 +0000  (6 hours ago)
 Commit:     GitHub <noreply@github.com> @web-flow

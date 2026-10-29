@@ -273,13 +273,36 @@ Themes are plain files; there is no build step.
   "The docs/themes.org of acme/rocket: org, as some READMEs are.")
 
 (defconst octocat-screenshots--src
-  `[,(octocat-screenshots--tree-entry "src/build.rs" "blob" 8120)
-    ,(octocat-screenshots--tree-entry "src/cache.rs" "blob" 2304)
-    ,(octocat-screenshots--tree-entry "src/main.rs" "blob" 1802)
-    ,(octocat-screenshots--tree-entry "src/markdown.rs" "blob" 6410)
-    ,(octocat-screenshots--tree-entry "src/serve.rs" "blob" 3022)
-    ,(octocat-screenshots--tree-entry "src/template.rs" "blob" 5530)]
+  `[,(octocat-screenshots--tree-entry "build.rs" "blob" 8120)
+    ,(octocat-screenshots--tree-entry "cache.rs" "blob" 2304)
+    ,(octocat-screenshots--tree-entry "main.rs" "blob" 1802)
+    ,(octocat-screenshots--tree-entry "markdown.rs" "blob" 6410)
+    ,(octocat-screenshots--tree-entry "serve.rs" "blob" 3022)
+    ,(octocat-screenshots--tree-entry "template.rs" "blob" 5530)]
   "The entries of src/.")
+
+(defun octocat-screenshots--last-commits (&rest commits)
+  "Return the last commits of a directory's entries, in its order.
+COMMITS are indices into `octocat-screenshots--commits', one per entry."
+  `(:data (:repository
+           (:object ,(seq-mapcat (lambda (pair)
+                                   (list (intern (format ":e%d" (cdr pair)))
+                                         `(:nodes [,(octocat-screenshots--history-node
+                                                     (nth (car pair) octocat-screenshots--commits))])))
+                                 (seq-map-indexed #'cons commits))))))
+
+(defun octocat-screenshots--blame (&rest ranges)
+  "Return a file's blame of RANGES, each (START END COMMIT).
+COMMIT is an index into `octocat-screenshots--commits'."
+  `(:data (:repository
+           (:object
+            (:blame
+             (:ranges ,(vconcat
+                        (mapcar (pcase-lambda (`(,start ,end ,i))
+                                  `(:startingLine ,start :endingLine ,end
+                                    :commit ,(octocat-screenshots--history-node
+                                              (nth i octocat-screenshots--commits))))
+                                ranges))))))))
 
 (defun octocat-screenshots--rollup (state &optional success failure pending)
   "Return a commit's check rollup in STATE, of SUCCESS FAILURE PENDING runs."
@@ -957,6 +980,10 @@ FIELDS, a plist, override the rest."
        (:sha ,(octocat-screenshots--sha "root") :tree ,octocat-screenshots--root :truncated :false))
       (,(format "tree-dir-%s" (substring (octocat-screenshots--sha "src") 0 8)) ()
        (:sha ,(octocat-screenshots--sha "src") :tree ,octocat-screenshots--src :truncated :false))
+      ("tree-commits" ("p0=.github") ,(octocat-screenshots--last-commits 7 5 4 1 9 5 2 2 8 0))
+      ("tree-commits" ("p0=src/build.rs") ,(octocat-screenshots--last-commits 1 1 6 4 3 1))
+      ("blame" ("path=docs/guide.md")
+       ,(octocat-screenshots--blame '(1 5 5) '(6 6 2) '(7 9 7) '(10 18 9)))
       (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "README.md") 0 8)) ()
        ,(octocat-screenshots--base64 octocat-screenshots--readme))
 

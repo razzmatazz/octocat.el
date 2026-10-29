@@ -250,7 +250,7 @@ Off an entry, such as on the header, move left."
   ;; per-row keymaps, so only the global commands are bound here.
   (evil-define-key* 'normal octocat-commit-mode-map
     (kbd "C-c C-o") #'octocat-browse
-    (kbd "C-c C-v") #'octocat-toggle-markdown
+    (kbd "C-c C-v") #'octocat-commit-toggle-patch
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
@@ -333,7 +333,7 @@ Off an entry, such as on the header, move left."
     (kbd "C-c C-f") #'octocat-tree-find-file
     (kbd "C-c C-l") #'octocat-file-log-open
     (kbd "C-c C-b") #'octocat-file-switch-branch
-    (kbd "C-c C-v") #'octocat-toggle-markdown
+    (kbd "C-c C-v") #'octocat-file-cycle-view
     (kbd "q")       #'octocat-quit-window
     (kbd "gr")      #'octocat-vui-refresh)
   (evil-define-key* 'motion octocat-file-mode-map

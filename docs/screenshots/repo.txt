@@ -1,16 +1,16 @@
 acme/rocket  [main ▾]  Code  [Issues (5)]  [Pull requests (6)]  [Actions]
 
 Render footnotes in Markdown pages (#131)                       1a95462 · 2 hours ago  [342 commits]
-.github/
-docs/
-examples/
-src/
-.gitignore
-CONTRIBUTING.md
-Cargo.lock
-Cargo.toml
-LICENSE
-README.md
+.github/                         Release 0.9.0                                            1 week ago
+docs/                            Document the [build] section of rocket.toml              4 days ago
+examples/                        Fix broken links to pages with spaces in their names     3 days ago
+src/                             Cache parsed templates between builds (#128)            6 hours ago
+.gitignore                       Add a --drafts flag to `rocket build`                    1 week ago
+CONTRIBUTING.md                  Document the [build] section of rocket.toml              4 days ago
+Cargo.lock                       Bump toml from 0.8.12 to 0.8.19                           1 day ago
+Cargo.toml                       Bump toml from 0.8.12 to 0.8.19                           1 day ago
+LICENSE                          Sort the sitemap by date, newest first                   1 week ago
+README.md                        Render footnotes in Markdown pages (#131)               2 hours ago
 [Browse code]
 
 README  [Contributing]  [License]

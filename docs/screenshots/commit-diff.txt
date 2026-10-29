@@ -1,4 +1,4 @@
-acme/rocket@1a954628a960aaef81d7b2d4521929579f3541e6  [Browse files]
+acme/rocket@1a954628a960aaef81d7b2d4521929579f3541e6  [Browse files]   Diff  Patch
 Author:     Mei Chen <mchen@example.com> @mchen
 AuthorDate: Fri Oct 23 10:00:00 2026 +0000  (2 hours ago)
 Commit:     GitHub <noreply@github.com> @web-flow

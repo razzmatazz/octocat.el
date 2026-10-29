@@ -53,5 +53,28 @@
       (set-time-zone-rule nil))
     (should-not (octocat-commit--date commit "committer"))))
 
+(ert-deftest octocat-commit-test-patch-text ()
+  "A commit as a patch is as `git format-patch' writes it, binary files included."
+  (let* ((commit (json-parse-string
+                  (concat "{\"sha\":\"abc123\",\"commit\":{\"message\":\"Fix it\\n\\nWhy.\","
+                          "\"author\":{\"name\":\"Ann\",\"email\":\"a@x\","
+                          "\"date\":\"2026-10-01T10:00:00Z\"}},\"files\":["
+                          "{\"filename\":\"a.el\",\"status\":\"modified\","
+                          "\"patch\":\"@@ -1 +1 @@\\n-old\\n+new\"},"
+                          "{\"filename\":\"new.png\",\"status\":\"added\"}]}")))
+         (text   (substring-no-properties (octocat-commit--patch-text commit))))
+    (should (equal text (concat "From abc123 Mon Sep 17 00:00:00 2001\n"
+                                "From: Ann <a@x>\n"
+                                "Date: Thu, 01 Oct 2026 10:00:00 +0000\n"
+                                "Subject: [PATCH] Fix it\n\n"
+                                "Why.\n"
+                                "---\n\n"
+                                "diff --git a/a.el b/a.el\n"
+                                "--- a/a.el\n+++ b/a.el\n"
+                                "@@ -1 +1 @@\n-old\n+new\n"
+                                "diff --git a/new.png b/new.png\n"
+                                "new file mode 100644\n"
+                                "Binary files /dev/null and b/new.png differ")))))
+
 (provide 'octocat-commit-tests)
 ;;; octocat-commit-tests.el ends here

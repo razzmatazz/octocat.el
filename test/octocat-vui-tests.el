@@ -131,9 +131,9 @@
     (let ((buf (current-buffer)))
       (octocat-vui--add-loading buf 1)
       (octocat-vui--add-loading buf 1)
-      (should (equal mode-line-process '(":loading " octocat-vui--spinner)))
+      (should (equal mode-line-process '(" " octocat-vui--spinner ":loading")))
       (octocat-vui--add-loading buf -1)
-      (should (equal mode-line-process '(":loading " octocat-vui--spinner)))
+      (should (equal mode-line-process '(" " octocat-vui--spinner ":loading")))
       (octocat-vui--add-loading buf -1)
       (should (null mode-line-process)))))
 
@@ -375,6 +375,20 @@ unsubscribes it."
     (should (= (octocat-vui--unfold-next 0 0 100) 100)))
   (let ((octocat--power (cons (float-time) 'mains)))
     (should (< (octocat-vui--unfold-next 0 0 100) 100))))
+
+(ert-deftest octocat-vui-test-slide-long ()
+  "A column longer than `octocat-vui-slide-max-spans' shows at once."
+  (let ((octocat-vui-slide-max-spans 3)
+        done)
+    (with-temp-buffer
+      (dotimes (_ 4)
+        (insert (propertize "abc" 'octocat-test t) " x\n"))
+      (cl-letf (((symbol-function 'octocat-power) (lambda () 'high)))
+        (octocat-vui-slide (current-buffer) 'octocat-test 'in
+                           (lambda () (setq done t))))
+      (should done)
+      (should-not octocat-vui--slide-timer)
+      (should-not (text-property-not-all (point-min) (point-max) 'display nil)))))
 
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here

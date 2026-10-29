@@ -64,6 +64,9 @@
 (declare-function octocat-pr-list                  "octocat"          (&optional repo))
 (declare-function octocat-actions                  "octocat"          (&optional repo))
 (declare-function octocat-user-open                "octocat-user"     (login))
+(declare-function octocat-file-show-view           "octocat-tree"     (view))
+(declare-function octocat-file--views              "octocat-tree"     (path))
+(declare-function octocat-file--view               "octocat-tree"     (path raw blame))
 
 
 ;;;; User options
@@ -374,6 +377,53 @@ branch; PATH nil is the root.  Calls CALLBACK with the commit from
 
 (octocat-sync-define-resource repo-head (repo ref path)
   :fetch (lambda (done) (octocat-repo--fetch-head repo ref path done)))
+
+(defconst octocat-repo--blame-query
+  (concat "query($owner:String!,$name:String!,$expr:String!,$path:String!){"
+          "repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
+          "blame(path:$path){ranges{startingLine endingLine commit{oid messageHeadline "
+          "authoredDate committedDate author{name email user{login}}}}}}}}}")
+  "GraphQL query behind `octocat-repo--fetch-blame'.")
+
+(defun octocat-repo--parse-blame (json-string)
+  "Parse the response JSON-STRING of `octocat-repo--blame-query'.
+Return its ranges, a vector of hash-tables of \"start\" and \"end\",
+the first and last line, and \"commit\", the commit that last changed
+them, as `octocat-repo--history-commit' shapes it."
+  (let* ((repo  (gethash "repository" (gethash "data" (json-parse-string json-string))))
+         (obj   (and (hash-table-p repo) (gethash "object" repo)))
+         (blame (and (hash-table-p obj) (gethash "blame" obj))))
+    (unless (hash-table-p blame)
+      (error "No such commit"))
+    (vconcat
+     (mapcar (lambda (r)
+               (let ((h (make-hash-table :test #'equal)))
+                 (puthash "start" (gethash "startingLine" r) h)
+                 (puthash "end" (gethash "endingLine" r) h)
+                 (puthash "commit" (octocat-repo--history-commit (gethash "commit" r)) h)
+                 h))
+             (gethash "ranges" blame)))))
+
+(defun octocat-repo--fetch-blame (repo commit path callback)
+  "Fetch the blame of file PATH of REPO at COMMIT.
+Calls CALLBACK with the ranges of `octocat-repo--parse-blame', or a
+cons \\=(error . MSG)."
+  (let ((parts (split-string repo "/")))
+    (octocat--run-gh
+     "blame"
+     (list "api" "graphql"
+           "-f" (concat "query=" octocat-repo--blame-query)
+           "-f" (concat "owner=" (car parts))
+           "-f" (concat "name=" (cadr parts))
+           "-f" (concat "expr=" commit)
+           "-f" (concat "path=" path))
+     #'octocat-repo--parse-blame
+     callback)))
+
+(octocat-sync-define-resource blame (repo commit path)
+  ;; COMMIT names the history, so what it says never changes.
+  :max-age octocat-tree--fixed-max-age
+  :fetch (lambda (done) (octocat-repo--fetch-blame repo commit path done)))
 
 (defconst octocat-repo--doc-kinds
   '((readme   "README"          "readme")
@@ -1396,6 +1446,7 @@ one summary resource and the rest from the root's `repo-head' at REF."
      (if tree
          (vui-component 'octocat-tree--dir
            :key shown :repo repo :branch (or shown default-branch "HEAD") :sha tree
+           :commit (gethash "sha" (plist-get head-snap :data))
            :on-dir (lambda (dir) (octocat-tree-open repo ref dir))
            :on-browse (lambda () (octocat-tree-open repo ref)))
        (vui-text (octocat-tree--skeleton)))
@@ -1441,7 +1492,7 @@ branch."
          (vui-component 'octocat-tree--subtree
            :key (list shown reveal)
            :repo repo :branch (or shown default-branch "HEAD")
-           :sha (gethash "tree" root)
+           :sha (gethash "tree" root) :commit (gethash "sha" root)
            :depth 0 :path "" :reveal reveal :focus focus)
        (vui-text (octocat-tree--skeleton))))))
 
@@ -1477,6 +1528,114 @@ HEAD is PATH's `repo-head'.  A file that is not text, or is larger than
              (format "A file of %s, too large to show at once; C-c C-o opens it on GitHub."
                      (file-size-human-readable size)))))))
 
+(defun octocat-repo--blame-margin (commit width)
+  "Return the blame margin of COMMIT, WIDTH wide.
+That is its subject, cut to fit, then its age at the right, as GitHub's
+blame shows it, RET opening the commit."
+  (let* ((age     (let ((ts (octocat--commit-date commit)))
+                    (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
+         (subject (octocat-repo-vui--subject commit))
+         (shown   (truncate-string-to-width subject (max 1 (- width (string-width age) 2))
+                                            nil nil "…")))
+    (concat (propertize shown 'mouse-face 'highlight 'help-echo "RET: view commit"
+                        'octocat-full-text (unless (equal shown subject) subject))
+            (make-string (max 2 (- width (string-width shown) (string-width age))) ?\s)
+            (propertize age 'face 'octocat-dimmed))))
+
+(defconst octocat-repo--blame-width 32
+  "The columns of the blame margin.
+It is fixed, not a share of the window, so resizing it does not reflow
+the blame.")
+
+(defun octocat-repo--blame-text (repo text ranges)
+  "Return TEXT, a file of REPO, with the blame RANGES in a margin.
+RANGES are as `octocat-repo--parse-blame' gives them.  The first line
+of each range is headed by its commit, see `octocat-repo--blame-margin',
+in `octocat-repo--blame-width' columns; every line is numbered, and the
+last of a range is underlined to the window's edge, parting it from the
+next.  RET on a range's margin opens its commit, and \\[octocat-browse]
+browses it.  RANGES nil, while they load, puts grey bars at the head of
+every few lines instead."
+  (let* ((lines   (vconcat (split-string text "\n")))
+         (num-w   (length (number-to-string (length lines))))
+         (margin  octocat-repo--blame-width)
+         (blank   (make-string margin ?\s))
+         (sep     (propertize " │ " 'face 'octocat-dimmed))
+         ;; The blame column, all but the code, slides in and out.
+         (line    (lambda (n head)
+                    (concat (propertize
+                             (concat head sep
+                                     (propertize (string-pad (number-to-string n) num-w nil t)
+                                                 'face 'octocat-dimmed)
+                                     " ")
+                             'octocat-blame t)
+                            (aref lines (1- n)))))
+         (out     nil))
+    (if (null ranges)
+        (dotimes (i (length lines))
+          (push (funcall line (1+ i)
+                         (if (/= (% i 4) 0)
+                             blank
+                           (let ((bar (- margin 14 (% (* i 3) 9))))
+                             (concat (octocat-vui-skeleton-bar bar)
+                                     (make-string (- margin bar 10) ?\s)
+                                     (octocat-vui-skeleton-bar 10)))))
+                out))
+      (seq-do
+       (lambda (range)
+         (let* ((commit (gethash "commit" range))
+                (sha    (or (gethash "sha" commit) ""))
+                (last   (min (gethash "end" range) (length lines)))
+                (map    (let ((m (make-sparse-keymap)))
+                          (define-key m (kbd "RET")
+                                      (lambda () (interactive)
+                                        (octocat-repo-vui--open-commit repo commit)))
+                          m)))
+           (cl-loop for n from (gethash "start" range) to (gethash "end" range)
+                    while (<= n (length lines))
+                    do (let ((s (funcall
+                                 line n
+                                 (propertize (if (= n (gethash "start" range))
+                                                 (octocat-repo--blame-margin commit margin)
+                                               blank)
+                                             'keymap map
+                                             'octocat-url (octocat--web-url "%s/commit/%s"
+                                                                            repo sha)))))
+                         (when (and (= n last) (< n (length lines)))
+                           ;; Short of the edge, which would mark the line cut.
+                           (setq s (concat s (propertize " " 'display
+                                                         '(space :align-to (- right 1)))))
+                           (add-face-text-property 0 (length s) 'octocat-blame-rule t s))
+                         (push s out)))))
+       ranges))
+    (string-join (nreverse out) "\n")))
+
+(defun octocat-repo--source-text (path content)
+  "Return file PATH's CONTENT highlighted, its long lines clipped."
+  (string-remove-suffix
+   "\n" (octocat--clip-lines (octocat-tree--fontify path (decode-coding-string content 'utf-8))
+                             octocat--max-line-length)))
+
+(vui-defcomponent octocat-repo-vui--file-blame (repo path blob commit)
+  "The blame of file PATH, BLOB, of REPO at COMMIT: its source, highlighted,
+each line beside the commit that last changed it, as GitHub's Blame."
+  :render
+  (let* ((file  (octocat-vui-use-resource (list 'blob repo blob) nil))
+         (snap  (octocat-vui-use-resource (list 'blame repo commit path) nil))
+         ;; The source shows at once, grey bars beside it until the blame lands.
+         (text  (vui-use-memo ((plist-get file :data) (plist-get snap :data))
+                  (and (plist-get file :data)
+                       (octocat-repo--blame-text
+                        repo (octocat-repo--source-text
+                              path (octocat-tree--blob-content (plist-get file :data)))
+                        (plist-get snap :data))))))
+    (cond ((eq (octocat-vui-snapshot-status file) 'error)
+           (vui-text (octocat-vui-error-text file) :face 'error))
+          ((eq (octocat-vui-snapshot-status snap) 'error)
+           (vui-text (octocat-vui-error-text snap) :face 'error))
+          (text (vui-text text))
+          (t (vui-text (octocat-tree--skeleton))))))
+
 (vui-defcomponent octocat-repo-vui--file-content (repo ref path blob raw)
   "The content of file PATH, BLOB, of REPO at REF.
 RAW shows markdown as is."
@@ -1494,15 +1653,35 @@ RAW shows markdown as is."
       ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
       (_        (vui-text (string-remove-suffix "\n" (or text "")))))))
 
-(vui-defcomponent octocat-repo-vui--file-page (repo ref path raw tick)
+(defun octocat-repo-vui--view-tabs (path raw blame)
+  "Return the views of file PATH as a pill, as GitHub's, or nil.
+The view shown, of RAW and BLAME, is filled in; the others show
+theirs, their hint naming the key that cycles them.  See
+`octocat-file--views'."
+  (when-let* ((views (octocat-file--views path)))
+    (let ((shown (octocat-file--view path raw blame))
+          (key   (substitute-command-keys "\\[octocat-file-cycle-view]")))
+      (octocat-vui-segmented
+       (mapcar (lambda (view)
+                 (let ((label (capitalize (symbol-name view))))
+                   (list label (eq view shown)
+                         (propertize (format "RET: show the %s  %s: next view"
+                                             (downcase label) key)
+                                     'octocat-key-help t)
+                         (lambda () (octocat-file-show-view view)))))
+               views)))))
+
+(vui-defcomponent octocat-repo-vui--file-page (repo ref path raw blame tick)
   "Root component of the file viewer: file PATH of REPO at REF.
 REF is a branch, tag or SHA, nil for the default branch.  Its top is
 the tree browser's, so one reads on from the other: the picker of REF
 and PATH, its directories RET-able, then the last commit of PATH,
 underlined above the content.  Picking another ref opens the file at it
 in its own buffer, see `octocat-file-switch-branch'.
-RAW shows markdown as is.  A file too large to show unasked, see
-`octocat-repo--file-notice', has a button to show it ANYWAY."
+RAW shows markdown as is, and BLAME the source beside the commits that
+last changed it, see `octocat-file-cycle-view'.  A file too large to
+show unasked, see `octocat-repo--file-notice', has a button to show it
+ANYWAY."
   :state ((anyway nil))
   :render
   (let* ((current-branch (plist-get (octocat--head-info) :branch))
@@ -1517,7 +1696,8 @@ RAW shows markdown as is.  A file too large to show unasked, see
     (vui-vstack
      (octocat-repo-vui--top-line
       repo (or ref default-branch) path current-branch #'octocat-file-switch-branch
-      (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir))))
+      (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir)))
+      (octocat-repo-vui--view-tabs path raw blame))
      (vui-newline)
      (octocat-repo-vui--head-line repo ref path head-snap)
      (cond (notice
@@ -1529,6 +1709,9 @@ RAW shows markdown as is.  A file too large to show unasked, see
                              :no-decoration t
                              :help-echo "RET: fetch the file and show it as plain text"
                              :on-click (lambda () (vui-set-state :anyway t)))))))
+           ((and blob blame)
+            (vui-component 'octocat-repo-vui--file-blame
+              :key blob :repo repo :path path :blob blob :commit (gethash "sha" head)))
            (blob
             (vui-component 'octocat-repo-vui--file-content
               :key blob :repo repo :ref (or ref default-branch "HEAD")

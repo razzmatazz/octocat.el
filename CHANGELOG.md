@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* The file page shows the blame; a Preview | Code | Blame switch, or `C-c C-v`, picks the view
+* The commit page shows the commit as a patch: a Diff | Patch switch on its top line, or `C-c C-v`
+* The tree and repo page show each entry's last commit and its age, as GitHub does
+* The mode line's spinner comes before `:loading`, so a narrow one still shows it
 * Images show at their own size, not enlarged and blurred by `image-scaling-factor`
 * Markdown bold, italic and strikethrough can span the lines of a paragraph
 * A list whose last item has indented lines keeps the blank line after it

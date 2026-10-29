@@ -1,0 +1,20 @@
+acme/rocket  [main ▾]:/docs/guide.md   Preview  Code  Blame
+
+Bump toml from 0.8.12 to 0.8.19                                    a625406 · 1 day ago  [12 commits]
+Document the [build…  4 days ago │  1 # Writing pages
+                                 │  2
+                                 │  3 A page is a Markdown file in `content/`, with a TOML header between
+                                 │  4 `+++` lines that names its title and template.
+                                 │  5
+Bump toml from 0.8.1…  1 day ago │  6 ![A page and the site it builds](images/page.png)
+Release 0.9.0         1 week ago │  7
+                                 │  8 `rocket serve` rebuilds a page as soon as you save it.  The header's
+                                 │  9 settings are in [the configuration](configuration.md).
+Add a --drafts flag…  1 week ago │ 10
+                                 │ 11 <table>
+                                 │ 12   <tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+                                 │ 13   <tr><td><code>title</code></td><td>file name</td><td>The page's title</td></tr>
+                                 │ 14   <tr><td><code>template</code></td><td><code>page.html</code></td><td>How it is laid out</td></tr>
+                                 │ 15   <tr><td colspan="3"><b>Optional</b></td></tr>
+                                 │ 16   <tr><td><code>draft</code></td><td><code>false</code></td><td>Left out of the build</td></tr>
+                                 │ 17 </table>

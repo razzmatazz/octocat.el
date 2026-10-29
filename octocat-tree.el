@@ -69,6 +69,8 @@
 (declare-function octocat-commit-list-open "octocat-repo" (repo &optional ref path))
 (declare-function octocat-user-open "octocat-user" (login))
 (declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional linked))
+(declare-function octocat-repo--history-commit "octocat-repo" (node))
+(declare-function octocat-repo--format "octocat-repo" (name))
 
 
 ;;;; User options
@@ -93,6 +95,9 @@ The rest expands on RET.  Nil never folds."
 (defvar-local octocat-tree--file-branch nil
   "Branch/ref name for the file being displayed, \"HEAD\" for the default.")
 
+(defvar-local octocat-tree--file-blame nil
+  "Non-nil when the file viewer shows the blame, see `octocat-file-cycle-view'.")
+
 
 ;;;; Mode: octocat-file-mode
 
@@ -103,7 +108,7 @@ The rest expands on RET.  Nil never folds."
     (define-key map (kbd "C-c C-f") #'octocat-tree-find-file)
     (define-key map (kbd "C-c C-l") #'octocat-file-log-open)
     (define-key map (kbd "C-c C-b") #'octocat-file-switch-branch)
-    (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
+    (define-key map (kbd "C-c C-v") #'octocat-file-cycle-view)
     (define-key map (kbd "gr")      #'octocat-vui-refresh)
     map)
   "Keymap for `octocat-file-mode'.")
@@ -202,6 +207,72 @@ Calls CALLBACK with the SHA, or a cons (error . MSG)."
      callback)))
 
 
+;;;; Last commits
+
+(defconst octocat-tree--last-commits-chunk 50
+  "Entries whose last commit one query asks for.
+Each walks the history on GitHub's side, so a large directory is split.")
+
+(defun octocat-tree--last-commits-query (n)
+  "Return the GraphQL query of the last commits of N paths, $p0 to $pN-1.
+Each is history alias eI, one commit long."
+  (concat "query($owner:String!,$name:String!,$expr:String!"
+          (mapconcat (lambda (i) (format ",$p%d:String!" i)) (number-sequence 0 (1- n)) "")
+          "){repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
+          (mapconcat (lambda (i)
+                       (format "e%d:history(first:1,path:$p%d){nodes{oid messageHeadline \
+authoredDate committedDate author{name email user{login}}}}" i i))
+                     (number-sequence 0 (1- n)) " ")
+          "}}}}"))
+
+(defun octocat-tree--parse-last-commits (json paths)
+  "Return a hash-table of each of PATHS to its last commit, from JSON.
+JSON answers `octocat-tree--last-commits-query' for PATHS.  A commit is
+shaped by `octocat-repo--history-commit'; a path with none is left out."
+  (let* ((repo (gethash "repository" (gethash "data" (json-parse-string json))))
+         (obj  (and (hash-table-p repo) (gethash "object" repo)))
+         (out  (make-hash-table :test #'equal)))
+    (unless (hash-table-p obj)
+      (error "No such commit"))
+    (seq-do-indexed
+     (lambda (path i)
+       (let* ((hist  (gethash (format "e%d" i) obj))
+              (nodes (and (hash-table-p hist) (gethash "nodes" hist))))
+         (when (> (length nodes) 0)
+           (puthash path (octocat-repo--history-commit (aref nodes 0)) out))))
+     paths)
+    out))
+
+(defun octocat-tree--fetch-last-commits (repo commit paths callback)
+  "Fetch the last commit of each of PATHS of REPO, from COMMIT back.
+Calls CALLBACK once with a hash-table of path to commit, see
+`octocat-tree--parse-last-commits', or a cons (error . MSG)."
+  (let* ((parts  (split-string repo "/"))
+         (chunks (seq-partition paths octocat-tree--last-commits-chunk))
+         (left   (length chunks))
+         (out    (make-hash-table :test #'equal))
+         failed)
+    (if (null chunks)
+        (funcall callback out)
+      (dolist (chunk chunks)
+        (octocat--run-gh
+         "tree-commits"
+         (append (list "api" "graphql"
+                       "-f" (concat "query=" (octocat-tree--last-commits-query (length chunk)))
+                       "-f" (concat "owner=" (car parts))
+                       "-f" (concat "name=" (cadr parts))
+                       "-f" (concat "expr=" commit))
+                 (seq-mapcat (lambda (i) (list "-f" (format "p%d=%s" i (nth i chunk))))
+                             (number-sequence 0 (1- (length chunk)))))
+         (lambda (json) (octocat-tree--parse-last-commits json chunk))
+         (lambda (r)
+           (if (eq (car-safe r) 'error)
+               (setq failed r)
+             (maphash (lambda (k v) (puthash k v out)) r))
+           (when (zerop (cl-decf left))
+             (funcall callback (or failed out)))))))))
+
+
 ;;;; Sync resources
 ;;
 ;; Directory listings and file contents are named by tree and blob SHA,
@@ -229,6 +300,24 @@ Calls CALLBACK with the SHA, or a cons (error . MSG)."
                   (funcall done (if (eq (car-safe r) 'error)
                                     r
                                   (progn (puthash "base64" r h) h)))))))))
+
+(octocat-sync-define-resource tree-commits (repo commit dir sha)
+  ;; COMMIT names the history, so what it says never changes.
+  :max-age octocat-tree--fixed-max-age
+  :fetch (lambda (done)
+           ;; No COMMIT yet: the page asks before it knows it.
+           (if (null commit)
+               (funcall done (make-hash-table :test #'equal))
+             (octocat-sync-get
+              (list 'tree-dir repo sha)
+              (lambda (entries)
+                (if (eq (car-safe entries) 'error)
+                    (funcall done entries)
+                  (octocat-tree--fetch-last-commits
+                   repo commit
+                   (mapcar (lambda (e) (octocat-tree--join dir (gethash "path" e)))
+                           entries)
+                   done)))))))
 
 (octocat-sync-define-resource tree-files (repo sha)
   :max-age octocat-tree--fixed-max-age
@@ -285,13 +374,49 @@ via `auto-mode-alist'."
 
 ;;;; Rendering helpers
 
-(defun octocat-tree--entry-line (indent name face type entry path activate)
+(defun octocat-tree--last-commit-text (label commit width)
+  "Return what follows LABEL, a tree line's text, to show COMMIT, or \"\".
+COMMIT is the last that touched the entry, as GitHub's tree shows it:
+its subject from a third of WIDTH on, cut to fit, and its age at the
+right.  While it loads, COMMIT is `loading' and grey bars stand in."
+  (cond
+   ((eq commit 'loading)
+    (let* ((col  (max (+ (string-width label) 2) (min 40 (/ width 3))))
+           ;; Of the name's length, so the bars are not all alike.
+           (bar  (min (- width col 14) (+ 18 (* 7 (% (length label) 4)))))
+           (age  10))
+      (if (< bar 8)
+          ""
+        (concat (make-string (- col (string-width label)) ?\s)
+                (octocat-vui-skeleton-bar bar)
+                (make-string (- width col bar age) ?\s)
+                (octocat-vui-skeleton-bar age)))))
+   ((not (hash-table-p commit)) "")
+   (t
+    (let* ((age     (let ((ts (octocat--commit-date commit)))
+                      (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
+           (subject (car (split-string (or (gethash "message" (gethash "commit" commit)) "")
+                                       "\n")))
+           (col     (max (+ (string-width label) 2) (min 40 (/ width 3))))
+           (room    (- width col 2 (string-width age)))
+           (shown   (if (< room 8) ""
+                      (truncate-string-to-width subject room nil nil "…"))))
+      (concat (make-string (- col (string-width label)) ?\s)
+              (propertize shown 'face 'octocat-dimmed
+                          'octocat-full-text (unless (equal shown subject) subject))
+              (make-string (max 2 (- width col (string-width shown) (string-width age))) ?\s)
+              (propertize age 'face 'octocat-dimmed))))))
+
+(defun octocat-tree--entry-line (indent name face type entry path activate
+                                        &optional commit width)
   "Return one tree line as a vnode (no trailing newline).
 INDENT is a string of leading spaces.  NAME is the file/dir name, with
 any glyph before it, drawn in FACE.  TYPE is \\='dir or \\='file.
 ENTRY is the API hash-table.  PATH is the entry's full repository path:
 the API's own \"path\" field is only the name within its directory.
-ACTIVATE is a zero-argument function run by RET on the line.
+ACTIVATE is a zero-argument function run by RET on the line.  COMMIT,
+the last that touched it or `loading', follows it to fit WIDTH, see
+`octocat-tree--last-commit-text'.
 
 The line is not a button, so TAB does not stop on every entry: in a
 long listing, walking the page's buttons would be walking its files.
@@ -313,7 +438,9 @@ keymaps."
                                  (concat indent
                                          (propertize name
                                                      'face face 'mouse-face 'highlight
-                                                     'help-echo help))
+                                                     'help-echo help)
+                                         (octocat-tree--last-commit-text
+                                          (concat indent name) commit (or width 0)))
                                  props)))))
 
 
@@ -361,8 +488,26 @@ A hook: call it during render."
         (run-at-time 0 nil #'octocat-tree--jump-to buf focus))
       nil)))
 
-(vui-defcomponent octocat-tree--dir (repo branch sha on-dir on-browse)
+(defun octocat-tree--use-last-commits (repo commit dir sha)
+  "Return the last commits of the entries of DIR, tree SHA, of REPO.
+A hash-table of path to commit, from COMMIT back, or `loading' while
+it loads; read it with `octocat-tree--last-of'.  Empty when COMMIT is
+nil or the fetch failed.  Pass COMMIT only once the listing is shown:
+the fetch reads it from the store.  A hook: call it during render."
+  (let* ((snap (octocat-vui-use-resource (list 'tree-commits repo commit dir sha) nil))
+         (data (plist-get snap :data)))
+    (cond ((hash-table-p data) data)
+          ((and commit (eq (octocat-vui-snapshot-status snap) 'pending)) 'loading)
+          (t (make-hash-table :test #'equal)))))
+
+(defun octocat-tree--last-of (last path)
+  "Return the last commit of PATH in LAST, of `octocat-tree--use-last-commits'.
+That is `loading' while LAST is."
+  (if (hash-table-p last) (gethash path last) last))
+
+(vui-defcomponent octocat-tree--dir (repo branch sha commit on-dir on-browse)
   "The root's entries, its tree SHA of REPO at BRANCH, as GitHub lists them.
+Each shows the last commit that touched it, from COMMIT back.
 RET on a directory calls ON-DIR with its path; on a file it opens it.
 Only the first `octocat-tree-entries' show, so the README below is near;
 a Browse code button after them, saying how many more there are, calls
@@ -371,7 +516,9 @@ ON-BROWSE, for the whole tree."
   (let* ((result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
          (entries (octocat-tree--sorted-entries (plist-get result :data)))
          (shown   (if octocat-tree-entries (seq-take entries octocat-tree-entries) entries))
-         (more    (- (length entries) (length shown))))
+         (more    (- (length entries) (length shown)))
+         (last    (octocat-tree--use-last-commits repo (and entries commit) "" sha))
+         (width   (octocat-vui-window-width)))
     (pcase (octocat-vui-snapshot-status result)
       ('pending (vui-text (octocat-tree--skeleton)))
       ('error   (vui-text (propertize (octocat-vui-error-text result) 'face 'error)))
@@ -384,11 +531,13 @@ ON-BROWSE, for the whole tree."
            (let ((name (gethash "path" entry)))
              (if (equal (gethash "type" entry) "tree")
                  (octocat-tree--entry-line "" (concat name "/") 'octocat-branch 'dir entry name
-                                           (lambda () (funcall on-dir name)))
+                                           (lambda () (funcall on-dir name))
+                                           (octocat-tree--last-of last name) width)
                (octocat-tree--entry-line "" name 'default 'file entry name
                                          (lambda ()
                                            (octocat-tree--open-file-by-path
-                                            repo branch name))))))
+                                            repo branch name))
+                                         (octocat-tree--last-of last name) width))))
          (lambda (entry) (gethash "path" entry)))
         (vui-button (if (> more 0)
                         (format "[Browse code (%d more %s)]" more (if (= more 1) "entry" "entries"))
@@ -399,9 +548,10 @@ ON-BROWSE, for the whole tree."
           :on-click on-browse))))))
 
 (vui-defcomponent octocat-tree--subtree
-    (repo branch sha depth path reveal focus)
+    (repo branch sha commit depth path reveal focus)
   "The entries of directory PATH, tree SHA, at nesting DEPTH of the tree.
-They are of REPO at BRANCH.  Directories on the way to REVEAL start
+They are of REPO at BRANCH, each with the last commit that touched it,
+from COMMIT back.  Directories on the way to REVEAL start
 expanded.  RET on a directory only toggles it, so the rest of the page
 stays put; on a file it opens it.  Point moves to FOCUS, an entry's
 path, once it is listed.  Unlike the root's listing it does not fold:
@@ -409,7 +559,8 @@ it is for browsing."
   :render
   (let* ((indent  (make-string (* depth 2) ?\s))
          (result  (octocat-vui-use-resource (list 'tree-dir repo sha) nil))
-         (entries (octocat-tree--sorted-entries (plist-get result :data))))
+         (entries (octocat-tree--sorted-entries (plist-get result :data)))
+         (last    (octocat-tree--use-last-commits repo (and entries commit) path sha)))
     (octocat-tree--use-focus
      focus (mapcar (lambda (e) (octocat-tree--join path (gethash "path" e))) entries))
     (pcase (octocat-vui-snapshot-status result)
@@ -421,14 +572,17 @@ it is for browsing."
            (vui-list entries
                      (lambda (entry)
                        (vui-component 'octocat-tree--node
-                         :repo repo :branch branch :entry entry :depth depth
-                         :parent path :reveal reveal :focus focus))
+                         :repo repo :branch branch :entry entry :commit commit
+                         :last (octocat-tree--last-of
+                                last (octocat-tree--join path (gethash "path" entry)))
+                         :depth depth :parent path :reveal reveal :focus focus))
                      (lambda (entry) (gethash "path" entry))))))))
 
 (vui-defcomponent octocat-tree--node
-    (repo branch entry depth parent reveal focus)
+    (repo branch entry commit last depth parent reveal focus)
   "One tree ENTRY (hash-table) at nesting DEPTH, inside directory PARENT.
-The other arguments are as for `octocat-tree--subtree'."
+LAST is the last commit that touched it, `loading' while it loads.  The other
+arguments are as for `octocat-tree--subtree'."
   :state ((expanded (octocat-tree--reveals-p
                      (octocat-tree--join parent (or (gethash "path" entry) ""))
                      reveal)))
@@ -441,25 +595,28 @@ The other arguments are as for `octocat-tree--subtree'."
          (name   (or (gethash "path" entry) ""))
          (path   (octocat-tree--join parent name))
          (sha    (or (gethash "sha" entry) ""))
-         (indent (make-string (* depth 2) ?\s)))
+         (indent (make-string (* depth 2) ?\s))
+         (width  (octocat-vui-window-width)))
     (if (equal (gethash "type" entry) "tree")
         (vui-fragment
          (octocat-tree--entry-line
           indent (concat (if expanded "▾ " "▸ ") name "/")
           'octocat-branch 'dir entry path
           (vui-with-async-context
-           (vui-set-state :expanded (lambda (old) (not old)))))
+           (vui-set-state :expanded (lambda (old) (not old))))
+          last width)
          (when expanded
            (vui-fragment
             (vui-newline)
             (vui-component 'octocat-tree--subtree
-              :repo repo :branch branch :sha sha :depth (1+ depth)
+              :repo repo :branch branch :sha sha :commit commit :depth (1+ depth)
               :path path :reveal reveal :focus focus))))
       ;; Two spaces stand for "▸ ", so names line up with directories'.
       (octocat-tree--entry-line
        indent (concat "  " name) 'default
        'file entry path
-       (lambda () (octocat-tree--open-file-by-path repo branch path))))))
+       (lambda () (octocat-tree--open-file-by-path repo branch path))
+       last width))))
 
 (defun octocat-tree--skeleton (&optional indent)
   "Return grey bars shaped like a few tree entries, each after INDENT."
@@ -610,7 +767,57 @@ TYPE is `file' or `dir'."
    (list :repo octocat-tree--file-repo
          :ref (unless (equal octocat-tree--file-branch "HEAD") octocat-tree--file-branch)
          :path octocat-tree--file-path
-         :raw octocat--markdown-raw)))
+         :raw octocat--markdown-raw
+         :blame octocat-tree--file-blame)))
+
+(defun octocat-file--views (path)
+  "Return the views of file PATH, in the order `octocat-file-cycle-view' takes.
+They are GitHub's: `preview', for markdown and org, `code' and `blame'.
+An image has none."
+  (unless (octocat--image-file-p path)
+    (if (octocat-repo--format path) '(preview code blame) '(code blame))))
+
+(defun octocat-file--view (path raw blame)
+  "Return the view of file PATH shown with RAW and BLAME.
+It is one of `octocat-file--views'."
+  (cond (blame 'blame)
+        ((and (not raw) (octocat-repo--format path)) 'preview)
+        (t 'code)))
+
+(defun octocat-file-show-view (view)
+  "Show the file in VIEW, one of `octocat-file--views'.
+The blame slides in from the left edge, and back out of it."
+  (unless (and (derived-mode-p 'octocat-file-mode) octocat-tree--file-path)
+    (user-error "Octocat: Not in a file viewer buffer"))
+  (let ((buf  (current-buffer))
+        (show (lambda ()
+                (setq octocat-tree--file-blame (eq view 'blame)
+                      octocat--markdown-raw (eq view 'code))
+                (octocat-vui-update-page :raw octocat--markdown-raw
+                                         :blame octocat-tree--file-blame))))
+    (cond ((eq view (octocat-file--view octocat-tree--file-path octocat--markdown-raw
+                                        octocat-tree--file-blame)))
+          (octocat-tree--file-blame
+           (octocat-vui-slide buf 'octocat-blame 'out show))
+          (t (funcall show)
+             (when (eq view 'blame)
+               (octocat-vui-slide buf 'octocat-blame 'in))))))
+
+(defun octocat-file-cycle-view ()
+  "Show the file the next way, as GitHub's Preview, Code and Blame.
+Markdown and org go from rendered to raw to blame; other files from
+their source to blame.  The blame shows each line beside the commit
+that last changed it."
+  (interactive)
+  (unless (and (derived-mode-p 'octocat-file-mode) octocat-tree--file-path)
+    (user-error "Octocat: Not in a file viewer buffer"))
+  (let* ((views (or (octocat-file--views octocat-tree--file-path)
+                    (user-error "Octocat: An image has no other view")))
+         (view  (octocat-file--view octocat-tree--file-path octocat--markdown-raw
+                                    octocat-tree--file-blame))
+         (next  (or (cadr (memq view views)) (car views))))
+    (message "File view: %s" (capitalize (symbol-name next)))
+    (octocat-file-show-view next)))
 
 (defun octocat-file--page-url ()
   "Return the URL of the current file."

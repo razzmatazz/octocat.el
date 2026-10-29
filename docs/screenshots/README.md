@@ -47,6 +47,15 @@ buffer of its own.
 [As text](file.txt)
 <!-- /screenshot -->
 
+The same file's blame, `C-c C-v` twice: each line beside the commit
+that last changed it, as GitHub's Blame.  `RET` on a commit opens it.
+
+<!-- screenshot: (tree--open-file-by-path "acme/rocket" "main" "docs/guide.md") :name "file-blame" :press ((:key "C-c C-v") (:key "C-c C-v")) -->
+![file-blame](file-blame.png)
+
+[As text](file-blame.txt)
+<!-- /screenshot -->
+
 HTML as READMEs write it, rendered: a centred logo in a `<picture>`, a
 row of linked badges, `<kbd>`, `<sup>` and entities, a `<details>`, a
 table of screenshots shown side by side, and an HTML list.
@@ -166,6 +175,16 @@ whose diff is too large for GitHub to send, show no diff:
 ![commit-diff](commit-diff.png)
 
 [As text](commit-diff.txt)
+<!-- /screenshot -->
+
+The same commit as a patch, `C-c C-v` or Patch on its top line, as GitHub's
+`.patch`: its header and message as `git format-patch` writes them,
+then every file's diff in full, to read or copy out.
+
+<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-patch" :press ((:key "C-c C-v")) -->
+![commit-patch](commit-patch.png)
+
+[As text](commit-patch.txt)
 <!-- /screenshot -->
 
 Two refs compared, as from a GitHub compare link: the commits, then the

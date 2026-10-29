@@ -285,6 +285,31 @@ with a floor of 1."
   "Face for secondary / de-emphasised text in octocat buffers."
   :group 'octocat)
 
+(defface octocat-segment
+  '((((class color) (background dark))
+     :inherit octocat-dimmed :box (:line-width (-1 . -1) :color "gray40"))
+    (((class color) (background light))
+     :inherit octocat-dimmed :box (:line-width (-1 . -1) :color "gray70"))
+    (t :inherit octocat-dimmed))
+  "Face for a choice not taken in a segmented control, such as Diff | Patch."
+  :group 'octocat)
+
+(defface octocat-segment-current
+  '((((class color) (background dark))
+     :weight bold :background "gray30" :box (:line-width (-1 . -1) :color "gray40"))
+    (((class color) (background light))
+     :weight bold :background "gray85" :box (:line-width (-1 . -1) :color "gray70"))
+    (t :inverse-video t))
+  "Face for the choice taken in a segmented control."
+  :group 'octocat)
+
+(defface octocat-blame-rule
+  '((((class color) (background dark)) :underline (:color "gray35"))
+    (((class color) (background light)) :underline (:color "gray75"))
+    (t :underline t))
+  "Face for the last line of a blame's run, parting it from the next commit's."
+  :group 'octocat)
+
 (defface octocat-skeleton
   '((((class color) (background dark)) :background "gray25")
     (((class color) (background light)) :background "gray88")

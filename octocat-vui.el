@@ -609,6 +609,84 @@ On low battery, it is TO: no animation, see `octocat-power'."
       to
     (octocat-vui-unfold-step now from to)))
 
+;; A slide shows a column of text growing from the left edge, or
+;; shrinking back into it: each frame, every span of the column shows
+;; only its right part, through its `display' property, so the text
+;; after it moves along and the page is not re-rendered.
+
+(defconst octocat-vui-slide-max-spans 300
+  "The most spans a column slides with; a longer one shows at once.
+Each frame gives every span a `display' string of its own, so a long
+column would grow the buffer by a copy of itself each frame.")
+
+(defun octocat-vui--slide-long-p (prop)
+  "Return non-nil if the current buffer has more spans of PROP than slide.
+See `octocat-vui-slide-max-spans'."
+  (let ((pos (point-min)) (n 0))
+    (while (and (<= n octocat-vui-slide-max-spans)
+                (setq pos (text-property-not-all pos (point-max) prop nil)))
+      (setq n   (1+ n)
+            pos (or (next-single-property-change pos prop) (point-max))))
+    (> n octocat-vui-slide-max-spans)))
+
+(defvar-local octocat-vui--slide-timer nil
+  "The timer of this buffer's slide; one runs at a time.")
+
+(defun octocat-vui--slide-show (prop width shown)
+  "Show SHOWN of the WIDTH columns of each span of PROP, its right part.
+SHOWN nil shows the spans whole."
+  (let ((inhibit-read-only t)
+        (pos (point-min)))
+    (with-silent-modifications
+      (while (setq pos (text-property-not-all pos (point-max) prop nil))
+        (let ((end (or (next-single-property-change pos prop) (point-max))))
+          (if shown
+              (put-text-property
+               pos end 'display
+               (truncate-string-to-width (buffer-substring pos end) width (- width shown)))
+            (remove-text-properties pos end '(display nil)))
+          (setq pos end))))))
+
+(defun octocat-vui-slide (buf prop direction &optional done)
+  "Slide the column of BUF's text with PROP in or out, then call DONE.
+DIRECTION is `in', from the left edge, or `out', back into it.  Each
+line's span of PROP is a part of the column, all as wide.  DONE is
+called in BUF after the last frame; slid out, the column stays hidden
+until DONE re-renders the page without it.  A slide started stops the
+one running.  On low battery there is no slide, see `octocat-power',
+nor in a column too long, see `octocat-vui-slide-max-spans'."
+  (with-current-buffer buf
+    (when (timerp octocat-vui--slide-timer)
+      (cancel-timer octocat-vui--slide-timer))
+    (let* ((pos   (text-property-not-all (point-min) (point-max) prop nil))
+           (width (if pos
+                      (string-width (buffer-substring
+                                     pos (or (next-single-property-change pos prop)
+                                             (point-max))))
+                    0))
+           (from  (if (eq direction 'in) 0 width))
+           (to    (- width from))
+           (now   from)
+           step)
+      (setq step
+            (lambda ()
+              (when (buffer-live-p buf)
+                (with-current-buffer buf
+                  (octocat-vui--slide-show prop width now)
+                  (if (/= now to)
+                      (setq now (octocat-vui--unfold-next now from to)
+                            octocat-vui--slide-timer
+                            (run-at-time octocat-vui-unfold-interval nil step))
+                    (setq octocat-vui--slide-timer nil)
+                    (when (eq direction 'in)
+                      (octocat-vui--slide-show prop width nil))
+                    (when done (funcall done)))))))
+      (if (or (zerop width) (eq (octocat-power) 'low)
+              (octocat-vui--slide-long-p prop))
+          (progn (octocat-vui--slide-show prop width nil)
+                 (when done (funcall done)))
+        (funcall step)))))
+
 (vui-defcomponent octocat-vui-fold-rest (total limit render prefix noun key)
   "Show the first LIMIT of TOTAL things, the rest folded behind a marker row.
 RENDER is a function of the number of things to show, returning a vnode.
@@ -931,9 +1009,10 @@ Stop the timer once no buffer shows it."
       (setq octocat-vui--spinner-timer nil))))
 
 (defun octocat-vui-mode-line-busy (label)
-  "Return a `mode-line-process' showing LABEL, such as \":loading\", and a spinner."
+  "Return a `mode-line-process' of a spinner, then LABEL, such as \":loading\".
+The spinner leads, so a narrow mode line that cuts LABEL still shows it."
   (octocat-vui--spinner-start)
-  (list (concat label " ") 'octocat-vui--spinner))
+  (list " " 'octocat-vui--spinner label))
 
 (defcustom octocat-mode-line-writes t
   "Whether every mode line shows the changes being sent to GitHub.
@@ -1263,6 +1342,24 @@ what is below it without a blank line."
                                 nodes))
                    (list (vui-text (make-string (max 0 (- width used)) ?\s)
                            :face 'underline))))))
+
+(defun octocat-vui-segmented (segments)
+  "Return SEGMENTS as one segmented control, a pill of choices.
+Each is (LABEL CURRENT HELP ON-CLICK): the CURRENT one is filled in and
+does nothing; the others are buttons running ON-CLICK, with HELP as
+their hover text.  They touch, so their boxes make one outline, and
+each label is padded so it reads without the outline, as in a terminal."
+  (apply #'vui-hstack :spacing 0
+         (mapcar (pcase-lambda (`(,label ,current ,help ,on-click))
+                   (let ((text (concat " " label " ")))
+                     (if current
+                         (vui-text text :face 'octocat-segment-current)
+                       (vui-button text
+                         :no-decoration t
+                         :face 'octocat-segment
+                         :help-echo help
+                         :on-click on-click))))
+                 segments)))
 
 (defun octocat-vui-underlined (width &rest nodes)
   "Return NODES on one line, underlined across WIDTH columns.

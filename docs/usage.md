@@ -61,7 +61,8 @@ the commit.
 The page lists the root's entries, directories first, as GitHub's
 repository page does: the first `octocat-tree-entries` (15) of them,
 then a `[Browse code]` button, which says how many more there are and
-opens the tree browser (below).  `RET` on a file opens it in the file
+opens the tree browser (below).  Each entry shows, as on GitHub, the
+subject of the last commit that touched it and, at the right, its age.  `RET` on a file opens it in the file
 viewer, and `RET` on a directory opens the tree browser at it.
 `S-RET` opens either in another window instead, as on every page.
 
@@ -99,6 +100,9 @@ owner/repo  [main ▾]:/
   …
 ```
 
+Each entry shows the last commit that touched it, as on the repo page.
+These come in one GitHub query per directory, and are stored by the
+commit they start from, so a directory opened again shows them at once.
 `RET` on a directory only expands or collapses it; the line above the
 tree, underlined, stays on the root's last commit.  `RET` on a file opens it in the
 file viewer, and `^` moves point to the directory holding the entry at
@@ -226,7 +230,7 @@ to its SHA).  Below a top line like the tree browser's, the commit
 reads as `git show --format=fuller` prints it, its message unindented:
 
 ```
-owner/repo@a1b2c3d4e5f6…  [Browse files]
+owner/repo@a1b2c3d4e5f6…  [Browse files]   Diff  Patch
 Author:     Jane Doe <jane@example.com> @jane
 AuthorDate: Mon Oct 19 10:00:00 2026 +0300  (3 days ago)
 Commit:     GitHub <noreply@github.com> @web-flow
@@ -259,6 +263,14 @@ commit; the parent opens its own commit page, `@login` the user's page.
 `Branch` names the default branch when it holds the commit, as GitHub
 does, and is left out when it does not; it opens the tree at that
 branch.  `RET` on a check opens the commit's checks.
+
+Its files show as diffs, a Markdown file's too; an image unfolds to the
+image on `RET`.  The Diff | Patch switch ending the top line, or
+`C-c C-v`, shows the commit as a patch instead, as GitHub's `.patch`
+link does: its header and message as `git format-patch` writes them,
+then every file's diff in full, with its `diff --git`, `---` and `+++`
+lines, to read or copy out for `git am`.  Diff, or `C-c C-v` again,
+goes back.
 
 Elsewhere, lists and last-commit lines show when a commit was
 *committed*, as GitHub does ("committed 2 days ago"): after a rebase or a
@@ -301,9 +313,19 @@ link with one ref, where github.com picks the base, opens in the browser.
 link, or a relative link in a README, opens a read-only buffer showing
 the file at that ref.  A Markdown file is rendered, as on GitHub: its
 relative links open the files they name at the same ref, and `RET` on a
-relative image shows it in place.  `C-c C-v` shows the Markdown source
-instead.  Any other file is shown with the syntax highlighting of its
-major mode.
+relative image shows it in place.  Any other file is shown with the
+syntax highlighting of its major mode.
+
+The top line ends in a switch of the file's views, as GitHub's:
+Preview | Code | Blame for a Markdown or org file, Code | Blame for any
+other, drawn as one outlined pill with the view shown filled in.  `RET`
+on one shows it, and `C-c C-v` shows the next, in turn; hovering over a view names the key.  The blame shows each
+line, numbered, beside the commit that last changed it, with its
+subject and age at the head of each run of lines; `RET` on it opens the
+commit and `C-c C-o` opens it on GitHub.  It slides in from the left
+edge and back out of it (not on low battery, nor in a file of more
+than 300 lines).  Like the file, it is
+stored by commit, so it opens at once the next time.
 
 The top of the page is the tree browser's: `owner/repo  [main ▾]:/dir/file`,
 the branch picker and the path, whose directories open the tree browser
@@ -399,7 +421,11 @@ along with the code loaded and the store.
 `C-c C-v` is the one key for seeing a page another way: wherever a page
 has a second way to show what is on it, `C-c C-v` switches to it and
 back.  Pages showing markdown switch between rendered and raw text, so
-the markup can be read or copied as written.  The PR's files changed
+the markup can be read or copied as written.  The file page has more
+than two views and cycles through them: rendered, raw and blame for
+Markdown and org, source and blame for other files (see
+[Files](#files-octocat-file-mode)).  The commit page switches between
+its diff and the commit as a patch.  The PR's files changed
 page instead shows or hides the review comments in the diff, which
 opening the page shows again; the `[Show comments (N)]` button
 in its Files heading does the same, also on the commit page.  The PR and

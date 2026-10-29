@@ -540,8 +540,13 @@ them.  Users learn one key for "show
 this differently", so a page that gains a second view binds it to
 `C-c C-v` (in the mode map and, for Evil, in octocat-evil.el) rather than
 to a key of its own, and documents it in the README's keybinding table.
-A page has at most one alternative view, so the key stays a plain
-toggle.
+Where a page has more than one, as the file page's Preview, Code and
+Blame, `C-c C-v` cycles through them in a fixed order and says in the
+echo area which is shown.  Such a page, and one whose
+two views are both worth finding, as the commit page's Diff and Patch,
+ends its top line in a switch of them, `octocat-vui-segmented`: a pill,
+its views boxed side by side into one outline, the view shown filled in, the others buttons whose hover
+text names `C-c C-v`, so the key is found from the page.
 
 Re-render the page in place with the new prop (`octocat-vui-update-page`),
 not a remount; see [using vui.el](using-vui.md).  Remember the choice with
@@ -708,7 +713,8 @@ counts as mains power.
 What the user does still fetches at once on low battery: `g`, opening a
 page, and coming back (see [Keeping shown pages up to
 date](#keeping-shown-pages-up-to-date)).  Without animations, folds open
-and close in one step, and spinners stand still on one frame.
+and close in one step, the blame column shows and hides at once, and
+spinners stand still on one frame.
 
 ---
 
@@ -739,7 +745,9 @@ shows while loading, `octocat-vui-spinner`: `▘ Merging pull request…`.
 The mode line's `:loading` is for fetching; an action under way is shown
 where its button was.  The spinner animates through its `display`
 property, without re-rendering the page; not on low battery, see [On
-battery](#on-battery).
+battery](#on-battery).  A slide, as the blame column's, also gives each
+line a `display` string every frame, so a column of more than
+`octocat-vui-slide-max-spans` lines shows at once instead.
 
 A dialog whose text the user typed (a comment, a description) must not
 lose it: `octocat-timeline-submit` sends its mutation, closes the dialog

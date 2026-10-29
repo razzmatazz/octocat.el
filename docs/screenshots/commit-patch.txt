@@ -1,0 +1,78 @@
+acme/rocket@1a954628a960aaef81d7b2d4521929579f3541e6  [Browse files]   Diff  Patch
+From 1a954628a960aaef81d7b2d4521929579f3541e6 Mon Sep 17 00:00:00 2001
+From: Mei Chen <mchen@example.com>
+Date: Fri, 23 Oct 2026 10:00:00 +0000
+Subject: [PATCH] Render footnotes in Markdown pages (#131)
+
+Footnotes were left as their Markdown source.  Render them, and show a
+note in a popup when its reference is hovered.
+---
+
+diff --git a/docs/assets/footnote-popup.png b/docs/assets/footnote-popup.png
+new file mode 100644
+Binary files /dev/null and b/docs/assets/footnote-popup.png differ
+diff --git a/docs/assets/search-index.json b/docs/assets/search-index.json
+Binary files a/docs/assets/search-index.json and b/docs/assets/search-index.json differ
+diff --git a/src/markdown.rs b/src/markdown.rs
+--- a/src/markdown.rs
++++ b/src/markdown.rs
+@@ -12,6 +12,7 @@ pub fn render(source: &str) -> String {
+     let mut options = Options::empty();
+     options.insert(Options::ENABLE_TABLES);
+-    options.insert(Options::ENABLE_STRIKETHROUGH);
++    options.insert(Options::ENABLE_STRIKETHROUGH | Options::ENABLE_FOOTNOTES);
++    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+     let parser = Parser::new_ext(source, options);
+     let mut out = String::with_capacity(source.len() * 3 / 2);
+     html::push_html(&mut out, parser);
+diff --git a/src/theme/footnotes.js b/src/theme/footnotes.js
+new file mode 100644
+--- /dev/null
++++ b/src/theme/footnotes.js
+@@ -0,0 +1,27 @@
++/**
++ * Footnote previews: hovering a footnote's reference shows the note in
++ * a popup, so readers need not jump to the end of the page.
++ */
++export function initFootnotes(root) {
++  for (const ref of root.querySelectorAll(".footnote-ref a")) {
++    const note = document.getElementById(ref.hash.slice(1));
++    if (!note) continue;
++    ref.addEventListener("mouseenter", () => show(ref, note));
++    ref.addEventListener("mouseleave", hide);
++  }
++}
++
++let popup = null;
++
++function show(ref, note) {
++  hide();
++  popup = document.createElement("aside");
++  popup.className = "footnote-popup";
++  popup.innerHTML = note.innerHTML;
++  ref.after(popup);
++}
++
++function hide() {
++  popup?.remove();
++  popup = null;
++}
+diff --git a/src/theme/main.js b/src/theme/main.js
+--- a/src/theme/main.js
++++ b/src/theme/main.js
+@@ -1,9 +1,14 @@
+ /* The default theme's scripts: the search box and, on a page with
+    footnotes, their previews. */
+ import { initSearch } from "./search.js";
++import { initFootnotes } from "./footnotes.js";
+
+ const PAGES = "/search-index.json";
+
+ document.addEventListener("DOMContentLoaded", () => {
+-  initSearch(document.querySelector("#search"), PAGES);
++  const root = document.querySelector("main");
++  initSearch(document.querySelector("#search"), PAGES, { limit: 10 });
++  if (root.querySelector(".footnote-ref")) {
++    initFootnotes(root);
++  }
+ });
