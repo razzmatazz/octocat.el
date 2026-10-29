@@ -1380,14 +1380,18 @@ them again."
           :face 'octocat-dimmed)
         (vui-newline))))))
 
-(vui-defcomponent octocat-vui-search-list (repo kind query row-fn line-fn compact tick)
+(vui-defcomponent octocat-vui-search-list (repo kind query row-fn line-fn compact tick
+                                                extra-fn)
   "List page of the KIND items of REPO, `issues' or `pulls', matching QUERY.
 ROW-FN returns the row of an item, given it, the width, COMPACT, non-nil
 for one-line rows, and NO-STATE, non-nil to leave a compact row's state
 out: under the default query, every item is open.  LINE-FN returns the
 uncut compact line of an item, given it and NO-STATE; the widest of them
 sets the width the compact rows are laid out in (see
-`octocat-repo-vui--compact-width').  A new QUERY or COMPACT re-renders
+`octocat-repo-vui--compact-width').  EXTRA-FN, when non-nil, is called
+with TICK during render, like a hook, for more the rows show, such as a
+PR's place in its stack; ROW-FN and LINE-FN get what it returns as their
+last argument.  A new QUERY or COMPACT re-renders
 in place: the header keeps its counts, and the results start afresh, as
 the compact view loads more at a time.  A new TICK refetches the counts
 and starts the results afresh."
@@ -1398,7 +1402,7 @@ and starts the results afresh."
    (vui-component 'octocat-vui--search-results
      :key (list query (and compact t) tick)
      :repo repo :kind kind :query query :row-fn row-fn
-     :line-fn line-fn :compact compact :tick tick)))
+     :line-fn line-fn :compact compact :tick tick :extra-fn extra-fn)))
 
 (defun octocat-vui--list-tree (kind repo page)
   "Return PAGE, a page of KIND items of REPO, as a list resource's tree.
@@ -1425,7 +1429,8 @@ PAGE is as `octocat--parse-list-items' returns; each item is an entity."
                                 (octocat-vui--list-tree kind repo r))))
               query nil (min 100 (max limit (length (and data (gethash "nodes" data)))))))))
 
-(vui-defcomponent octocat-vui--search-results (repo kind query row-fn line-fn compact tick)
+(vui-defcomponent octocat-vui--search-results (repo kind query row-fn line-fn compact tick
+                                                    extra-fn)
   "The KIND items of REPO matching QUERY, as for `octocat-vui-search-list'.
 They are a sync resource, painted from the store while it is refetched;
 \"load more\" appends the page after the last to it, by its cursor (see
@@ -1438,7 +1443,8 @@ They are a sync resource, painted from the store while it is refetched;
          (limit  (if compact octocat-list-compact-page-size octocat-list-page-size))
          (no-state (and compact (not (octocat-vui-list-filter-active-p query))))
          (spec   (list 'list-items kind repo query limit))
-         (snap   (octocat-vui-use-resource spec tick)))
+         (snap   (octocat-vui-use-resource spec tick))
+         (extra  (and extra-fn (funcall extra-fn tick))))
     (octocat-vui-use-mode-line-loading fetching)
     (octocat-vui-resource-view
      snap
@@ -1449,7 +1455,7 @@ They are a sync resource, painted from the store while it is refetched;
               (cursor (gethash "cursor" data))
               (row-w  (if compact
                           (octocat-repo-vui--compact-width
-                           (mapcar (lambda (item) (funcall line-fn item no-state)) items)
+                           (mapcar (lambda (item) (funcall line-fn item no-state extra)) items)
                            width)
                         width)))
          (vui-fragment
@@ -1461,7 +1467,7 @@ They are a sync resource, painted from the store while it is refetched;
                 :face 'octocat-dimmed)
             (octocat-vui-reveal-list
              items
-             (lambda (item) (funcall row-fn item row-w compact no-state))
+             (lambda (item) (funcall row-fn item row-w compact no-state extra))
              (lambda (item) (gethash "number" item))))
           (when (and items cursor)
             (octocat-vui-load-more-button

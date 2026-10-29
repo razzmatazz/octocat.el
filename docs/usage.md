@@ -192,6 +192,13 @@ Commits page lists all of the PR's commits oldest first, one per line;
 a commit the PR's commits.  It reuses the PR page's
 data, so it fetches nothing more.
 
+### Stacks
+
+A PR in a [stack](https://github.com/github/gh-stack) shows its place
+in it after its title, `≡ 2/3` (counting from the bottom).  On its page,
+`RET` on that picks another PR of the stack, and the stack is listed
+under the merge box, with what stops it merging.
+
 ### Inline editing
 
 `RET` is context-sensitive in the PR detail buffer:

@@ -542,6 +542,14 @@ a cell that ITEM does not have is nil or empty.  BG is as for
                          (mapcar (lambda (key) (plist-get cells key)) keys))
              (propertize " · " 'face 'octocat-dimmed)))
 
+(defun octocat-repo-vui--after-title (cells)
+  "Return what follows the title in CELLS: its place in a stack, its chips.
+Each after two spaces, or \"\" when it has neither.  A PR's place in its
+stack goes right after its title (see the UI conventions)."
+  (mapconcat (lambda (c) (if (or (null c) (string-empty-p c)) "" (concat "  " c)))
+             (list (plist-get cells :stack) (plist-get cells :chips))
+             ""))
+
 (defun octocat-repo-vui--item-lines (state cells keys &optional width)
   "Return the two lines of an item with STATE text, as a list of strings.
 The first is the state, title and label chips; the second the number,
@@ -556,8 +564,7 @@ rows and the page headers so the two read alike."
                         (propertize " by " 'face 'octocat-dimmed)
                         (funcall join '(:author :date))))
          (title (plist-get cells :title))
-         (chips (let ((c (or (plist-get cells :chips) "")))
-                  (if (string-empty-p c) "" (concat "  " c))))
+         (chips (octocat-repo-vui--after-title cells))
          (rest  (funcall join keys))
          (cut   (lambda (s) (if cap (truncate-string-to-width s cap nil nil "…") s))))
     (list
@@ -577,15 +584,15 @@ rows and the page headers so the two read alike."
 
 (defun octocat-repo-vui--compact-line (state number cells &optional width)
   "Return the one line of an item in a compact list.
-That is STATE text, NUMBER (\"#N\"), the title and its label chips, then
-a dot and the author; CELLS are as made by `octocat-repo-vui--cells'.  A
-nil STATE leaves it out.  The repo is the page's and the age is left
-out, to make room for the title.  WIDTH, when non-nil, cuts the line to
-fit, shortening the title first, and puts the author at its right edge,
-so the authors of a list laid out to one WIDTH line up."
+That is STATE text, NUMBER (\"#N\"), the title, its place in a stack
+and its label chips, then a dot and the author; CELLS are as made by
+`octocat-repo-vui--cells'.  A nil STATE leaves it out.  The repo is the
+page's and the age is left out, to make room for the title.  WIDTH,
+when non-nil, cuts the line to fit, shortening the title first, and
+puts the author at its right edge, so the authors of a list laid out to
+one WIDTH line up."
   (let* ((cap   (and width (max 10 (1- width))))
-         (chips (let ((c (or (plist-get cells :chips) "")))
-                  (if (string-empty-p c) "" (concat "  " c))))
+         (chips (octocat-repo-vui--after-title cells))
          (tail  (concat (propertize " · " 'face 'octocat-dimmed) (plist-get cells :author)))
          (head  (concat (and state (concat state "  ")) number "  "))
          (title (plist-get cells :title))
@@ -636,11 +643,19 @@ opens, fetched while point rests on the row (see
   "Return the \"#N\" of the issue or PR ITEM."
   (propertize (format "#%d" (gethash "number" item)) 'face 'octocat-pr-number))
 
-(defun octocat-repo-vui--pr-compact-line (repo pr bg no-state &optional width)
+(defun octocat-repo-vui--pr-cells (repo pr bg stack)
+  "Return the cells of PR in REPO, as `octocat-repo-vui--cells'.
+STACK, when non-nil, is where PR sits in its stack, \"≡ 2/3\", its
+:stack cell."
+  (let ((cells (octocat-repo-vui--cells repo pr bg)))
+    (if stack (plist-put cells :stack (propertize stack 'face 'octocat-dimmed)) cells)))
+
+(defun octocat-repo-vui--pr-compact-line (repo pr bg no-state &optional width stack)
   "Return the compact line of PR in REPO, without the state when NO-STATE.
 BG is as for `octocat-repo-vui--cells'; WIDTH is as for
-`octocat-repo-vui--compact-line'."
-  (let ((cells (octocat-repo-vui--cells repo pr bg)))
+`octocat-repo-vui--compact-line', and STACK for
+`octocat-repo-vui--pr-cells'."
+  (let ((cells (octocat-repo-vui--pr-cells repo pr bg stack)))
     ;; Without the state column, a draft says so before its title, in
     ;; parentheses: bare it reads as part of it, bracketed as a button.
     (when (and no-state (eq (gethash "isDraft" pr) t))
@@ -659,17 +674,18 @@ BG is as for `octocat-repo-vui--cells'; WIDTH is as for
    (unless no-state (octocat-repo-vui--state-label (gethash "state" issue)))
    (octocat-repo-vui--number issue) (octocat-repo-vui--cells repo issue bg) width))
 
-(defun octocat-repo-vui--pr-row (repo pr width bg &optional compact no-state)
+(defun octocat-repo-vui--pr-row (repo pr width bg &optional compact no-state stack)
   "Return a row vnode for PR in REPO, cut to WIDTH.
 BG is as for `octocat-repo-vui--cells'; COMPACT draws it on one line,
-without the state when NO-STATE is non-nil."
+without the state when NO-STATE is non-nil.  STACK is as for
+`octocat-repo-vui--pr-cells'."
   (octocat-repo-vui--item-row
    (octocat-repo-vui--state-label (gethash "state" pr) (gethash "isDraft" pr))
-   (octocat-repo-vui--cells repo pr bg)
+   (octocat-repo-vui--pr-cells repo pr bg stack)
    width
    (lambda () (octocat-repo-vui--open-pr repo pr))
    "RET: view pull request"
-   (and compact (octocat-repo-vui--pr-compact-line repo pr bg no-state width))
+   (and compact (octocat-repo-vui--pr-compact-line repo pr bg no-state width stack))
    (let ((n (gethash "number" pr)))
      `((pr ,repo ,n) (timeline-events ,repo ,n)))
    (octocat--item-url 'pr repo (gethash "number" pr) pr)))
@@ -696,7 +712,7 @@ without the state when NO-STATE is non-nil."
 
 (defun octocat-repo-vui--detail-header (repo item state on-edit-title
                                              bg width fields shown
-                                             &optional branch omit)
+                                             &optional branch omit badge)
   "Return the header vnodes of the issue or PR ITEM of REPO.
 The first row is the breadcrumb (`octocat-vui-repo-heading'), number,
 title and author, the `title' target of the page's edit command, on
@@ -708,7 +724,8 @@ then SHOWN, fields as for `octocat-repo-vui--detail-fields'; not the
 date, which the opening timeline entry shows.  BG is as for
 `octocat-repo-vui--cells'.  BRANCH, when non-nil, is shown first.
 OMIT is a list of cell keys (see `octocat-repo-vui--cells') to leave
-out."
+out.  BADGE, when non-nil, is (LABEL HELP ACTION): a link showing LABEL
+right after the title, on which RET calls ACTION."
   (let* ((cells  (octocat-repo-vui--cells repo item bg))
          (cells  (if branch (plist-put cells :branch branch) cells))
          (number (propertize (format "#%d  " (gethash "number" item))
@@ -716,15 +733,21 @@ out."
          (author (plist-get cells :author))
          (dot    (propertize " · " 'face 'octocat-dimmed))
          (by     (if (string-empty-p author) "" (concat dot author)))
+         (after  (if badge (+ 2 (string-width (car badge))) 0))
          (title  (octocat-repo-vui--fit-title
                   (plist-get cells :title)
                   (- width 1 (string-width repo) (string-width number)
-                     (string-width by)))))
+                     (string-width by) after))))
     (append
      (list
       (octocat-vui-row
        (list (octocat-vui-repo-heading repo)
              (propertize (concat number title) 'octocat-timeline-target 'title)
+             (if badge
+                 (pcase-let ((`(,label ,help ,action) badge))
+                   (list (vui-text "  ")
+                         (octocat-repo-vui--link label 'default action help)))
+               "")
              (if (string-empty-p author)
                  ""
                (list (vui-text dot)

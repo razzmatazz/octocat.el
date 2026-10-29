@@ -86,6 +86,14 @@ search.
 [As text](pr-list.txt)
 <!-- /screenshot -->
 
+Compact (`C-c C-v`):
+
+<!-- screenshot: (pr-list "acme/rocket") :name "pr-list-compact" :press ((:key "C-c C-v")) -->
+![pr-list-compact](pr-list-compact.png)
+
+[As text](pr-list-compact.txt)
+<!-- /screenshot -->
+
 A pull request: its conversation, reviews, commits and what stands
 between it and a merge.
 
@@ -101,6 +109,14 @@ Its changed files, with `[Expand all]` pressed:
 ![pr-diff](pr-diff.png)
 
 [As text](pr-diff.txt)
+<!-- /screenshot -->
+
+A pull request in a stack, the stack listed under the merge box:
+
+<!-- screenshot: (pr "acme/rocket" 133) :name "pr-stack" -->
+![pr-stack](pr-stack.png)
+
+[As text](pr-stack.txt)
 <!-- /screenshot -->
 
 A merged pull request: with no merge box, its checks end the page.
@@ -226,7 +242,8 @@ text, beside this file.  It takes about 15 seconds, compiling first.
   is `(COMMAND ARGS...)`, opened by `octocat-COMMAND-open`, or by
   `octocat-COMMAND` when there is none, as `(pr-list "acme/rocket")`;
   `(dashboard)` is `M-x octocat`.  `:press ("Expand all")` presses
-  buttons first, by their text; `:name` names its files, by default
+  buttons first, by their text, or `(:key "C-c C-v")` a key;
+  `:name` names its files, by default
   COMMAND.  To add a shot, add a marker.
 - **The data** is in [test/screenshots/fixtures.el](../../test/screenshots/fixtures.el):
   what `gh` prints for each call the pages make, in GitHub's own JSON.

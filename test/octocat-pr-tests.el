@@ -38,6 +38,97 @@
     (should (equal (octocat-pr--merge-message "Squash" pr) "Fix (#7)\n\n* a\n* b"))
     (should (equal (octocat-pr--merge-message "Rebase" pr) ""))))
 
+(defun octocat-pr-test--stack (&rest prs)
+  "Return a stack of PRS, bottom first, as `octocat-pr--parse-stack' gives it.
+Each of PRS is (NUMBER STATE DRAFT MERGEABLE)."
+  (gethash "stack"
+           (octocat-pr--parse-stack
+            (json-serialize
+             `((data
+                (repository
+                 (pullRequest
+                  (stack
+                   (number . 17) (baseRefName . "main")
+                   (entries
+                    (nodes
+                     . ,(vconcat
+                         (seq-map-indexed
+                          (pcase-lambda (`(,n ,state ,draft ,mergeable) i)
+                            `((position . ,(1+ i))
+                              (pullRequest (number . ,n) (title . ,(format "Layer %d" n))
+                                           (state . ,state) (isDraft . ,draft)
+                                           (mergeable . ,mergeable))))
+                          prs)))))))))))))
+
+(defun octocat-pr-test--text (nodes)
+  "Return NODES rendered, each line trimmed on the right."
+  (with-temp-buffer
+    (vui-render (apply #'vui-vstack nodes))
+    (mapcar #'string-trim-right
+            (split-string (buffer-substring-no-properties (point-min) (point-max)) "\n"))))
+
+(ert-deftest octocat-pr-test-stack ()
+  "A stack lists its pull requests top first, this one in bold and not a link."
+  (let* ((stack (octocat-pr-test--stack '(14 "MERGED" :false "UNKNOWN")
+                                        '(15 "OPEN" :false "MERGEABLE")
+                                        '(16 "OPEN" t "MERGEABLE")))
+         (pr    (json-parse-string "{\"number\":15,\"state\":\"OPEN\"}")))
+    (should (equal (octocat-pr-test--text (octocat-pr--stack-section "o/r" pr stack 80))
+                   '("" "  ≡ Stack #17 · into main · ✓ Ready to merge as stack"
+                     "    It merges into main."
+                     "    #16  (draft) Layer 16"
+                     "    #15  Layer 15"
+                     "    #14  Layer 14")))
+    (should (equal (octocat-pr--stack-label stack 15) "≡ 2/3"))
+    (should-not (octocat-pr--stack-label stack 99))
+    (should (equal (octocat-pr--stack-choices stack 15)
+                   '(("3/3 #16 Layer 16" . 16) ("2/3 #15 Layer 15 (this)" . 15)
+                     ("1/3 #14 Layer 14" . 14))))
+    (with-temp-buffer
+      (vui-render (apply #'vui-vstack (octocat-pr--stack-section "o/r" pr stack 80)))
+      (goto-char (point-min))
+      (search-forward "Layer 15")
+      (should (eq (get-text-property (1- (point)) 'face) 'bold))
+      (should-not (get-text-property (1- (point)) 'keymap))
+      (search-forward "Layer 14")
+      (should (get-text-property (1- (point)) 'keymap))))
+  ;; Merging #16 merges #15 too, which can stop it.
+  (should (equal (octocat-pr--stack-merge-row
+                  16 (octocat-pr-test--stack '(14 "OPEN" :false "MERGEABLE")
+                                             '(15 "OPEN" :false "MERGEABLE")
+                                             '(16 "OPEN" :false "MERGEABLE")))
+                 '(ok "Ready to merge as stack" "Merging this merges #14, #15, #16 into main.")))
+  ;; Each PR that stops it says why on its row; one above it stops nothing.
+  (should (equal (octocat-pr-test--text
+                  (octocat-pr--stack-section
+                   "o/r" (json-parse-string "{\"number\":15,\"state\":\"OPEN\"}")
+                   (octocat-pr-test--stack '(14 "OPEN" t "MERGEABLE")
+                                           '(15 "OPEN" :false "CONFLICTING")
+                                           '(16 "OPEN" :false "CONFLICTING"))
+                   80))
+                 '("" "  ≡ Stack #17 · into main · ✗ Unable to merge as stack"
+                   "    #16  Layer 16"
+                   "    #15  Layer 15  ✗ has conflicts"
+                   "    #14  (draft) Layer 14  ✗ is a draft")))
+  ;; A pull request in no stack shows none.
+  (let ((none (octocat-pr--parse-stack
+               "{\"data\":{\"repository\":{\"pullRequest\":{\"stack\":null}}}}")))
+    (should (eq (gethash "stack" none) :null))
+    (should-not (octocat-pr--stack-section "o/r" (json-parse-string "{\"number\":15}")
+                                           (octocat--get none "stack") 80))))
+
+(ert-deftest octocat-pr-test-repo-stacks ()
+  "The PR list marks each PR of a stack with its place, counted from the bottom."
+  (let ((index (octocat-pr--stacks-index
+                (json-parse-string
+                 "[{\"number\":17,\"pull_requests\":[{\"number\":14},{\"number\":15}]},
+                   {\"number\":9,\"pull_requests\":[{\"number\":8},{\"number\":6},
+                                                      {\"number\":7}]}]"))))
+    (should (equal (octocat-pr--stacks-label index 15) "≡ 2/2"))
+    (should (equal (octocat-pr--stacks-label index 6) "≡ 2/3"))
+    (should-not (octocat-pr--stacks-label index 3))
+    (should-not (octocat-pr--stacks-label nil 15))))
+
 (ert-deftest octocat-pr-test-commits ()
   "Commits are listed oldest first and read as REST commits."
   (let* ((pr (octocat-pr-test--pr

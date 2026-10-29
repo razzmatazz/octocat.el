@@ -47,12 +47,13 @@
 ;; plumbing from octocat-repo.el, which requires this file (so cannot be
 ;; required here).
 (declare-function octocat-repo-vui--pr-row "octocat-repo"
-                  (repo pr width bg &optional compact no-state))
+                  (repo pr width bg &optional compact no-state stack))
 (declare-function octocat-repo-vui--pr-compact-line "octocat-repo"
-                  (repo pr bg no-state &optional width))
+                  (repo pr bg no-state &optional width stack))
 (declare-function octocat-repo-vui--state-label"octocat-repo" (state &optional draft))
 (declare-function octocat-repo-vui--detail-header "octocat-repo"
-                  (repo item state on-edit-title bg width fields shown &optional branch omit))
+                  (repo item state on-edit-title bg width fields shown
+                        &optional branch omit badge))
 (declare-function octocat-repo-vui--cells "octocat-repo" (repo item bg))
 (declare-function octocat-repo-vui--login-items   "octocat-repo" (users))
 (declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
@@ -66,6 +67,9 @@
 (declare-function octocat-repo-vui--date-width "octocat-repo" (commits))
 (declare-function octocat-repo-vui--subject-width "octocat-repo" (commits width author-w))
 (declare-function octocat-repo-vui--author-width "octocat-repo" (commits))
+(declare-function octocat-repo-vui--fit-title "octocat-repo" (title width))
+(declare-function octocat-repo-vui--link "octocat-repo" (label face action &optional help))
+(defvar octocat-repo-vui--state-width)
 
 ;; The views the PR page opens; octocat.el loads them all.
 (declare-function octocat-checks-open  "octocat-checks"  (repo sha ref))
@@ -763,6 +767,243 @@ called during render, like any hook."
   (append (plist-get (octocat-vui-use-resource (list 'awaiting-runs repo sha) tick) :data)
           nil))
 
+;; A stack (see https://github.com/github/gh-stack) chains PRs, each
+;; based on the one below it.  `gh pr view' does not give it, so it is
+;; fetched on its own; a GitHub without stacks answers with an error,
+;; and the page shows none.
+
+(defconst octocat-pr--stack-query
+  (concat "query($owner:String!,$name:String!,$number:Int!){"
+          "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+          ;; A stack holds at most 100 pull requests.
+          "stack{number baseRefName entries(first:100){nodes{position "
+          "pullRequest{number title state isDraft mergeable}}}}}}}")
+  "GraphQL query for the stack a pull request is in.")
+
+(defun octocat-pr--parse-stack (output)
+  "Return the stack in OUTPUT of `octocat-pr--stack-query'.
+A hash-table whose \"stack\" is the stack, or :null when the pull request
+is in none."
+  (let ((out (make-hash-table :test #'equal)))
+    (puthash "stack" (or (octocat--get (json-parse-string (string-trim output))
+                                       "data" "repository" "pullRequest" "stack")
+                         :null)
+             out)
+    out))
+
+(octocat-sync-define-resource pr-stack (repo number)
+  :fetch (lambda (done)
+           (let ((parts (split-string repo "/")))
+             (octocat--run-gh
+              "pr-stack"
+              (list "api" "graphql"
+                    "-f" (concat "query=" octocat-pr--stack-query)
+                    "-f" (concat "owner=" (car parts))
+                    "-f" (concat "name=" (cadr parts))
+                    "-F" (format "number=%d" number))
+              #'octocat-pr--parse-stack
+              done))))
+
+(defun octocat-pr--use-stack (repo number tick)
+  "Return the stack pull request NUMBER of REPO is in, a hash-table, or nil.
+Nil too until it is fetched, or when it cannot be.  A new TICK fetches
+it again.  Must be called during render, like any hook."
+  (octocat--get (plist-get (octocat-vui-use-resource (list 'pr-stack repo number) tick)
+                           :data)
+                "stack"))
+
+(defun octocat-pr--stack-entries (stack)
+  "Return the pull requests of STACK, top first as `gh stack view' lists them.
+Each is the hash-table of one, with its \"position\" in STACK, 1 at the
+bottom."
+  (sort (delq nil (mapcar (lambda (e)
+                            (when-let* ((pr (octocat--get e "pullRequest")))
+                              (puthash "position" (gethash "position" e) pr)
+                              pr))
+                          (octocat--get stack "entries" "nodes")))
+        (lambda (a b) (> (gethash "position" a) (gethash "position" b)))))
+
+(defun octocat-pr--stack-label (stack number)
+  "Return where pull request NUMBER sits in STACK, as \"≡ 2/3\", or nil.
+1 is the bottom, as on GitHub."
+  (let* ((prs  (octocat-pr--stack-entries stack))
+         (here (seq-find (lambda (pr) (eql (gethash "number" pr) number)) prs)))
+    (and here (format "≡ %d/%d" (gethash "position" here) (length prs)))))
+
+(defun octocat-pr--stack-choices (stack number)
+  "Return the pull requests of STACK to pick from, an alist, top first.
+Each is (\"2/3 #N TITLE\" . N); NUMBER's own is marked \"(this)\"."
+  (let ((size (length (octocat-pr--stack-entries stack))))
+    (mapcar (lambda (pr)
+              (let ((n (gethash "number" pr)))
+                (cons (format "%d/%d #%d %s%s" (gethash "position" pr) size n
+                              (or (octocat--nonempty (gethash "title" pr)) "")
+                              (if (eql n number) " (this)" ""))
+                      n)))
+            (octocat-pr--stack-entries stack))))
+
+(defun octocat-pr--stack-badge (repo stack number)
+  "Return the header badge of pull request NUMBER of REPO in STACK, or nil.
+As for `octocat-repo-vui--detail-header': where NUMBER sits in STACK,
+on which RET reads another pull request of it, in its order, and opens
+it."
+  (when-let* ((label (octocat-pr--stack-label stack number)))
+    (list label
+          (format "RET: open a pull request of stack #%d" (gethash "number" stack))
+          (lambda ()
+            (let* ((choices (octocat-pr--stack-choices stack number))
+                   (table   (lambda (string pred action)
+                              (if (eq action 'metadata)
+                                  '(metadata (display-sort-function . identity)
+                                             (cycle-sort-function . identity))
+                                (complete-with-action action choices string pred))))
+                   (choice  (completing-read
+                             (format "Stack #%d, open: " (gethash "number" stack))
+                             table nil t)))
+              (octocat-pr-open repo (cdr (assoc choice choices))))))))
+
+;; The PR list marks each PR's place in its stack.  One call gets the
+;; stacks of a repo; its search query is left without them, so a GitHub
+;; without stacks still lists its PRs.
+
+(defun octocat-pr--fetch-repo-stacks (repo callback)
+  "Fetch the stacks of REPO, newest first; call CALLBACK with them.
+They are a hash-table whose \"stacks\" is a vector, or \=(error . MSG)."
+  (octocat--run-gh "repo-stacks"
+                   (list "api" (format "repos/%s/stacks?per_page=100" repo))
+                   (lambda (output)
+                     (let ((out (make-hash-table :test #'equal)))
+                       (puthash "stacks" (json-parse-string (string-trim output)) out)
+                       out))
+                   callback))
+
+(octocat-sync-define-resource repo-stacks (repo)
+  :fetch (lambda (done) (octocat-pr--fetch-repo-stacks repo done)))
+
+(defun octocat-pr--stacks-index (stacks)
+  "Return a hash-table from each PR number in STACKS to its \"≡ 2/3\".
+STACKS is a vector of stacks, as the REST API gives them, whose pull
+requests are listed bottom first."
+  (let ((index (make-hash-table)))
+    (seq-doseq (stack stacks)
+      (let ((prs (octocat--get stack "pull_requests")))
+        (seq-do-indexed (lambda (pr i)
+                          (puthash (gethash "number" pr)
+                                   (format "≡ %d/%d" (1+ i) (length prs))
+                                   index))
+                        prs)))
+    index))
+
+(defun octocat-pr--use-repo-stacks (repo tick)
+  "Return the PR numbers of REPO in a stack, by `octocat-pr--stacks-index'.
+Nil until they are fetched, or when they cannot be, as where stacks are
+off.  A new TICK fetches them again.  Must be called during render, like
+any hook."
+  (let ((stacks (octocat--get (plist-get (octocat-vui-use-resource
+                                          (list 'repo-stacks repo) tick)
+                                         :data)
+                              "stacks")))
+    (vui-use-memo (stacks) (and stacks (octocat-pr--stacks-index stacks)))))
+
+(defun octocat-pr--stacks-label (index number)
+  "Return where pull request NUMBER sits in its stack, by INDEX, or nil.
+INDEX is from `octocat-pr--use-repo-stacks'."
+  (and index (gethash number index)))
+
+(defun octocat-pr--stack-merging (stack number)
+  "Return the pull requests of STACK merged by merging NUMBER, bottom first.
+A stacked pull request merges with those under it not merged yet; nil
+when NUMBER is not in STACK."
+  (let* ((prs  (octocat-pr--stack-entries stack))
+         (here (seq-find (lambda (pr) (eql (gethash "number" pr) number)) prs)))
+    (and here
+         (reverse (seq-filter (lambda (pr)
+                                (and (<= (gethash "position" pr) (gethash "position" here))
+                                     (not (equal (gethash "state" pr) "MERGED"))))
+                              prs)))))
+
+(defun octocat-pr--stack-blocker (pr)
+  "Return why PR, of a stack, stops the stack merging, or nil."
+  (cond ((equal (gethash "state" pr) "CLOSED") "is closed")
+        ((eq (gethash "isDraft" pr) t) "is a draft")
+        ((equal (gethash "mergeable" pr) "CONFLICTING") "has conflicts")))
+
+(defun octocat-pr--stack-merge-row (number stack)
+  "Return the merge box row of STACK for its pull request NUMBER, or nil.
+As for `octocat-pr--merge-rows'.  Any of the pull requests merged with
+NUMBER (see `octocat-pr--stack-merging') a draft, closed or conflicting
+stops it; their rows say why.  Nil when NUMBER is not in STACK."
+  (when-let* ((with (octocat-pr--stack-merging stack number)))
+    (if (seq-some #'octocat-pr--stack-blocker with)
+        (list 'fail "Unable to merge as stack" nil)
+      (let ((into (or (octocat--get stack "baseRefName") "the base branch")))
+        (list 'ok "Ready to merge as stack"
+              (if (cdr with)
+                  (format "Merging this merges %s into %s."
+                          (string-join (mapcar (lambda (pr) (format "#%d" (gethash "number" pr)))
+                                               with)
+                                       ", ")
+                          into)
+                (format "It merges into %s." into)))))))
+
+(defun octocat-pr--stack-section (repo pr stack width)
+  "Return the vnodes of STACK, which PR of REPO is in, or nil when it is empty.
+An open PR's are a part of its merge box, under its buttons: whether
+the stack can merge up to PR, then the stack's pull requests, each that
+stops it saying why after its title.  Another's
+are a section of their own, its heading underlined across WIDTH.  The
+pull requests are listed top first, each opening its page but PR's own,
+in bold; their titles are cut to fit WIDTH."
+  (when-let* ((prs (octocat-pr--stack-entries stack)))
+    (let* ((number (gethash "number" pr))
+           (open   (equal (gethash "state" pr) "OPEN"))
+           (indent (if open "  " ""))
+           (name   (concat (propertize (format "≡ Stack #%d" (gethash "number" stack))
+                                       'face 'bold)
+                           (propertize " · into " 'face 'octocat-dimmed)
+                           (propertize (or (octocat--get stack "baseRefName") "")
+                                       'face 'octocat-branch)))
+           (row    (and open (octocat-pr--stack-merge-row number stack)))
+           (with   (and open (octocat-pr--stack-merging stack number))))
+      (append
+       (if open
+           (pcase-let ((`(,kind ,title ,subtitle) row))
+             (delq nil
+                   (list (vui-newline)
+                         ;; Whether it can merge ends the stack's line.
+                         (vui-text (concat indent name
+                                           (if row
+                                               (concat (propertize " · " 'face 'octocat-dimmed)
+                                                       (octocat-pr--merge-icon kind) " " title)
+                                             "")))
+                         (and subtitle
+                              (vui-text (concat "    " subtitle) :face 'octocat-dimmed)))))
+         (list (vui-newline) (octocat-vui-section-heading "Stack" width)
+               (vui-text name)))
+       (mapcar
+        (lambda (p)
+          (let* ((n     (gethash "number" p))
+                 ;; Under "Stack"; a draft says so, as in a compact list.
+                 (state (if (eq (gethash "isDraft" p) t) "(draft) " ""))
+                 (head  (concat indent "  "
+                                (propertize (format "#%d  " n) 'face 'octocat-pr-number)
+                                (propertize state 'face 'octocat-dimmed)))
+                 (why   (and (memq p with) (octocat-pr--stack-blocker p)))
+                 ;; After the title, which gives way to it.
+                 (tail  (if why
+                            (concat "  " (octocat-pr--merge-icon 'fail) " "
+                                    (propertize why 'face 'octocat-ci-failure))
+                          ""))
+                 (title (octocat-repo-vui--fit-title
+                         (or (octocat--nonempty (gethash "title" p)) "")
+                         (- width (string-width head) (string-width tail)))))
+            (if (eql n number)
+                (vui-text (concat head (propertize title 'face 'bold) tail))
+              (octocat-vui-row (concat head title tail)
+                               (lambda () (octocat-pr-open repo n))
+                               (format "RET: open pull request #%d" n)))))
+        prs)))))
+
 (defun octocat-pr--commit-items (repo pr)
   "Return a timeline item for each commit of PR (a hash-table) in REPO.
 Each is a RET-able line opening the commit; the newest commit also shows
@@ -872,13 +1113,15 @@ GitHub does.  See `octocat-vui-tab-row' for WIDTH."
                  (lambda () (octocat-pr-diff-open repo number)))))
    width))
 
-(defun octocat-pr--header (repo pr bg width &optional tab)
+(defun octocat-pr--header (repo pr bg width &optional tab stack)
   "Return the vnodes above the body: repo, title, branches, labels, tabs.
 PR is the hash-table of the pull request in REPO.  BG is as for
 `octocat--label-face'.  WIDTH is that of the title and the tabs, see
 `octocat-pr--tabs'.
 TAB is the page showing it, `conversation' (the default), `commits' or
-`files'."
+`files'.  STACK, when non-nil, is the stack PR is in, from
+`octocat-pr--use-stack': where PR sits in it ends the first line, see
+`octocat-pr--stack-badge'."
   (let* ((number   (gethash "number" pr))
          (state    (or (gethash "state" pr) "OPEN"))
          (head    (or (gethash "headRefName" pr) ""))
@@ -911,7 +1154,8 @@ TAB is the page showing it, `conversation' (the default), `commits' or
                 (propertize " → " 'face 'octocat-dimmed)
                 (propertize base 'face 'octocat-branch)))
       ;; The checks and comments are further down the page.
-      '(:ci :comments))
+      '(:ci :comments)
+      (octocat-pr--stack-badge repo stack number))
      (list
       (vui-newline)
       (octocat-pr--tabs (or tab 'conversation) repo number width
@@ -965,6 +1209,7 @@ again."
   (let* ((width    (octocat-vui-window-width))
          (bg       (octocat--label-background))
          (snap     (octocat-pr--use-data repo number tick))
+         (stack    (octocat-pr--use-stack repo number tick))
          (timeline (octocat-timeline-use-events repo number tick))
          (pr       (plist-get snap :data))
          (mutating (plist-get snap :mutating))
@@ -987,7 +1232,8 @@ again."
                      ;; The list fetched the PR: its header paints at once.
                      (apply #'vui-vstack
                             (append (delq nil (octocat-pr--header repo partial bg
-                                                                  (octocat--markdown-width)))
+                                                                  (octocat--markdown-width)
+                                                                  nil stack))
                                     (list (vui-text (octocat-vui-post-skeleton width)))))
                    (vui-text (octocat-vui-detail-skeleton repo number width
                                                           octocat-pr--tab-labels))))
@@ -999,7 +1245,7 @@ again."
                                      (octocat--nonempty (gethash "headRefName" pr))))))
          (apply #'vui-vstack
                 (append
-                 (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width)))
+                 (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width) nil stack))
                  entries
                  ;; Under the timeline, as they add to it; the checks and
                  ;; merge are about the PR as a whole.
@@ -1018,7 +1264,8 @@ again."
                                                 awaiting (alist-get 'approve mutating))
                      (octocat-checks-block
                       (or (octocat--get pr "statusCheckRollup") [])
-                      on-visit-check (octocat--markdown-width))))))))))
+                      on-visit-check (octocat--markdown-width)))
+                 (octocat-pr--stack-section repo pr stack (octocat--markdown-width)))))))))
 
 
 (vui-defcomponent octocat-pr-commits--page (repo number tick)
@@ -1027,6 +1274,7 @@ A new TICK fetches them again."
   :render
   (let* ((width (octocat--markdown-width))
          (snap  (octocat-pr--use-data repo number tick))
+         (stack (octocat-pr--use-stack repo number tick))
          (pr    (plist-get snap :data))
          (commits (vui-use-memo (pr) (and pr (octocat-pr--commits pr)))))
     (octocat-vui-resource-view
@@ -1041,7 +1289,8 @@ A new TICK fetches them again."
               (date-w    (octocat-repo-vui--date-width commits)))
          (apply #'vui-vstack
                 (append
-                 (delq nil (octocat-pr--header repo pr (octocat--label-background) width 'commits))
+                 (delq nil (octocat-pr--header repo pr (octocat--label-background) width
+                                               'commits stack))
                  (mapcar (lambda (c)
                            (octocat-repo-vui--commit-row repo c nil author-w subject-w date-w))
                          commits))))))))
@@ -1183,12 +1432,18 @@ the background, in place: what is unfolded stays so."
                                     :kind 'pulls
                                     :query (octocat-vui-list-query)
                                     :compact (octocat-vui-list-compact-p)
-                                    :row-fn (lambda (pr width compact no-state)
+                                    :row-fn (lambda (pr width compact no-state stacks)
                                               (octocat-repo-vui--pr-row
-                                               repo pr width bg compact no-state))
-                                    :line-fn (lambda (pr no-state)
+                                               repo pr width bg compact no-state
+                                               (octocat-pr--stacks-label
+                                                stacks (gethash "number" pr))))
+                                    :line-fn (lambda (pr no-state stacks)
                                                (octocat-repo-vui--pr-compact-line
-                                                repo pr bg no-state))))))
+                                                repo pr bg no-state nil
+                                                (octocat-pr--stacks-label
+                                                 stacks (gethash "number" pr))))
+                                    :extra-fn (lambda (tick)
+                                                (octocat-pr--use-repo-stacks repo tick))))))
 
 (defvar octocat-pr-list-mode-map
   (let ((map (make-sparse-keymap)))

@@ -48,7 +48,8 @@
                   (repo issue bg no-state &optional width))
 (declare-function octocat-repo-vui--state-label "octocat-repo" (state &optional draft))
 (declare-function octocat-repo-vui--detail-header "octocat-repo"
-                  (repo item state on-edit-title bg width fields shown &optional branch omit))
+                  (repo item state on-edit-title bg width fields shown
+                        &optional branch omit badge))
 (declare-function octocat-repo-vui--login-items "octocat-repo" (users))
 (declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
 (declare-function octocat-pr-open "octocat-pr" (repo number))
@@ -428,10 +429,10 @@ the background, in place: what is unfolded stays so."
                                     :kind 'issues
                                     :query (octocat-vui-list-query)
                                     :compact (octocat-vui-list-compact-p)
-                                    :row-fn (lambda (issue width compact no-state)
+                                    :row-fn (lambda (issue width compact no-state _)
                                               (octocat-repo-vui--issue-row
                                                repo issue width bg compact no-state))
-                                    :line-fn (lambda (issue no-state)
+                                    :line-fn (lambda (issue no-state _)
                                                (octocat-repo-vui--issue-compact-line
                                                 repo issue bg no-state))))))
 

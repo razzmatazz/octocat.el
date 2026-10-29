@@ -16,8 +16,9 @@
 ;; by `octocat-COMMAND' when there is no such function, as (dashboard)
 ;; for `octocat' and (pr-list "acme/rocket").  :press lists buttons to
 ;; press first, by their text, or rows to press RET on, by a text on
-;; them.  :name names its files, NAME.png and NAME.txt; it defaults to
-;; COMMAND.  To add a shot, add a marker; to
+;; them, or (:key KEY) to call KEY's command.  :name names its files,
+;; NAME.png and NAME.txt; it defaults to COMMAND.  To add a shot, add a
+;; marker; to
 ;; show other data, edit fixtures.el.  A `gh' call fixtures.el lacks
 ;; fails the run, naming it.
 ;;
@@ -170,20 +171,24 @@ it is pressed."
           (setq still 0 last text))))))
 
 (defun octocat-screenshots--press (buffer label)
-  "Press the button whose text is LABEL in BUFFER, or RET on its row."
+  "Press the button whose text is LABEL in BUFFER, or RET on its row.
+A LABEL of (:key KEY) calls the command KEY is bound to in BUFFER."
   (with-current-buffer buffer
     (goto-char (point-min))
     (let ((case-fold-search nil))
-      (if (search-forward label nil t)
+      (cond
+       ((eq (car-safe label) :key)
+        (call-interactively (key-binding (kbd (cadr label)))))
+       ((search-forward label nil t)
           (let ((pos (match-beginning 0)))
             (if (button-at pos)
                 (push-button pos)
               ;; A RET-able row, as a job's step: see
               ;; docs/user-interface-conventions.md.
               (goto-char pos)
-              (call-interactively (key-binding (kbd "RET")))))
-        (push (format "No button %S on %s" label (buffer-name))
-              octocat-screenshots--problems)))))
+              (call-interactively (key-binding (kbd "RET"))))))
+       (t (push (format "No button %S on %s" label (buffer-name))
+                octocat-screenshots--problems))))))
 
 (defun octocat-screenshots--text (buffer)
   "Return BUFFER's text, without trailing blanks."

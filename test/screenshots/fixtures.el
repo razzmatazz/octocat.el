@@ -435,6 +435,30 @@ Closes #97"
     pr)
   "Pull request #127, merged, as `gh pr view' gives it.")
 
+(defconst octocat-screenshots--pr-133
+  (let ((pr (copy-sequence octocat-screenshots--pr-128))
+        (h octocat-screenshots--h))
+    (dolist (field `((:number 133)
+                     (:title "Incremental builds: skip pages whose inputs are unchanged")
+                     (:createdAt ,(octocat-screenshots--ago (* 3 h)))
+                     (:baseRefName "serve-double-save") (:headRefName "incremental-builds")
+                     (:url "https://github.com/acme/rocket/pull/133")
+                     (:reactionGroups []) (:reviewDecision "REVIEW_REQUIRED") (:changedFiles 4)
+                     (:body "Each page now records the files it was built from; a build skips the pages whose inputs are all unchanged.
+
+Stacked on #130, whose watcher this uses.")
+                     (:comments []) (:reviews []) (:latestReviews [])
+                     (:milestone :null) (:closingIssuesReferences [])
+                     (:commits [(:oid ,(octocat-screenshots--sha "pr-133-1")
+                                 :messageHeadline "Skip pages whose inputs are unchanged"
+                                 :messageBody "" :authoredDate ,(octocat-screenshots--ago (* 3 h))
+                                 :committedDate ,(octocat-screenshots--ago (* 3 h))
+                                 :authors [(:login "srivera" :name "Sam Rivera"
+                                            :email "srivera@example.com" :id "U_1")])])))
+      (setq pr (plist-put pr (car field) (cadr field))))
+    pr)
+  "Pull request #133, stacked on #130, as `gh pr view' gives it.")
+
 (defun octocat-screenshots--commit-rest-short (sha message login name ago)
   "Return commit SHA, by LOGIN called NAME AGO seconds ago, as the REST API does.
 MESSAGE is its message."
@@ -943,6 +967,27 @@ FIELDS, a plist, override the rest."
       ("timeline-events" ("issues/127/") [[]])
       ("timeline-events" ("issues/128/") ,octocat-screenshots--pr-128-events)
       ("awaiting-runs" () (:total_count 0 :workflow_runs []))
+      ("pr" ("133") ,octocat-screenshots--pr-133)
+      ("timeline-events" ("issues/133/") [[]])
+      ;; #133 builds on #130's fix; #130 conflicts, so the stack cannot merge.
+      ("pr-stack" ("number=133")
+       (:data (:repository
+               (:pullRequest
+                (:stack (:number 134 :baseRefName "main"
+                         :entries (:nodes [(:position 1 :pullRequest
+                                                      (:number 130 :title "Fix: `rocket serve` drops changes saved twice in a second"
+                                                       :state "OPEN" :isDraft :false :mergeable "CONFLICTING"))
+                                           (:position 2 :pullRequest
+                                                      (:number 133 :title "Incremental builds: skip pages whose inputs are unchanged"
+                                                       :state "OPEN" :isDraft :false :mergeable "MERGEABLE"))])))))))
+      ("repo-stacks" ()
+       [(:id 9876543 :number 134 :base (:ref "main") :open t
+         :created_at ,(octocat-screenshots--ago (* 3 octocat-screenshots--h))
+         :pull_requests [(:number 130 :state "open" :draft :false :merged_at :null
+                          :head (:ref "serve-double-save" :sha ,(octocat-screenshots--sha "pr-130")))
+                         (:number 133 :state "open" :draft :false :merged_at :null
+                          :head (:ref "incremental-builds" :sha ,(octocat-screenshots--sha "pr-133-1")))])])
+      ("pr-stack" () (:data (:repository (:pullRequest (:stack :null)))))
       ("pr-diff" ("pulls/128/files") ,octocat-screenshots--pr-128-files)
       ("pr-review-comments" ("pulls/128/comments") ,octocat-screenshots--pr-128-review-comments)
 

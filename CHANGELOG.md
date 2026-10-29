@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* PRs in a stack (`gh stack`) show their place in it, `≡ 2/3`; a PR page lists the stack
 * A job's steps show their log again, now that GitHub labels no line with its step
 * The branch picker sits on the top line after a Code tab, on repo, tree, file and commit pages
 * The commit list and dashboard leave a blank line under their top line, as other pages

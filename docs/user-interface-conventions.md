@@ -267,6 +267,11 @@ reads, for point; RET should never be the only way to find it out:
 
 ---
 
+## A PR's place in its stack follows its title
+
+`≡ 2/3` goes two spaces after the PR's title, before its labels or
+author.  Where the title isn't shown, neither is the mark.
+
 ## Users are `@login`
 
 A GitHub user is shown as `@login` everywhere: in rows, page headers and

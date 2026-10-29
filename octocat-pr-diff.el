@@ -47,7 +47,8 @@
 (require 'vui)
 
 (declare-function octocat-pr--use-data "octocat-pr" (repo number tick))
-(declare-function octocat-pr--header "octocat-pr" (repo pr bg width &optional tab))
+(declare-function octocat-pr--header "octocat-pr" (repo pr bg width &optional tab stack))
+(declare-function octocat-pr--use-stack "octocat-pr" (repo number tick))
 (declare-function octocat-pr--current "octocat-pr" ())
 (declare-function octocat-pr--busy "octocat-pr" (repo number slot))
 (declare-function octocat-pr-merge "octocat-pr" ())
@@ -225,6 +226,7 @@ submitted shows in place of the submit button.  A new TICK fetches
 everything again."
   :render
   (let* ((pr       (octocat-pr--use-data repo number tick))
+         (stack    (octocat-pr--use-stack repo number tick))
          (tab-w    (octocat--markdown-width))
          (files    (octocat-vui-use-resource (list 'pr-files repo number) tick))
          (comments (octocat-vui-use-resource (list 'pr-review-comments repo number) tick))
@@ -237,7 +239,7 @@ everything again."
        (apply #'vui-vstack
               (delq nil (octocat-pr--header
                          repo (or (plist-get pr :data) (plist-get pr :partial))
-                         (octocat--label-background) tab-w 'files))))
+                         (octocat--label-background) tab-w 'files stack))))
       ((and (plist-get pr :error) (not (plist-get pr :loading)))
        (vui-vstack
         (vui-text (octocat-vui-error-text pr) :face 'error)

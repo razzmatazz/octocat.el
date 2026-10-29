@@ -1,0 +1,32 @@
+acme/rocket#133  Incremental builds: skip pages whose inputs are unchanged  ≡ 2/2 · @srivera
+open    Assignees @srivera · Reviewers @jlindqvist (pending) · Labels  performance
+        incremental-builds → serve-double-save · Review required
+
+Conversation  [Commits (1)]  [Files changed (4)]
+● @srivera opened this pull request  3 hours ago
+│ Each page now records the files it was built from; a build skips the pages whose inputs are all
+│ unchanged.
+│
+│ Stacked on #130, whose watcher this uses.
+│
+○ @srivera committed b7d444f Skip pages whose inputs are unchanged  3 hours ago  CI: ●
+│
+[+ Add a comment]   [Close pull request]
+
+Merge
+  ✗ Review required
+    At least 1 approving review is required by reviewers with write access.
+  ✓ All checks have passed
+    4 successful checks
+    ✓ lint           CI  2m00s  1 day ago
+    ✓ test (stable)  CI  6m00s  1 day ago
+    ✓ test (beta)    CI  7m00s  1 day ago
+    ✓ docs           CI  3m00s  1 day ago
+  ✓ No conflicts with base branch
+
+  Merging can be performed automatically.
+  [Merge pull request]   Still in progress? [Convert to draft]
+
+  ≡ Stack #134 · into main · ✗ Unable to merge as stack
+    #133  Incremental builds: skip pages whose inputs are unchanged
+    #130  Fix: `rocket serve` drops changes saved twice in a second  ✗ has conflicts
