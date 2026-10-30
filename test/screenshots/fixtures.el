@@ -1182,6 +1182,32 @@ FIELDS, a plist, override the rest."
         :html_url "https://github.com/acme/rocket/actions/workflows/ci.yml"
         :badge_url "https://github.com/acme/rocket/workflows/CI/badge.svg"
         :created_at "2025-02-11T09:00:00Z" :updated_at ,(octocat-screenshots--ago (* 30 d))))
+      ("workflow-file" ("contents/.github/workflows/ci.yml")
+       "name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      toolchain:
+        description: Rust toolchain to build with
+        type: choice
+        default: stable
+        options: [stable, beta, nightly]
+      sites:
+        description: Example sites to build, comma-separated
+        required: true
+      bench:
+        description: Also run the benchmarks
+        type: boolean
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test
+")
 
       ;; People
       ("user-profile" ("users/srivera") ,octocat-screenshots--srivera)

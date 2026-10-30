@@ -24,7 +24,9 @@
 
 ;; A workflow and its runs: `octocat-workflow-mode', a vui.el page
 ;; opened from the workflow list, a run or `C-c C-j'.  Its runs are the
-;; run list's section (octocat-run.el).  Also the workflow list,
+;; run list's section (octocat-run.el).  A workflow with a
+;; `workflow_dispatch' trigger is run by hand from a form above them,
+;; its inputs read from the workflow's file.  Also the workflow list,
 ;; `octocat-workflow-list-mode', the second page of the Actions tab.
 ;;
 ;; Depends on octocat-core.el.  Must not depend on octocat.el to avoid a
@@ -34,6 +36,7 @@
 
 (require 'octocat-core)
 (require 'octocat-run)
+(require 'octocat-search) ; `octocat--read-branch'
 (require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)
@@ -81,6 +84,439 @@ GitHub names it by its file, the last part of PATH, when known."
                     (if (octocat--nonempty path) (file-name-nondirectory path) id)))
 
 
+;;;; Running by hand
+;;
+;; GitHub's API doesn't say what a `workflow_dispatch' trigger asks:
+;; it is read from the workflow's file, at the branch it is to run on.
+;; Elisp has no YAML reader, so `octocat-workflow--yaml-parse' reads
+;; the little of YAML that triggers are written in, and only the `on'
+;; block is given to it.
+
+(defun octocat-workflow--yaml-uncomment (line)
+  "Return LINE without its comment and trailing blanks.
+A comment starts at a `#' outside quotes, first or after a blank."
+  (let ((i 0) (n (length line)) quote end)
+    (while (and (< i n) (not end))
+      (let ((c (aref line i)))
+        (cond (quote (when (eq c quote) (setq quote nil)))
+              ((memq c '(?\" ?\')) (setq quote c))
+              ((and (eq c ?#) (or (zerop i) (memq (aref line (1- i)) '(?\s ?\t))))
+               (setq end i))))
+      (setq i (1+ i)))
+    (string-trim-right (substring line 0 end))))
+
+(defun octocat-workflow--yaml-item-p (text)
+  "Return non-nil if TEXT, a trimmed line, is an item of a block sequence."
+  (or (equal text "-") (string-prefix-p "- " text)))
+
+(defun octocat-workflow--yaml-key (text)
+  "Return (KEY . REST) if TEXT, a trimmed line, is a mapping entry.
+REST is what follows the colon, \"\" when nothing does."
+  (when (string-match (concat "\\`\\(\"[^\"]*\"\\|'[^']*'\\|[^\"' ][^:]*?\\)"
+                              "[ \t]*:\\(?:[ \t]+\\(.*\\)\\)?\\'")
+                      text)
+    (cons (octocat-workflow--yaml-scalar (match-string 1 text))
+          (or (match-string 2 text) ""))))
+
+(defun octocat-workflow--yaml-split (text)
+  "Return TEXT, the inside of a flow collection, split at its top commas."
+  (let ((i 0) (start 0) (depth 0) quote parts)
+    (while (< i (length text))
+      (let ((c (aref text i)))
+        (cond (quote (when (eq c quote) (setq quote nil)))
+              ((memq c '(?\" ?\')) (setq quote c))
+              ((memq c '(?\[ ?\{)) (setq depth (1+ depth)))
+              ((memq c '(?\] ?\})) (setq depth (1- depth)))
+              ((and (eq c ?,) (zerop depth))
+               (push (substring text start i) parts)
+               (setq start (1+ i)))))
+      (setq i (1+ i)))
+    (push (substring text start) parts)
+    (seq-remove #'string-empty-p (mapcar #'string-trim (nreverse parts)))))
+
+(defun octocat-workflow--yaml-scalar (text)
+  "Return TEXT, a value on one line, as `octocat-workflow--yaml-parse' does."
+  (cond
+   ((member text '("" "~" "null" "Null" "NULL")) nil)
+   ((string-match "\\`\"\\(.*\\)\"\\'" text)
+    (condition-case nil (read text) (error (match-string 1 text))))
+   ((string-match "\\`'\\(.*\\)'\\'" text)
+    (string-replace "''" "'" (match-string 1 text)))
+   ((string-match "\\`\\[\\(.*\\)\\]\\'" text)
+    (vconcat (mapcar #'octocat-workflow--yaml-scalar
+                     (octocat-workflow--yaml-split (match-string 1 text)))))
+   ((string-match "\\`{\\(.*\\)}\\'" text)
+    (delq nil (mapcar (lambda (part)
+                        (when-let* ((pair (octocat-workflow--yaml-key part)))
+                          (cons (car pair) (octocat-workflow--yaml-scalar (cdr pair)))))
+                      (octocat-workflow--yaml-split (match-string 1 text)))))
+   (t text)))
+
+(defun octocat-workflow--yaml-parse (text)
+  "Return TEXT, YAML, as Lisp.
+A mapping is an alist of (KEY . VALUE), in order, a sequence a vector,
+a scalar a string, and an empty value nil.  It reads block mappings
+and sequences, flow ones on one line, quoted and plain scalars and
+block scalars (`|', `>'): what triggers are written in.  Anchors, tags
+and values over several lines otherwise are not read."
+  (let* ((lines (vconcat
+                 (mapcar (lambda (raw)
+                           (let ((s (octocat-workflow--yaml-uncomment raw)))
+                             ;; (INDENT TEXT RAW); INDENT nil for a blank line
+                             (list (and (not (string-blank-p s))
+                                        (- (length s) (length (string-trim-left s))))
+                                   (string-trim s) raw)))
+                         (split-string text "\n"))))
+         (i 0))
+    (cl-labels
+        ((indent ()
+           (while (and (< i (length lines)) (null (car (aref lines i))))
+             (setq i (1+ i)))
+           (and (< i (length lines)) (car (aref lines i))))
+         (line () (nth 1 (aref lines i)))
+         (node (min)
+           (let ((ind (indent)))
+             (cond ((or (null ind) (< ind min)) nil)
+                   ((octocat-workflow--yaml-item-p (line)) (items ind))
+                   (t (pairs ind)))))
+         (items (ind)
+           (let (out)
+             (while (and (eql (indent) ind) (octocat-workflow--yaml-item-p (line)))
+               (let ((rest (string-trim-left (substring (line) 1))))
+                 (cond ((string-empty-p rest)
+                        (setq i (1+ i))
+                        (push (node (1+ ind)) out))
+                       ((octocat-workflow--yaml-key rest)
+                        ;; "- key: value" starts a mapping at key's column.
+                        (aset lines i (list (+ ind (- (length (line)) (length rest))) rest nil))
+                        (push (pairs (car (aref lines i))) out))
+                       (t (setq i (1+ i))
+                          (push (octocat-workflow--yaml-scalar rest) out)))))
+             (vconcat (nreverse out))))
+         (pairs (ind)
+           (let (out)
+             (while (and (eql (indent) ind) (octocat-workflow--yaml-key (line)))
+               (pcase-let ((`(,key . ,rest) (octocat-workflow--yaml-key (line))))
+                 (setq i (1+ i))
+                 (push (cons key
+                             (cond ((string-match-p "\\`[|>][-+0-9]*\\'" rest)
+                                    (block ind (eq (aref rest 0) ?>)))
+                                   ((not (string-empty-p rest))
+                                    (octocat-workflow--yaml-scalar rest))
+                                   ;; A sequence may sit at its key's indent.
+                                   ((and (eql (indent) ind)
+                                         (octocat-workflow--yaml-item-p (line)))
+                                    (items ind))
+                                   (t (node (1+ ind)))))
+                       out)))
+             (nreverse out)))
+         (block (ind folded)
+           (let (raws)
+             (while (and (< i (length lines))
+                         (let ((raw (nth 2 (aref lines i))))
+                           (and raw (or (string-blank-p raw)
+                                        (> (- (length raw) (length (string-trim-left raw)))
+                                           ind)))))
+               (push (nth 2 (aref lines i)) raws)
+               (setq i (1+ i)))
+             (let* ((raws (nreverse raws))
+                    (cut  (apply #'min most-positive-fixnum
+                                 (mapcar (lambda (r) (- (length r) (length (string-trim-left r))))
+                                         (seq-remove #'string-blank-p raws)))))
+               (string-trim-right
+                (string-join (mapcar (lambda (r) (if (string-blank-p r) "" (substring r cut)))
+                                     raws)
+                             (if folded " " "\n")))))))
+      (node 0))))
+
+(defun octocat-workflow--yaml-on (yaml)
+  "Return the triggers of workflow file YAML, its `on' value, as Lisp.
+Only the `on' block is read, so what the jobs are written in does not
+matter.  YAML 1.1 reads a bare `on' as true, so `true' is taken too."
+  (let ((lines (split-string yaml "\n")) block)
+    (while (and lines (not (string-match-p "\\`\\(on\\|\"on\"\\|'on'\\|true\\)[ \t]*:"
+                                           (car lines))))
+      (setq lines (cdr lines)))
+    (when lines
+      (push (car lines) block)
+      (setq lines (cdr lines))
+      (while (and lines (let ((l (octocat-workflow--yaml-uncomment (car lines))))
+                          (or (string-empty-p l) (memq (aref l 0) '(?\s ?\t ?-)))))
+        (push (car lines) block)
+        (setq lines (cdr lines)))
+      (cdar (octocat-workflow--yaml-parse (string-join (nreverse block) "\n"))))))
+
+(defun octocat-workflow--dispatch-spec (yaml)
+  "Return what running workflow file YAML by hand asks, as a hash-table.
+\"dispatch\" is t when it has a `workflow_dispatch' trigger, else
+`:false', and \"inputs\" a vector of its inputs, each with its
+\"name\", \"type\", \"required\" (t or `:false'), \"options\" and,
+when given, \"description\" and \"default\", strings."
+  (let* ((on       (octocat-workflow--yaml-on yaml))
+         (trigger  (cond ((stringp on) (and (equal on "workflow_dispatch") (list on)))
+                         ((vectorp on) (and (seq-contains-p on "workflow_dispatch") (list on)))
+                         ((consp on)   (assoc "workflow_dispatch" on))))
+         (inputs   (let ((v (cdr trigger))) (and (consp v) (cdr (assoc "inputs" v)))))
+         (spec     (make-hash-table :test #'equal)))
+    (puthash "dispatch" (if trigger t :false) spec)
+    (puthash "inputs"
+             (vconcat
+              (mapcar (pcase-lambda (`(,name . ,props))
+                        (let ((in  (make-hash-table :test #'equal))
+                              (get (lambda (k) (and (consp props) (cdr (assoc k props))))))
+                          (puthash "name" name in)
+                          (puthash "type" (or (funcall get "type") "string") in)
+                          (puthash "required"
+                                   (if (member (funcall get "required") '("true" "True" "TRUE"))
+                                       t :false)
+                                   in)
+                          (puthash "options" (vconcat (funcall get "options")) in)
+                          (dolist (k '("description" "default"))
+                            (when (stringp (funcall get k))
+                              (puthash k (funcall get k) in)))
+                          in))
+                      (and (consp inputs) inputs)))
+             spec)
+    spec))
+
+(defun octocat-workflow--dispatchable-path-p (path)
+  "Return non-nil if PATH is a workflow file, which can be run by hand.
+Not one of GitHub's own, such as \"dynamic/pages/pages-build-deployment\"."
+  (and (stringp path) (string-prefix-p ".github/workflows/" path)))
+
+(octocat-sync-define-resource workflow-dispatch (repo path ref)
+  :max-age 300
+  :poll 300
+  :fetch (lambda (done)
+           (octocat--run-gh
+            "workflow-file"
+            (list "api" "-X" "GET"
+                  (format "repos/%s/contents/%s" repo
+                          (mapconcat #'url-hexify-string (split-string path "/") "/"))
+                  "-f" (concat "ref=" ref)
+                  "-H" "Accept: application/vnd.github.raw")
+            #'octocat-workflow--dispatch-spec
+            done)))
+
+(defun octocat-workflow--input-default (input)
+  "Return the first value of INPUT in the form, as GitHub's: a string."
+  (or (gethash "default" input)
+      (pcase (gethash "type" input)
+        ("boolean" "false")
+        ("choice"  (let ((options (gethash "options" input)))
+                     (if (> (length options) 0) (aref options 0) "")))
+        (_ ""))))
+
+(defun octocat-workflow--input-values (inputs values)
+  "Return the value of each of INPUTS, as an alist (NAME . STRING).
+VALUES, an alist of the same, has those the user set; the others are
+their defaults."
+  (mapcar (lambda (in)
+            (let ((name (gethash "name" in)))
+              (cons name (or (cdr (assoc name values))
+                             (octocat-workflow--input-default in)))))
+          inputs))
+
+(defun octocat-workflow--input-errors (inputs values)
+  "Return what is wrong with VALUES of INPUTS, an alist (NAME . MESSAGE).
+VALUES is as `octocat-workflow--input-values' returns.  GitHub refuses
+a run missing a required input, a number that is none, or a choice not
+among the options."
+  (delq nil
+        (mapcar (lambda (in)
+                  (let* ((name  (gethash "name" in))
+                         (value (or (cdr (assoc name values)) ""))
+                         (blank (string-blank-p value)))
+                    (cond
+                     ((and blank (eq (gethash "required" in) t)) (cons name "required"))
+                     ((and (not blank) (equal (gethash "type" in) "number")
+                           (not (string-match-p
+                                 (concat "\\`[-+]?\\([0-9]+\\.?[0-9]*\\|\\.[0-9]+\\)"
+                                         "\\([eE][-+]?[0-9]+\\)?\\'")
+                                 (string-trim value))))
+                      (cons name "not a number"))
+                     ((and (equal (gethash "type" in) "choice")
+                           (not (seq-contains-p (gethash "options" in) value)))
+                      (cons name "not one of the options")))))
+                inputs)))
+
+(defun octocat-workflow--input-label (input &optional width)
+  "Return the label of INPUT: its description's first line, or its name.
+A required one is marked `*', as on GitHub.  With WIDTH, the text is
+cut to keep the label within it, the mark kept."
+  (let ((text (car (split-string (or (octocat--nonempty (gethash "description" input))
+                                     (gethash "name" input))
+                                 "\n")))
+        (mark (if (eq (gethash "required" input) t) (propertize " *" 'face 'error) "")))
+    (concat (if width (octocat-vui--fit text (- width (string-width mark))) text)
+            mark)))
+
+(defun octocat-workflow--parse-dispatched (output)
+  "Return the ID of the run GitHub started, from OUTPUT, or nil.
+Asked for with `return_run_details'; a GitHub without it answers with
+nothing."
+  (let ((text (string-trim output)))
+    (and (not (string-empty-p text))
+         (octocat--get (json-parse-string text) "workflow_run_id"))))
+
+(octocat-sync-define-mutation dispatch-workflow (repo id ref inputs)
+  :label "Starting workflow…"
+  :slot 'dispatch
+  :resources (lambda () `((workflow ,repo ,id)))
+  :send (lambda (done)
+          (octocat--run-gh "workflow-dispatch"
+                           (append (list "api" "--method" "POST"
+                                         (format "repos/%s/actions/workflows/%s/dispatches"
+                                                 repo id)
+                                         "-f" (concat "ref=" ref)
+                                         "-F" "return_run_details=true")
+                                   (mapcan (pcase-lambda (`(,name . ,value))
+                                             (list "-f" (format "inputs[%s]=%s" name value)))
+                                           inputs))
+                           #'octocat-workflow--parse-dispatched done))
+  :invalidates (lambda () `((runs ,repo _ _))))
+
+(defun octocat-workflow--input-control (input value on-change on-submit)
+  "Return the control of INPUT showing VALUE, a string.
+ON-CHANGE is called with each new value; ON-SUBMIT runs on RET in a
+text field."
+  (let ((name (gethash "name" input)))
+    (pcase (gethash "type" input)
+      ("boolean" (vui-checkbox :key (list 'input name)
+                               :checked (equal value "true")
+                               :on-change (lambda (v) (funcall on-change (if v "true" "false")))))
+      ("choice"  (vui-select :key (list 'input name)
+                             :value value
+                             :options (append (gethash "options" input) nil)
+                             :prompt (format "%s: " name)
+                             :on-change on-change))
+      (_ (vui-field :key (list 'input name)
+                    :value value
+                    :size 30
+                    :face 'octocat-filter-input
+                    :on-change on-change
+                    :on-submit (lambda (_) (funcall on-submit)))))))
+
+(vui-defcomponent octocat-workflow--dispatch (repo id path default-branch local busy tick)
+  "The \"Run workflow\" button of workflow ID of REPO, and its form.
+PATH is the workflow's file, read at DEFAULT-BRANCH, or at the branch
+picked, for its `workflow_dispatch' inputs; LOCAL is the clone's branch,
+for the picker.  The form slides out under the button, as GitHub's
+drops down, and closes as the run is sent.  BUSY is the label of the
+run being started, shown in the button's place.  TICK is the page's."
+  :state ((open nil) (shown 0) (ref nil) (values nil) (tried nil))
+  :render
+  (let* ((_ (octocat-vui-use-view-reset
+             (vui-async-callback ()
+               (vui-set-state :open nil)
+               (vui-set-state :shown 0))))
+         (buf    (current-buffer))
+         (shown-ref (or ref default-branch))
+         (snap   (octocat-vui-use-resource (list 'workflow-dispatch repo path shown-ref) tick))
+         (spec   (plist-get snap :data))
+         (inputs (and spec (append (gethash "inputs" spec) nil)))
+         (dispatch (and spec (eq (gethash "dispatch" spec) t)))
+         (current (octocat-workflow--input-values inputs values))
+         (errors (and tried (octocat-workflow--input-errors inputs current)))
+         (set-state (vui-async-callback (key value) (vui-set-state key value)))
+         (set-value (vui-async-callback (name value)
+                      (vui-set-state :values
+                                     (lambda (vs) (cons (cons name value)
+                                                        (assoc-delete-all name (copy-alist vs)))))))
+         (toggle (vui-async-callback () (vui-set-state :open (not open))))
+         (run
+          (vui-async-callback ()
+            (cond
+             ((not dispatch) (user-error "Octocat: No workflow_dispatch trigger on %s" shown-ref))
+             ((octocat-workflow--input-errors inputs current)
+              (vui-set-state :tried t)
+              (message "Octocat: Fill in the inputs marked"))
+             (t
+              ;; Closed at once: the run is shown under way in the
+              ;; button's place, and the form comes back if it fails.
+              (vui-set-state :open nil)
+              (vui-set-state :shown 0)
+              (vui-set-state :tried nil)
+              (octocat-sync-submit
+               `(dispatch-workflow ,repo ,id ,shown-ref ,current)
+               (lambda (result)
+                 (cond
+                  ((eq (car-safe result) 'error)
+                   (funcall set-state :open t))
+                  (t
+                   (funcall set-state :values nil)
+                   (cond ((and result (octocat--still-selected-p buf))
+                          (with-current-buffer buf (octocat-run-open repo result)))
+                         ((not result)
+                          (message "Octocat: Workflow started on %s" shown-ref)))))))))))
+         (pick-ref
+          (lambda ()
+            (let ((picked (octocat--read-branch repo default-branch local shown-ref)))
+              (funcall set-state :ref (unless (equal picked default-branch) picked)))))
+         (label-w (min 40 (apply #'max (string-width "Use workflow from")
+                                 (mapcar (lambda (in) (string-width
+                                                       (octocat-workflow--input-label in)))
+                                         inputs))))
+         (label   (lambda (text)
+                    (vui-text (concat "  " (string-pad text label-w) "  "))))
+         (rows
+          (append
+           (list (vui-hstack :spacing 0
+                             (funcall label "Use workflow from")
+                             (vui-button (format "%s ▾" shown-ref)
+                               :key 'dispatch-ref
+                               :help-echo "RET: pick the branch to run the workflow from"
+                               :on-click pick-ref)))
+           (cond
+            ((eq (octocat-vui-snapshot-status snap) 'error)
+             (list (vui-text (concat "  " (octocat-vui-error-text snap)) :face 'error)))
+            ((not spec) (list (vui-text (octocat-vui-line-skeleton))))
+            ((not dispatch)
+             (list (vui-text (format "  No workflow_dispatch trigger on %s" shown-ref)
+                     :face 'octocat-dimmed)))
+            (t
+             (mapcar (lambda (in)
+                       (let* ((name  (gethash "name" in))
+                              (error (cdr (assoc name errors))))
+                         (vui-hstack :spacing 0
+                                     (funcall label (octocat-workflow--input-label in label-w))
+                                     (octocat-workflow--input-control
+                                      in (cdr (assoc name current))
+                                      (lambda (v) (funcall set-value name v))
+                                      run)
+                                     (and error (vui-text (concat "  " error) :face 'error)))))
+                     inputs)))
+           (list (vui-hstack :spacing 2
+                             (vui-text (make-string (+ label-w 2) ?\s))
+                             (vui-button "Run workflow"
+                               :key 'dispatch-run
+                               :face 'success
+                               :disabled (not dispatch)
+                               :help-echo "RET: start the workflow"
+                               :on-click run)
+                             (vui-button "Cancel"
+                               :key 'dispatch-cancel
+                               :face 'octocat-dimmed
+                               :help-echo "RET: close without running"
+                               :on-click toggle)))))
+         (now (octocat-vui-use-unfold shown open (length rows))))
+    ;; No button until the file is known to have the trigger: on another
+    ;; branch it may lack one, and the form says so.
+    (when (or busy open (> now 0) ref dispatch)
+      (apply #'vui-vstack
+             (vui-hstack :spacing 2
+                         (vui-text "This workflow has a workflow_dispatch event trigger."
+                           :face 'octocat-dimmed)
+                         (if busy
+                             (vui-text (concat (octocat-vui-spinner) " " busy) :face 'bold)
+                           (vui-button (if open "Run workflow ▴" "Run workflow ▾")
+                             :key 'dispatch-toggle
+                             :help-echo (if open
+                                            "RET: close the form"
+                                          "RET: run the workflow by hand")
+                             :on-click toggle)))
+             (append (seq-take rows now) (list (vui-newline)))))))
+
 ;;;; Page
 
 (defun octocat-workflow--crumbs (name path)
@@ -118,7 +554,10 @@ fetches them again."
   (let* ((width (octocat-vui-window-width))
          (local-branch (vui-use-memo () (octocat--current-branch)))
          (snap  (octocat-vui-use-resource (list 'workflow repo id) tick))
-         (data  (plist-get snap :data)))
+         (data  (plist-get snap :data))
+         (summary (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick) :data))
+         (default-branch (and summary (gethash "default-branch" summary)))
+         (file  (or (and data (gethash "path" data)) path)))
     (apply #'vui-vstack
            (append
             (if data
@@ -126,6 +565,16 @@ fetches them again."
               (octocat-vui-actions-header repo (octocat-workflow--crumbs name path) width))
             (list
              (vui-newline)
+             (and data default-branch
+                  (equal (gethash "state" data) "active")
+                  (octocat-workflow--dispatchable-path-p file)
+                  (vui-component 'octocat-workflow--dispatch
+                    :key 'dispatch
+                    :repo repo :id id :path file
+                    :default-branch default-branch :local local-branch
+                    :busy (alist-get 'dispatch (plist-get snap :mutating))
+                    :tick tick))
+             (octocat-vui-section-heading "Runs" width)
              (if (eq (octocat-vui-snapshot-status snap) 'error)
                  (vui-text (concat "  " (octocat-vui-error-text snap)) :face 'error)
                (vui-component 'octocat-run-list--runs

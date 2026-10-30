@@ -1,0 +1,18 @@
+acme/rocket  CI  .github/workflows/ci.yml
+active  Created 1 year ago · Updated 1 month ago
+
+This workflow has a workflow_dispatch event trigger.  [Run workflow ▴]
+  Use workflow from                         [main ▾]
+  Rust toolchain to build with              [stable]
+  Example sites to build, comma-separat… *                                  required
+  Also run the benchmarks                   [ ]
+                                            [Run workflow]  [Cancel]
+
+Runs
+●  Incremental builds: skip pages whose inputs are u…  9100200310   incremental       4 minutes ago
+✓  Render footnotes in Markdown pages (#131)           9100200308   main              2 hours ago
+✓  Add RSS and Atom feeds for each section             9100200307   feeds             9 hours ago
+✗  Fix: `rocket serve` drops changes saved twice in …  9100200306   serve-debounce    1 day ago
+✓  Cache parsed templates between builds               9100200300   template-cache    1 day ago
+✓  Bump toml from 0.8.12 to 0.8.19                     9100200298   dependabot/carg…  1 day ago
+✗  Docs: a guide to writing your first theme           9100200297   theme-guide       5 days ago

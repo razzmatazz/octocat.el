@@ -176,6 +176,18 @@ lists its runs as the run list does, without the workflow column.  A
 workflow can also be reached from anywhere with `C-c C-j`, by its name
 or file.
 
+A workflow with a `workflow_dispatch` trigger can be run by hand, as on
+GitHub: **[Run workflow ▾]** on its page, above its runs, slides out a
+form with the branch to run it from and the inputs the trigger asks
+for: a text field, a checkbox for a `boolean`, a pick of its options
+for a `choice`.  GitHub's API doesn't say what the trigger asks, so
+octocat reads the workflow's file at the branch picked, and the button
+shows only when it has the trigger.  **[Run workflow]** checks the
+inputs first, marking a required one left empty or a `number` that is
+not one, then closes the form, shows the run starting in the button's
+place and opens the new run's page once GitHub has started it.  If
+GitHub refuses, the form comes back with what was typed.
+
 The runs are filtered as the pull request list is: a query in the field
 above them, such as `branch:main status:failure`, edited by hand (with
 completion) or through the **[Branch]**, **[Status]**, **[Workflow]**

@@ -1,6 +1,9 @@
 acme/rocket  CI  .github/workflows/ci.yml
 active  Created 1 year ago · Updated 1 month ago
 
+This workflow has a workflow_dispatch event trigger.  [Run workflow ▾]
+
+Runs
 ●  Incremental builds: skip pages whose inputs are u…  9100200310   incremental       4 minutes ago
 ✓  Render footnotes in Markdown pages (#131)           9100200308   main              2 hours ago
 ✓  Add RSS and Atom feeds for each section             9100200307   feeds             9 hours ago

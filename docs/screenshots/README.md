@@ -267,6 +267,17 @@ A workflow and its runs:
 [As text](workflow.txt)
 <!-- /screenshot -->
 
+`[Run workflow ▾]` slides out the form that runs it by hand, with the
+inputs its `workflow_dispatch` trigger asks for; here `[Run workflow]`
+was pressed with a required one left empty.  Once GitHub starts the
+run, its page opens.
+
+<!-- screenshot: (workflow "acme/rocket" 4200 "CI" ".github/workflows/ci.yml") :name "workflow-dispatch" :press ("Run workflow ▾" "[Run workflow]") -->
+![workflow-dispatch](workflow-dispatch.png)
+
+[As text](workflow-dispatch.txt)
+<!-- /screenshot -->
+
 ## User
 
 `M-x octocat-user`: a user's profile, avatar, pinned and recent
