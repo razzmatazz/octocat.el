@@ -654,5 +654,15 @@ browser, skip it."
     (should (equal (mapcar (lambda (e) (aref e 2)) octocat--gh-log) '("newer" "new")))
     (should (eq (aref (car octocat--gh-log) 4) 'poll))))
 
+(ert-deftest octocat-core-test-list-item-without-commits ()
+  "A PR that comes with no commits parses, without a CI state."
+  (let ((item (car (plist-get
+                    (octocat--parse-list-items
+                     "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
+                       \"nodes\":[{\"number\":3,\"commits\":{\"nodes\":[]}}]}}}")
+                    :items))))
+    (should (= (gethash "number" item) 3))
+    (should-not (gethash "ciState" item))))
+
 (provide 'octocat-core-tests)
 ;;; octocat-core-tests.el ends here

@@ -852,49 +852,28 @@ page.
 
 ## Marking items in a list
 
-The PR and issue lists mark items the way Dired marks files, so a
-command can later act on several at once.  The keys are the same with
-and without Evil, as on a read-only list Evil's `m`, `u` and `U` have
-nothing to do:
+PR and issue lists mark items like Dired marks files, with the same
+keys with and without Evil:
 
 | Key | Does |
 |---|---|
-| `m` | Mark the item at point and move to the next; with a region (Evil: `V`), mark each item it touches, from the start of its first line |
+| `m` | Mark the item at point and move to the next; with a region, mark the items in it |
 | `u` | Unmark, the same way |
-| `U` | Unmark every item, those the query hides too |
-
-How a mark is shown:
+| `U` | Unmark all |
 
 ```
   open    Incremental builds: skip pages whose inputs…   performance
-          acme/rocket#133 by @srivera · 3 hours ago
 ✓ open    Add RSS and Atom feeds for each section   enhancement      ← marked
-          acme/rocket#132 by @pnair · 9 hours ago
 ```
 
-- **A mark column starts every row, always**, blank or `✓`
-  (`octocat-repo-vui--mark-column`).  Showing it only while something
-  is marked would reflow the page at the first mark and the last
-  unmark.  The header and filter bar keep their place: the column
-  belongs to the rows.
-- **`✓` as well as a highlight.**  A marked row is also drawn in
-  `octocat-marked`, under its own faces, but a background alone is lost
-  on the current line under `hl-line`, and isn't text: the `✓` reads in
-  any theme or terminal, and in the screenshots' `.txt`.
-- **The highlight fills the page width.**  Each line of a row ends in a
-  stretch of space to the width (`display` `(space :align-to COL)`), so a
-  marked row, or the one under the mouse, is lit as one block.
-- **Marks are item numbers**, kept per buffer
-  (`octocat-vui-list-marks`), not positions: they last through a
-  refresh, a new query and a redraw, and point follows its item.  A mark
-  the query hides stays; the echo area counts those after each command.
-
-To let another list mark its items: give each row's text an
-`octocat-vui-list-item` property holding its number, start each row
-with the mark column (counting it in the width the row is cut to), pass
-the page `:marks`, and put `octocat-vui-list-mark-map` in the mode
-map's parent, plus its keys in the Evil list setup, as the PR and issue
-lists do.
+- Every row starts with a mark column, blank or `✓`.  It is always
+  there, so marking never reflows the page.
+- A marked row is also highlighted, across the page width.  The `✓`
+  stays visible where a highlight doesn't, e.g. under `hl-line`.
+- Marks are item numbers, kept as state of the list page.
+- Only items in the list are marked: an item that leaves it (new query,
+  closed on refresh) is unmarked, so actions never touch items you
+  can't see.
 
 ---
 

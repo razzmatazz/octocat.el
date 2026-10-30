@@ -1489,8 +1489,12 @@ them again."
           :face 'octocat-dimmed)
         (vui-newline))))))
 
+(defvar-local octocat-vui-list--set-marks-function nil
+  "Function of a list of item numbers that makes them the page's marks.
+A `vui-async-callback' the page sets as it mounts.")
+
 (vui-defcomponent octocat-vui-search-list (repo kind query row-fn line-fn compact tick
-                                                extra-fn marks)
+                                                extra-fn)
   "List page of the KIND items of REPO, `issues' or `pulls', matching QUERY.
 ROW-FN returns the row of an item, given it, the width, COMPACT, non-nil
 for one-line rows, and NO-STATE, non-nil to leave a compact row's state
@@ -1500,20 +1504,27 @@ sets the width the compact rows are laid out in (see
 `octocat-repo-vui--compact-width').  EXTRA-FN, when non-nil, is called
 with TICK during render, like a hook, for more the rows show, such as a
 PR's place in its stack; ROW-FN and LINE-FN get what it returns, ROW-FN
-as its last argument but one.  MARKS are the numbers of the marked items
-\(see `octocat-vui-list-mark'); ROW-FN's last argument is non-nil for
-them.  A new QUERY or COMPACT
-re-renders in place: the header keeps its counts, and the results start
-afresh, as the compact view loads more at a time.  A new TICK refetches
-the counts and starts the results afresh."
+as its last argument but one: its last is non-nil for a marked item.
+The marks, the numbers of the marked items, are the page's state (see
+`octocat-vui-list-mark').  A new QUERY or COMPACT re-renders in place:
+the header keeps its counts, and the results start afresh, as the
+compact view loads more at a time.  A new TICK refetches the counts and
+starts the results afresh."
+  :state ((marks nil))
   :render
-  (vui-vstack
-   (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick)
-   (octocat-vui-list-filter-bar query)
-   (vui-component 'octocat-vui--search-results
-     :key (list query (and compact t) tick)
-     :repo repo :kind kind :query query :row-fn row-fn
-     :line-fn line-fn :compact compact :tick tick :extra-fn extra-fn :marks marks)))
+  (progn
+    ;; The mark commands, run outside the page, set its marks with this.
+    (vui-use-effect ()
+      (setq octocat-vui-list--set-marks-function
+            (vui-async-callback (marks) (vui-set-state :marks marks)))
+      nil)
+    (vui-vstack
+     (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick)
+     (octocat-vui-list-filter-bar query)
+     (vui-component 'octocat-vui--search-results
+       :key (list query (and compact t) tick)
+       :repo repo :kind kind :query query :row-fn row-fn
+       :line-fn line-fn :compact compact :tick tick :extra-fn extra-fn :marks marks))))
 
 (defun octocat-vui--list-tree (kind repo page)
   "Return PAGE, a page of KIND items of REPO, as a list resource's tree.
@@ -1545,7 +1556,9 @@ PAGE is as `octocat--parse-list-items' returns; each item is an entity."
   "The KIND items of REPO matching QUERY, as for `octocat-vui-search-list'.
 They are a sync resource, painted from the store while it is refetched;
 \"load more\" appends the page after the last to it, by its cursor (see
-`octocat-sync-more').  A new TICK refetches them."
+`octocat-sync-more').  A new TICK refetches them.  MARKS are the page's
+marks; once the items are in, those of items no longer among them are
+dropped, so that only items shown are marked."
   :state ((fetching nil))
   :render
   (let* ((width  (octocat-vui-window-width))
@@ -1555,7 +1568,17 @@ They are a sync resource, painted from the store while it is refetched;
          (no-state (and compact (not (octocat-vui-list-filter-active-p query))))
          (spec   (list 'list-items kind repo query limit))
          (snap   (octocat-vui-use-resource spec tick))
-         (extra  (and extra-fn (funcall extra-fn tick))))
+         (extra  (and extra-fn (funcall extra-fn tick)))
+         (data   (plist-get snap :data))
+         (shown  (and data (mapcar (lambda (item) (gethash "number" item))
+                                   (gethash "nodes" data)))))
+    ;; Not before the items are in: a skeleton shows none.
+    (vui-use-effect (data shown marks)
+      (when-let* ((gone (and data (seq-difference marks shown))))
+        (vui-set-state :marks (lambda (old) (seq-difference old gone)))
+        (message "Octocat: Unmarked %s, no longer listed"
+                 (mapconcat (lambda (n) (format "#%d" n)) gone ", ")))
+      nil)
     (octocat-vui-use-mode-line-loading fetching)
     (octocat-vui-resource-view
      snap
@@ -1975,16 +1998,16 @@ A [clear] button shows when it differs from the default."
 ;;
 ;; The PR and issue lists mark items as Dired marks files: `m' marks
 ;; the item at point, or every item in the region, `u' unmarks and `U'
-;; unmarks all.  Marks are
-;; item numbers, kept per buffer, so they last through a refresh and a
-;; new query; a mark hidden by the query stays.
-
-(defvar-local octocat-vui-list--marks nil
-  "Numbers of the items marked in this list buffer.")
+;; unmarks all.  Marks are item numbers, the state of the list page
+;; (`octocat-vui-search-list'), so they last through a redraw.  Only
+;; items shown are marked, so that what is done to the marked items is
+;; done to what one sees: an item that leaves the list, after a new
+;; query or as it is closed, is unmarked.
 
 (defun octocat-vui-list-marks ()
   "Return the numbers of the items marked in the current list buffer."
-  octocat-vui-list--marks)
+  (when-let* ((page (vui-get-instance)))
+    (plist-get (vui-instance-state page) :marks)))
 
 (defun octocat-vui-list--item-at (pos)
   "Return the number of the list item at POS, or nil."
@@ -2013,18 +2036,17 @@ A [clear] button shows when it differs from the default."
     (goto-char pos)))
 
 (defun octocat-vui-list--set-marks (marked)
-  "Mark the items numbered in MARKED, alone; redraw the list and say how many.
-Point stays on its item."
-  (let ((here (octocat-vui-list--item-at (point))))
-    (setq octocat-vui-list--marks marked)
-    (octocat-vui-update-page :marks marked)
-    (when (and here (not (eql here (octocat-vui-list--item-at (point)))))
-      (octocat-vui-list--goto-item here)))
-  (let* ((n      (length marked))
-         (hidden (length (seq-difference
-                          marked (octocat-vui-list--items-in (point-min) (point-max))))))
-    (message "Octocat: %s marked%s" (if (zerop n) "None" n)
-             (if (zerop hidden) "" (format " (%d not shown)" hidden)))))
+  "Mark the items numbered in MARKED, alone; say how many there are."
+  (unless octocat-vui-list--set-marks-function
+    (user-error "Octocat: Nothing to mark on this page"))
+  (funcall octocat-vui-list--set-marks-function marked)
+  (message "Octocat: %s marked" (if marked (length marked) "None")))
+
+(defun octocat-vui-list--with-marks (marked items mark)
+  "Return MARKED, item numbers, with ITEMS added if MARK, else taken out."
+  (if mark
+      (append marked (seq-difference items marked))
+    (seq-difference marked items)))
 
 (defun octocat-vui-list--mark-items (mark)
   "Mark the items of the region, or the item at point, if MARK; else unmark.
@@ -2041,9 +2063,7 @@ one, move to the next item."
                       (when-let* ((pos (octocat-vui-list--next-item (point))))
                         (octocat-vui-list--item-at pos)))))
     (octocat-vui-list--set-marks
-     (if mark
-         (append octocat-vui-list--marks (seq-difference items octocat-vui-list--marks))
-       (seq-difference octocat-vui-list--marks items)))
+     (octocat-vui-list--with-marks (octocat-vui-list-marks) items mark))
     (if region
         (deactivate-mark)
       (when next
@@ -2060,7 +2080,7 @@ one, move to the next item."
   (octocat-vui-list--mark-items nil))
 
 (defun octocat-vui-list-unmark-all ()
-  "Unmark every item, those the query hides too."
+  "Unmark every item."
   (interactive)
   (octocat-vui-list--set-marks nil))
 

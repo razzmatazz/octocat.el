@@ -429,7 +429,6 @@ the background, in place: what is unfolded stays so."
                                     :kind 'issues
                                     :query (octocat-vui-list-query)
                                     :compact (octocat-vui-list-compact-p)
-                                    :marks (octocat-vui-list-marks)
                                     :row-fn (lambda (issue width compact no-state _ marked)
                                               (octocat-repo-vui--issue-row
                                                repo issue width bg compact no-state marked))

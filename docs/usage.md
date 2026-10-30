@@ -144,18 +144,16 @@ the buttons below the field (or `F`).  On the pull request list,
 requests waiting for your review, including those requested from one of
 your teams.
 
-Items are marked as files are in dired, the same with Evil:
+Items are marked as files are in Dired, the same with Evil:
 
 | Key | Does |
 |-----|------|
-| `m` | Mark the item at point and move to the next; with a region (Evil: `V`), mark each item in it |
+| `m` | Mark the item at point and move to the next; with a region, mark the items in it |
 | `u` | Unmark, the same way |
 | `U` | Unmark every item |
 
-Each row starts with a column that shows `✓` when it is marked; a
-marked row is highlighted too.  Marks last through a refresh and a new
-query, which may hide some: the echo area says how many marked items are
-not shown.  Commands that act on the marked items are still to come.
+A marked row shows `✓` and is highlighted.  An item that leaves the
+list, after a new query or once closed, is unmarked.
 
 ## Actions (`M-x octocat-run-list`, `M-x octocat-workflow-list`)
 

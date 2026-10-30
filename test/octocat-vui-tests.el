@@ -390,18 +390,34 @@ unsubscribes it."
       (should-not octocat-vui--slide-timer)
       (should-not (text-property-not-all (point-min) (point-max) 'display nil)))))
 
+(defvar octocat-vui-tests--marks nil
+  "The marks of `octocat-vui-tests--marks-buffer'.")
+
 (defun octocat-vui-tests--marks-buffer ()
-  "Insert a header, then three two-line rows, items 7, 5 and 3."
+  "Insert a header, then three two-line rows, items 7, 5 and 3.
+The marks are kept in a variable, as the page keeps them in its state."
   (insert "Filter  is:open\n")
   (dolist (n '(7 5 3))
     (insert (propertize (format "open    #%d\n        by @a" n) 'octocat-vui-list-item n)
             "\n"))
-  (goto-char (point-min)))
+  (goto-char (point-min))
+  (setq-local octocat-vui-tests--marks nil
+              octocat-vui-list--set-marks-function
+              (lambda (marks) (setq octocat-vui-tests--marks marks))))
+
+(defmacro octocat-vui-tests--with-marks (&rest body)
+  "Run BODY in a list of three rows, its marks in `octocat-vui-tests--marks'."
+  (declare (indent 0))
+  `(with-temp-buffer
+     (octocat-vui-tests--marks-buffer)
+     (cl-letf (((symbol-function 'octocat-vui-list-marks)
+                (lambda () octocat-vui-tests--marks))
+               ((symbol-function 'message) #'ignore))
+       ,@body)))
 
 (ert-deftest octocat-vui-test-mark-moves-to-next-item ()
   "`m' marks the item at point and moves to the next; `u' unmarks."
-  (with-temp-buffer
-    (octocat-vui-tests--marks-buffer)
+  (octocat-vui-tests--with-marks
     (should-error (octocat-vui-list-mark) :type 'user-error)
     (search-forward "#7")
     (octocat-vui-list-mark)
@@ -422,9 +438,8 @@ unsubscribes it."
 
 (ert-deftest octocat-vui-test-mark-region ()
   "With a region, `m' marks each item it touches, and point stays."
-  (with-temp-buffer
+  (octocat-vui-tests--with-marks
     (transient-mark-mode 1)
-    (octocat-vui-tests--marks-buffer)
     (search-forward "@a")
     (set-mark (point))
     (search-forward "#5")
@@ -435,13 +450,24 @@ unsubscribes it."
       (should (= (point) pos))
       (should-not (use-region-p)))))
 
-(ert-deftest octocat-vui-test-unmark-all-clears-hidden ()
-  "`U' clears every mark, those of items not shown too."
-  (with-temp-buffer
-    (octocat-vui-tests--marks-buffer)
-    (setq octocat-vui-list--marks '(42 5))
+(ert-deftest octocat-vui-test-unmark-all ()
+  "`U' clears every mark."
+  (octocat-vui-tests--with-marks
+    (setq octocat-vui-tests--marks '(7 5))
     (octocat-vui-list-unmark-all)
     (should-not (octocat-vui-list-marks))))
+
+(ert-deftest octocat-vui-test-with-marks ()
+  "Marking adds the items not yet marked, after the others; unmarking drops them."
+  (should (equal (octocat-vui-list--with-marks '(5 7) '(7 3) t) '(5 7 3)))
+  (should (equal (octocat-vui-list--with-marks '(5 7) '(7 3) nil) '(5))))
+
+(ert-deftest octocat-vui-test-mark-without-page ()
+  "Marking where no list page has mounted says so."
+  (with-temp-buffer
+    (insert (propertize "open    #7" 'octocat-vui-list-item 7))
+    (goto-char (point-min))
+    (should-error (octocat-vui-list-mark) :type 'user-error)))
 
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here

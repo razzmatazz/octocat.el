@@ -1744,7 +1744,8 @@ state, \"ciState\", and how many passed of how many, \"ciPassed\" and
       (puthash "commentCount" (gethash "totalCount" comments) item)
       (remhash "comments" item)))
   (let* ((commits (gethash "commits" item))
-         (node    (and (hash-table-p commits) (seq-first (gethash "nodes" commits))))
+         ;; A closed PR may come with no commits: [].
+         (node    (and (hash-table-p commits) (car (append (gethash "nodes" commits) nil))))
          (rollup  (and node (gethash "statusCheckRollup" (gethash "commit" node)))))
     (when (hash-table-p rollup)
       (puthash "ciState" (gethash "state" rollup) item)
