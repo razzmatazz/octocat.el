@@ -1,4 +1,4 @@
-acme/rocket  [Code]  [Issues (5)]  [Pull requests (6)]  Actions
+acme/rocket › Actions
 
 [Runs]  Workflows (4)
 

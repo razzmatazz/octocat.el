@@ -1,5 +1,5 @@
-acme/rocket  CI  .github/workflows/ci.yml
-active  Created 1 year ago · Updated 1 month ago
+acme/rocket › Actions › CI
+active  .github/workflows/ci.yml · Created 1 year ago · Updated 1 month ago
 
 This workflow has a workflow_dispatch event trigger.  [Run workflow ▾]
 

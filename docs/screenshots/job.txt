@@ -1,4 +1,4 @@
-acme/rocket  CI › Cache parsed templates between builds › test (stable)
+acme/rocket › Actions › CI › #300 › test (stable)
 success  Duration 6m00s · Started 1 day ago · Completed 1 day ago
          Runner GitHub Actions 41 · Labels ubuntu-latest
 

@@ -65,7 +65,7 @@ whose value is a vector of job hash-tables), or a cons \\=(error . MSG)."
    (list "run" "view"
          (number-to-string run-id)
          "--repo" repo
-         "--json" (concat "databaseId,displayTitle,status,conclusion,"
+         "--json" (concat "databaseId,number,displayTitle,status,conclusion,"
                           "createdAt,updatedAt,headBranch,headSha,"
                           "event,workflowName,workflowDatabaseId,jobs"))
    (lambda (output) (json-parse-string (string-trim output)))
@@ -147,10 +147,18 @@ workflow name."
             (and id (lambda () (octocat-workflow-open repo id name nil)))
             "RET: open workflow"))))
 
+(defun octocat-run--label (run-id run)
+  "Return the short name of run RUN-ID, its number as \"#42\", in a crumb.
+RUN is its data, or nil before it is in; without its number, the ID."
+  (let ((number (and run (gethash "number" run))))
+    (if (numberp number)
+        (propertize (format "#%d" number) 'face 'octocat-pr-number)
+      (format "run %s" run-id))))
+
 (defun octocat-run--header (repo run local-branch width)
   "Return the header vnodes of RUN of REPO, kept within WIDTH.
-The top row names its workflow and title; under it its status and
-details.  LOCAL-BRANCH, the checked-out branch, is highlighted when it
+The top row names its workflow, number and title; under it its status
+and details.  LOCAL-BRANCH, the checked-out branch, is highlighted when it
 is the run's."
   (let* ((status     (downcase (or (gethash "status" run) "")))
          (conclusion (let ((c (octocat--nonempty (gethash "conclusion" run))))
@@ -162,7 +170,8 @@ is the run's."
     (octocat-vui-actions-header
      repo
      (delq nil (list (octocat-run--workflow-crumb repo run)
-                     (list (or (gethash "displayTitle" run) ""))))
+                     (list (concat (octocat-run--label (gethash "databaseId" run) run)
+                                   "  " (or (gethash "displayTitle" run) "")))))
      width
      (propertize shown 'face (octocat--job-status-face shown))
      (list (list (cons "Event"  (octocat--nonempty (gethash "event" run)))
@@ -273,7 +282,7 @@ data replaces it."
       ;; A list's copy of the run gives its header before the jobs come.
       (if data
           (octocat-run--header repo data local-branch width)
-        (octocat-vui-actions-header repo (list (list (format "run %s" run-id))) width))
+        (octocat-vui-actions-header repo (list (list (octocat-run--label run-id nil))) width))
       (list
        (vui-newline)
        (octocat-vui-resource-view
@@ -364,7 +373,7 @@ failure."
     (list "run" "list"
           "--repo"  repo
           "--limit" (number-to-string limit)
-          "--json"  (concat "databaseId,displayTitle,status,conclusion,createdAt,"
+          "--json"  (concat "databaseId,number,displayTitle,status,conclusion,createdAt,"
                             "headBranch,workflowName,workflowDatabaseId"))
     args)
    #'octocat--parse-json-list

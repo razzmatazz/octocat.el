@@ -27,6 +27,15 @@
   (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r" t))
                  '((link "o") "/" (link "r")))))
 
+(ert-deftest octocat-vui-test-fit-middle-keeps-both-ends ()
+  (should (equal (octocat-vui--fit-middle "CI" 24) "CI"))
+  (let ((cut (octocat-vui--fit-middle "Build and publish the documentation site" 24)))
+    (should (equal cut "Build and pu…tation site"))
+    (should (equal (get-text-property 0 'help-echo cut)
+                   "Build and publish the documentation site")))
+  ;; Wide characters count by their columns.
+  (should (<= (string-width (octocat-vui--fit-middle "日本語のワークフロー名前" 12)) 12)))
+
 (ert-deftest octocat-vui-test-filter-active-p ()
   "Only a query other than the default counts as an active filter."
   (should-not (octocat-vui-list-filter-active-p nil))

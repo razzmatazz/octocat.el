@@ -943,8 +943,8 @@ never bracketed, so the top line reads `owner/repo` (or `owner/repo#N`,
 Every page about a repository starts with `owner/repo` on its first
 line, so one always sees where one is and every page reads alike.  What
 the page is about follows on that line: the tab strip on the repository
-and list pages, `#N`, the title and its author on an issue or PR, `@sha` on a
-commit.  Details such as an item's state and date go on the
+page, the list's name on a list page, `#N`, the title and its author on
+an issue or PR, `@sha` on a commit.  Details such as an item's state and date go on the
 lines below, never before the repo name.  On an issue or PR the state
 heads the line of the fields one edits, and a last line shows the rest,
 but not the age: the opening timeline entry has it.
@@ -955,19 +955,27 @@ OPEN    Assignees @bob · Reviewers none · Labels bug
         feature → main · Review required · Milestone v1
 ```
 
-A workflow, run or job page reads the same way: after `owner/repo`
-come the pages above it, from the workflow down, as links, then the
-page itself; its state heads the lines of details below.  Build it with
+A list page, and a workflow, run or job page, puts a breadcrumb after
+`owner/repo`: the pages above it, joined by ` › ` and each a link, then
+the page itself.  `octocat-vui-crumbs` builds it.  A list page names
+its tab and puts its counts after it.  Below Actions, a run is named by
+its number, `#300`, and its title follows only on its own page: on a
+job page, it is the crumb's hover text, which keeps the line short.  The
+state heads the lines of details below; build those pages' header with
 `octocat-vui-actions-header`.
 
 ```
-octocat/hello  CI › Fix the greeting › test (stable)
+octocat/hello › Issues  5 open · 61 closed
+octocat/hello › Actions › CI › #300  Fix the greeting
+octocat/hello › Actions › CI › #300 › test (stable)
 success  Duration 6m00s · Started 1 day ago · Completed 1 day ago
          Runner GitHub Actions 41 · Labels ubuntu-latest
 ```
 
 A title too long for the line is cut with `…`; hovering or resting
-point on it shows the whole.
+point on it shows the whole.  In a breadcrumb the cut is in the middle,
+`Build and pu…tation site`, keeping both ends a name is told by: each
+link past 24 columns, and the page itself to what fits the line.
 
 Two spaces separate the page's name (`owner/repo`, with its `#N` or
 `@sha`) from what follows on the line, such as a title or the tab
@@ -982,13 +990,14 @@ line sets the last commit's line apart from the top line, so it reads
 as content, not as part of the page's name.  Every page leaves a blank
 line under its top line and the details below it.
 
-### The owner links, the repo name does not
+### The owner links, the repo name only before a breadcrumb
 
 On a page's first line the owner links to the owner's user or
 organization page, so one can walk up to it.  The repo name is plain on
-every page: it is where the page sits, and the repository page is a
-`C-u C-c C-j` or the Code tab away.  Build the heading with
-`octocat-vui-repo-heading`.
+the repository page and on an item's page (`#N`, `@sha`): it is where
+the page sits, and the repository page is a `C-u C-c C-j` away.  Before
+a breadcrumb it links to the repository page, the first step up.  Build
+the heading with `octocat-vui-repo-heading`.
 
 ```
 octocat/hello#42  Fix the greeting · @alice  ← only "octocat" (and @alice) link
@@ -1000,9 +1009,11 @@ it is a TAB stop and looks like a link.  What follows the name (`#N`,
 
 ### The tab strip
 
-The repo page at its root and the issue / PR / Actions list pages share
-one strip, `octocat-vui-repo-tabs`, imitating GitHub's repository
-tabs:
+Only the repo page at its root shows the strip,
+`octocat-vui-repo-tabs`, imitating GitHub's repository tabs.  The
+issue, PR and Actions lists name their tab in their breadcrumb instead,
+so their top line says where one is rather than repeating the
+repository's way around:
 
 ```
 owner/repo  [Code]  [Issues (N)]  [Pull requests (N)]  [Actions]
@@ -1023,17 +1034,14 @@ owner/repo  [Code]  [Issues (N)]  [Pull requests (N)]  [Actions]
   rather than a row of buttons.  Unlike `octocat-vui-tab-row` it stops at
   the last tab: it shares its line with the repo name.
 - The issue and PR tabs show the open counts of the `repo-summary`
-  resource, which the strip reads itself, so every page that draws it
-  shows the counts; they are `(…)` until it first loads.  The summary is
+  resource, which the strip reads itself; they are `(…)` until it first
+  loads.  The summary is
   reused for `octocat-repo-summary-ttl` seconds (5 minutes by default)
   before opening a page refetches it.  `g` refetches it at once, and closing,
   reopening or merging an item outdates it, so the counts follow your own
   changes.
-- Pages that show the strip put it on the top line, next to the repo name.
-  Item counts
-  ("N open · M closed") go on their own dimmed line.
-- `octocat-vui-repo-tabs` reads `octocat--repo-tabs`, so labels and help
-  text stay in one place.
+- `octocat-vui-repo-tabs` and the lists' crumbs (`octocat-vui-tab-crumb`)
+  read `octocat--repo-tabs`, so labels and help text stay in one place.
 - The commands behind the tabs, `octocat-issue-list`, `octocat-pr-list` and
   `octocat-actions` (as `octocat-run-list` and `octocat-workflow-list`), take the repo as an optional argument: a buffer's
   repo is not derivable from its mode or `default-directory`.

@@ -43,9 +43,11 @@
 ;;   `octocat-vui-expand-all-button' unfolds or folds every fold of a section
 ;;   `octocat-vui-list-mode'         base mode of the PR/issue list pages
 ;;                                   and the Actions page
+;;   `octocat-vui-crumbs'            owner/name › page › … top row of the
+;;                                   pages under a repo
 ;;   `octocat-vui-actions-header'    header of workflow, run and job pages
 ;;   `octocat-vui-repo-tabs'         Code / Issues / Pull requests / Actions
-;;                                   tab strip shared by the repo pages
+;;                                   tab strip of the repo page
 ;;   `octocat-vui-list-header'       list page header with open/closed counts
 ;;   `octocat-vui-list-filter-bar'   query field + facet buttons
 
@@ -1357,35 +1359,75 @@ A cut TEXT carries its whole as `help-echo' and `octocat-full-text'."
         (propertize (truncate-string-to-width text width nil nil "…")
                     'help-echo full 'octocat-full-text full)))))
 
+(defun octocat-vui--fit-middle (text width)
+  "Return TEXT cut in its middle with an ellipsis to WIDTH columns, at least 5.
+Both ends are kept, as a name is told apart by its start and its last
+words.  A cut TEXT carries its whole as `help-echo' and
+`octocat-full-text'."
+  (let ((width (max 5 width)))
+    (if (<= (string-width text) width)
+        text
+      (let* ((full   (substring-no-properties text))
+             (tail-w (/ (1- width) 2))
+             (head   (truncate-string-to-width text (- width 1 tail-w)))
+             (start  (length text)))
+        (while (and (> start 0)
+                    (<= (string-width (substring text (1- start))) tail-w))
+          (setq start (1- start)))
+        (propertize (concat head "…" (substring text start))
+                    'help-echo full 'octocat-full-text full)))))
+
+(defconst octocat-vui--crumb-max-width 24
+  "Longest a crumb above the page is shown, beyond which its middle is cut.")
+
+(defun octocat-vui-tab-crumb (repo tab)
+  "Return the crumb of REPO's page TAB, a symbol of `octocat--repo-tabs'.
+It links to that page; see `octocat-vui-crumbs'."
+  (pcase-let ((`(,_ ,label ,help ,fn) (assq tab octocat--repo-tabs)))
+    (list label (lambda () (funcall fn repo)) help)))
+
+(defun octocat-vui-crumbs (repo crumbs width)
+  "Return the top row of a page under REPO: REPO, then CRUMBS.
+REPO links to its page, as the pages under it have no tab strip.
+CRUMBS are the pages below REPO down to this one, the last; each is
+\(TEXT ON-CLICK HELP): with ON-CLICK it is a link up to its page, cut in
+its middle past `octocat-vui--crumb-max-width', its whole then in its
+HELP.  The last is plain, and cut in its middle to keep the row within
+WIDTH."
+  (let* ((sep   (propertize " › " 'face 'octocat-dimmed))
+         (links (mapcar (pcase-lambda (`(,text ,on-click ,help))
+                          (let ((cut (octocat-vui--fit-middle
+                                      text octocat-vui--crumb-max-width)))
+                            (list cut on-click
+                                  (if (eq cut text)
+                                      help
+                                    (concat help " · " (substring-no-properties text))))))
+                        (butlast crumbs)))
+         (used  (+ (string-width repo) 3
+                   (apply #'+ (mapcar (lambda (c) (+ (string-width (car c)) 3)) links))))
+         (title (octocat-vui--fit-middle (car (car (last crumbs))) (- width used))))
+    (apply #'vui-hstack :spacing 0
+           (octocat-vui-repo-heading repo t)
+           (vui-text sep)
+           (append
+            (mapcan (pcase-lambda (`(,text ,on-click ,help))
+                      (list (vui-button text :no-decoration t :face 'link
+                                        :help-echo help :on-click on-click)
+                            (vui-text sep)))
+                    links)
+            (list (vui-text title))))))
+
 (defun octocat-vui-actions-header (repo crumbs width &optional state lines)
   "Return the header vnodes of a workflow, run or job page of REPO.
-The top row is REPO, then CRUMBS, the pages above this one from the
-workflow down and last this page, as the number and title on an issue.
-Each crumb is (TEXT ON-CLICK HELP): with ON-CLICK it is a link up to its
-page.  The last is cut to keep the row within WIDTH.  Under it, STATE,
-a propertized string, heads the first of LINES, each a list of fields
-as for `octocat-vui-fields'; the others are lined up under it.  With no
-STATE, there is only the top row."
-  (let* ((sep    (propertize " › " 'face 'octocat-dimmed))
-         (links  (butlast crumbs))
-         (used   (+ (string-width repo) 2
-                    (apply #'+ (mapcar (lambda (c) (+ (string-width (car c)) 3)) links))))
-         (title  (octocat-vui--fit (car (car (last crumbs))) (- width used)))
-         (fields (delq nil (mapcar #'octocat-vui-fields lines)))
+The top row is REPO, Actions, then CRUMBS, the pages below Actions
+down to this one, as for `octocat-vui-crumbs', kept within WIDTH.
+Under it, STATE, a propertized string, heads the first of LINES, each a
+list of fields as for `octocat-vui-fields'; the others are lined up
+under it.  With no STATE, there is only the top row."
+  (let* ((fields (delq nil (mapcar #'octocat-vui-fields lines)))
          (head   (and state (concat state "  "))))
     (cons
-     (apply #'vui-hstack :spacing 0
-            (octocat-vui-repo-heading repo)
-            (vui-text "  ")
-            (append
-             (mapcan (pcase-lambda (`(,text ,on-click ,help))
-                       (list (if on-click
-                                 (vui-button text :no-decoration t :face 'link
-                                             :help-echo help :on-click on-click)
-                               (vui-text text))
-                             (vui-text sep)))
-                     links)
-             (list (vui-text title))))
+     (octocat-vui-crumbs repo (cons (octocat-vui-tab-crumb repo 'actions) crumbs) width)
      (cond ((not state) nil)
            ((null fields) (list (vui-text state)))
            (t (cons (vui-hstack :spacing 0 (vui-text head) (car fields))
@@ -1536,29 +1578,29 @@ render, like any hook."
                     (funcall done tree))))))))
 
 (vui-defcomponent octocat-vui-list-header (repo tab kind tick)
-  "Header for a list page: REPO, the tab strip and, for KIND, item counts.
-TAB is the symbol of the current tab (see `octocat-vui-repo-tabs').
-KIND is `issues' or `pulls' to show \"N open · M closed\" (plus merged
-for pulls) from one API call, or nil for no counts.  A new TICK fetches
-them again."
+  "Header for a list page: REPO, the page and, for KIND, item counts.
+TAB is the symbol of the page's tab in `octocat--repo-tabs'; only the
+repo page shows the tab strip.  KIND is `issues' or `pulls' to show
+\"N open · M closed\" (plus merged for pulls) from one API call, or nil
+for no counts.  A new TICK fetches them again."
   :render
   (let ((counts (plist-get (octocat-vui-use-resource (list 'counts kind repo) tick) :data)))
     (vui-fragment
-     (apply #'vui-hstack :spacing 2
-            (octocat-vui-repo-heading repo)
-            (octocat-vui-repo-tabs repo tab tick))
-     (vui-newline)
-     (when (and counts (gethash "open" counts))
-       (vui-fragment
-        (vui-text (string-join
-                   (delq nil
-                         (list (format "%d open" (gethash "open" counts))
-                               (format "%d closed" (gethash "closed" counts))
-                               (and (gethash "merged" counts)
-                                    (format "%d merged" (gethash "merged" counts)))))
-                   " · ")
-          :face 'octocat-dimmed)
-        (vui-newline))))))
+     (vui-hstack :spacing 0
+                 (octocat-vui-crumbs repo (list (octocat-vui-tab-crumb repo tab))
+                                     (octocat-vui-window-width))
+                 (when (and counts (gethash "open" counts))
+                   (vui-text (concat
+                              "  "
+                              (string-join
+                               (delq nil
+                                     (list (format "%d open" (gethash "open" counts))
+                                           (format "%d closed" (gethash "closed" counts))
+                                           (and (gethash "merged" counts)
+                                                (format "%d merged" (gethash "merged" counts)))))
+                               " · "))
+                     :face 'octocat-dimmed)))
+     (vui-newline))))
 
 (defvar-local octocat-vui-list--set-marks-function nil
   "Function of a list of item numbers that makes them the page's marks.

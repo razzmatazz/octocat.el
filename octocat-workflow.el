@@ -519,27 +519,21 @@ run being started, shown in the button's place.  TICK is the page's."
 
 ;;;; Page
 
-(defun octocat-workflow--crumbs (name path)
-  "Return the crumb of workflow NAME, with its file PATH when known.
-See `octocat-vui-actions-header'."
-  (list (list (concat name
-                      (and (octocat--nonempty path)
-                           (concat "  " (propertize path 'face 'octocat-branch)))))))
-
 (defun octocat-workflow--header (repo workflow width)
   "Return the header vnodes of WORKFLOW of REPO, kept within WIDTH.
-The top row names it and its file; under it its state and dates."
+The top row names it; under it its state, file and dates."
   (let ((state   (or (octocat--nonempty (downcase (or (gethash "state" workflow) "")))
                      "unknown"))
         (created (octocat--nonempty (gethash "created_at" workflow)))
         (updated (octocat--nonempty (gethash "updated_at" workflow))))
     (octocat-vui-actions-header
      repo
-     (octocat-workflow--crumbs (or (gethash "name" workflow) "")
-                               (gethash "path" workflow))
+     (list (list (or (gethash "name" workflow) "")))
      width
      (propertize state 'face (octocat--workflow-state-face state))
-     (list (list (cons "Created" (and created (octocat--format-ts-relative created)))
+     (list (list (cons nil (let ((path (octocat--nonempty (gethash "path" workflow))))
+                             (and path (propertize path 'face 'octocat-branch))))
+                 (cons "Created" (and created (octocat--format-ts-relative created)))
                  (cons "Updated" (and updated (octocat--format-ts-relative updated))))))))
 
 
@@ -548,8 +542,8 @@ The top row names it and its file; under it its state and dates."
 
 (vui-defcomponent octocat-workflow--page (repo id name path tick)
   "Workflow ID of REPO and its runs, as the run list shows them.
-NAME and PATH, its file or nil, show while it loads.  A new TICK
-fetches them again."
+NAME shows while it loads, and PATH, its file or nil, stands in for
+the fetched one meanwhile.  A new TICK fetches them again."
   :render
   (let* ((width (octocat-vui-window-width))
          (local-branch (vui-use-memo () (octocat--current-branch)))
@@ -562,7 +556,7 @@ fetches them again."
            (append
             (if data
                 (octocat-workflow--header repo data width)
-              (octocat-vui-actions-header repo (octocat-workflow--crumbs name path) width))
+              (octocat-vui-actions-header repo (list (list name)) width))
             (list
              (vui-newline)
              (and data default-branch

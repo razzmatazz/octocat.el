@@ -832,7 +832,7 @@ note in a popup when its reference is hovered."
 (defun octocat-screenshots--run (id title workflow branch status conclusion ago)
   "Return run ID, as `gh run list' gives it.
 TITLE, WORKFLOW, BRANCH, STATUS, CONCLUSION and AGO are its own."
-  `(:databaseId ,id :displayTitle ,title :workflowName ,workflow
+  `(:databaseId ,id :number ,(- id 9100200000) :displayTitle ,title :workflowName ,workflow
     :workflowDatabaseId ,(pcase workflow ("CI" 4200) ("Deploy docs" 4201) (_ 4202))
     :headBranch ,branch
     :status ,status :conclusion ,conclusion :createdAt ,(octocat-screenshots--ago ago)))
@@ -1151,7 +1151,7 @@ FIELDS, a plist, override the rest."
                              octocat-screenshots--runs)))
       ("recent-runs" () ,(vconcat octocat-screenshots--runs))
       ("run-view" ("9100200300")
-       (:databaseId 9100200300 :displayTitle "Cache parsed templates between builds"
+       (:databaseId 9100200300 :number 300 :displayTitle "Cache parsed templates between builds"
         :workflowName "CI" :workflowDatabaseId 4200
         :status "completed" :conclusion "success" :event "pull_request"
         :headBranch "template-cache" :headSha ,octocat-screenshots--pr-head

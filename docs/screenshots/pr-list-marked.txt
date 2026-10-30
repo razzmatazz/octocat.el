@@ -1,5 +1,4 @@
-acme/rocket  [Code]  [Issues (5)]  Pull requests (6)  [Actions]
-6 open · 14 closed · 108 merged
+acme/rocket › Pull requests  6 open · 14 closed · 108 merged
 
 Marked  2 PRs  [Unmark all]
         [Label]  [Assign]  [Request review]

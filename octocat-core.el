@@ -1547,11 +1547,11 @@ Each page's mode map inherits it: the vui pages through
 
 ;;;; Repo tab strip
 ;;
-;; The Code / Issues / Pull requests / Actions strip the repo page and the
-;; list pages (issues, PRs, actions) show beside the repo name, as
-;; GitHub's tabs do, drawn by `octocat-vui-repo-tabs'.  Code is the repo
-;; page, as on GitHub, with the file tree on it.  Detail
-;; pages leave it out; their repo name leads back to the repo page.
+;; The Code / Issues / Pull requests / Actions strip the repo page shows
+;; beside the repo name, as GitHub's tabs do, drawn by
+;; `octocat-vui-repo-tabs'.  Code is the repo page, as on GitHub, with the
+;; file tree on it.  The pages under it name their tab instead, in their
+;; `octocat-vui-crumbs', and their repo name leads back to the repo page.
 
 (defconst octocat--repo-tabs
   '((code    "Code"          "RET: open repository page"     octocat-visit-repo)

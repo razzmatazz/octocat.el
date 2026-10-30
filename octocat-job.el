@@ -50,6 +50,7 @@
 
 (declare-function octocat-run-open "octocat-run" (repo run-id))
 (declare-function octocat-run--workflow-crumb "octocat-run" (repo run))
+(declare-function octocat-run--label "octocat-run" (run-id run))
 
 
 ;;;; Buffer-local state
@@ -700,12 +701,13 @@ wraps, hung under the job name."
   "Return the crumbs of job NAME of run RUN-ID of REPO, from its workflow.
 RUN is the run's data, or nil before it is in; see
 `octocat-vui-actions-header'."
-  (let ((open-run (lambda () (octocat-run-open repo run-id))))
+  (let ((title (and run (octocat--nonempty (gethash "displayTitle" run)))))
     (delq nil
           (list (and run (octocat-run--workflow-crumb repo run))
-                (list (or (and run (octocat--nonempty (gethash "displayTitle" run)))
-                          (format "run %s" run-id))
-                      open-run "RET: open run")
+                ;; The run's number, not its title, keeps the row short.
+                (list (octocat-run--label run-id run)
+                      (lambda () (octocat-run-open repo run-id))
+                      (if title (concat "RET: open run " title) "RET: open run"))
                 (list (propertize name 'face 'octocat-run-job-name))))))
 
 (defun octocat-job--header (repo crumbs job width)

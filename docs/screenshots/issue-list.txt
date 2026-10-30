@@ -1,5 +1,4 @@
-acme/rocket  [Code]  Issues (5)  [Pull requests (6)]  [Actions]
-5 open · 61 closed
+acme/rocket › Issues  5 open · 61 closed
 
 Filter  is:open
         [State]  [Author]  [Assignee]  [Label]
