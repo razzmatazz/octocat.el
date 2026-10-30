@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Posting a comment keeps the buttons under the timeline, its spinner on the comment only
 * The Marked bar on a PR list can request or withdraw reviews on all the marked PRs
 * The Marked bar can assign or unassign people on all the marked PRs or issues
 * Marking PRs or issues swaps the filters for a bar that labels them all at once

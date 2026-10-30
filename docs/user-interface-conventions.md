@@ -756,8 +756,9 @@ at once and reopens it with the text if GitHub refuses.
 Where each slot shows:
 
 - **`action`**, under the timeline, in place of its `+ Add a comment` /
-  Close row: posting or editing a comment or description, closing,
-  reopening (`octocat-timeline-buttons-or-action`).
+  Close row: closing, reopening (`octocat-timeline-buttons-or-action`).
+- **`inline`**, on the comment or description itself: posting or
+  editing one.
 - **`merge`**, in the merge box, in place of its buttons: merging,
   converting to draft, marking ready for review.
 - **`approve`**, in place of the `[Approve workflows to run]` button

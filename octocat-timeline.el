@@ -628,7 +628,8 @@ entry in BUTTONS is skipped."
   "Refuse with a `user-error' while a change to SPEC's page is under way.
 SPEC is the issue's or PR's page resource; the change is one shown under
 its timeline, such as posting a comment."
-  (when-let* ((label (alist-get 'action (plist-get (octocat-sync-read spec) :mutating))))
+  (when-let* ((mutating (plist-get (octocat-sync-read spec) :mutating))
+              (label (or (alist-get 'action mutating) (alist-get 'inline mutating))))
     (user-error "Octocat: Wait for \"%s\" to finish" label)))
 
 (defun octocat-timeline-buttons-or-action (buttons action)
@@ -769,6 +770,7 @@ what is being done to it, such as \"saving…\"."
 
 (octocat-sync-define-mutation comment (kind repo number body)
   :label "Posting comment…"
+  :slot 'inline
   :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
   ;; GitHub answers with the comment, which takes the place of the one
   ;; shown, so it is never gone in between.
@@ -793,6 +795,7 @@ what is being done to it, such as \"saving…\"."
 
 (octocat-sync-define-mutation edit-body (kind repo number body)
   :label "Saving description…"
+  :slot 'inline
   :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
   :optimistic (lambda ()
                 `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
@@ -812,6 +815,7 @@ what is being done to it, such as \"saving…\"."
 
 (octocat-sync-define-mutation edit-comment (kind repo number comment-id body)
   :label "Saving comment…"
+  :slot 'inline
   :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
   :edits (lambda (answered _)
            (list (cons (octocat-timeline--detail-spec kind repo number)

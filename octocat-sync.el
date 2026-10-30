@@ -1002,7 +1002,8 @@ Each is a plist (:changes ALIST :edits EDITS :resources KEYS :specs SPECS
 PROPS are evaluated with ARGS bound:
 :label        what it is doing, such as \"Closing issue…\";
 :slot         where a page shows that, such as `action' (the default)
-              for under a timeline or `merge' for the merge box;
+              for under a timeline, `inline' for one its :edits
+              already show in place, or `merge' for the merge box;
 :resources    a function returning the specs of the resources it acts
               on: their snapshots' :mutating has (SLOT . LABEL) while
               it runs;
