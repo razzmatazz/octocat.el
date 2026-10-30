@@ -1709,6 +1709,9 @@ OR in it cannot escape the repo scope."
   `((pulls  . ,(concat "...on PullRequest{number title state isDraft reviewDecision "
                        "createdAt author{login} labels(first:100){nodes{name color}} "
                        "assignees(first:100){nodes{login}} "
+                       ;; Not reviewRequests: the PR page keeps that apart.
+                       "requestedReviewers:reviewRequests(first:100){nodes{requestedReviewer{"
+                       "...on User{login} ...on Team{name}}}} "
                        "comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{"
                        "state contexts{checkRunCountsByState{state count} "
                        "statusContextCountsByState{state count}}}}}}}"))
@@ -1735,13 +1738,20 @@ toggles them.")
   "Flatten the connections of the search result ITEM in place; return it.
 \"labels\", \"assignees\" and \"closedByPullRequestsReferences\" become
 vectors of their nodes, as gh's JSON has them; the comments become their
-count, \"commentCount\"; and the head commit's checks become GitHub's
+count, \"commentCount\"; a PR's \"requestedReviewers\" the users and
+teams asked to review it; and the head commit's checks become GitHub's
 rolled-up state, \"ciState\", and how many passed of how many,
 \"ciPassed\" and \"ciTotal\", absent without checks."
   (dolist (key '("labels" "assignees" "closedByPullRequestsReferences"))
     (let ((conn (gethash key item)))
       (when (hash-table-p conn)
         (puthash key (gethash "nodes" conn) item))))
+  (let ((requests (gethash "requestedReviewers" item)))
+    (when (hash-table-p requests)
+      (puthash "requestedReviewers"
+               (cl-map 'vector (lambda (n) (gethash "requestedReviewer" n))
+                       (gethash "nodes" requests))
+               item)))
   (let ((comments (gethash "comments" item)))
     (when (hash-table-p comments)
       (puthash "commentCount" (gethash "totalCount" comments) item)

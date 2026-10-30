@@ -95,6 +95,14 @@ search.
 [As text](pr-list.txt)
 <!-- /screenshot -->
 
+Two PRs marked with `m`: the Marked bar takes the filters' place.
+
+<!-- screenshot: (pr-list "acme/rocket") :name "pr-list-marked" :press ((:key "m" "Add RSS") (:key "m" "Cache parsed")) -->
+![pr-list-marked](pr-list-marked.png)
+
+[As text](pr-list-marked.txt)
+<!-- /screenshot -->
+
 Compact (`C-c C-v`):
 
 <!-- screenshot: (pr-list "acme/rocket") :name "pr-list-compact" :press ((:key "C-c C-v")) -->

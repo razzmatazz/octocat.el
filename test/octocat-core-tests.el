@@ -665,6 +665,22 @@ browser, skip it."
     (should (equal (mapcar (lambda (u) (gethash "login" u)) (gethash "assignees" item))
                    '("a")))))
 
+(ert-deftest octocat-core-test-list-item-requested-reviewers ()
+  "A PR row's requested reviewers become the users and teams asked."
+  (let ((item (car (plist-get
+                    (octocat--parse-list-items
+                     "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
+                       \"nodes\":[{\"number\":3,\"requestedReviewers\":{\"nodes\":[
+                         {\"requestedReviewer\":{\"login\":\"a\"}},
+                         {\"requestedReviewer\":{\"name\":\"core\"}}]}}]}}}")
+                    :items))))
+    (should (equal (mapcar (lambda (r) (or (gethash "login" r) (gethash "name" r)))
+                           (gethash "requestedReviewers" item))
+                   '("a" "core")))
+    ;; The team has no login to toggle.
+    (should (equal (octocat-vui-list--value-counts (list item) "requestedReviewers" "login")
+                   '(("a" . 1))))))
+
 (ert-deftest octocat-core-test-list-item-without-commits ()
   "A PR that comes with no commits parses, without a CI state."
   (let ((item (car (plist-get

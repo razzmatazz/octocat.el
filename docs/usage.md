@@ -156,8 +156,9 @@ A marked row shows `✓` and is highlighted.  An item that leaves the
 list, after a new query or once closed, is unmarked.
 
 While items are marked, a **Marked** bar replaces the filters and acts
-on them: **[Label]** and **[Assign]** add or remove labels and
-assignees on all of them at once.
+on them: **[Label]**, **[Assign]** and, for PRs, **[Request review]**
+add or remove labels, assignees and requested reviewers on all of them
+at once.
 
 ## Actions (`M-x octocat-run-list`, `M-x octocat-workflow-list`)
 

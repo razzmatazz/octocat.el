@@ -2108,6 +2108,23 @@ one, move to the next item."
   "Return what N items of KIND are called: \"PR\", \"issues\"..."
   (concat (if (eq kind 'pulls) "PR" "issue") (if (= n 1) "" "s")))
 
+(defconst octocat-vui-list--toggles
+  '(("label"    :button "[Label]" :name "Labels" :field "labels" :key "name"
+     :resource labels :doing "Labelling" :done "Labelled")
+    ("assignee" :button "[Assign]" :name "Assignees" :field "assignees" :key "login"
+     :resource assignees :doing "Assigning" :done "Assigned" :prefix "@")
+    ("reviewer" :button "[Request review]" :name "Reviewers"
+     :field "requestedReviewers" :key "login" :resource assignees
+     :doing "Requesting reviews" :done "Updated the reviewers of" :prefix "@"
+     :kinds (pulls)))
+  "What the Marked bar toggles on the marked items, by FLAG.
+FLAG is as for `gh ... edit --add-FLAG'.  :button is its button, :name
+what to call the values, :field and :key as for
+`octocat-vui-list--value-counts', :resource the repo's resource of
+candidates, :doing and :done as for `octocat-vui-list--send-each',
+:prefix what goes before a value shown, \"@\" before a login, and
+:kinds the lists it is on, all when absent.")
+
 (defun octocat-vui-list-apply-bar (kind repo spec marked busy)
   "Return the bar of the actions on MARKED, numbers of KIND items of REPO.
 It takes the place of the filter bar, in as many rows.  SPEC is the
@@ -2130,18 +2147,20 @@ shown instead of the actions."
           (vui-text "      ")
           (if busy
               (list (vui-text (concat (octocat-vui-spinner) " " busy) :face 'octocat-dimmed))
-            (mapcar (pcase-lambda (`(,flag ,label ,what))
-                      (vui-button label
-                        :no-decoration t
-                        :face 'octocat-dimmed
-                        :key flag
-                        :help-echo (format "RET: add or remove %s of the marked %s"
-                                           what (octocat-vui-list--noun kind 2))
-                        :on-click (lambda ()
-                                    (octocat-vui-list--toggle-marked
-                                     flag kind repo spec marked))))
-                    '(("label" "[Label]" "labels")
-                      ("assignee" "[Assign]" "assignees")))))
+            (delq nil
+                  (mapcar (pcase-lambda (`(,flag . ,props))
+                            (when (memq kind (or (plist-get props :kinds) (list kind)))
+                              (vui-button (plist-get props :button)
+                                :no-decoration t
+                                :face 'octocat-dimmed
+                                :key flag
+                                :help-echo (format "RET: add or remove %s of the marked %s"
+                                                   (downcase (plist-get props :name))
+                                                   (octocat-vui-list--noun kind 2))
+                                :on-click (lambda ()
+                                            (octocat-vui-list--toggle-marked
+                                             flag kind repo spec marked)))))
+                          octocat-vui-list--toggles))))
    (vui-newline)))
 
 (defun octocat-vui-list--value-counts (items field key)
@@ -2150,9 +2169,10 @@ FIELD holds a vector of tables, KEY the name of their value."
   (let (counts)
     (dolist (item items)
       (seq-doseq (x (or (gethash field item) []))
-        (let* ((value (gethash key x))
-               (cell  (assoc value counts)))
-          (if cell (cl-incf (cdr cell)) (push (cons value 1) counts)))))
+        ;; A team asked to review has no login.
+        (when-let* ((value (and (hash-table-p x) (gethash key x))))
+          (let ((cell (assoc value counts)))
+            (if cell (cl-incf (cdr cell)) (push (cons value 1) counts))))))
     (nreverse counts)))
 
 (defun octocat-vui-list--toggle-changes (items picked field key)
@@ -2202,16 +2222,6 @@ listed first, then those some have, marked –."
                                               (format "%s (✓ all have it, – some): " prompt)
                                               table nil t)))))))
 
-(defconst octocat-vui-list--toggles
-  '(("label"    "Labels"    "labels"    "name"  labels    "Labelling" "Labelled" "")
-    ("assignee" "Assignees" "assignees" "login" assignees "Assigning" "Assigned" "@"))
-  "What the Marked bar toggles on the marked items, by FLAG.
-Each is (FLAG NAME FIELD KEY RESOURCE DOING DONE PREFIX): FLAG as for
-`gh ... edit --add-FLAG', NAME what to call them, FIELD and KEY as for
-`octocat-vui-list--value-counts', RESOURCE the repo's resource of
-candidates, DOING and DONE as for `octocat-vui-list--send-each', and
-PREFIX what goes before a value shown, \"@\" before a login.")
-
 (defun octocat-vui-list--toggle-marked (flag kind repo spec marked)
   "Toggle values of FLAG on MARKED, the numbers of KIND items of REPO.
 FLAG is in `octocat-vui-list--toggles'.  SPEC is the list's resource,
@@ -2220,14 +2230,18 @@ all; with more than one item changing, ask first."
   (when-let* ((busy (alist-get 'batch (plist-get (octocat-sync-read (list 'counts kind repo))
                                                  :mutating))))
     (user-error "Octocat: Wait for \"%s\" to finish" busy))
-  (pcase-let* ((`(,_ ,name ,field ,key ,resource ,doing ,done ,prefix)
-                (assoc flag octocat-vui-list--toggles))
-               (items (seq-filter (lambda (item) (memql (gethash "number" item) marked))
-                                  (append (gethash "nodes" (plist-get (octocat-sync-read spec)
-                                                                      :data))
-                                          nil)))
-               (buf   (current-buffer))
-               (show  (lambda (value) (concat prefix value))))
+  (let* ((props    (cdr (assoc flag octocat-vui-list--toggles)))
+         (name     (plist-get props :name))
+         (field    (plist-get props :field))
+         (key      (plist-get props :key))
+         (resource (plist-get props :resource))
+         (prefix   (or (plist-get props :prefix) ""))
+         (items    (seq-filter (lambda (item) (memql (gethash "number" item) marked))
+                               (append (gethash "nodes" (plist-get (octocat-sync-read spec)
+                                                                   :data))
+                                       nil)))
+         (buf      (current-buffer))
+         (show     (lambda (value) (concat prefix value))))
     (funcall
      (if (equal flag "label")
          (octocat-vui-list--stored 'labels #'octocat-vui-list--label-name)
@@ -2262,7 +2276,7 @@ all; with more than one item changing, ask first."
                                                  (downcase name) (length changes)
                                                  (octocat-vui-list--noun kind (length changes))))))
                   (octocat-vui-list--send-each
-                   kind repo doing done
+                   kind repo (plist-get props :doing) (plist-get props :done)
                    (mapcar (pcase-lambda (`(,number ,add ,remove))
                              `(edit-values ,(if (eq kind 'pulls) "pr" "issue") ,repo ,number
                                            ,flag ,add ,remove))
