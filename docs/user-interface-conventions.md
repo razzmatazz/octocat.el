@@ -882,14 +882,14 @@ filters, in as many rows, so the list doesn't move:
 
 ```
 Marked  2 PRs  [Unmark all]
-        [Label]
+        [Label]  [Assign]
 ```
 
 - Each action prompts in the minibuffer, then asks to confirm when more
   than one item would change.
-- **[Label]** toggles labels: `✓` marks one every item has (picking it
-  removes it from all), `–` one some have (picking it adds it to the
-  rest).
+- **[Label]** and **[Assign]** toggle labels and assignees: `✓` marks
+  one every item has (picking it removes it from all), `–` one some have
+  (picking it adds it to the rest).
 - The changes go out one item at a time, in the background, through
   `octocat-sync-submit-each`.  Until they are done, the bar shows the
   progress, e.g. `▖ Labelling 3/10…`, in place of its actions, and so

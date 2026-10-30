@@ -1708,18 +1708,21 @@ OR in it cannot escape the repo scope."
 (defconst octocat--list-item-fields
   `((pulls  . ,(concat "...on PullRequest{number title state isDraft reviewDecision "
                        "createdAt author{login} labels(first:100){nodes{name color}} "
+                       "assignees(first:100){nodes{login}} "
                        "comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{"
                        "state contexts{checkRunCountsByState{state count} "
                        "statusContextCountsByState{state count}}}}}}}"))
     (issues . ,(concat "...on Issue{number title state createdAt author{login} "
                        "labels(first:100){nodes{name color}} comments{totalCount} "
+                       "assignees(first:100){nodes{login}} "
                        "closedByPullRequestsReferences(first:20){nodes{number repository{"
                        "name owner{login}}}}}")))
   "The GraphQL fields of a list row, by KIND.
 Only what the row shows: `gh pr/issue list --json' would fetch every
 comment's body and every check run, many times the size and the API cost.
-Labels are all fetched, since the sync store keeps them on the item's
-entity, which must hold the whole set.")
+Labels and assignees are all fetched, since the sync store keeps them
+on the item's entity, which must hold the whole set; the Marked bar
+toggles them.")
 
 (defun octocat--list-items-query (kind)
   "Return the GraphQL search query for a page of KIND list items."
@@ -1730,12 +1733,12 @@ entity, which must hold the whole set.")
 
 (defun octocat--flatten-list-item (item)
   "Flatten the connections of the search result ITEM in place; return it.
-\"labels\" and \"closedByPullRequestsReferences\" become vectors of their
-nodes, as gh's JSON has them; the comments become their count,
-\"commentCount\"; and the head commit's checks become GitHub's rolled-up
-state, \"ciState\", and how many passed of how many, \"ciPassed\" and
-\"ciTotal\", absent without checks."
-  (dolist (key '("labels" "closedByPullRequestsReferences"))
+\"labels\", \"assignees\" and \"closedByPullRequestsReferences\" become
+vectors of their nodes, as gh's JSON has them; the comments become their
+count, \"commentCount\"; and the head commit's checks become GitHub's
+rolled-up state, \"ciState\", and how many passed of how many,
+\"ciPassed\" and \"ciTotal\", absent without checks."
+  (dolist (key '("labels" "assignees" "closedByPullRequestsReferences"))
     (let ((conn (gethash key item)))
       (when (hash-table-p conn)
         (puthash key (gethash "nodes" conn) item))))

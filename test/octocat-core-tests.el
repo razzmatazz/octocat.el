@@ -654,6 +654,17 @@ browser, skip it."
     (should (equal (mapcar (lambda (e) (aref e 2)) octocat--gh-log) '("newer" "new")))
     (should (eq (aref (car octocat--gh-log) 4) 'poll))))
 
+(ert-deftest octocat-core-test-list-item-assignees ()
+  "A list row's assignees become a vector of their nodes, as its labels do."
+  (let ((item (car (plist-get
+                    (octocat--parse-list-items
+                     "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
+                       \"nodes\":[{\"number\":3,
+                                   \"assignees\":{\"nodes\":[{\"login\":\"a\"}]}}]}}}")
+                    :items))))
+    (should (equal (mapcar (lambda (u) (gethash "login" u)) (gethash "assignees" item))
+                   '("a")))))
+
 (ert-deftest octocat-core-test-list-item-without-commits ()
   "A PR that comes with no commits parses, without a CI state."
   (let ((item (car (plist-get

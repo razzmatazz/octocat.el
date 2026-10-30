@@ -484,7 +484,15 @@ The marks are kept in a variable, as the page keeps them in its state."
                    '((1 ("new") ("bug")) (2 ("docs" "new") ("bug")))))
     ;; An item with nothing to change is left out.
     (should (equal (octocat-vui-list--toggle-changes items '("docs") "labels" "name")
-                   '((2 ("docs") nil))))))
+                   '((2 ("docs") nil))))
+    ;; Assignees the same way, by login.
+    (let ((assigned (list (octocat-vui-tests--labelled 1) (octocat-vui-tests--labelled 2))))
+      (puthash "assignees" (vector (let ((u (make-hash-table :test #'equal)))
+                                     (puthash "login" "a" u)
+                                     u))
+               (car assigned))
+      (should (equal (octocat-vui-list--toggle-changes assigned '("a") "assignees" "login")
+                     '((2 ("a") nil)))))))
 
 (ert-deftest octocat-vui-test-mark-without-page ()
   "Marking where no list page has mounted says so."

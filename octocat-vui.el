@@ -2126,17 +2126,22 @@ shown instead of the actions."
                                                   #'octocat-vui-list-unmark-all)
                  :on-click #'octocat-vui-list-unmark-all))
    (vui-newline)
-   (vui-hstack :spacing 2
-               (vui-text "      ")
-               (if busy
-                   (vui-text (concat (octocat-vui-spinner) " " busy) :face 'octocat-dimmed)
-                 (vui-button "[Label]"
-                   :no-decoration t
-                   :face 'octocat-dimmed
-                   :key :label
-                   :help-echo (format "RET: add or remove labels of the marked %s"
-                                      (octocat-vui-list--noun kind 2))
-                   :on-click (lambda () (octocat-vui-list--label-marked kind repo spec marked)))))
+   (apply #'vui-hstack :spacing 2
+          (vui-text "      ")
+          (if busy
+              (list (vui-text (concat (octocat-vui-spinner) " " busy) :face 'octocat-dimmed))
+            (mapcar (pcase-lambda (`(,flag ,label ,what))
+                      (vui-button label
+                        :no-decoration t
+                        :face 'octocat-dimmed
+                        :key flag
+                        :help-echo (format "RET: add or remove %s of the marked %s"
+                                           what (octocat-vui-list--noun kind 2))
+                        :on-click (lambda ()
+                                    (octocat-vui-list--toggle-marked
+                                     flag kind repo spec marked))))
+                    '(("label" "[Label]" "labels")
+                      ("assignee" "[Assign]" "assignees")))))
    (vui-newline)))
 
 (defun octocat-vui-list--value-counts (items field key)
@@ -2197,19 +2202,36 @@ listed first, then those some have, marked –."
                                               (format "%s (✓ all have it, – some): " prompt)
                                               table nil t)))))))
 
-(defun octocat-vui-list--label-marked (kind repo spec marked)
-  "Add or remove labels of MARKED, the numbers of KIND items of REPO.
-SPEC is the list's resource, which holds their labels.  The labels
-picked are toggled on them all; with more than one changing, ask first."
+(defconst octocat-vui-list--toggles
+  '(("label"    "Labels"    "labels"    "name"  labels    "Labelling" "Labelled" "")
+    ("assignee" "Assignees" "assignees" "login" assignees "Assigning" "Assigned" "@"))
+  "What the Marked bar toggles on the marked items, by FLAG.
+Each is (FLAG NAME FIELD KEY RESOURCE DOING DONE PREFIX): FLAG as for
+`gh ... edit --add-FLAG', NAME what to call them, FIELD and KEY as for
+`octocat-vui-list--value-counts', RESOURCE the repo's resource of
+candidates, DOING and DONE as for `octocat-vui-list--send-each', and
+PREFIX what goes before a value shown, \"@\" before a login.")
+
+(defun octocat-vui-list--toggle-marked (flag kind repo spec marked)
+  "Toggle values of FLAG on MARKED, the numbers of KIND items of REPO.
+FLAG is in `octocat-vui-list--toggles'.  SPEC is the list's resource,
+which holds the items' values.  The values picked are toggled on them
+all; with more than one item changing, ask first."
   (when-let* ((busy (alist-get 'batch (plist-get (octocat-sync-read (list 'counts kind repo))
                                                  :mutating))))
     (user-error "Octocat: Wait for \"%s\" to finish" busy))
-  (let ((items (seq-filter (lambda (item) (memql (gethash "number" item) marked))
-                           (append (gethash "nodes" (plist-get (octocat-sync-read spec) :data))
-                                   nil)))
-        (buf   (current-buffer)))
+  (pcase-let* ((`(,_ ,name ,field ,key ,resource ,doing ,done ,prefix)
+                (assoc flag octocat-vui-list--toggles))
+               (items (seq-filter (lambda (item) (memql (gethash "number" item) marked))
+                                  (append (gethash "nodes" (plist-get (octocat-sync-read spec)
+                                                                      :data))
+                                          nil)))
+               (buf   (current-buffer))
+               (show  (lambda (value) (concat prefix value))))
     (funcall
-     (octocat-vui-list--stored 'labels #'octocat-vui-list--label-name)
+     (if (equal flag "label")
+         (octocat-vui-list--stored 'labels #'octocat-vui-list--label-name)
+       (octocat-vui-list--stored resource))
      repo
      (lambda (result)
        ;; Outside the process sentinel, as the list filters do.
@@ -2219,26 +2241,31 @@ picked are toggled on them all; with more than one changing, ask first."
           (when (octocat--still-selected-p buf)
             (with-current-buffer buf
               (let* ((noun    (octocat-vui-list--noun kind (length items)))
-                     (counts  (octocat-vui-list--value-counts items "labels" "name"))
+                     (counts  (octocat-vui-list--value-counts items field key))
                      (picked  (octocat-vui-list--read-toggles
-                               (format "Labels of %d %s" (length items) noun)
+                               (format "%s of %d %s" name (length items) noun)
                                (delete-dups
-                                (append (if (eq (car-safe result) 'error)
-                                            (progn (message "Octocat: %s" (cdr result)) nil)
-                                          result)
-                                        (mapcar #'car counts)))
-                               counts (length items)))
-                     (changes (octocat-vui-list--toggle-changes items picked "labels" "name")))
+                                (mapcar show
+                                        (append (if (eq (car-safe result) 'error)
+                                                    (progn (message "Octocat: %s" (cdr result))
+                                                           nil)
+                                                  result)
+                                                (mapcar #'car counts))))
+                               (mapcar (lambda (c) (cons (funcall show (car c)) (cdr c))) counts)
+                               (length items)))
+                     (changes (octocat-vui-list--toggle-changes
+                               items (mapcar (lambda (p) (string-remove-prefix prefix p)) picked)
+                               field key)))
                 (when (and changes
                            (or (null (cdr changes))
-                               (y-or-n-p (format "Change the labels of %d %s? "
-                                                 (length changes)
+                               (y-or-n-p (format "Change the %s of %d %s? "
+                                                 (downcase name) (length changes)
                                                  (octocat-vui-list--noun kind (length changes))))))
                   (octocat-vui-list--send-each
-                   kind repo "Labelling" "Labelled"
+                   kind repo doing done
                    (mapcar (pcase-lambda (`(,number ,add ,remove))
                              `(edit-values ,(if (eq kind 'pulls) "pr" "issue") ,repo ,number
-                                           "label" ,add ,remove))
+                                           ,flag ,add ,remove))
                            changes))))))))))))
 
 (defun octocat-vui-list--send-each (kind repo doing done specs)

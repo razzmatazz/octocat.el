@@ -2,7 +2,7 @@ acme/rocket  [Code]  Issues (5)  [Pull requests (6)]  [Actions]
 5 open · 61 closed
 
 Marked  2 issues  [Unmark all]
-        [Label]
+        [Label]  [Assign]
 
   open    Build fails when a page's front matter has a BOM   bug   needs triage
           acme/rocket#134 by @tgarcia · 1 hour ago
