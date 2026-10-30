@@ -1799,11 +1799,26 @@ dropped, so that only items shown are marked."
                query (lambda (tok) (member tok octocat-vui-list--state-tokens)) nil)))
     (string-trim (if (equal state "all") rest (concat "is:" state " " rest)))))
 
-(defun octocat-vui-list--with-values (query prefix values)
-  "Return QUERY with the PREFIX qualifier set to VALUES (nil drops it)."
+(defconst octocat-vui-list--none "(none)"
+  "Filter candidate standing for no value, such as no assignee.
+No login or label is spelled so.")
+
+(defun octocat-vui-list--with-values (query prefix values &optional none)
+  "Return QUERY with the PREFIX qualifier set to VALUES (nil drops it).
+NONE, if given, is the token, such as \"no:assignee\", that VALUES of
+just `octocat-vui-list--none' sets instead; any other VALUES drop it."
   (octocat-vui-list--replace
-   query (lambda (tok) (string-prefix-p prefix tok))
-   (mapcar (lambda (v) (concat prefix (octocat-vui-list--quote v))) values)))
+   query (lambda (tok) (or (string-prefix-p prefix tok) (equal tok none)))
+   (if (and none (equal values (list octocat-vui-list--none)))
+       (list none)
+     (mapcar (lambda (v) (concat prefix (octocat-vui-list--quote v))) values))))
+
+(defun octocat-vui-list--selected (query prefix &optional none)
+  "Return the values of QUERY's PREFIX qualifier for a filter prompt.
+NONE is as for `octocat-vui-list--with-values'."
+  (if (and none (member none (octocat-vui-list--tokenize query)))
+      (list octocat-vui-list--none)
+    (octocat-vui-list--values query prefix)))
 
 (defun octocat-vui-list--toggle-read (prompt candidates selected)
   "Read one of CANDIDATES; return it in a list, or nil to clear it.
@@ -1932,11 +1947,12 @@ waits for the fetch."
         (propertize (gethash "name" label) 'face face)
       (gethash "name" label))))
 
-(defun octocat-vui-list--edit-facet (prefix prompt multi fetch extra)
+(defun octocat-vui-list--edit-facet (prefix prompt multi fetch extra &optional none)
   "Toggle the PREFIX qualifier of the query through a prompt named PROMPT.
 Candidates come from FETCH, a function of the repo and a callback, such
 as `octocat-vui-list--stored' returns, plus EXTRA.  MULTI allows several
-values, read with `octocat-vui-list--read-multiple'.  The
+values, read with `octocat-vui-list--read-multiple'.  NONE, if given, is
+a token such as \"no:assignee\" offered as `octocat-vui-list--none'.  The
 fetch may be asynchronous; the prompt opens once it completes, outside
 the process sentinel.  A failed fetch only logs a message, leaving free
 text as the way to enter a value."
@@ -1953,16 +1969,18 @@ text as the way to enter a value."
                       (with-current-buffer buf
                         (let* ((names (if (eq (car-safe result) 'error)
                                           (progn (message "Octocat: %s" (cdr result)) nil)
-                                        (append extra result)))
+                                        (append extra
+                                                (and none (list octocat-vui-list--none))
+                                                result)))
                                (picked (funcall
                                         (if multi
                                             #'octocat-vui-list--read-multiple
                                           #'octocat-vui-list--toggle-read)
                                         prompt names
-                                        (octocat-vui-list--values query prefix))))
+                                        (octocat-vui-list--selected query prefix none))))
                           (octocat-vui-list--apply
                            (octocat-vui-list--with-values
-                            (octocat-vui-list-query) prefix picked))))))))))))
+                            (octocat-vui-list-query) prefix picked none))))))))))))
 
 (defun octocat-vui-list-filter-state ()
   "Choose which state to list."
@@ -1983,11 +2001,12 @@ text as the way to enter a value."
                                 (octocat-vui-list--stored 'assignees) '("@me")))
 
 (defun octocat-vui-list-filter-assignee ()
-  "Filter by assignee."
+  "Filter by assignee; (none) lists the items assigned to nobody."
   (interactive)
   (octocat-vui-list--check-filterable)
   (octocat-vui-list--edit-facet "assignee:" "Assignee" nil
-                                (octocat-vui-list--stored 'assignees) '("@me")))
+                                (octocat-vui-list--stored 'assignees) '("@me")
+                                "no:assignee"))
 
 (defun octocat-vui-list-filter-reviewer ()
   "Filter by requested reviewer; @me lists the PRs awaiting your review."

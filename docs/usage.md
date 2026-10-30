@@ -139,10 +139,11 @@ remembered per repository and page in `octocat-settings-file`, so it
 survives restarting Emacs; pages start in the full view.
 
 The query is a GitHub search, edited by hand (with completion) or through
-the buttons below the field (or `F`).  On the pull request list,
-**[Reviewer]** sets `review-requested:`; pick `@me` to list the pull
-requests waiting for your review, including those requested from one of
-your teams.
+the buttons below the field (or `F`).  **[Assignee]** offers `(none)`,
+which sets `no:assignee` to list the items assigned to nobody.  On the
+pull request list, **[Reviewer]** sets `review-requested:`; pick `@me`
+to list the pull requests waiting for your review, including those
+requested from one of your teams.
 
 Items are marked as files are in Dired, the same with Evil:
 

@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* The Assignee filter of PR and issue lists offers (none), for items assigned to nobody
 * `C-c C-j` finds files of the branch or commit on screen, not just the default branch
 * A word such as `file` or `commit` in `C-c C-j`'s input lists that kind first
 * Review a PR's files: `C-c C-a` drafts comments on lines, `C-c C-r` submits them

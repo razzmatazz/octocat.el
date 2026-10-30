@@ -71,6 +71,21 @@
   (should (equal (octocat-vui-list--with-values "is:open author:x" "author:" nil)
                  "is:open")))
 
+(ert-deftest octocat-vui-test-filter-none ()
+  "The none candidate stands for its token, and other values replace it."
+  (should (equal (octocat-vui-list--with-values
+                  "is:open assignee:x" "assignee:" (list octocat-vui-list--none)
+                  "no:assignee")
+                 "is:open no:assignee"))
+  (should (equal (octocat-vui-list--with-values
+                  "is:open no:assignee" "assignee:" '("y") "no:assignee")
+                 "is:open assignee:y"))
+  (should (equal (octocat-vui-list--selected
+                  "is:open no:assignee" "assignee:" "no:assignee")
+                 (list octocat-vui-list--none)))
+  (should (equal (octocat-vui-list--selected "assignee:x" "assignee:" "no:assignee")
+                 '("x"))))
+
 (ert-deftest octocat-vui-test-filter-state ()
   "The state token is read, replaced and removed (\"all\")."
   (should (equal (octocat-vui-list--state "label:x is:closed") "closed"))
