@@ -707,6 +707,77 @@ nor in a column too long, see `octocat-vui-slide-max-spans'."
                  (when done (funcall done)))
         (funcall step)))))
 
+;; A roll shows boxes of lines, such as the comments in a diff, growing
+;; downwards from their first line, or shrinking back into it: each
+;; frame, the lines of every box past the ones shown are made invisible,
+;; with the newline before them, so the page is not re-rendered.
+
+(defvar-local octocat-vui--roll-timer nil
+  "The timer of this buffer's roll; one runs at a time.")
+
+(defun octocat-vui--roll-boxes (prop)
+  "Return the boxes of the current buffer's lines with PROP, in order.
+Each is a list of (START . END) of its lines, START taking in the
+newline before the line; lines parted only by a newline are one box."
+  (let ((pos (point-min)) boxes box last)
+    (while (setq pos (text-property-not-all pos (point-max) prop nil))
+      (let ((end (or (next-single-property-change pos prop) (point-max))))
+        (unless (and last (= last (1- pos)))
+          (when box (push (nreverse box) boxes))
+          (setq box nil))
+        (push (cons (max (point-min) (1- pos)) end) box)
+        (setq last end
+              pos  end)))
+    (when box (push (nreverse box) boxes))
+    (nreverse boxes)))
+
+(defun octocat-vui--roll-show (boxes shown)
+  "Show the first SHOWN lines of each of BOXES, or all of them if SHOWN is nil."
+  (let ((inhibit-read-only t))
+    (with-silent-modifications
+      (dolist (box boxes)
+        (let ((i 0))
+          (dolist (line box)
+            (if (and shown (>= i shown))
+                (put-text-property (car line) (cdr line) 'invisible t)
+              (remove-text-properties (car line) (cdr line) '(invisible nil)))
+            (setq i (1+ i))))))))
+
+(defun octocat-vui-roll (buf prop direction &optional done)
+  "Roll the boxes of BUF's lines with PROP in or out, then call DONE.
+DIRECTION is `in', growing down from nothing, or `out', back into
+nothing.  DONE is called in BUF after the last frame; rolled out, the
+boxes stay hidden until DONE re-renders the page without them.  A roll
+started stops the one running.  As for `octocat-vui-slide', there is no
+roll on low battery, nor with too many lines."
+  (with-current-buffer buf
+    (when (timerp octocat-vui--roll-timer)
+      (cancel-timer octocat-vui--roll-timer))
+    (let* ((boxes  (octocat-vui--roll-boxes prop))
+           (height (apply #'max 0 (mapcar #'length boxes)))
+           (from   (if (eq direction 'in) 0 height))
+           (to     (- height from))
+           (now    from)
+           step)
+      (setq step
+            (lambda ()
+              (when (buffer-live-p buf)
+                (with-current-buffer buf
+                  (octocat-vui--roll-show boxes now)
+                  (if (/= now to)
+                      (setq now (octocat-vui--unfold-next now from to)
+                            octocat-vui--roll-timer
+                            (run-at-time octocat-vui-unfold-interval nil step))
+                    (setq octocat-vui--roll-timer nil)
+                    (when (eq direction 'in)
+                      (octocat-vui--roll-show boxes nil))
+                    (when done (funcall done)))))))
+      (if (or (zerop height) (eq (octocat-power) 'low)
+              (octocat-vui--slide-long-p prop))
+          (progn (octocat-vui--roll-show boxes nil)
+                 (when done (funcall done)))
+        (funcall step)))))
+
 (vui-defcomponent octocat-vui-fold-rest (total limit render prefix noun key)
   "Show the first LIMIT of TOTAL things, the rest folded behind a marker row.
 RENDER is a function of the number of things to show, returning a vnode.

@@ -390,6 +390,22 @@ unsubscribes it."
       (should-not octocat-vui--slide-timer)
       (should-not (text-property-not-all (point-min) (point-max) 'display nil)))))
 
+(ert-deftest octocat-vui-test-roll ()
+  "A roll groups adjoining lines into boxes and shows each one's first lines."
+  (with-temp-buffer
+    (insert "a\n" (propertize "1" 'octocat-test t) "\n" (propertize "2" 'octocat-test t)
+            "\nb\n" (propertize "3" 'octocat-test t) "\nc")
+    (let ((boxes (octocat-vui--roll-boxes 'octocat-test)))
+      (should (equal (mapcar #'length boxes) '(2 1)))
+      (octocat-vui--roll-show boxes 1)
+      (should (equal (apply #'string
+                            (cl-loop for i from (point-min) below (point-max)
+                                     unless (get-text-property i 'invisible)
+                                     collect (char-after i)))
+                     "a\n1\nb\n3\nc"))
+      (octocat-vui--roll-show boxes nil)
+      (should-not (text-property-not-all (point-min) (point-max) 'invisible nil)))))
+
 (defvar octocat-vui-tests--marks nil
   "The marks of `octocat-vui-tests--marks-buffer'.")
 

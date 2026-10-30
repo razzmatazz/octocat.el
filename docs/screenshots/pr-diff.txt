@@ -5,7 +5,7 @@ open    Assignees @srivera · Labels  performance
         template-cache → main · Approved · Milestone 0.10 · Closes #97
 
 [Conversation]  [Commits (7)]  Files changed (3)
-Files (3)  [Collapse all]  [Hide comments (1)]
+Files (3)  [Collapse all]   Comments (3)  Diff only
 ▾ A src/cache.rs  +18 -0
 @@ -0,0 +1,18 @@
 +use std::collections::HashMap;
@@ -24,9 +24,13 @@ Files (3)  [Collapse all]  [Hide comments (1)]
 +    pub fn get(&self, path: &PathBuf, modified: SystemTime) -> Option<&Template> {
 +        let (at, template) = self.entries.get(path)?;
 +        (*at == modified).then_some(template)
-  ┌─ @mchen  1 day ago  👍 1
+  ┌─ @mchen  1 day ago  👍 1 ─────────────────────
   │ Comparing modification times is enough here: a build never runs while a template is half
   │ written.
+  ○── @srivera  1 day ago
+  │   Agreed. rocket serve writes them atomically too, so a watch rebuild is safe.
+  ○── @mchen  1 day ago
+  │   Good, then this is fine as it is.
   └─
 +    }
 +}
@@ -54,7 +58,7 @@ Files (3)  [Collapse all]  [Hide comments (1)]
  mod serve;
  mod template;
 
-Review Comments (1)
-  (1 inline review comment, in the diff above)
+Review Comments (3)
+  (3 inline review comments, in the diff above)
 
   [Submit review]

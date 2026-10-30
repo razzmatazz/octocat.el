@@ -445,8 +445,9 @@ Markdown and org, source and blame for other files (see
 [Files](#files-octocat-file-mode)).  The commit page switches between
 its diff and the commit as a patch.  The PR's files changed
 page instead shows or hides the review comments in the diff, which
-opening the page shows again; the `[Show comments (N)]` button
-in its Files heading does the same, also on the commit page.  The PR and
+opening the page shows again; they roll down out of their first line
+and back up into it.  The Comments (N) | Diff only switch in the Files
+heading does the same, also on the commit page.  The PR and
 issue lists switch between two-line rows and a compact view of one line
 per item.
 The list pages remember the choice per repository, across Emacs

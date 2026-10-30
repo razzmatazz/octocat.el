@@ -581,7 +581,15 @@ MESSAGE is its message."
      :diff_hunk "@@ -0,0 +1,18 @@" :commit_id ,octocat-screenshots--pr-head
      :user ,(octocat-screenshots--user "mchen") :created_at ,(octocat-screenshots--ago (* 30 octocat-screenshots--h))
      :body "Comparing modification times is enough here: a build never runs while a template is half written."
-     :reactions (:total_count 1 :+1 1 :-1 0 :laugh 0 :hooray 0 :confused 0 :heart 0 :rocket 0 :eyes 0))]
+     :reactions (:total_count 1 :+1 1 :-1 0 :laugh 0 :hooray 0 :confused 0 :heart 0 :rocket 0 :eyes 0))
+    (:id 502 :in_reply_to_id 501 :path "src/cache.rs" :line 16 :original_line 16 :side "RIGHT" :position 16
+     :diff_hunk "@@ -0,0 +1,18 @@" :commit_id ,octocat-screenshots--pr-head
+     :user ,(octocat-screenshots--user "srivera") :created_at ,(octocat-screenshots--ago (* 26 octocat-screenshots--h))
+     :body "Agreed. `rocket serve` writes them atomically too, so a watch rebuild is safe.")
+    (:id 503 :in_reply_to_id 501 :path "src/cache.rs" :line 16 :original_line 16 :side "RIGHT" :position 16
+     :diff_hunk "@@ -0,0 +1,18 @@" :commit_id ,octocat-screenshots--pr-head
+     :user ,(octocat-screenshots--user "mchen") :created_at ,(octocat-screenshots--ago (* 25 octocat-screenshots--h))
+     :body "Good, then this is fine as it is.")]
   "The review comments of pull request #128.")
 
 ;;;; Issue #97

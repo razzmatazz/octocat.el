@@ -45,10 +45,36 @@
   (let ((c (json-parse-string
             (concat "{\"user\":{\"login\":\"me\"},\"body\":\"hi\",\"created_at\":\"\","
                     "\"reactions\":{\"total_count\":1,\"heart\":1}}"))))
-    (should (string-suffix-p "  ❤️ 1" (car (octocat-diff--comment-lines c nil 80))))))
+    (should (string-search "  ❤️ 1 ─" (car (octocat-diff--comment-lines c nil 80))))))
+
+(ert-deftest octocat-diff-test-timeline ()
+  "General comments hang off one rail, a rail row between them."
+  (let ((cs (mapcar #'json-parse-string
+                    '("{\"user\":{\"login\":\"a\"},\"body\":\"q\"}"
+                      "{\"user\":{\"login\":\"b\"},\"body\":\"r\"}"))))
+    (should (equal (substring-no-properties (octocat-diff--timeline cs nil 80))
+                   "  ● @a  \n  │ q\n  │\n  ● @b  \n  │ r"))))
+
+(ert-deftest octocat-diff-test-threads ()
+  "A reply joins the box of the comment it answers, a bubble on its edge.
+A reply to a reply joins the same thread; one whose comment is missing
+starts its own."
+  (let* ((cs (mapcar #'json-parse-string
+                     '("{\"id\":1,\"line\":3,\"user\":{\"login\":\"a\"},\"body\":\"q\"}"
+                       "{\"id\":2,\"in_reply_to_id\":1,\"user\":{\"login\":\"b\"},\"body\":\"r\"}"
+                       "{\"id\":3,\"in_reply_to_id\":2,\"user\":{\"login\":\"a\"},\"body\":\"s\"}"
+                       "{\"id\":4,\"in_reply_to_id\":9,\"line\":5,\"body\":\"t\"}")))
+         (threads (octocat-diff--threads cs)))
+    (should (equal (mapcar (lambda (th) (mapcar (lambda (c) (gethash "id" c)) th)) threads)
+                   '((1 2 3) (4))))
+    (should (equal (mapcar #'substring-no-properties
+                           (octocat-diff--comment-lines (caar threads) nil 12 (cdar threads)))
+                   '("  ┌─ @a   ───" "  │ q" "  ○── @b  " "  │   r"
+                     "  ○── @a  " "  │   s" "  └─")))
+    (should (= (octocat-diff--placed-count "@@ -1,5 +1,5 @@\n a\n b\n c\n d\n e" cs) 4))))
 
 (ert-deftest octocat-diff-test-comments-section ()
-  "General comments are boxed; inline ones only counted.
+  "General comments are a timeline; inline ones only counted.
 The comments come as a sync snapshot."
   (let ((text (lambda (data)
                 (with-temp-buffer
@@ -63,11 +89,12 @@ The comments come as a sync snapshot."
                                "{\"path\":\"a.el\",\"body\":\"x\",\"created_at\":\"\"}")))))
       (should (string-search "Comments (2)" out))
       (should (string-search "(1 inline comment, in the diff above)" out))
-      (should (string-search "┌─ @me" out))
-      (should (string-search "│ hi" out)))))
+      (should (string-search "  ● @me" out))
+      (should (string-search "  │ hi" out))
+      (should-not (string-search "┌" out)))))
 
 (ert-deftest octocat-diff-test-files-hide-comments ()
-  "Inline comments start hidden, their count on the button that shows them."
+  "Inline comments start hidden, their count on the switch that shows them."
   (let* ((file (json-parse-string
                 "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}"))
          (c    (json-parse-string
@@ -79,12 +106,12 @@ The comments come as a sync snapshot."
                                             :hide t
                                             :fits t :raw nil :width 80))
                  (buffer-substring-no-properties (point-min) (point-max)))))
-    (should (string-search "Show comments (1)" out))
+    (should (string-search "]   Comments (1)  Diff only " out))
     (should (string-search "+x" out))
     (should-not (string-search "note" out))))
 
 (ert-deftest octocat-diff-test-outdated-comments-no-button ()
-  "Comments the diff cannot place, as outdated ones, leave out the button."
+  "Comments the diff cannot place, as outdated ones, leave out the switch."
   (let* ((file (json-parse-string
                 "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}"))
          (c    (json-parse-string
@@ -95,7 +122,7 @@ The comments come as a sync snapshot."
                                             :by-path (octocat-diff-by-path (vector c))
                                             :hide nil :fits t :raw nil :width 80))
                  (buffer-substring-no-properties (point-min) (point-max)))))
-    (should-not (string-search "comments (" out))
+    (should-not (string-search "Comments (" out))
     (should (string-search "+x" out))))
 
 (defun octocat-diff-tests--face-at (line col)

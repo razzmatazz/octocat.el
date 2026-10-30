@@ -86,50 +86,107 @@
 ;; The patch of a file is built as one string: the diff lines in the diff
 ;; faces, each inline review comment boxed right after the line it is on.
 
-(defun octocat-diff--comment-lines (comment raw width)
-  "Return the lines of the boxed inline review COMMENT, without newlines.
-Its body is markdown, rendered unless RAW, to fit WIDTH columns."
+(defun octocat-diff--comment-head (comment)
+  "Return the author, date and reactions of COMMENT, propertized."
   (let* ((user   (gethash "user" comment))
          (login  (or (and (hash-table-p user)
                           (octocat--nonempty (gethash "login" user)))
                      ""))
-         (author (if (string-empty-p login) "(unknown)" (concat "@" login)))
-         (body   (string-trim (or (gethash "body" comment) "")))
          (date   (octocat--format-ts-relative
                   (or (octocat--nonempty (gethash "created_at" comment)) "")))
-         (reactions (octocat--reactions-string comment))
-         (bar    (propertize "  │ " 'face 'octocat-dimmed)))
+         (reactions (octocat--reactions-string comment)))
+    (concat (propertize (if (string-empty-p login) "(unknown)" (concat "@" login))
+                        'face 'octocat-pr-author)
+            (propertize (concat "  " date) 'face 'octocat-dimmed)
+            (if reactions (concat "  " reactions) ""))))
+
+(defun octocat-diff--comment-body (comment prefix raw width)
+  "Return the body of COMMENT, each line after PREFIX, without final newline.
+RAW and WIDTH are as for `octocat-diff--comment-lines'."
+  (let ((body (string-trim (or (gethash "body" comment) ""))))
+    (if (string-empty-p body)
+        (concat prefix (propertize "(empty)" 'face 'octocat-dimmed))
+      (string-remove-suffix "\n" (octocat--markdown-string body prefix raw width)))))
+
+(defun octocat-diff--comment-lines (comment raw width &optional replies)
+  "Return the lines of the boxed inline review COMMENT, without newlines.
+REPLIES, the comments answering it, follow in the same box, indented,
+each led to from a bubble on its edge.  A body is markdown, rendered unless
+RAW, to fit WIDTH columns."
+  (let* ((bar  (propertize "  │ " 'face 'octocat-dimmed))
+         (head (octocat-diff--comment-head comment))
+         ;; The top edge runs on past the heading, to the middle of the box.
+         (rule (max 3 (- (/ width 2) (string-width "  ┌─ ") (string-width head) 1))))
     (append
      (list (concat (propertize "  ┌─ " 'face 'octocat-dimmed)
-                   (propertize author 'face 'octocat-pr-author)
-                   (propertize (concat "  " date) 'face 'octocat-dimmed)
-                   (if reactions (concat "  " reactions) "")))
-     (if (string-empty-p body)
-         (list (concat bar (propertize "(empty)" 'face 'octocat-dimmed)))
-       (list (string-remove-suffix
-              "\n" (octocat--markdown-string body bar raw width))))
+                   head " "
+                   (propertize (make-string rule ?─) 'face 'octocat-dimmed))
+           (octocat-diff--comment-body comment bar raw width))
+     ;; Each reply's bubble sits on the box's edge, as on a timeline's
+     ;; rail, a line leading from it into the reply.
+     (mapcan (lambda (r)
+               (list (concat (propertize "  ○── " 'face 'octocat-dimmed)
+                             (octocat-diff--comment-head r))
+                     (octocat-diff--comment-body r (concat bar "  ") raw width)))
+             replies)
      (list (propertize "  └─" 'face 'octocat-dimmed)))))
+
+(defun octocat-diff--timeline (comments raw width)
+  "Return COMMENTS, on no line of the diff, as a timeline, without newline.
+With nothing to enclose, they are drawn as the PR timeline's comments,
+a bullet then the body on a rail.  RAW and WIDTH are as for
+`octocat-diff--comment-lines'."
+  (let ((rail (propertize "  │ " 'face 'octocat-dimmed)))
+    (mapconcat (lambda (c)
+                 (concat (propertize "  ● " 'face 'octocat-dimmed)
+                         (octocat-diff--comment-head c) "\n"
+                         (octocat-diff--comment-body c rail raw width)))
+               comments
+               (concat "\n" (string-trim-right rail) "\n"))))
+
+(defun octocat-diff--threads (comments)
+  "Group the review COMMENTS into threads, in order: lists (ROOT . REPLIES).
+A reply, with an `in_reply_to_id', joins the thread of the comment it
+answers; one whose thread is not among COMMENTS starts its own."
+  (let ((root-of (make-hash-table)) ; Comment id to its thread's root id.
+        (threads (make-hash-table))
+        roots)
+    (dolist (c comments)
+      (let* ((id     (gethash "id" c))
+             (parent (gethash "in_reply_to_id" c))
+             (root   (and (integerp parent) (gethash parent root-of))))
+        (if root
+            (push c (gethash root threads))
+          (setq root id)
+          (push c roots))
+        (when (integerp id) (puthash id root root-of))))
+    (mapcar (lambda (r)
+              (cons r (and (integerp (gethash "id" r))
+                           (reverse (gethash (gethash "id" r) threads)))))
+            (nreverse roots))))
 
 (defun octocat-diff--index (comments)
   "Index the review COMMENTS of one file for `octocat-diff--patch-text'.
 Returns (BY-LINE . BY-POS): alists mapping a right-side line number, and
 for older comments that have no line a diff position, to the list of
-comments there, in order."
+threads there, in order, see `octocat-diff--threads'.  A thread is
+placed where its first comment is."
   (let (by-line by-pos)
-    (dolist (c comments)
-      (let ((line (let ((v (gethash "line" c))) (and (integerp v) v)))
-            (pos  (let ((v (gethash "position" c))) (and (integerp v) v))))
-        (cond (line (push c (alist-get line by-line)))
-              (pos  (push c (alist-get pos by-pos))))))
+    (dolist (thread (octocat-diff--threads comments))
+      (let* ((c    (car thread))
+             (line (let ((v (gethash "line" c))) (and (integerp v) v)))
+             (pos  (let ((v (gethash "position" c))) (and (integerp v) v))))
+        (cond (line (push thread (alist-get line by-line)))
+              (pos  (push thread (alist-get pos by-pos))))))
     (cons (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) by-line)
           (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) by-pos))))
 
 (defun octocat-diff--walk (patch index fn)
-  "Call FN with each line of the unified diff PATCH and the comments after it.
+  "Call FN with each line of the unified diff PATCH and the threads after it.
 INDEX is the comment index of the file, see `octocat-diff--index'.  FN
-gets the line and the list of comments placed right after it, found by
+gets the line and the list of comment threads placed right after it, found by
 tracking the right-side line number, from the `@@' headers, and the
-1-based position in the diff.  A comment on no line of PATCH, as an
+1-based position in the diff.  A thread on no line of PATCH, as an
 outdated one, is placed nowhere."
   (let ((by-line (car index))
         (by-pos  (cdr index))
@@ -154,7 +211,8 @@ outdated one, is placed nowhere."
   "Return how many of COMMENTS, on the file of PATCH, are placed in its diff."
   (let ((n 0))
     (octocat-diff--walk patch (octocat-diff--index comments)
-                        (lambda (_line placed) (cl-incf n (length placed))))
+                        (lambda (_line placed)
+                          (dolist (thread placed) (cl-incf n (length thread)))))
     n))
 
 (defun octocat-diff--patch-text (patch path index raw width)
@@ -162,8 +220,8 @@ outdated one, is placed nowhere."
 PATH is the file's, whose major mode highlights the code, see
 `octocat-diff--lines'.  INDEX is the comment index of the file, see
 `octocat-diff--index'.  RAW and WIDTH are as for
-`octocat-diff--comment-lines'.  Each comment is placed right after the
-diff line it is on, see `octocat-diff--walk'.  A line is cut at
+`octocat-diff--comment-lines'.  Each comment thread is placed right
+after the diff line it is on, see `octocat-diff--walk'.  A line is cut at
 `octocat--max-line-length', see `octocat--clip-line'."
   (let ((lines (octocat-diff--lines patch path))
         out)
@@ -172,9 +230,10 @@ diff line it is on, see `octocat-diff--walk'.  A line is cut at
      patch index
      (lambda (_line placed)
        (push (octocat--clip-line (pop lines) octocat--max-line-length) out)
-       (dolist (c placed)
-         (dolist (l (octocat-diff--comment-lines c raw width))
-           (push l out)))))
+       (dolist (thread placed)
+         (dolist (l (octocat-diff--comment-lines (car thread) raw width (cdr thread)))
+           ;; Marked for `octocat-diff-toggle-comments' to roll them in and out.
+           (push (propertize l 'octocat-comment t) out)))))
     (mapconcat #'identity (nreverse out) "\n")))
 
 
@@ -520,19 +579,42 @@ the last one, its diff ends underlined, see
 Opening the page shows them again.")
 
 (defun octocat-diff-toggle-comments ()
-  "Show or hide the inline comments in the diff of this page."
+  "Show or hide the inline comments in the diff of this page.
+They roll down out of their first line, and back up into it."
   (interactive)
-  (setq octocat-diff--hide-comments (not octocat-diff--hide-comments))
-  (octocat-vui-update-page :hide-comments octocat-diff--hide-comments))
+  (let* ((buf  (current-buffer))
+         (hide (not octocat-diff--hide-comments))
+         (show (lambda ()
+                 (setq octocat-diff--hide-comments hide)
+                 (message "Diff comments: %s" (if hide "hidden" "shown"))
+                 (octocat-vui-update-page :hide-comments hide))))
+    (if hide
+        (octocat-vui-roll buf 'octocat-comment 'out show)
+      (funcall show)
+      (octocat-vui-roll buf 'octocat-comment 'in))))
+
+(defun octocat-diff--comments-switch (hide count)
+  "Return the pill switching the diff's COUNT comments on and off.
+HIDE is whether they are hidden; the hint names the key that switches."
+  (cl-flet ((help (action)
+              (octocat--key-help #'octocat-diff-toggle-comments action)))
+    (octocat-vui-segmented
+     (list (list (format "Comments (%d)" count) (not hide)
+                 (help "show the comments in the diff")
+                 #'octocat-diff-toggle-comments)
+           (list "Diff only" hide
+                 (help "hide the comments in the diff")
+                 #'octocat-diff-toggle-comments)))))
 
 (vui-defcomponent octocat-diff--files (repo files by-path hide fits raw width underline)
   "The Files section: FILES of REPO with the review comments BY-PATH, folded.
 They start unfolded when FITS, the whole diff fitting in the window.
 HIDE leaves the comments out.  RAW and WIDTH are as for
 `octocat-diff--comment-lines'; UNDERLINE underlines the heading across
-WIDTH, but for a page whose tab row heads the section.  The heading's \"Expand all\" button
-unfolds or folds every file, and its \"Show comments (N)\" button, there
-when the diff shows some comment, runs `octocat-diff-toggle-comments'."
+WIDTH, but for a page whose tab row heads the section.  The heading's
+\"Expand all\" button unfolds or folds every file, and its switch of the
+comments, there when the diff shows some, runs
+`octocat-diff-toggle-comments'."
   :state ((bulk (and fits (cons 0 t))))
   :render
   (let* ((_ (octocat-vui-use-view-reset
@@ -550,16 +632,7 @@ when the diff shows some comment, runs `octocat-diff-toggle-comments'."
                        (cons (octocat-vui-expand-all-button
                               bulk (vui-async-callback (v) (vui-set-state :bulk v)))
                              (and (> placed 0)
-                                  (list (vui-button (format "%s comments (%d)"
-                                                            (if hide "Show" "Hide") placed)
-                                          :face 'octocat-dimmed
-                                          :key 'hide-comments
-                                          :help-echo (octocat--key-help
-                                                      #'octocat-diff-toggle-comments
-                                                      (if hide
-                                                          "show the comments in the diff"
-                                                        "hide the comments in the diff"))
-                                          :on-click #'octocat-diff-toggle-comments)))))))
+                                  (list (octocat-diff--comments-switch hide placed)))))))
        (if underline
            (apply #'octocat-vui-section-heading heading width after)
          (apply #'vui-hstack :spacing 2
@@ -594,7 +667,7 @@ UNDERLINE underlines the heading across WIDTH."
 (defun octocat-diff-comments-section (label comments raw width)
   "Return the vnode of the comments section headed LABEL, e.g. \"Comments\".
 COMMENTS is the sync snapshot of the comments.  Inline ones are in the
-diff, so only counted here; the others are boxed like them.  RAW and
+diff, so only counted here; the others are a timeline.  RAW and
 WIDTH are as for `octocat-diff--comment-lines'; the heading is underlined
 across WIDTH."
   (let* ((status  (octocat-vui-snapshot-status comments))
@@ -618,10 +691,7 @@ across WIDTH."
                         (list (vui-text (format "  (%d inline %s%s, in the diff above)"
                                                 inline noun (if (= inline 1) "" "s"))
                                 :face 'octocat-dimmed)))
-                   (mapcar (lambda (c)
-                             (vui-text (string-join (octocat-diff--comment-lines c raw width)
-                                                    "\n")))
-                           general))))))))
+                   (list (vui-text (octocat-diff--timeline general raw width))))))))))
 
 (provide 'octocat-diff)
 ;;; octocat-diff.el ends here
