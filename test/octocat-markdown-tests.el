@@ -91,13 +91,26 @@ the window's point; mid-render that scrambled the page."
   (let ((out (octocat-markdown-render "![shot](https://x/y.png)" "" nil)))
     (should (equal (get-text-property 0 'octocat-markdown-image out)
                    '(:url "https://x/y.png" :width nil :cols nil))))
-  (dolist (md '("see ![shot](https://x/y.png)" "![a](https://x/a.png) ![b](https://x/b.png)"
+  (dolist (md '("see ![shot](https://x/y.png)" "![a](https://x/a.png) and ![b](https://x/b.png)"
                 "| ![shot](https://x/y.png) |\n|-|"))
     (let ((out (octocat-markdown-render md "" nil)))
       (should-not (text-property-not-all 0 (length out) 'octocat-markdown-image nil out))))
   (let ((out (octocat-markdown-render "<img width=\"80%\" src=\"https://x/y.png\">" "" nil)))
     (should (equal (get-text-property 0 'octocat-markdown-image out)
                    '(:url "https://x/y.png" :width nil :cols nil)))))
+
+(ert-deftest octocat-markdown-test-image-row ()
+  "A row of images alone, as badges, marks each, and breaks only between them."
+  (let* ((md  "[![CI](https://x/ci.svg)](https://x/ci)\n![Code coverage](https://x/cov.svg)\n![X](https://x/x.svg)")
+         (out (octocat-markdown-render md "" 36 t)))
+    (should (equal (substring-no-properties out)
+                   "[image: CI] [image: Code coverage]\n[image: X]\n"))
+    (should (equal (octocat-markdown-tests--prop out "[image: CI" 'octocat-markdown-image)
+                   '(:url "https://x/ci.svg" :width nil :cols 12)))
+    (should (equal (octocat-markdown-tests--prop out "[image: Code" 'octocat-markdown-image)
+                   '(:url "https://x/cov.svg" :width nil :cols 12)))
+    (should-not (get-text-property (string-search " [image: Code" out)
+                                   'octocat-markdown-image out))))
 
 (ert-deftest octocat-markdown-test-entities ()
   "Named, decimal and hex character references are decoded; unknown ones kept."

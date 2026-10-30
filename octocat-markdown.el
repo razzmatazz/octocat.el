@@ -903,21 +903,53 @@ that breaks it is dropped."
                 ((or hard (not octocat-markdown--file)) "\n")
                 (t " ")))))
 
+(defun octocat-markdown--images (s)
+  "Return the (BEG END PLIST) of each image of S, or nil if S has text too.
+PLIST is its `octocat-markdown-img'.  Spaces may part the images."
+  (catch 'text
+    (let ((pos 0) spans)
+      (while (< pos (length s))
+        (let ((img  (get-text-property pos 'octocat-markdown-img s))
+              (next (next-single-property-change pos 'octocat-markdown-img s (length s))))
+          (cond (img (push (list pos next img) spans))
+                ((string-match-p "\\`[ \t]*\\'" (substring s pos next)))
+                (t (throw 'text nil)))
+          (setq pos next)))
+      (nreverse spans))))
+
 (defun octocat-markdown--image-row (s)
-  "Return paragraph line S, marked if it is an image alone.
+  "Return paragraph line S, its images marked if it is images alone.
 The mark is `octocat-markdown-image': the image's plist, as
-`octocat-markdown--image' made it, plus :cols, the columns it may take,
-or nil for no limit.  Only such an image can be shown in its link's
-place, as one tall line, without breaking the layout of the text; but
-see `octocat-markdown--html-gallery', for images side by side."
-  (let ((img (and (> (length s) 0) (get-text-property 0 'octocat-markdown-img s))))
-    (if (or (null img) (next-single-property-change 0 'octocat-markdown-img s))
-        s
-      (let ((s (copy-sequence s)))
-        (put-text-property 0 (length s) 'octocat-markdown-image
-                           (append img (list :cols octocat-markdown--avail))
-                           s)
-        s))))
+`octocat-markdown--image' made it, plus :cols, its share of the columns,
+or nil for no limit.  Only such images can be shown in their links'
+place, as one tall line, without breaking the layout of the text, as a
+README's row of badges; but see `octocat-markdown--html-gallery', for
+images side by side under captions."
+  (if-let* ((spans (octocat-markdown--images s)))
+      (let ((s    (copy-sequence s))
+            (cols (and octocat-markdown--avail
+                       (max 1 (/ octocat-markdown--avail (length spans))))))
+        (pcase-dolist (`(,b ,e ,img) spans)
+          (put-text-property b e 'octocat-markdown-image
+                             (append img (list :cols cols)) s))
+        s)
+    s))
+
+(defun octocat-markdown--fill-images (s width hang)
+  "Return row S of images broken between them into lines of WIDTH columns.
+The lines after the first start with HANG.  An image is not broken: its
+link is replaced whole by the image."
+  (let ((spans (octocat-markdown--images s)) lines beg end)
+    (pcase-dolist (`(,b ,e ,_) spans)
+      (cond ((null beg) (setq beg b end e))
+            ((<= (+ (string-width (substring s beg e)) (if lines (string-width hang) 0))
+                 width)
+             (setq end e))
+            (t (push (substring s beg end) lines)
+               (setq beg b end e))))
+    (push (substring s beg end) lines)
+    (cons (car (last lines))
+          (mapcar (lambda (l) (concat hang l)) (cdr (nreverse lines))))))
 
 (defconst octocat-markdown--min-column 6
   "Narrowest a table column is squeezed to before the table overflows instead.")
@@ -1930,14 +1962,16 @@ ROWS as they are."
               (room (floor width (octocat-markdown--scale s)))
               (has  (lambda (prop) (text-property-not-all 0 (length s) prop nil s))))
          (octocat-markdown--center
-          (and (not (funcall has 'octocat-markdown-image))
+          (and (not (and (funcall has 'octocat-markdown-image)
+                         (null (cdr (octocat-markdown--images s)))))
                (> (length s) 0) (get-text-property 0 'octocat-markdown-center s))
           width
           (cond
-           ;; An image's link is replaced whole by the image.
-           ((or (<= (string-width s) room) (funcall has 'octocat-markdown-table)
-                (funcall has 'octocat-markdown-image))
+           ((or (<= (string-width s) room) (funcall has 'octocat-markdown-table))
             (list row))
+           ((funcall has 'octocat-markdown-image)
+            (mapcar (lambda (l) (cons l hang))
+                    (octocat-markdown--fill-images s room hang)))
            ((funcall has 'octocat-markdown-code)
             (let* ((head  (car (octocat-markdown--cut s width)))
                    (room  (max 1 (- width (string-width hang) 2)))

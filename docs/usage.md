@@ -363,7 +363,8 @@ image shown in place opens its file here, where it is shown whole.
 ## Images in markdown
 
 In a graphical frame, an image that has a line of a PR, issue, comment
-or README to itself can be shown there: `RET` (or a click) on its
+or README to itself, or shares it only with other images, as a row of
+badges does, can be shown there: `RET` (or a click) on its
 `[image: alt]` link fetches it and shows it in place of the link,
 scaled down to fit the window and at most `octocat-image-max-lines`
 lines tall.  `RET` on the image then opens it in the browser.  Nothing

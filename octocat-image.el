@@ -240,7 +240,10 @@ For `jit-lock-functions'."
                           'keymap octocat-markdown-link-map
                           'help-echo (if (plist-get plist :file)
                                          "RET: open the image's file; C-c C-o: on GitHub"
-                                       (format "RET: open %s" url)))))
+                                       ;; A badge's link goes to its page.
+                                       (format "RET: open %s"
+                                               (or (get-text-property b 'octocat-markdown-url)
+                                                   url))))))
               ((eq data 'pending)
                (let ((link (octocat-image--link b e)))
                  (add-text-properties
