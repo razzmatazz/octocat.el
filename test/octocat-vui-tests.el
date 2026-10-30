@@ -462,6 +462,30 @@ The marks are kept in a variable, as the page keeps them in its state."
   (should (equal (octocat-vui-list--with-marks '(5 7) '(7 3) t) '(5 7 3)))
   (should (equal (octocat-vui-list--with-marks '(5 7) '(7 3) nil) '(5))))
 
+(defun octocat-vui-tests--labelled (number &rest names)
+  "Return an item NUMBER with labels NAMES, as a list holds it."
+  (let ((item (make-hash-table :test #'equal)))
+    (puthash "number" number item)
+    (puthash "labels" (vconcat (mapcar (lambda (name)
+                                         (let ((l (make-hash-table :test #'equal)))
+                                           (puthash "name" name l)
+                                           l))
+                                       names))
+             item)
+    item))
+
+(ert-deftest octocat-vui-test-toggle-labels ()
+  "A label all items have is taken off; any other is added to those without it."
+  (let ((items (list (octocat-vui-tests--labelled 1 "bug" "docs")
+                     (octocat-vui-tests--labelled 2 "bug"))))
+    (should (equal (octocat-vui-list--value-counts items "labels" "name")
+                   '(("bug" . 2) ("docs" . 1))))
+    (should (equal (octocat-vui-list--toggle-changes items '("bug" "docs" "new") "labels" "name")
+                   '((1 ("new") ("bug")) (2 ("docs" "new") ("bug")))))
+    ;; An item with nothing to change is left out.
+    (should (equal (octocat-vui-list--toggle-changes items '("docs") "labels" "name")
+                   '((2 ("docs") nil))))))
+
 (ert-deftest octocat-vui-test-mark-without-page ()
   "Marking where no list page has mounted says so."
   (with-temp-buffer

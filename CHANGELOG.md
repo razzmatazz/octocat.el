@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Marking PRs or issues swaps the filters for a bar that labels them all at once
 * A PR list with a closed PR that has no commits no longer fails to load
 * Mark PRs and issues in their lists as in dired: `m`, `u`, `U` (unmark all)
 * Long runs of commits or events in a timeline fold behind `▸ N more`; RET expands them

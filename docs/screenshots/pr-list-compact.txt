@@ -5,8 +5,8 @@ Filter  is:open
         [State]  [Author]  [Assignee]  [Reviewer]  [Label]
 
   #133  Incremental builds: skip pages whose inputs…  ≡ 2/2   performance   enhancement  · @srivera
-✓ #132  Add RSS and Atom feeds for each section   enhancement                              · @pnair
+  #132  Add RSS and Atom feeds for each section   enhancement                              · @pnair
   #130  Fix: `rocket serve` drops changes saved twice in a second  ≡ 1/2   bug        · @jlindqvist
-✓ #128  Cache parsed templates between builds   performance                              · @srivera
+  #128  Cache parsed templates between builds   performance                              · @srivera
   #125  (draft) Docs: a guide to writing your first theme   docs                         · @aokafor
   #119  Syntax-highlight code blocks at build time                                         · @mchen

@@ -413,6 +413,32 @@ retry, and never once cancelled."
           (funcall (nth 0 sent) nil)
           (should (equal (title) "Two")))))))
 
+(ert-deftest octocat-sync-test-submit-each ()
+  "Mutations sent each after the last, shown with progress; outdating once at the end."
+  (octocat-sync-tests--with-sync
+    (let ((sent nil) (outdated nil) (answers nil) (inhibit-message t))
+      (add-hook 'octocat-sync-invalidate-functions (lambda (keys) (push keys outdated)))
+      (octocat-sync-define-mutation tag (n)
+        :label "Tagging…"
+        :send (lambda (done) (push (cons n done) sent))
+        :invalidates (lambda () '((thing _))))
+      (octocat-sync--write octocat-sync--db "(thing 2)" (octocat-sync-tests--table "n" 2) 1.0)
+      (octocat-sync-submit-each '((tag 1) (tag 2)) "Tagging" '((thing 9))
+                                (lambda (a) (setq answers a)))
+      ;; One at a time, its progress on the resources given.
+      (should (equal (mapcar #'car sent) '(1)))
+      (should (equal (plist-get (octocat-sync-read '(thing 9)) :mutating)
+                     '((batch . "Tagging 1/2…"))))
+      (funcall (cdar sent) nil)
+      (should (equal (mapcar #'car sent) '(2 1)))
+      (should (equal (plist-get (octocat-sync-read '(thing 9)) :mutating)
+                     '((batch . "Tagging 2/2…"))))
+      (should-not outdated)
+      (funcall (cdar sent) '(error . "nope"))
+      (should-not (plist-get (octocat-sync-read '(thing 9)) :mutating))
+      (should (member "(thing 2)" (apply #'append outdated)))
+      (should (equal answers '(((tag 1)) ((tag 2) error . "nope")))))))
+
 (defmacro octocat-sync-tests--with-edit (&rest body)
   "Run BODY with resource (thing 1) stored and mutation `add' defined.
 `add' appends \"N?\" to its \"items\" while it runs, and what GitHub

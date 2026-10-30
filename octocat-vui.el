@@ -1512,7 +1512,10 @@ compact view loads more at a time.  A new TICK refetches the counts and
 starts the results afresh."
   :state ((marks nil))
   :render
-  (progn
+  ;; What the actions on the marked items are doing, if anything.
+  (let ((busy (alist-get 'batch (plist-get (octocat-vui-use-resource
+                                            (list 'counts kind repo) tick)
+                                           :mutating))))
     ;; The mark commands, run outside the page, set its marks with this.
     (vui-use-effect ()
       (setq octocat-vui-list--set-marks-function
@@ -1520,7 +1523,13 @@ starts the results afresh."
       nil)
     (vui-vstack
      (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick)
-     (octocat-vui-list-filter-bar query)
+     (vui-fragment
+      ;; Two rows either way, so marking the first item and unmarking
+      ;; the last does not move the list.
+      (if marks
+          (octocat-vui-list-apply-bar
+           kind repo (octocat-vui--search-spec kind repo query compact) marks busy)
+        (octocat-vui-list-filter-bar query)))
      (vui-component 'octocat-vui--search-results
        :key (list query (and compact t) tick)
        :repo repo :kind kind :query query :row-fn row-fn
@@ -1536,6 +1545,12 @@ PAGE is as `octocat--parse-list-items' returns; each item is an entity."
              tree)
     (puthash "cursor" (plist-get page :cursor) tree)
     tree))
+
+(defun octocat-vui--search-spec (kind repo query compact)
+  "Return the spec of the KIND items of REPO matching QUERY, a page of them.
+COMPACT pages are longer."
+  (list 'list-items kind repo query
+        (if compact octocat-list-compact-page-size octocat-list-page-size)))
 
 (octocat-sync-define-resource list-items (kind repo query limit)
   :fetch (lambda (done)
@@ -1566,7 +1581,7 @@ dropped, so that only items shown are marked."
          (noun   (if (eq kind 'pulls) "pull requests" "issues"))
          (limit  (if compact octocat-list-compact-page-size octocat-list-page-size))
          (no-state (and compact (not (octocat-vui-list-filter-active-p query))))
-         (spec   (list 'list-items kind repo query limit))
+         (spec   (octocat-vui--search-spec kind repo query compact))
          (snap   (octocat-vui-use-resource spec tick))
          (extra  (and extra-fn (funcall extra-fn tick)))
          (data   (plist-get snap :data))
@@ -2083,6 +2098,164 @@ one, move to the next item."
   "Unmark every item."
   (interactive)
   (octocat-vui-list--set-marks nil))
+
+;; While items are marked, a bar below the filters offers what can be
+;; done to them.  An action sends one change per item, one after another
+;; in the background (`octocat-sync-submit-each'); while it runs, the
+;; bar and the mode line show how far it is, and the bar's actions wait.
+
+(defun octocat-vui-list--noun (kind n)
+  "Return what N items of KIND are called: \"PR\", \"issues\"..."
+  (concat (if (eq kind 'pulls) "PR" "issue") (if (= n 1) "" "s")))
+
+(defun octocat-vui-list-apply-bar (kind repo spec marked busy)
+  "Return the bar of the actions on MARKED, numbers of KIND items of REPO.
+It takes the place of the filter bar, in as many rows.  SPEC is the
+list's resource.  BUSY, if non-nil, is what an action on them is doing:
+shown instead of the actions."
+  (vui-fragment
+   (vui-hstack :spacing 2
+               (vui-text "Marked" :face 'octocat-dimmed)
+               (vui-text (format "%d %s" (length marked)
+                                 (octocat-vui-list--noun kind (length marked))))
+               (vui-button "[Unmark all]"
+                 :no-decoration t
+                 :face 'octocat-dimmed
+                 :key :unmark
+                 :help-echo (octocat--button-help "RET: unmark all"
+                                                  #'octocat-vui-list-unmark-all)
+                 :on-click #'octocat-vui-list-unmark-all))
+   (vui-newline)
+   (vui-hstack :spacing 2
+               (vui-text "      ")
+               (if busy
+                   (vui-text (concat (octocat-vui-spinner) " " busy) :face 'octocat-dimmed)
+                 (vui-button "[Label]"
+                   :no-decoration t
+                   :face 'octocat-dimmed
+                   :key :label
+                   :help-echo (format "RET: add or remove labels of the marked %s"
+                                      (octocat-vui-list--noun kind 2))
+                   :on-click (lambda () (octocat-vui-list--label-marked kind repo spec marked)))))
+   (vui-newline)))
+
+(defun octocat-vui-list--value-counts (items field key)
+  "Return how many of ITEMS have each value of their FIELD, as (VALUE . N).
+FIELD holds a vector of tables, KEY the name of their value."
+  (let (counts)
+    (dolist (item items)
+      (seq-doseq (x (or (gethash field item) []))
+        (let* ((value (gethash key x))
+               (cell  (assoc value counts)))
+          (if cell (cl-incf (cdr cell)) (push (cons value 1) counts)))))
+    (nreverse counts)))
+
+(defun octocat-vui-list--toggle-changes (items picked field key)
+  "Return the edits for toggling PICKED values on ITEMS: (NUMBER ADD REMOVE).
+A value every item has is taken off them all; any other is added to
+those without it.  FIELD and KEY are as for
+`octocat-vui-list--value-counts'.  Items left as they are are left out."
+  (let ((all    (length items))
+        (counts (octocat-vui-list--value-counts items field key)))
+    (delq nil
+          (mapcar
+           (lambda (item)
+             (let ((has (mapcar (lambda (x) (gethash key x))
+                                (or (gethash field item) [])))
+                   add remove)
+               (dolist (value picked)
+                 (if (eql (cdr (assoc value counts)) all)
+                     (push value remove)
+                   (unless (member value has) (push value add))))
+               (and (or add remove)
+                    (list (gethash "number" item) (nreverse add) (nreverse remove)))))
+           items))))
+
+(defun octocat-vui-list--read-toggles (prompt candidates counts total)
+  "Read values from CANDIDATES to toggle on TOTAL items; return them.
+PROMPT names what they are.  COUNTS, as `octocat-vui-list--value-counts'
+returns, says how many items have each: those all have are marked ✓ and
+listed first, then those some have, marked –."
+  (let* ((n      (lambda (c) (or (cdr (assoc (substring-no-properties c) counts)) 0)))
+         (sorted (append (seq-filter (lambda (c) (= (funcall n c) total)) candidates)
+                         (seq-filter (lambda (c) (< 0 (funcall n c) total)) candidates)
+                         (seq-filter (lambda (c) (zerop (funcall n c))) candidates)))
+         (annotate (lambda (c)
+                     (let ((k (funcall n c)))
+                       (cond ((= k total) "  ✓ all")
+                             ((> k 0) (format "  – %d of %d" k total))
+                             (t "")))))
+         (table  (lambda (string pred action)
+                   (if (eq action 'metadata)
+                       `(metadata (annotation-function . ,annotate)
+                                  (display-sort-function . identity))
+                     (complete-with-action action sorted string pred)))))
+    (delete-dups (mapcar #'substring-no-properties
+                         (seq-remove #'string-empty-p
+                                     (mapcar #'string-trim
+                                             (completing-read-multiple
+                                              (format "%s (✓ all have it, – some): " prompt)
+                                              table nil t)))))))
+
+(defun octocat-vui-list--label-marked (kind repo spec marked)
+  "Add or remove labels of MARKED, the numbers of KIND items of REPO.
+SPEC is the list's resource, which holds their labels.  The labels
+picked are toggled on them all; with more than one changing, ask first."
+  (when-let* ((busy (alist-get 'batch (plist-get (octocat-sync-read (list 'counts kind repo))
+                                                 :mutating))))
+    (user-error "Octocat: Wait for \"%s\" to finish" busy))
+  (let ((items (seq-filter (lambda (item) (memql (gethash "number" item) marked))
+                           (append (gethash "nodes" (plist-get (octocat-sync-read spec) :data))
+                                   nil)))
+        (buf   (current-buffer)))
+    (funcall
+     (octocat-vui-list--stored 'labels #'octocat-vui-list--label-name)
+     repo
+     (lambda (result)
+       ;; Outside the process sentinel, as the list filters do.
+       (run-at-time
+        0 nil
+        (lambda ()
+          (when (octocat--still-selected-p buf)
+            (with-current-buffer buf
+              (let* ((noun    (octocat-vui-list--noun kind (length items)))
+                     (counts  (octocat-vui-list--value-counts items "labels" "name"))
+                     (picked  (octocat-vui-list--read-toggles
+                               (format "Labels of %d %s" (length items) noun)
+                               (delete-dups
+                                (append (if (eq (car-safe result) 'error)
+                                            (progn (message "Octocat: %s" (cdr result)) nil)
+                                          result)
+                                        (mapcar #'car counts)))
+                               counts (length items)))
+                     (changes (octocat-vui-list--toggle-changes items picked "labels" "name")))
+                (when (and changes
+                           (or (null (cdr changes))
+                               (y-or-n-p (format "Change the labels of %d %s? "
+                                                 (length changes)
+                                                 (octocat-vui-list--noun kind (length changes))))))
+                  (octocat-vui-list--send-each
+                   kind repo "Labelling" "Labelled"
+                   (mapcar (pcase-lambda (`(,number ,add ,remove))
+                             `(edit-values ,(if (eq kind 'pulls) "pr" "issue") ,repo ,number
+                                           "label" ,add ,remove))
+                           changes))))))))))))
+
+(defun octocat-vui-list--send-each (kind repo doing done specs)
+  "Send SPECS, mutations of KIND items of REPO, one after another.
+DOING, such as \"Labelling\", says what they do while they run, and DONE,
+such as \"Labelled\", how it went once the last is answered."
+  (octocat-sync-submit-each
+   specs doing (list (list 'counts kind repo))
+   (lambda (answers)
+     (let* ((failed (seq-filter (lambda (a) (eq (car-safe (cdr a)) 'error)) answers))
+            (total  (length answers))
+            (noun   (octocat-vui-list--noun kind total)))
+       (if failed
+           (message "Octocat: %s %d of %d %s; failed: %s" done (- total (length failed))
+                    total noun
+                    (mapconcat (lambda (a) (format "#%d" (nth 3 (car a)))) failed ", "))
+         (message "Octocat: %s %d %s" done total noun))))))
 
 (defvar octocat-vui-list-mark-map
   (let ((map (make-sparse-keymap)))

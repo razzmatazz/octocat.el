@@ -87,9 +87,9 @@ a table; the drawer under a heading is left out.
 ## Pull requests
 
 `M-x octocat-pr-list`: the open pull requests, filtered by a GitHub
-search.  Two of them are marked with `m`, as files are in dired.
+search.
 
-<!-- screenshot: (pr-list "acme/rocket") :press ((:key "m" "Add RSS") (:key "m" "Cache parsed")) -->
+<!-- screenshot: (pr-list "acme/rocket") -->
 ![pr-list](pr-list.png)
 
 [As text](pr-list.txt)
@@ -97,7 +97,7 @@ search.  Two of them are marked with `m`, as files are in dired.
 
 Compact (`C-c C-v`):
 
-<!-- screenshot: (pr-list "acme/rocket") :name "pr-list-compact" :press ((:key "C-c C-v") (:key "m" "Add RSS") (:key "m" "Cache parsed")) -->
+<!-- screenshot: (pr-list "acme/rocket") :name "pr-list-compact" :press ((:key "C-c C-v")) -->
 ![pr-list-compact](pr-list-compact.png)
 
 [As text](pr-list-compact.txt)
@@ -138,12 +138,20 @@ A merged pull request: with no merge box, its checks end the page.
 
 ## Issues
 
-`M-x octocat-issue-list`, with two issues marked:
+`M-x octocat-issue-list`:
 
-<!-- screenshot: (issue-list "acme/rocket") :press ((:key "m" "Live reload") (:key "m" "Explain how")) -->
+<!-- screenshot: (issue-list "acme/rocket") -->
 ![issue-list](issue-list.png)
 
 [As text](issue-list.txt)
+<!-- /screenshot -->
+
+Two issues marked with `m`: the Marked bar takes the filters' place.
+
+<!-- screenshot: (issue-list "acme/rocket") :name "issue-list-marked" :press ((:key "m" "Live reload") (:key "m" "Explain how")) -->
+![issue-list-marked](issue-list-marked.png)
+
+[As text](issue-list-marked.txt)
 <!-- /screenshot -->
 
 An issue, and the pull request that will close it:

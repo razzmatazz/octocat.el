@@ -6,11 +6,11 @@ Filter  is:open
 
   open    Incremental builds: skip pages whose inputs are unch…  ≡ 2/2   performance   enhancement
           acme/rocket#133 by @srivera · 3 hours ago · Review required · ● 2/4 · ✉ 4
-✓ open    Add RSS and Atom feeds for each section   enhancement
+  open    Add RSS and Atom feeds for each section   enhancement
           acme/rocket#132 by @pnair · 9 hours ago · Approved · ✓ 4/4 · ✉ 2
   open    Fix: `rocket serve` drops changes saved twice in a second  ≡ 1/2   bug
           acme/rocket#130 by @jlindqvist · 1 day ago · Changes requested · ✗ 3/4 · ✉ 6
-✓ open    Cache parsed templates between builds   performance
+  open    Cache parsed templates between builds   performance
           acme/rocket#128 by @srivera · 2 days ago · Approved · ✓ 4/4 · ✉ 3
   draft   Docs: a guide to writing your first theme   docs
           acme/rocket#125 by @aokafor · 5 days ago · ✓ 4/4

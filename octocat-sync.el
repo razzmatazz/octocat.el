@@ -1046,16 +1046,20 @@ The newest of a slot comes first."
   "Return EDITS, a list of (SPEC . FUNCTION), keyed by store key instead."
   (mapcar (lambda (e) (cons (octocat-sync-spec-key (car e)) (cdr e))) edits))
 
-(defun octocat-sync-submit (spec &optional on-done)
+(defun octocat-sync-submit (spec &optional on-done batch)
   "Send the mutation SPEC, applying its optimistic change at once.
 ON-DONE, if given, is called with GitHub's answer, or (error . MESSAGE).
 On failure the change is dropped, the error shown in the echo area, and
-the resources it acts on refetched: GitHub may have made it anyway."
+the resources it acts on refetched: GitHub may have made it anyway.
+BATCH, from `octocat-sync-submit-each', is a plist: :label replaces the
+label, shown in the slot `batch' of its :resources too, and :outdated,
+a cons, collects the specs it outdates instead of outdating them."
   (let* ((props (apply (or (gethash (car spec) octocat-sync--mutations)
                            (error "Octocat: Unknown mutation `%s'" (car spec)))
                        (cdr spec)))
          (db    (octocat-sync--db))
-         (specs (and (plist-get props :resources) (funcall (plist-get props :resources))))
+         (specs (append (and (plist-get props :resources) (funcall (plist-get props :resources)))
+                        (plist-get batch :resources)))
          (mutation
           (list :changes (mapcar (lambda (change)
                                    (let ((fields (make-hash-table :test #'equal)))
@@ -1068,21 +1072,49 @@ the resources it acts on refetched: GitHub may have made it anyway."
                             (octocat-sync--keyed (funcall (plist-get props :edits) nil nil)))
                 :resources (mapcar #'octocat-sync-spec-key specs)
                 :specs specs
-                :label (plist-get props :label)
-                :slot (or (plist-get props :slot) 'action))))
+                :label (or (plist-get batch :label) (plist-get props :label))
+                :slot (if batch 'batch (or (plist-get props :slot) 'action)))))
     (setq octocat-sync--pending (append octocat-sync--pending (list mutation)))
     (octocat-sync--pending-changed)
     (octocat-sync--notify (octocat-sync--touched db mutation))
     (let ((octocat--gh-reason 'mutation))
       (funcall (plist-get props :send)
                (lambda (result)
-                 (octocat-sync--answered
-                  mutation result
-                  (and (plist-get props :edits) (not (eq (car-safe result) 'error))
-                       (octocat-sync--keyed (funcall (plist-get props :edits) t result)))
-                  (and (plist-get props :invalidates)
-                       (funcall (plist-get props :invalidates))))
+                 (let ((outdated (and (plist-get props :invalidates)
+                                      (funcall (plist-get props :invalidates))))
+                       (held     (plist-get batch :outdated)))
+                   (when held
+                     (setcar held (append outdated (car held))))
+                   (octocat-sync--answered
+                    mutation result
+                    (and (plist-get props :edits) (not (eq (car-safe result) 'error))
+                         (octocat-sync--keyed (funcall (plist-get props :edits) t result)))
+                    (unless held outdated)))
                  (when on-done (funcall on-done result)))))))
+
+(defun octocat-sync-submit-each (specs label resources &optional on-done)
+  "Send the mutations SPECS one after another, as one change.
+Each shows as \"LABEL I/N…\" in the mode line and in the slot `batch'
+of RESOURCES, specs, while it runs.  The resources they outdate are
+outdated once, after the last.  ON-DONE, if given, is then called with
+a list of (SPEC . ANSWER), ANSWER as for `octocat-sync-submit'."
+  (let ((total   (length specs))
+        (held    (list nil))
+        (answers nil))
+    (cl-labels ((send (rest n)
+                  (if (null rest)
+                      (progn
+                        (octocat-sync--invalidate (octocat-sync--db) (delete-dups (car held)))
+                        (when on-done (funcall on-done (nreverse answers))))
+                    (octocat-sync-submit
+                     (car rest)
+                     (lambda (answer)
+                       (push (cons (car rest) answer) answers)
+                       (send (cdr rest) (1+ n)))
+                     (list :label (format "%s %d/%d…" label n total)
+                           :resources resources
+                           :outdated held)))))
+      (send specs 1))))
 
 (defun octocat-sync--answered (mutation result edits patterns)
   "Settle MUTATION once GitHub answered RESULT; outdate PATTERNS on success.

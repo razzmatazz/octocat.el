@@ -155,6 +155,9 @@ Items are marked as files are in Dired, the same with Evil:
 A marked row shows `✓` and is highlighted.  An item that leaves the
 list, after a new query or once closed, is unmarked.
 
+While items are marked, a **Marked** bar replaces the filters and acts
+on them: **[Label]** adds or removes labels on all of them at once.
+
 ## Actions (`M-x octocat-run-list`, `M-x octocat-workflow-list`)
 
 The Actions tab has two pages, each its own buffer and major mode, so

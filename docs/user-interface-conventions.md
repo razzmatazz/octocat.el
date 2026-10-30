@@ -875,6 +875,27 @@ keys with and without Evil:
   closed on refresh) is unmarked, so actions never touch items you
   can't see.
 
+### Acting on the marked items
+
+While anything is marked, a **Marked** bar takes the place of the
+filters, in as many rows, so the list doesn't move:
+
+```
+Marked  2 PRs  [Unmark all]
+        [Label]
+```
+
+- Each action prompts in the minibuffer, then asks to confirm when more
+  than one item would change.
+- **[Label]** toggles labels: `✓` marks one every item has (picking it
+  removes it from all), `–` one some have (picking it adds it to the
+  rest).
+- The changes go out one item at a time, in the background, through
+  `octocat-sync-submit-each`.  Until they are done, the bar shows the
+  progress, e.g. `▖ Labelling 3/10…`, in place of its actions, and so
+  does the mode line.  Marking still works.
+- `F` still changes the filter; unmark all to see it again.
+
 ---
 
 ## Buffer names
