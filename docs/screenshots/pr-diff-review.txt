@@ -1,0 +1,90 @@
+acme/rocket#128  Cache parsed templates between builds · @srivera
+open    Assignees @srivera · Labels  performance
+        Reviewers @mchen (approved)
+                  @jlindqvist (pending)
+        template-cache → main · Approved · Milestone 0.10 · Closes #97
+
+[Conversation]  [Commits (7)]  Files changed (3)
+Files (3)  [Collapse all]   Comments (6)  Diff only
+▾ A src/cache.rs  +18 -0
+@@ -0,0 +1,18 @@
++use std::collections::HashMap;
++use std::path::PathBuf;
++use std::time::SystemTime;
++
++use crate::template::Template;
++
++/// Parsed templates, kept between builds.
++#[derive(Default)]
++pub struct Cache {
++    entries: HashMap<PathBuf, (SystemTime, Template)>,
++}
++
++impl Cache {
++    pub fn get(&self, path: &PathBuf, modified: SystemTime) -> Option<&Template> {
++        let (at, template) = self.entries.get(path)?;
++        (*at == modified).then_some(template)
+  ┌─ @mchen  1 day ago  👍 1 ─────────────────────
+  │ Comparing modification times is enough here: a build never runs while a template is half
+  │ written.
+  │
+  ○── @srivera  1 day ago
+  │   Agreed. rocket serve writes them atomically too, so a watch rebuild is safe.
+  │
+  ○── @mchen  1 day ago
+  │   Good, then this is fine as it is.
+  │
+  │ [Resolve conversation]
+  └─
++    }
++}
+▾ M src/build.rs  +5 -2
+@@ -41,9 +41,12 @@ pub fn build(site: &Site, out: &Path) -> Result<()> {
+     let pages = site.pages()?;
++    let mut cache = Cache::default();
+  ┌─ @mchen  1 day ago ───────────────────────────
+  │ A cache per build means rocket serve starts cold after every save. Could it live on Site?
+  │
+  ○── @srivera  20 hours ago
+  │   Moved it to Site in the last commit, so a watch rebuild reuses it.
+  │
+  │ [Unresolve conversation]
+  └─
+     for page in &pages {
+-        let template = Template::parse(&page.template_path())?;
+-        let html = template.render(page)?;
++        let path = page.template_path();
++        let template = match cache.get(&path, modified(&path)?) {
++            Some(t) => t,
++            None => cache.insert(path.clone(), Template::parse(&path)?),
++        };
+  ┌─ @jlindqvist  Pending  L45–L48 ───────────────
+  │ modified(&path)? reads the file's time once per page, and a site has far more pages than
+  │ templates. Could the times be read once per build, before the loop?
+  │
+  │  let times: HashMap<PathBuf, SystemTime> = pages
+  │      .iter()
+  │      .map(|p| p.template_path())
+  │      .collect::<HashSet<_>>()
+  │      .into_iter()
+  │      .map(|p| Ok((p.clone(), modified(&p)?)))
+  │      .collect::<Result<_>>()?;
+  │
+  │ ▸ 2 more lines  (RET to expand)
+  └─
++        let html = template.render(page)?;
+         write_page(out, page, &html)?;
+     }
+     Ok(())
+▾ M src/main.rs  +1 -0
+@@ -1,5 +1,6 @@
+ mod build;
++mod cache;
+ mod markdown;
+ mod serve;
+ mod template;
+
+Review Comments (6)
+  (6 inline review comments, in the diff above)
+
+  [Submit review (1 pending)]   [Discard review]

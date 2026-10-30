@@ -332,6 +332,12 @@ delete), and the plist decides drafts vs posting at once.
 
 ## Steps
 
+Done: 1–8 and 10, but for the `line-prefix` gutter (a range's box names
+its lines instead), the Comments pill's open/resolved count, the pending
+review in the conversation timeline, and the head-moved warning.  Left:
+those, and step 9, the commit page, whose backend plist
+`octocat-diff--comment-backend` is ready for it.
+
 1. Diff line anchors (`walk` with left/right, the `octocat-diff-line`
    property, `side`/`start_line` in the index), with tests.  Does not
    change how the page looks.

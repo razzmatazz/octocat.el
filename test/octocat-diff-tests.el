@@ -27,9 +27,11 @@
                  '("pr" "review" "7" "--repo" "o/r" "--comment" "--body" "LGTM"))))
 
 (ert-deftest octocat-diff-test-review-data ()
-  "Only an approval may be submitted without text."
+  "Only an approval may be submitted without text, or a comment with drafts."
   (should (plist-get (octocat-pr-diff--review-data "Approve") :allow-empty))
   (should-not (plist-get (octocat-pr-diff--review-data "Comment") :allow-empty))
+  (should (plist-get (octocat-pr-diff--review-data "Comment" "R" 2) :allow-empty))
+  (should-not (plist-get (octocat-pr-diff--review-data "Request changes" "R" 2) :allow-empty))
   (should (equal (plist-get (octocat-pr-diff--review-data "Request changes") :flag)
                  "--request-changes")))
 
@@ -57,6 +59,7 @@
 
 (ert-deftest octocat-diff-test-threads ()
   "A reply joins the box of the comment it answers, a bubble on its edge.
+An edge row sets each comment apart from the one before.
 A reply to a reply joins the same thread; one whose comment is missing
 starts its own."
   (let* ((cs (mapcar #'json-parse-string
@@ -69,8 +72,8 @@ starts its own."
                    '((1 2 3) (4))))
     (should (equal (mapcar #'substring-no-properties
                            (octocat-diff--comment-lines (caar threads) nil 12 (cdar threads)))
-                   '("  ┌─ @a   ───" "  │ q" "  ○── @b  " "  │   r"
-                     "  ○── @a  " "  │   s" "  └─")))
+                   '("  ┌─ @a   ───" "  │ q" "  │" "  ○── @b  " "  │   r"
+                     "  │" "  ○── @a  " "  │   s" "  └─")))
     (should (= (octocat-diff--placed-count "@@ -1,5 +1,5 @@\n a\n b\n c\n d\n e" cs) 4))))
 
 (ert-deftest octocat-diff-test-comments-section ()
@@ -210,8 +213,137 @@ A line added whole, and a change of spaces alone, are not."
     (octocat-diff--walk "@@ -1 +1,2 @@\n-a\n\\ No newline at end of file\n+a\n+b"
                         (octocat-diff--index
                          (list (json-parse-string "{\"line\":2,\"body\":\"x\"}")))
-                        (lambda (line placed) (when placed (push line seen))))
+                        (lambda (line placed _anchor) (when placed (push line seen))))
     (should (equal seen '("+b")))))
+
+(ert-deftest octocat-diff-test-walk-anchors ()
+  "A removed line is anchored on the old side, the others on the new one.
+Each side counts from its `@@' header; a header or a note has none."
+  (let (seen)
+    (octocat-diff--walk "@@ -5,3 +7,3 @@\n a\n-b\n+c\n d\n@@ -20 +22 @@\n+e"
+                        '(nil nil nil)
+                        (lambda (_line _placed anchor) (push anchor seen)))
+    (should (equal (nreverse seen)
+                   '(nil ("RIGHT" 7 2 1) ("LEFT" 6 3 1) ("RIGHT" 8 4 1) ("RIGHT" 9 5 1)
+                     nil ("RIGHT" 22 7 2))))))
+
+(defun octocat-diff-tests--comment (json)
+  "Return the comment of JSON, with its body and date."
+  (let ((c (json-parse-string json)))
+    (puthash "body" (or (gethash "body" c) "x") c)
+    (puthash "created_at" "" c)
+    c))
+
+(ert-deftest octocat-diff-test-segments ()
+  "Threads come between runs of diff lines, after the line they are on.
+A comment on a removed line is on the old side, one on the whole file
+before the diff; each line carries its anchor."
+  (let* ((cs (mapcar #'octocat-diff-tests--comment
+                     '("{\"id\":1,\"line\":2,\"side\":\"LEFT\"}"
+                       "{\"id\":2,\"line\":2,\"side\":\"RIGHT\"}"
+                       "{\"id\":3,\"subject_type\":\"file\"}")))
+         (segs (octocat-diff--segments "@@ -1,2 +1,2 @@\n a\n-b\n+c"
+                                       "notes" (octocat-diff--index cs))))
+    (should (equal (mapcar (lambda (s) (if (stringp s)
+                                           (substring-no-properties s)
+                                         (gethash "id" (car s))))
+                           segs)
+                   '(3 "@@ -1,2 +1,2 @@\n a\n-b" 1 "+c" 2)))
+    (should (equal (get-text-property 0 'octocat-diff-line (nth 3 segs))
+                   '("notes" "RIGHT" 2 4 1)))
+    (should-not (get-text-property 0 'octocat-diff-line (nth 1 segs)))
+    (should (= (octocat-diff--placed-count "@@ -1,2 +1,2 @@\n a\n-b\n+c" cs) 3))))
+
+(ert-deftest octocat-diff-test-range ()
+  "A range runs from its first line to its last, in one hunk of one file."
+  (should (equal (octocat-diff--range '(("a" "RIGHT" 4 5 1)))
+                 '(:path "a" :side "RIGHT" :line 4)))
+  (should (equal (octocat-diff--range '(("a" "LEFT" 3 4 1) ("a" "RIGHT" 4 5 1)))
+                 '(:path "a" :side "RIGHT" :line 4 :start-side "LEFT" :start-line 3)))
+  (should (equal (octocat-diff--range '(("a"))) '(:path "a" :file t)))
+  (should-error (octocat-diff--range nil) :type 'user-error)
+  (should-error (octocat-diff--range '(("a" "RIGHT" 4 5 1) ("a" "RIGHT" 9 8 2)))
+                :type 'user-error)
+  (should-error (octocat-diff--range '(("a" "RIGHT" 4 5 1) ("b" "RIGHT" 5 6 1)))
+                :type 'user-error))
+
+(ert-deftest octocat-diff-test-range-label ()
+  "A range reads as its file and lines, an old-side line marked so."
+  (should (equal (octocat-diff-range-label '(:path "a.el" :side "RIGHT" :line 4))
+                 "a.el:L4"))
+  (should (equal (octocat-diff-range-label
+                  '(:path "a.el" :side "RIGHT" :line 9 :start-side "LEFT" :start-line 3))
+                 "a.el:old L3–L9"))
+  (should (equal (octocat-diff-range-label '(:path "a.el" :file t)) "a.el")))
+
+(defun octocat-diff-tests--render (vnode)
+  "Return the text VNODE renders to."
+  (with-temp-buffer
+    (vui-render vnode)
+    (buffer-substring-no-properties (point-min) (point-max))))
+
+(ert-deftest octocat-diff-test-thread-resolved ()
+  "A resolved thread folds to one line, saying who resolved it."
+  (let ((root (octocat-diff-tests--comment
+               (concat "{\"id\":1,\"path\":\"a.el\",\"line\":4,\"resolved\":true,"
+                       "\"resolved_by\":\"b\",\"user\":{\"login\":\"a\"}}"))))
+    (should (equal (octocat-diff-tests--render
+                    (vui-component 'octocat-diff--thread
+                      :thread (list root) :raw nil :width 80))
+                   "  ▸ @a  a.el:L4  Resolved by @b"))))
+
+(ert-deftest octocat-diff-test-thread-pending ()
+  "A draft says Pending in its heading; each line names its comment.
+A thread that can be resolved ends in a button doing it, a row apart."
+  (let* ((root (octocat-diff-tests--comment
+                (concat "{\"id\":1,\"line\":4,\"pending\":true,\"can_resolve\":true,"
+                        "\"user\":{\"login\":\"me\"},\"body\":\"hm\"}")))
+         (text (with-temp-buffer
+                 (vui-render (vui-component 'octocat-diff--thread
+                               :thread (list root) :raw nil :width 40))
+                 (goto-char (point-min))
+                 (search-forward "hm")
+                 (should (eq (octocat-diff-comment-at-point) root))
+                 (buffer-substring-no-properties (point-min) (point-max)))))
+    (should (string-prefix-p "  ┌─ @me  Pending ─" text))
+    (should (string-search "  │ hm\n  │\n  │ [Resolve conversation]\n  └─" text))))
+
+(ert-deftest octocat-diff-test-thread-comments ()
+  "GraphQL's threads become REST-shaped comments, replies pointing at the first.
+The thread's own fields go on its first comment; a draft is pending."
+  (let* ((threads (json-parse-string
+                   (concat "[{\"id\":\"T1\",\"isResolved\":true,\"path\":\"a.el\","
+                           "\"line\":9,\"startLine\":7,\"diffSide\":\"RIGHT\","
+                           "\"startDiffSide\":\"LEFT\",\"subjectType\":\"LINE\","
+                           "\"viewerCanResolve\":false,\"viewerCanUnresolve\":true,"
+                           "\"resolvedBy\":{\"login\":\"b\"},\"comments\":{\"nodes\":["
+                           "{\"id\":\"C1\",\"databaseId\":11,\"body\":\"x\\r\\ny\","
+                           "\"state\":\"SUBMITTED\",\"author\":{\"login\":\"a\"}},"
+                           "{\"id\":\"C2\",\"databaseId\":12,\"body\":\"z\","
+                           "\"state\":\"PENDING\",\"viewerCanUpdate\":true,"
+                           "\"author\":{\"login\":\"me\"}}]}}]")
+                   :null-object :null))
+         (cs (append (octocat-pr-diff--thread-comments threads) nil))
+         (root (car cs)) (reply (cadr cs)))
+    (should (equal (mapcar (lambda (k) (gethash k root))
+                           '("id" "node_id" "thread_id" "path" "line" "start_line"
+                             "side" "start_side" "subject_type" "body" "resolved"
+                             "resolved_by" "can_unresolve" "pending"))
+                   '(11 "C1" "T1" "a.el" 9 7 "RIGHT" "LEFT" "line" "x\ny" t "b" t nil)))
+    (should (equal (octocat--get root "user" "login") "a"))
+    (should (equal (gethash "in_reply_to_id" reply) 11))
+    (should (eq (gethash "pending" reply) t))
+    (should (eq (gethash "can_edit" reply) t))
+    (should (equal (octocat-diff--threads cs) (list cs)))
+    (let ((data (make-hash-table :test #'equal)))
+      (puthash "threads" threads data)
+      (puthash "pending" (make-hash-table) data)
+      (should (= (octocat-pr-diff--pending-count data) 1))
+      (setq data (octocat-pr-diff--drop-drafts data))
+      (should (= (octocat-pr-diff--pending-count data) 0))
+      (should-not (gethash "pending" data))
+      (should (= (length (octocat--get (aref (gethash "threads" data) 0) "comments" "nodes"))
+                 1)))))
 
 (ert-deftest octocat-diff-test-underline-last ()
   "Only the last line of a file's diff is underlined, across the width."

@@ -120,12 +120,24 @@ between it and a merge.
 [As text](pr.txt)
 <!-- /screenshot -->
 
-Its changed files, with `[Expand all]` pressed:
+Its changed files, with `[Expand all]` pressed: a conversation boxed
+after its line, a resolved one folded to its heading, and your draft,
+**Pending** in your review, its long body folded.
 
 <!-- screenshot: (pr-diff "acme/rocket" 128) :press ("Expand all") -->
 ![pr-diff](pr-diff.png)
 
 [As text](pr-diff.txt)
+<!-- /screenshot -->
+
+Reviewing: `C-c C-a` on a line opens a comment on it below, the line
+highlighted until it is saved as a draft, and `RET` on the resolved
+conversation unfolds it.
+
+<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-review" :press ("Expand all" "Resolved by" (:key "C-c C-a" "+mod cache;")) -->
+![pr-diff-review](pr-diff-review.png)
+
+[As text](pr-diff-review.txt)
 <!-- /screenshot -->
 
 A pull request in a stack, the stack listed under the merge box:

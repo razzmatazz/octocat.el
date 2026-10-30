@@ -90,6 +90,8 @@
 (declare-function octocat-commit-refresh     "octocat-commit"
                   (&optional _ignore-auto _noconfirm))
 (declare-function octocat-pr-diff-review    "octocat-pr-diff"   ())
+(declare-function octocat-diff-add-comment  "octocat-diff"      ())
+(declare-function octocat-diff-edit-comment "octocat-diff"      ())
 (declare-function octocat-diff-toggle-comments "octocat-diff"   ())
 (declare-function octocat-compare-refresh   "octocat-compare"   (&optional _ignore-auto _noconfirm))
 (declare-function octocat-checks-refresh    "octocat-checks"    (&optional _ignore-auto _noconfirm))
@@ -280,6 +282,8 @@ Off an entry, such as on the header, move left."
   ;; vui.el-rendered like octocat-repo-mode, so only the global commands
   ;; are bound here.
   (evil-define-key* 'normal octocat-pr-diff-mode-map
+    (kbd "C-c C-a") #'octocat-diff-add-comment
+    (kbd "C-c C-e") #'octocat-diff-edit-comment
     (kbd "C-c C-r") #'octocat-pr-diff-review
     (kbd "C-c C-m") #'octocat-pr-merge
     (kbd "C-c C-o") #'octocat-browse
@@ -287,6 +291,10 @@ Off an entry, such as on the header, move left."
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
+
+  ;; A region of lines, marked with `V', is commented on as one.
+  (evil-define-key* 'visual octocat-pr-diff-mode-map
+    (kbd "C-c C-a") #'octocat-diff-add-comment)
 
   ;; ── octocat-pr-commits-mode ───────────────────────────────────────────
   (evil-define-key* 'normal octocat-pr-commits-mode-map

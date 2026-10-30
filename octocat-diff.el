@@ -71,6 +71,17 @@
   "Face for a diff hunk header line."
   :group 'octocat)
 
+(defface octocat-review-pending
+  '((t :inherit warning))
+  "Face for a draft review comment's edge and its Pending label."
+  :group 'octocat)
+
+(defface octocat-review-mark
+  '((((background dark)) :background "#4a4420" :extend t)
+    (t :background "#fff5b1" :extend t))
+  "Face for the diff lines a comment being written is on."
+  :group 'octocat)
+
 
 ;;;; File status
 
@@ -83,11 +94,25 @@
 
 ;;;; Patch text
 ;;
-;; The patch of a file is built as one string: the diff lines in the diff
-;; faces, each inline review comment boxed right after the line it is on.
+;; The patch of a file is a list of segments: runs of diff lines, each a
+;; string in the diff faces, and between them the inline comment threads
+;; placed after the line they are on, each a component of its own (see
+;; `octocat-diff--thread').  Each diff line carries the text property
+;; `octocat-diff-line', its anchor (PATH SIDE LINE POSITION HUNK): SIDE
+;; is "LEFT" for a removed line, at LINE of the old file, and "RIGHT"
+;; otherwise, at LINE of the new one, as GitHub anchors review comments;
+;; POSITION is its 1-based place in the diff and HUNK the hunk's number.
+;; A file's heading carries (PATH), a comment on the whole file.
+
+(defvar octocat-timeline-comment-lines)
+
+(defun octocat-diff--edge-face (comment)
+  "Return the face of the box edge of COMMENT: a draft's stands out."
+  (if (eq (gethash "pending" comment) t) 'octocat-review-pending 'octocat-dimmed))
 
 (defun octocat-diff--comment-head (comment)
-  "Return the author, date and reactions of COMMENT, propertized."
+  "Return the author, date and reactions of COMMENT, propertized.
+A draft, with \"pending\" set, says so."
   (let* ((user   (gethash "user" comment))
          (login  (or (and (hash-table-p user)
                           (octocat--nonempty (gethash "login" user)))
@@ -97,7 +122,9 @@
          (reactions (octocat--reactions-string comment)))
     (concat (propertize (if (string-empty-p login) "(unknown)" (concat "@" login))
                         'face 'octocat-pr-author)
-            (propertize (concat "  " date) 'face 'octocat-dimmed)
+            (if (eq (gethash "pending" comment) t)
+                (propertize "  Pending" 'face 'octocat-review-pending)
+              (propertize (concat "  " date) 'face 'octocat-dimmed))
             (if reactions (concat "  " reactions) ""))))
 
 (defun octocat-diff--comment-body (comment prefix raw width)
@@ -108,28 +135,51 @@ RAW and WIDTH are as for `octocat-diff--comment-lines'."
         (concat prefix (propertize "(empty)" 'face 'octocat-dimmed))
       (string-remove-suffix "\n" (octocat--markdown-string body prefix raw width)))))
 
+(defun octocat-diff--box-top (comment width)
+  "Return the top edge of the box of COMMENT, its heading on it.
+A comment on a range of lines names them.  The edge runs on past the
+heading, to the middle of WIDTH."
+  (let* ((face  (octocat-diff--edge-face comment))
+         (start (gethash "start_line" comment))
+         (head  (concat (octocat-diff--comment-head comment)
+                        (if (integerp start)
+                            (propertize (format "  L%d–L%d" start (gethash "line" comment))
+                                        'face 'octocat-dimmed)
+                          "")))
+         (rule (max 3 (- (/ width 2) (string-width "  ┌─ ") (string-width head) 1))))
+    (concat (propertize "  ┌─ " 'face face) head " "
+            (propertize (make-string rule ?─) 'face face))))
+
+(defun octocat-diff--reply-head (reply)
+  "Return the line leading into REPLY from a bubble on its box's edge."
+  (concat (propertize "  ○── " 'face (octocat-diff--edge-face reply))
+          (octocat-diff--comment-head reply)))
+
+(defun octocat-diff--bar (comment &optional indent)
+  "Return the box edge before a body line of COMMENT, then INDENT."
+  (concat (propertize "  │ " 'face (octocat-diff--edge-face comment)) indent))
+
+(defun octocat-diff--spacer (root)
+  "Return the box edge alone, a row between the comments of ROOT's thread."
+  (propertize "  │" 'face (octocat-diff--edge-face root)))
+
 (defun octocat-diff--comment-lines (comment raw width &optional replies)
   "Return the lines of the boxed inline review COMMENT, without newlines.
 REPLIES, the comments answering it, follow in the same box, indented,
 each led to from a bubble on its edge.  A body is markdown, rendered unless
 RAW, to fit WIDTH columns."
-  (let* ((bar  (propertize "  │ " 'face 'octocat-dimmed))
-         (head (octocat-diff--comment-head comment))
-         ;; The top edge runs on past the heading, to the middle of the box.
-         (rule (max 3 (- (/ width 2) (string-width "  ┌─ ") (string-width head) 1))))
-    (append
-     (list (concat (propertize "  ┌─ " 'face 'octocat-dimmed)
-                   head " "
-                   (propertize (make-string rule ?─) 'face 'octocat-dimmed))
-           (octocat-diff--comment-body comment bar raw width))
-     ;; Each reply's bubble sits on the box's edge, as on a timeline's
-     ;; rail, a line leading from it into the reply.
-     (mapcan (lambda (r)
-               (list (concat (propertize "  ○── " 'face 'octocat-dimmed)
-                             (octocat-diff--comment-head r))
-                     (octocat-diff--comment-body r (concat bar "  ") raw width)))
-             replies)
-     (list (propertize "  └─" 'face 'octocat-dimmed)))))
+  (append
+   (list (octocat-diff--box-top comment width)
+         (octocat-diff--comment-body comment (octocat-diff--bar comment) raw width))
+   ;; Each reply's bubble sits on the box's edge, as on a timeline's
+   ;; rail, a line leading from it into the reply; an edge row sets it
+   ;; apart from the comment before.
+   (mapcan (lambda (r)
+             (list (octocat-diff--spacer comment)
+                   (octocat-diff--reply-head r)
+                   (octocat-diff--comment-body r (octocat-diff--bar r "  ") raw width)))
+           replies)
+   (list (propertize "  └─" 'face (octocat-diff--edge-face comment)))))
 
 (defun octocat-diff--timeline (comments raw width)
   "Return COMMENTS, on no line of the diff, as a timeline, without newline.
@@ -166,75 +216,339 @@ answers; one whose thread is not among COMMENTS starts its own."
             (nreverse roots))))
 
 (defun octocat-diff--index (comments)
-  "Index the review COMMENTS of one file for `octocat-diff--patch-text'.
-Returns (BY-LINE . BY-POS): alists mapping a right-side line number, and
-for older comments that have no line a diff position, to the list of
-threads there, in order, see `octocat-diff--threads'.  A thread is
-placed where its first comment is."
-  (let (by-line by-pos)
+  "Index the review COMMENTS of one file for `octocat-diff--segments'.
+Returns (BY-LINE BY-POS FILE): alists mapping (SIDE . LINE), and for
+older comments that have no line a diff position, to the list of
+threads there, in order, see `octocat-diff--threads'; and the threads
+on the whole file.  A thread is placed where its first comment is, the
+last line of its range."
+  (let (by-line by-pos file)
     (dolist (thread (octocat-diff--threads comments))
       (let* ((c    (car thread))
              (line (let ((v (gethash "line" c))) (and (integerp v) v)))
+             (side (if (equal (gethash "side" c) "LEFT") "LEFT" "RIGHT"))
              (pos  (let ((v (gethash "position" c))) (and (integerp v) v))))
-        (cond (line (push thread (alist-get line by-line)))
-              (pos  (push thread (alist-get pos by-pos))))))
-    (cons (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) by-line)
-          (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) by-pos))))
+        (cond (line (push thread (alist-get (cons side line) by-line nil nil #'equal)))
+              (pos  (push thread (alist-get pos by-pos)))
+              ((equal (gethash "subject_type" c) "file") (push thread file)))))
+    (list (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) by-line)
+          (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) by-pos)
+          (nreverse file))))
 
 (defun octocat-diff--walk (patch index fn)
-  "Call FN with each line of the unified diff PATCH and the threads after it.
+  "Call FN with each line of the unified diff PATCH, its threads and anchor.
 INDEX is the comment index of the file, see `octocat-diff--index'.  FN
-gets the line and the list of comment threads placed right after it, found by
-tracking the right-side line number, from the `@@' headers, and the
-1-based position in the diff.  A thread on no line of PATCH, as an
+gets the line, the list of comment threads placed right after it, and
+its anchor (SIDE LINE POSITION HUNK), nil for a hunk heading or a note
+\(see \"Patch text\" above).  The line numbers of both sides are
+tracked from the `@@' headers.  A thread on no line of PATCH, as an
 outdated one, is placed nowhere."
-  (let ((by-line (car index))
-        (by-pos  (cdr index))
-        (right 0)
-        (pos   0))
-    (cl-flet ((at (key table) (cdr (assq key table))))
+  (let ((by-line (nth 0 index))
+        (by-pos  (nth 1 index))
+        (left 0) (right 0) (pos 0) (hunk 0))
+    (cl-flet ((at (key table) (cdr (assoc key table))))
       (dolist (raw (octocat-diff--split patch))
         (cl-incf pos)
         (pcase (octocat-diff--line-kind raw)
           ('hunk
-           (when (string-match "@@ -[0-9]+\\(?:,[0-9]+\\)? \\+\\([0-9]+\\)" raw)
-             (setq right (string-to-number (match-string 1 raw))))
-           (funcall fn raw (at pos by-pos)))
-          ;; Only in the old file, or in neither, so the right line stays.
-          ((or 'removed 'note)
-           (funcall fn raw (at pos by-pos)))
+           (cl-incf hunk)
+           (when (string-match "@@ -\\([0-9]+\\)\\(?:,[0-9]+\\)? \\+\\([0-9]+\\)" raw)
+             (setq left  (string-to-number (match-string 1 raw))
+                   right (string-to-number (match-string 2 raw))))
+           (funcall fn raw (at pos by-pos) nil))
+          ('note
+           (funcall fn raw (at pos by-pos) nil))
+          ('removed
+           (funcall fn raw (append (at (cons "LEFT" left) by-line) (at pos by-pos))
+                    (list "LEFT" left pos hunk))
+           (cl-incf left))
+          ('added
+           (funcall fn raw (append (at (cons "RIGHT" right) by-line) (at pos by-pos))
+                    (list "RIGHT" right pos hunk))
+           (cl-incf right))
           (_
-           (funcall fn raw (append (at right by-line) (at pos by-pos)))
+           (funcall fn raw (append (at (cons "LEFT" left) by-line)
+                                   (at (cons "RIGHT" right) by-line)
+                                   (at pos by-pos))
+                    (list "RIGHT" right pos hunk))
+           (cl-incf left)
            (cl-incf right)))))))
 
 (defun octocat-diff--placed-count (patch comments)
   "Return how many of COMMENTS, on the file of PATCH, are placed in its diff."
-  (let ((n 0))
-    (octocat-diff--walk patch (octocat-diff--index comments)
-                        (lambda (_line placed)
+  (let* ((index (octocat-diff--index comments))
+         (n     (apply #'+ (mapcar #'length (nth 2 index)))))
+    (octocat-diff--walk patch index
+                        (lambda (_line placed _anchor)
                           (dolist (thread placed) (cl-incf n (length thread)))))
     n))
 
-(defun octocat-diff--patch-text (patch path index raw width)
-  "Return the unified diff PATCH as a propertized string, without final newline.
-PATH is the file's, whose major mode highlights the code, see
+(defun octocat-diff--segments (patch path index)
+  "Return the unified diff PATCH as segments, see \"Patch text\" above.
+That is a list of strings, runs of lines without final newline, and
+threads (ROOT . REPLIES), each placed right after the diff line it is
+on, see `octocat-diff--walk'; the threads on the whole file come
+first.  PATH is the file's, whose major mode highlights the code, see
 `octocat-diff--lines'.  INDEX is the comment index of the file, see
-`octocat-diff--index'.  RAW and WIDTH are as for
-`octocat-diff--comment-lines'.  Each comment thread is placed right
-after the diff line it is on, see `octocat-diff--walk'.  A line is cut at
-`octocat--max-line-length', see `octocat--clip-line'."
+`octocat-diff--index'.  A line is cut at `octocat--max-line-length',
+see `octocat--clip-line'."
   (let ((lines (octocat-diff--lines patch path))
-        out)
-    ;; Diff lines are not indented, so they copy out as a valid patch.
-    (octocat-diff--walk
-     patch index
-     (lambda (_line placed)
-       (push (octocat--clip-line (pop lines) octocat--max-line-length) out)
-       (dolist (thread placed)
-         (dolist (l (octocat-diff--comment-lines (car thread) raw width (cdr thread)))
-           ;; Marked for `octocat-diff-toggle-comments' to roll them in and out.
-           (push (propertize l 'octocat-comment t) out)))))
-    (mapconcat #'identity (nreverse out) "\n")))
+        (out   (reverse (nth 2 index)))
+        run)
+    (cl-flet ((flush ()
+                (when run
+                  (push (mapconcat #'identity (nreverse run) "\n") out)
+                  (setq run nil))))
+      ;; Diff lines are not indented, so they copy out as a valid patch.
+      (octocat-diff--walk
+       patch index
+       (lambda (_line placed anchor)
+         (let ((line (octocat--clip-line (pop lines) octocat--max-line-length)))
+           (push (if anchor (propertize line 'octocat-diff-line (cons path anchor)) line)
+                 run))
+         (when placed
+           (flush)
+           (setq out (append (reverse placed) out)))))
+      (flush))
+    (nreverse out)))
+
+(defun octocat-diff--thread-height (thread)
+  "Return about how many lines THREAD takes, for a fold's unfolding."
+  (if (eq (gethash "resolved" (car thread)) t) 1 (+ 2 (* 3 (length thread)))))
+
+(defun octocat-diff--body (segments raw width underline)
+  "Return SEGMENTS of a file's diff as the (TOTAL . RENDER) of a fold.
+The threads' comments are markdown, rendered unless RAW, to fit WIDTH
+columns.  UNDERLINE underlines the last line across WIDTH, see
+`octocat-diff--underline-last'."
+  (let* ((last  (car (last segments)))
+         (items (mapcar (lambda (s)
+                          (if (stringp s)
+                              (let* ((s (if (and underline (eq s last))
+                                            (octocat-diff--underline-last s width)
+                                          s))
+                                     (ends (octocat-vui-line-ends s)))
+                                (list s (1+ (length ends)) ends))
+                            (list s (octocat-diff--thread-height s))))
+                        segments)))
+    (cons (apply #'+ (mapcar #'cadr items))
+          (lambda (n)
+            (let (out)
+              (cl-loop for (seg height ends) in items
+                       while (> n 0)
+                       do (push (if (stringp seg)
+                                    (vui-text (octocat-vui-take-lines seg ends n))
+                                  (vui-component 'octocat-diff--thread
+                                    :key (octocat-diff--thread-key seg)
+                                    :thread seg :raw raw :width width
+                                    :underline (and underline (eq seg last) width)))
+                                out)
+                       do (cl-decf n height))
+              (nreverse out))))))
+
+(defun octocat-diff--thread-key (thread)
+  "Return the key of THREAD's component: its root's id, kept across refetches."
+  (let ((root (car thread)))
+    (format "thread-%s" (or (gethash "id" root) (gethash "node_id" root) "new"))))
+
+
+;;;; Threads
+;;
+;; A thread is a box: its first comment, then the replies, each body
+;; folded past `octocat-timeline-comment-lines' as a timeline comment is.
+;; Every line of it is marked `octocat-comment', for
+;; `octocat-diff-toggle-comments' to roll in and out, and
+;; `octocat-diff-comment', the comment it shows, for the commands on the
+;; comment at point.  A resolved thread folds to one line, as on GitHub.
+
+(defvar-local octocat-diff--comment-backend nil
+  "How the comments of this page's diff are written, or nil if they aren't.
+A plist of functions, which the page's mode sets: :add of a range, see
+`octocat-diff--range', and :reply, :edit and :resolve of a comment.")
+
+(defun octocat-diff--tag (string comment)
+  "Return STRING marked as a line of COMMENT's box, see \"Threads\" above."
+  (propertize string 'octocat-comment t 'octocat-diff-comment comment))
+
+(defun octocat-diff--resolved-line (root)
+  "Return the line a resolved thread ROOT folds to."
+  (let ((login (octocat--get root "user" "login"))
+        (line  (gethash "line" root))
+        (by    (octocat--nonempty (gethash "resolved_by" root))))
+    (concat (propertize "  ▸ " 'face 'octocat-dimmed)
+            (propertize (if login (concat "@" login) "(unknown)") 'face 'octocat-pr-author)
+            (propertize (concat "  " (or (gethash "path" root) "")
+                                (if (integerp line) (format ":L%d" line) "")
+                                "  Resolved" (if by (concat " by @" by) ""))
+                        'face 'octocat-dimmed))))
+
+(defun octocat-diff--folded-body (comment prefix raw width)
+  "Return the body of COMMENT after PREFIX, folded as a timeline comment.
+RAW and WIDTH are as for `octocat-diff--comment-lines'."
+  (let ((text (octocat-diff--tag (octocat-diff--comment-body comment prefix raw width)
+                                 comment)))
+    (octocat-vui-fold-lines text (octocat-vui-line-ends text)
+                            (bound-and-true-p octocat-timeline-comment-lines)
+                            (intern (format "more-%s" (or (gethash "id" comment) "new")))
+                            (octocat-diff--tag prefix comment))))
+
+(vui-defcomponent octocat-diff--thread (thread raw width underline)
+  "THREAD, (ROOT . REPLIES), boxed in a diff; RAW and WIDTH as for its lines.
+A resolved one folds to a line, which RET unfolds.  When ROOT may be
+resolved, or unresolved, it ends in a button doing it, through the
+page's backend (see `octocat-diff--comment-backend').  UNDERLINE, a
+width, underlines the last line, see `octocat-diff--underline-last'."
+  :state ((open nil))
+  :render
+  (let* ((root     (car thread))
+         (resolved (eq (gethash "resolved" root) t))
+         (toggle   (vui-async-callback () (vui-set-state :open (not open))))
+         (bottom   (octocat-diff--tag (propertize "  └─" 'face (octocat-diff--edge-face root))
+                                      root)))
+    (cl-flet ((under (s) (if underline (octocat-diff--underline-last s underline) s)))
+      (if (and resolved (not open))
+          (octocat-vui-row (octocat-diff--tag (under (octocat-diff--resolved-line root)) root)
+                           toggle "RET: show the conversation")
+        (apply #'vui-vstack
+               (let ((top (octocat-diff--tag (octocat-diff--box-top root width) root)))
+                 (if resolved
+                     (octocat-vui-row top toggle "RET: fold the conversation")
+                   (vui-text top)))
+               (octocat-diff--folded-body root (octocat-diff--bar root) raw width)
+               (append
+                (mapcan (lambda (r)
+                          (list (vui-text (octocat-diff--tag (octocat-diff--spacer root) r))
+                                (vui-text (octocat-diff--tag (octocat-diff--reply-head r) r))
+                                (octocat-diff--folded-body r (octocat-diff--bar r "  ")
+                                                           raw width)))
+                        (cdr thread))
+                ;; An edge row sets the button apart from the last comment.
+                (when (eq (gethash (if resolved "can_unresolve" "can_resolve") root) t)
+                  (list (vui-text (octocat-diff--tag (octocat-diff--spacer root) root))
+                        (vui-hstack
+                         :spacing 0
+                         (vui-text (octocat-diff--tag (octocat-diff--bar root) root))
+                         (vui-button (if resolved "Unresolve conversation" "Resolve conversation")
+                           :face 'octocat-dimmed
+                           :key 'resolve
+                           :on-click (lambda ()
+                                       (funcall (octocat-diff--backend :resolve) root))))))
+                (list (vui-text (under bottom)))))))))
+
+
+;;;; Commenting
+;;
+;; The commands on the diff's lines and comments, the same on every page
+;; with a diff; each page's backend writes the comments its own way.
+
+(defun octocat-diff--line-anchor (pos)
+  "Return the anchor on the line at POS, see \"Patch text\" above, or nil."
+  (save-excursion
+    (goto-char pos)
+    (let* ((bol (line-beginning-position))
+           (eol (line-end-position))
+           (at  (if (get-text-property bol 'octocat-diff-line)
+                    bol
+                  (next-single-property-change bol 'octocat-diff-line nil eol))))
+      (and (< at eol) (get-text-property at 'octocat-diff-line)))))
+
+(defun octocat-diff--anchors (beg end)
+  "Return the anchors of the lines from BEG to END, in order.
+A line with none, as a hunk heading or a comment, is left out."
+  (save-excursion
+    (goto-char beg)
+    (let (out)
+      (while (progn (when-let* ((a (octocat-diff--line-anchor (point)))) (push a out))
+                    (and (zerop (forward-line 1)) (< (point) end) (not (eobp)))))
+      (nreverse out))))
+
+(defun octocat-diff--range (anchors)
+  "Return the range a comment on the lines of ANCHORS is on, a plist.
+It has :path, :line and :side, the last line's, and for more than one
+line :start-line and :start-side; or :path and :file for a file's
+heading alone.  A range across files or hunks signals a `user-error',
+as GitHub rejects one across hunks."
+  (let ((first (car anchors))
+        (last  (car (last anchors))))
+    (cond
+     ((null anchors)
+      (user-error "Octocat: Not on a line of the diff"))
+     ((and (null (cdr anchors)) (null (cdr first)))
+      (list :path (car first) :file t))
+     ((or (seq-some (lambda (a) (null (cdr a))) anchors)
+          (seq-some (lambda (a) (not (equal (car a) (car first)))) anchors))
+      (user-error "Octocat: A comment's lines must be in one file"))
+     ((seq-some (lambda (a) (not (eql (nth 4 a) (nth 4 first)))) anchors)
+      (user-error "Octocat: A comment's lines must be in one hunk"))
+     (t
+      (append (list :path (car first) :side (nth 1 last) :line (nth 2 last))
+              (unless (eq first last)
+                (list :start-side (nth 1 first) :start-line (nth 2 first))))))))
+
+(defun octocat-diff-range-label (range)
+  "Return RANGE, as `octocat-diff--range' gives it, as \"path:L12-L18\"."
+  (cl-flet ((at (side line) (format "%sL%d" (if (equal side "LEFT") "old " "") line)))
+    (concat (plist-get range :path)
+            (cond ((plist-get range :file) "")
+                  ((plist-get range :start-line)
+                   (concat ":" (at (plist-get range :start-side) (plist-get range :start-line))
+                           "–" (at (plist-get range :side) (plist-get range :line))))
+                  (t (concat ":" (at (plist-get range :side) (plist-get range :line))))))))
+
+(defun octocat-diff--mark-lines (beg end)
+  "Highlight the lines from BEG to END, as being commented on; return the overlay."
+  (let ((ov (make-overlay (save-excursion (goto-char beg) (line-beginning-position))
+                          (save-excursion (goto-char end) (min (point-max)
+                                                               (1+ (line-end-position)))))))
+    (overlay-put ov 'face 'octocat-review-mark)
+    (overlay-put ov 'priority 10)
+    ov))
+
+(defun octocat-diff--backend (key)
+  "Return the function KEY of this page's comment backend, or signal."
+  (or (plist-get octocat-diff--comment-backend key)
+      (user-error "Octocat: Comments can't be written on this page yet")))
+
+(defun octocat-diff-comment-at-point ()
+  "Return the comment whose box point is in, or nil."
+  (or (get-text-property (point) 'octocat-diff-comment)
+      (get-text-property (line-beginning-position) 'octocat-diff-comment)))
+
+(defun octocat-diff-add-comment ()
+  "Comment on the diff lines of the region, or of point; or reply.
+On a file's heading the comment is on the whole file, and in a
+comment's box it is a reply to its conversation.  The lines stay
+highlighted while the comment is being written."
+  (interactive)
+  (let ((comment (and (not (use-region-p)) (octocat-diff-comment-at-point))))
+    (if comment
+        (funcall (octocat-diff--backend :reply) comment)
+      (let* ((add (octocat-diff--backend :add))
+             (beg (if (use-region-p) (region-beginning) (point)))
+             ;; A region ending at a line's start leaves that line out.
+             (end (if (and (use-region-p) (> (region-end) beg)
+                           (save-excursion (goto-char (region-end)) (bolp)))
+                      (1- (region-end))
+                    (if (use-region-p) (region-end) (point))))
+             (range (octocat-diff--range (octocat-diff--anchors beg end)))
+             (mark  (octocat-diff--mark-lines beg end)))
+        (deactivate-mark)
+        (let ((win (condition-case err
+                       (funcall add range)
+                     (error (delete-overlay mark) (signal (car err) (cdr err))))))
+          (if (window-live-p win)
+              (with-current-buffer (window-buffer win)
+                (add-hook 'kill-buffer-hook (lambda () (delete-overlay mark)) nil t))
+            (delete-overlay mark)))))))
+
+(defun octocat-diff-edit-comment ()
+  "Edit the comment at point, if it is yours."
+  (interactive)
+  (let ((comment (or (octocat-diff-comment-at-point)
+                     (user-error "Octocat: No comment at point"))))
+    (unless (eq (gethash "can_edit" comment) t)
+      (user-error "Octocat: You can only edit your own comments"))
+    (funcall (octocat-diff--backend :edit) comment)))
 
 
 ;;;; Highlighting
@@ -523,7 +837,9 @@ the last one, its diff ends underlined, see
                         (octocat--image-file-p filename)))
          (title    (concat (octocat-diff--file-icon status)
                            " "
-                           (propertize filename 'face 'octocat-diff-file-name)
+                           ;; The anchor of a comment on the whole file.
+                           (propertize filename 'face 'octocat-diff-file-name
+                                       'octocat-diff-line (list filename))
                            ;; Nothing to count in a file with no lines changed.
                            (unless (and (null patch) (eql changes 0))
                              (propertize (format "  +%d -%d"
@@ -555,10 +871,9 @@ the last one, its diff ends underlined, see
                                            '("RET: show diff" . "RET: hide diff")))
         :deps (list patch comments raw width last)
         :prepare (lambda ()
-                   (let ((text (octocat-diff--patch-text
-                                patch filename (octocat-diff--index comments) raw width)))
-                     (octocat-vui-text-body
-                      (if last text (octocat-diff--underline-last text width))))))))))
+                   (octocat-diff--body (octocat-diff--segments
+                                        patch filename (octocat-diff--index comments))
+                                       raw width (not last))))))))
 
 (defun octocat-diff--line-count (files)
   "Return how many lines FILES take with every patch shown."

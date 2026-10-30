@@ -416,6 +416,29 @@ Request changes.  `C-c C-m` merges the PR: edit the commit message,
 in the repo, if still allowed), `C-c C-d` toggles deleting the branch,
 and `C-c C-c` merges.
 
+### Reviewing a PR's files
+
+On a PR's Files changed page, a review is written as on GitHub: your
+comments are drafts in a pending review, which GitHub keeps and only you
+see, until you submit the review or discard it.  A review started in
+the browser shows here, and one started here can be finished there.
+
+| Key | On | Does |
+|-----|----|------|
+| `C-c C-a` | a diff line, or a region of lines (`C-SPC` or `V` and motion) | a draft comment on them; the lines stay highlighted while you write |
+| `C-c C-a` | a file's heading | a draft comment on the whole file |
+| `C-c C-a` | a comment | a reply to its conversation: a draft, or, with no review started, posted now if you pick that |
+| `C-c C-e` | your comment, draft or not | edit it; `C-c C-d` in its edit buffer deletes it |
+| `C-c C-r` | anywhere | submit the review with its drafts; `C-c C-d` there discards them |
+
+A draft's box reads **Pending**, and one on a range of lines names
+them.  A range must lie in one hunk, as GitHub requires.  A
+conversation ends in `[Resolve conversation]` when you may resolve it;
+a resolved one folds to its heading, which `RET` unfolds.  Long comments
+fold after `octocat-timeline-comment-lines` lines, as in the timeline.
+Under the diff, `[Submit review (N pending)]` and `[Discard review]` do
+the same as the keys.
+
 ### Reacting (`C-c C-l`)
 
 `C-c C-l` on an issue's or PR's opening post, or on a comment, gives or

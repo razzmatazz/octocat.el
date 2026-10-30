@@ -576,21 +576,80 @@ MESSAGE is its message."
  mod template;")]
   "The files pull request #128 changes.")
 
-(defconst octocat-screenshots--pr-128-review-comments
-  `[(:id 501 :path "src/cache.rs" :line 16 :original_line 16 :side "RIGHT" :position 16
-     :diff_hunk "@@ -0,0 +1,18 @@" :commit_id ,octocat-screenshots--pr-head
-     :user ,(octocat-screenshots--user "mchen") :created_at ,(octocat-screenshots--ago (* 30 octocat-screenshots--h))
-     :body "Comparing modification times is enough here: a build never runs while a template is half written."
-     :reactions (:total_count 1 :+1 1 :-1 0 :laugh 0 :hooray 0 :confused 0 :heart 0 :rocket 0 :eyes 0))
-    (:id 502 :in_reply_to_id 501 :path "src/cache.rs" :line 16 :original_line 16 :side "RIGHT" :position 16
-     :diff_hunk "@@ -0,0 +1,18 @@" :commit_id ,octocat-screenshots--pr-head
-     :user ,(octocat-screenshots--user "srivera") :created_at ,(octocat-screenshots--ago (* 26 octocat-screenshots--h))
-     :body "Agreed. `rocket serve` writes them atomically too, so a watch rebuild is safe.")
-    (:id 503 :in_reply_to_id 501 :path "src/cache.rs" :line 16 :original_line 16 :side "RIGHT" :position 16
-     :diff_hunk "@@ -0,0 +1,18 @@" :commit_id ,octocat-screenshots--pr-head
-     :user ,(octocat-screenshots--user "mchen") :created_at ,(octocat-screenshots--ago (* 25 octocat-screenshots--h))
-     :body "Good, then this is fine as it is.")]
-  "The review comments of pull request #128.")
+(defun octocat-screenshots--review-comment (id login ago body &rest props)
+  "Return review comment ID by LOGIN, AGO seconds old, as GraphQL gives it.
+PROPS are more fields, or ones replaced."
+  (let ((mine (equal login "jlindqvist")))
+    `(,@props
+      :id ,(format "PRRC_%d" id) :databaseId ,id :body ,body
+      :createdAt ,(octocat-screenshots--ago ago) :state "SUBMITTED"
+      :viewerDidAuthor ,(if mine t :false) :viewerCanUpdate ,(if mine t :false)
+      :viewerCanDelete ,(if mine t :false)
+      :author (:login ,login) :replyTo :null :reactionGroups [])))
+
+(defun octocat-screenshots--review-thread (id path line comments &rest props)
+  "Return review thread ID on LINE of PATH holding COMMENTS, as GraphQL gives it.
+PROPS are more fields, or ones replaced."
+  `(,@props
+    :id ,(format "PRRT_%d" id) :isResolved :false :isOutdated :false
+    :path ,path :line ,line :startLine :null :diffSide "RIGHT" :startDiffSide :null
+    :subjectType "LINE" :viewerCanReply t :viewerCanResolve t :viewerCanUnresolve :false
+    :resolvedBy :null :comments (:nodes ,(vconcat comments))))
+
+(defconst octocat-screenshots--pr-128-review-threads
+  (let ((h octocat-screenshots--h))
+    `[(:data
+       (:repository
+        (:pullRequest
+         (:id "PR_kwDOAcme0128" :headRefOid ,octocat-screenshots--pr-head
+          :reviews (:nodes [(:id "PRR_kwDOAcme0128" :commit (:oid ,octocat-screenshots--pr-head))])
+          :reviewThreads
+          (:nodes
+           [,(octocat-screenshots--review-thread
+              601 "src/cache.rs" 16
+              (list (octocat-screenshots--review-comment
+                     501 "mchen" (* 30 h)
+                     "Comparing modification times is enough here: a build never runs while a template is half written."
+                     :reactionGroups [(:content "THUMBS_UP" :users (:totalCount 1))])
+                    (octocat-screenshots--review-comment
+                     502 "srivera" (* 26 h)
+                     "Agreed. `rocket serve` writes them atomically too, so a watch rebuild is safe.")
+                    (octocat-screenshots--review-comment
+                     503 "mchen" (* 25 h) "Good, then this is fine as it is.")))
+            ,(octocat-screenshots--review-thread
+              602 "src/build.rs" 42
+              (list (octocat-screenshots--review-comment
+                     504 "mchen" (* 28 h)
+                     "A cache per build means `rocket serve` starts cold after every save. Could it live on `Site`?")
+                    (octocat-screenshots--review-comment
+                     505 "srivera" (* 20 h)
+                     "Moved it to `Site` in the last commit, so a watch rebuild reuses it."))
+              :isResolved t :resolvedBy (list :login "srivera")
+              :viewerCanResolve :false :viewerCanUnresolve t)
+            ;; Your draft, in your pending review: only you see it.
+            ,(octocat-screenshots--review-thread
+              603 "src/build.rs" 48
+              (list (octocat-screenshots--review-comment
+                     506 "jlindqvist" (* 2 h)
+                     "`modified(&path)?` reads the file's time once per page, and a site has far more pages than templates. Could the times be read once per build, before the loop?
+
+```rust
+let times: HashMap<PathBuf, SystemTime> = pages
+    .iter()
+    .map(|p| p.template_path())
+    .collect::<HashSet<_>>()
+    .into_iter()
+    .map(|p| Ok((p.clone(), modified(&p)?)))
+    .collect::<Result<_>>()?;
+```
+
+Not a blocker: the calls are cheap next to parsing, and the OS caches
+the times anyway.  But a site with a few thousand pages would notice."
+                     :state "PENDING"))
+              :startLine 45 :viewerCanResolve :false)])
+          :pageInfo (:hasNextPage :false :endCursor :null)))))])
+  "The review threads of pull request #128, with your draft, from GraphQL.
+You are @jlindqvist, asked to review it.")
 
 ;;;; Issue #97
 
@@ -1045,7 +1104,8 @@ FIELDS, a plist, override the rest."
                           :head (:ref "incremental-builds" :sha ,(octocat-screenshots--sha "pr-133-1")))])])
       ("pr-stack" () (:data (:repository (:pullRequest (:stack :null)))))
       ("pr-diff" ("pulls/128/files") ,octocat-screenshots--pr-128-files)
-      ("pr-review-comments" ("pulls/128/comments") ,octocat-screenshots--pr-128-review-comments)
+      ("pr-review-threads" ("number=128") ,octocat-screenshots--pr-128-review-threads)
+      ("viewer" () (:login "jlindqvist"))
 
       ;; Issues
       ("counts" ("issues(states:OPEN)")

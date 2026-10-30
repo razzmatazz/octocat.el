@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Review a PR's files: `C-c C-a` drafts comments on lines, `C-c C-r` submits them
+* Reply to, edit, delete and resolve review comments from a PR's Files changed page
+* A diff's long review comments fold as the timeline's do; resolved conversations fold
 * A row of badges can show its images, and wraps between them, not mid-label
 * RET shows a README's images from other sites, such as badges, via GitHub's proxy
 * A diff's comments switch on and off from a Comments | Diff only pill, and roll in and out
