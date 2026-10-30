@@ -406,6 +406,13 @@ arrive, without repeating any.  With `C-u`, or on a page with no
 repository, it jumps to another repository instead, or to a user with
 `@`, matched the same way.
 
+Files are those of the branch or commit the page shows, as a commit's
+page or a file viewed at another branch; elsewhere, of the default
+branch.  A word naming a kind of item, `pr`, `issue`, `commit`,
+`workflow` or `file`, or its plural, is not matched against the items
+but lists that kind first: `xz.c file` puts the file `xz.c` before the
+commits that mention it.
+
 ### Writing, reviewing and merging
 
 `C-c C-n` writes a new issue: the first line is the title, the rest the

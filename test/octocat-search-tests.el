@@ -254,6 +254,56 @@ at once; selecting one opens it."
             (octocat--search-open-item (car (funcall items))))
           (should (equal opened '("o/r" 1 "CI" ".github/workflows/ci.yml"))))))))
 
+(ert-deftest octocat-search-test-split-types ()
+  "Words naming a type, or its plural, are taken out of the text matched."
+  (should (equal (octocat--search-split-types "xz.c file") '("xz.c" file)))
+  (should (equal (octocat--search-split-types "commits fix prs") '("fix" commit pr)))
+  (should (equal (octocat--search-split-types "file") '("file" file)))
+  (should (equal (octocat--search-split-types "profile") '("profile"))))
+
+(ert-deftest octocat-search-test-repo-objects-files ()
+  "Files are of the ref given, and a type the input names lists first:
+the file before the commit mentioning it, which it would follow."
+  (octocat-search-tests--with-store
+    (let (loaded)
+      (octocat-sync--write octocat-sync--db "(commits \"o/r\" nil nil)"
+                           (vector (octocat-search-tests--commit "aaa111" "Fix xz.c"))
+                           (float-time))
+      (cl-letf (((symbol-function 'octocat-tree--load-files)
+                 (lambda (_repo ref callback)
+                   (setq loaded ref)
+                   (let ((h (make-hash-table :test #'equal)))
+                     (puthash "src/xz.c" "blob1" h)
+                     (funcall callback h))))
+                ((symbol-function 'octocat-workflow--list)
+                 (lambda (_repo callback) (funcall callback '(error . "no workflows")))))
+        (let* ((log (list nil))
+               (stage (funcall (octocat--async-search-repo-objects
+                                "o/r" nil #'identity "feature/x")
+                               (octocat-search-tests--sink log)))
+               (items (lambda ()
+                        (mapcar (lambda (c)
+                                  (let ((item (get-text-property 0 'octocat-search-item c)))
+                                    (list (plist-get item :type)
+                                          (or (plist-get item :path) (plist-get item :sha))
+                                          (plist-get item :ref))))
+                                (car log)))))
+          (funcall stage "xz.c")
+          (should (equal loaded "feature/x"))
+          (should (equal (funcall items) '((commit "aaa111" nil)
+                                           (file "src/xz.c" "feature/x"))))
+          (funcall stage "xz.c file")
+          (should (equal (funcall items) '((file "src/xz.c" "feature/x")
+                                           (commit "aaa111" nil))))
+          (dolist (call calls)
+            (should (equal (car (last (car call))) "xz.c")))
+          (let (opened)
+            (cl-letf (((symbol-function 'octocat-tree--open-file-by-path)
+                       (lambda (&rest args) (setq opened args))))
+              (octocat--search-open-item
+               (get-text-property 0 'octocat-search-item (car (car log)))))
+            (should (equal opened '("o/r" "feature/x" "src/xz.c")))))))))
+
 (ert-deftest octocat-search-test-git-args ()
   "Commit messages are searched for every word; a SHA-like query names one."
   (should (equal (octocat--search-git-args "fix crash")

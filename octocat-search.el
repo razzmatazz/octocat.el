@@ -25,8 +25,10 @@
 ;; `octocat-search-repo' (C-c C-j in every octocat view) searches
 ;; the pull requests, issues and commits of the current repository with
 ;; live `gh search' queries, through a consult async pipeline.  File paths
-;; of the repository's default branch are matched too, locally, against a
-;; file list kept in the sync store, and so are its workflows.
+;; of the branch or commit the page shows, else the default branch, are
+;; matched too, locally, against a file list kept in the sync store, and
+;; so are its workflows.  A word naming a type, as "file", lists that
+;; type first.
 ;;
 ;; GitHub is slow to answer, so what octocat has stored of the repo, and
 ;; the commits `git log' finds in its local clone when there is one, are
@@ -51,13 +53,30 @@
 (declare-function octocat-commit-open            "octocat-commit" (repo sha))
 (declare-function octocat-tree--fetch-all-files  "octocat-tree"   (repo sha callback))
 (declare-function octocat-tree--open-file-by-path "octocat-tree"  (repo branch path))
+(declare-function octocat-tree--load-files       "octocat-tree"   (repo ref callback))
+(declare-function octocat-tree--file-ref         "octocat-tree"   (repo branch))
 (declare-function octocat-repo--local-dir-for    "octocat-repo"   (repo))
 (declare-function octocat-workflow-open          "octocat-workflow" (repo id name path))
 (defvar octocat-repo--local-dir)
+(defvar octocat-repo--ref)
+(defvar octocat-repo--tracked)
+(defvar octocat-tree--file-branch)
+(defvar octocat--commit-sha)
 
 
 
 ;;;; Candidates
+
+(defconst octocat--search-labels
+  '((pr . "PR") (issue . "Issue") (commit . "Commit")
+    (workflow . "Workflow") (file . "File"))
+  "The label each type of candidate shows, as \"[PR]\".
+A word of the input that is one, or its plural, lists that type first.")
+
+(defun octocat--search-label (type)
+  "Return the propertized \"[LABEL]\" of candidates of TYPE."
+  (propertize (format "[%s]" (alist-get type octocat--search-labels))
+              'face 'octocat-section-heading))
 
 (defun octocat--search-make-pr-candidate (pr repo)
   "Return a propertized candidate string for PR hash-table in REPO."
@@ -72,7 +91,7 @@
                        (_        'octocat-pr-state-open)))
          (display
           (format "%-8s #%-5d  %-42s  %s  %s"
-                  (propertize "[PR]" 'face 'octocat-section-heading)
+                  (octocat--search-label 'pr)
                   number
                   (octocat--format-title title)
                   (propertize (format "(%s)" state) 'face state-face)
@@ -95,7 +114,7 @@
                        'octocat-pr-state-closed))
          (display
           (format "%-8s #%-5d  %-42s  %s  %s"
-                  (propertize "[Issue]" 'face 'octocat-section-heading)
+                  (octocat--search-label 'issue)
                   number
                   (octocat--format-title title)
                   (propertize (format "(%s)" state) 'face state-face)
@@ -120,7 +139,7 @@ shape (\"oid\", nested \"commit\") used in different parts of the codebase."
          (author  (octocat--commit-author commit))
          (display
           (format "%-8s %s  %-42s  %s"
-                  (propertize "[Commit]" 'face 'octocat-section-heading)
+                  (octocat--search-label 'commit)
                   (propertize short 'face 'octocat-commit-sha)
                   (octocat--format-title subject)
                   (propertize author 'face 'octocat-pr-author)))
@@ -130,16 +149,15 @@ shape (\"oid\", nested \"commit\") used in different parts of the codebase."
                        cand)
     cand))
 
-(defun octocat--search-make-file-candidate (file repo)
-  "Return a propertized candidate string for FILE in REPO.
-FILE is a (PATH . BLOB-SHA) cons."
+(defun octocat--search-make-file-candidate (file repo &optional ref)
+  "Return a propertized candidate string for FILE in REPO at REF.
+FILE is a (PATH . BLOB-SHA) cons; REF nil is the default branch."
   (let* ((path (car file))
          (cand (copy-sequence
-                (format "%-8s %s"
-                        (propertize "[File]" 'face 'octocat-section-heading)
-                        path))))
+                (format "%-8s %s" (octocat--search-label 'file) path))))
     (put-text-property 0 1 'octocat-search-item
-                       (list :type 'file :repo repo :path path :sha (cdr file))
+                       (list :type 'file :repo repo :path path :sha (cdr file)
+                             :ref ref)
                        cand)
     cand))
 
@@ -149,7 +167,7 @@ FILE is a (PATH . BLOB-SHA) cons."
          (path (or (gethash "path" workflow) ""))
          (cand (copy-sequence
                 (format "%-8s %-42s  %s"
-                        (propertize "[Workflow]" 'face 'octocat-section-heading)
+                        (octocat--search-label 'workflow)
                         (octocat--format-title name)
                         (propertize path 'face 'octocat-dimmed)))))
     (put-text-property 0 1 'octocat-search-item
@@ -164,7 +182,8 @@ FILE is a (PATH . BLOB-SHA) cons."
         (repo (plist-get item :repo)))
     (pcase type
       ('file
-       (octocat-tree--open-file-by-path repo "HEAD" (plist-get item :path)))
+       (octocat-tree--open-file-by-path repo (or (plist-get item :ref) "HEAD")
+                                        (plist-get item :path)))
       ('pr
        (octocat-pr-open repo (plist-get item :number)))
       ('issue
@@ -196,10 +215,11 @@ always matched: octocat showed them."
   :group 'octocat)
 
 (defconst octocat--search-types
-  '(("prs"     "number,title,state,author" octocat--search-make-pr-candidate)
-    ("issues"  "number,title,state,author" octocat--search-make-issue-candidate)
-    ("commits" "sha,commit,author"         octocat--search-make-commit-candidate))
-  "The `gh search' types searched: (TYPE JSON-FIELDS MAKE-CANDIDATE).")
+  '(("prs"     "number,title,state,author" octocat--search-make-pr-candidate     pr)
+    ("issues"  "number,title,state,author" octocat--search-make-issue-candidate  issue)
+    ("commits" "sha,commit,author"         octocat--search-make-commit-candidate commit))
+  "The `gh search' types searched: (TYPE JSON-FIELDS MAKE-CANDIDATE LABEL).
+LABEL is the key of the candidates' label in `octocat--search-labels'.")
 
 ;; Plain results, not entities: `gh search' gives fewer fields than the
 ;; pages' issues and PRs, and their state in lower case.
@@ -228,6 +248,28 @@ always matched: octocat showed them."
 (defun octocat--search-normalize (input)
   "Return INPUT as the query of an `object-search' resource."
   (downcase (string-trim (substring-no-properties input))))
+
+(defun octocat--search-split-types (query)
+  "Return (TEXT . TYPES) of QUERY, normalized input.
+TYPES are the keys of `octocat--search-labels' its words name, as
+\"file\" or \"commits\" do; TEXT is the rest of QUERY, what items are
+matched against.  A QUERY of nothing but such words is all TEXT."
+  (let (words types)
+    (dolist (word (split-string query "[ \t]+" t))
+      (if-let* ((label (seq-find (lambda (l)
+                                   (let ((name (downcase (cdr l))))
+                                     (member word (list name (concat name "s")))))
+                                 octocat--search-labels)))
+          (cl-pushnew (car label) types)
+        (push word words)))
+    (cons (if words (string-join (nreverse words) " ") query)
+          (nreverse types))))
+
+(defun octocat--search-hinted-first (groups types)
+  "Return GROUPS, (TYPE . CANDIDATES), those of TYPES first, joined.
+The order is otherwise kept."
+  (mapcan #'cdr (append (seq-filter (lambda (g) (memq (car g) types)) groups)
+                        (seq-remove (lambda (g) (memq (car g) types)) groups))))
 
 (defun octocat--search-item-id (type item)
   "Return what names ITEM of TYPE in every source: its number or SHA."
@@ -378,20 +420,33 @@ never called."
 (defconst octocat--search-files-limit 30
   "Maximum number of file candidates shown for one query.")
 
-;; As `tree-files', by the default branch rather than a tree SHA.
-(octocat-sync-define-resource search-files (repo)
+;; As `tree-files', by ref rather than a tree SHA: REF nil is the default
+;; branch, which `octocat-tree--load-files' would ask GitHub for first.
+(octocat-sync-define-resource search-files (repo ref)
   :max-age octocat--search-files-ttl
   :fetch (lambda (done)
-           (octocat-tree--fetch-all-files
-            repo "HEAD"
-            (lambda (r)
-              (funcall done
-                       (if (eq (car-safe r) 'error)
-                           r
-                         (let ((h (make-hash-table :test #'equal :size (length r))))
-                           (pcase-dolist (`(,path . ,blob) r)
-                             (puthash path blob h))
-                           h)))))))
+           (if ref
+               (octocat-tree--load-files repo ref done)
+             (octocat-tree--fetch-all-files
+              repo "HEAD"
+              (lambda (r)
+                (funcall done
+                         (if (eq (car-safe r) 'error)
+                             r
+                           (let ((h (make-hash-table :test #'equal :size (length r))))
+                             (pcase-dolist (`(,path . ,blob) r)
+                               (puthash path blob h))
+                             h))))))))
+
+(defun octocat--search-current-ref (repo)
+  "Return the branch, tag or commit of REPO on screen in this buffer.
+Nil when that is the default branch, or there is none."
+  (let ((ref (or (bound-and-true-p octocat-repo--ref)
+                 (bound-and-true-p octocat-repo--tracked)
+                 (bound-and-true-p octocat-tree--file-branch)
+                 (bound-and-true-p octocat--commit-sha))))
+    (unless (member ref (list nil "" "HEAD" (octocat-tree--file-ref repo nil)))
+      ref)))
 
 (defun octocat--search-files-alist (data)
   "Return the (PATH . BLOB-SHA) entries of DATA, a `search-files' table."
@@ -429,12 +484,13 @@ Matching is case-insensitive."
 
 ;;;; Async pipeline and command
 
-(defun octocat--async-search-repo-objects (repo &optional dir gate)
+(defun octocat--async-search-repo-objects (repo &optional dir gate ref)
   "Build a consult async pipeline stage for live object search in REPO.
 On each input it lists the pull requests, issues and commits of REPO,
-its workflows and its files.  What octocat stored that matches shows at
-once, and the commits of the local clone in DIR, when non-nil, once `git
-log' is done.
+its workflows and its files at REF, nil for the default branch.  What
+octocat stored that matches shows at once, and the commits of the local
+clone in DIR, when non-nil, once `git log' is done.  Words of the input
+naming a type, see `octocat--search-split-types', list it first.
 GitHub's results, each type an `object-search' resource of the
 normalized input, lead as they arrive: first the stored result of the
 input, then the fetched one.  New input cancels the fetches of the last
@@ -446,6 +502,7 @@ with `consult--async-min-input'."
     (let ((types    (mapcar #'car octocat--search-types))
           (current  nil)                ; query being fetched
           (input    nil)                ; normalized current input
+          (hinted   nil)                ; types the input names
           (stored   'unread)            ; alist TYPE -> stored items
           (local    nil)                ; alist TYPE -> stored matches
           (remote   nil)                ; alist TYPE -> GitHub's items
@@ -464,23 +521,33 @@ with `consult--async-min-input'."
            (publish ()
              (funcall sink 'flush)
              (when-let* ((all
-                          (append
-                           (mapcan (lambda (type)
-                                     (candidates
-                                      type
-                                      (octocat--search-merge
-                                       type
-                                       (alist-get type remote nil nil #'equal)
-                                       (alist-get type local nil nil #'equal)
-                                       (and (equal type "commits") git))))
-                                   types)
-                           (and (listp workflows)
-                                (mapcar (lambda (wf)
-                                          (octocat--search-make-workflow-candidate wf repo))
-                                        (octocat--search-workflows-match workflows input)))
-                           (and (listp files)
-                                (mapcar (lambda (f) (octocat--search-make-file-candidate f repo))
-                                        (octocat--search-files-match files input))))))
+                          (octocat--search-hinted-first
+                           (append
+                            (mapcar (lambda (type)
+                                      (cons (nth 3 (assoc type octocat--search-types))
+                                            (candidates
+                                             type
+                                             (octocat--search-merge
+                                              type
+                                              (alist-get type remote nil nil #'equal)
+                                              (alist-get type local nil nil #'equal)
+                                              (and (equal type "commits") git)))))
+                                    types)
+                            (list
+                             (cons 'workflow
+                                   (and (listp workflows)
+                                        (mapcar (lambda (wf)
+                                                  (octocat--search-make-workflow-candidate
+                                                   wf repo))
+                                                (octocat--search-workflows-match
+                                                 workflows input))))
+                             (cons 'file
+                                   (and (listp files)
+                                        (mapcar (lambda (f)
+                                                  (octocat--search-make-file-candidate
+                                                   f repo ref))
+                                                (octocat--search-files-match files input))))))
+                           hinted)))
                (funcall sink all))
              (funcall sink (if (or lists-loading waiting)
                                [indicator running]
@@ -507,7 +574,7 @@ with `consult--async-min-input'."
                 (when input (publish)))))
            (load-lists ()
              (when (eq files 'unread)
-               (load-list (list 'search-files repo) #'octocat--search-files-alist
+               (load-list (list 'search-files repo ref) #'octocat--search-files-alist
                           (lambda (l) (setq files l))))
              (when (eq workflows 'unread)
                (load-list (list 'workflows repo) (lambda (d) (append d nil))
@@ -545,10 +612,12 @@ with `consult--async-min-input'."
             ;; New input: show what is stored and still matches, then
             ;; what git and GitHub find.
             ((pred stringp)
-             (let ((query (octocat--search-normalize action)))
+             (pcase-let ((`(,query . ,types-named)
+                          (octocat--search-split-types (octocat--search-normalize action))))
                (when (eq stored 'unread)
                  (setq stored (octocat--search-stored-items repo (float-time))))
                (setq input   query
+                     hinted  types-named
                      local   (mapcar (lambda (type)
                                        (cons type (octocat--search-match
                                                    type (alist-get type stored nil nil #'equal)
@@ -583,23 +652,30 @@ with the commits of the local clone, when there is one, found by `git
 log'.  Live `gh search' queries (PRs, issues, and commits in parallel)
 against the repository associated with the current buffer then lead
 the list as each completes.  File paths containing every word of the
-query are listed too, and so are the workflows whose name or file
-holds every word.  Selecting a candidate opens the corresponding
-detail view.
+query are listed too, of the branch or commit the buffer shows, else
+the default branch, and so are the workflows whose name or file holds
+every word.  Selecting a candidate opens the corresponding detail view.
 
 The query is matched against titles, commit messages, and bodies.
-Prefix a hash (e.g. \"a1b2c3\") to narrow to a specific commit."
+Prefix a hash (e.g. \"a1b2c3\") to narrow to a specific commit.  A
+word naming a type, as \"file\" or \"commits\", is not matched but
+lists that type first."
   (interactive)
   (let ((repo (octocat--search-repo--current-repo)))
     (unless repo
       (user-error "Octocat: Cannot determine current repository"))
     (let* ((dir    (or (bound-and-true-p octocat-repo--local-dir)
                        (octocat-repo--local-dir-for repo)))
+           (ref    (octocat--search-current-ref repo))
+           (shown  (and ref (if (string-match-p "\\`[0-9a-f]\\{40\\}\\'" ref)
+                                (substring ref 0 7)
+                              ref)))
            (chosen (consult--read
                     (consult--async-pipeline
                      (consult--async-min-input 2)
-                     (octocat--async-search-repo-objects repo dir))
-                    :prompt        (format "Search %s: " repo)
+                     (octocat--async-search-repo-objects repo dir nil ref))
+                    :prompt        (format "Search %s%s: " repo
+                                           (if shown (concat "@" shown) ""))
                     :category      'octocat-object
                     :sort          nil
                     ;; The default lookup returns the bare minibuffer text,
