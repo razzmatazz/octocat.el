@@ -284,7 +284,7 @@ data replaces it."
           (apply #'vui-vstack
                  (append (octocat-run--jobs-section repo run-id jobs)
                          (when-let* ((section (octocat-job-artifacts
-                                               repo run-id (or (plist-get arts :data) []))))
+                                               repo (or (plist-get arts :data) []))))
                            (cons (vui-newline) section))
                          (when-let* ((section (octocat-job-annotations annotations width)))
                            (cons (vui-newline) section)))))))))))

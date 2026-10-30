@@ -198,5 +198,41 @@ byte-order mark, and steps yet to start that get none of it."
             (should (file-directory-p octocat--artifact-preview-dir))))
       (delete-directory octocat--artifact-preview-dir t))))
 
+(ert-deftest octocat-job-test-fetch-artifact-lone-file ()
+  "An artifact that is not a zip is saved under its name, as it came."
+  (let ((dir (make-temp-file "octocat-test-" t))
+        (art (make-hash-table :test #'equal))
+        result)
+    (puthash "id" 7 art)
+    (puthash "name" "build.dockerbuild" art)
+    (unwind-protect
+        (cl-letf (((symbol-function 'octocat--run-gh)
+                   (lambda (_name args _parse callback)
+                     (should (equal args '("api" "repos/o/r/actions/artifacts/7/zip")))
+                     (funcall callback "\x1f\x8b\x08 bytes"))))
+          (octocat--fetch-artifact "o/r" art dir (lambda (r) (setq result (list r))))
+          (should (equal result '(nil)))
+          (should (equal (with-temp-buffer
+                           (set-buffer-multibyte nil)
+                           (insert-file-contents-literally
+                            (expand-file-name "build.dockerbuild" dir))
+                           (buffer-string))
+                         "\x1f\x8b\x08 bytes")))
+      (delete-directory dir t))))
+
+(ert-deftest octocat-job-test-artifact-shown-p ()
+  "Text and files Emacs draws are shown; other binary files are not."
+  (let ((dir (make-temp-file "octocat-test-" t)))
+    (unwind-protect
+        (cl-flet ((file (name bytes)
+                    (let ((f (expand-file-name name dir))
+                          (coding-system-for-write 'no-conversion))
+                      (write-region bytes nil f nil 'silent)
+                      f)))
+          (should (octocat--artifact-shown-p (file "report.html" "<html>\n")))
+          (should (octocat--artifact-shown-p (file "shot.png" "\x89PNG\0\0")))
+          (should-not (octocat--artifact-shown-p (file "b.dockerbuild" "\x1f\x8b\0\0"))))
+      (delete-directory dir t))))
+
 (provide 'octocat-job-tests)
 ;;; octocat-job-tests.el ends here
