@@ -663,31 +663,66 @@ one WIDTH line up."
          cap nil nil "…")
       (concat body tail))))
 
+;; Each list row starts with a column that shows whether it is marked,
+;; always there, so marking an item does not reflow the page.
+
+(defconst octocat-repo-vui--mark-width 2
+  "Width of the column that starts each list row.")
+
+(defun octocat-repo-vui--mark-column (marked)
+  "Return the mark column of a list row: a check mark if MARKED, else blank."
+  (if marked
+      (propertize "✓ " 'face 'octocat-mark)
+    (make-string octocat-repo-vui--mark-width ?\s)))
+
 (defun octocat-repo-vui--compact-width (lines width)
   "Return the width to lay out compact LINES in, at most WIDTH.
 LINES are uncut (see `octocat-repo-vui--compact-line'): the widest sets
 it, so the authors line up after the longest title, not at the window's
-edge when every title is short."
-  (min width (1+ (apply #'max 0 (mapcar #'string-width lines)))))
+edge when every title is short.  It counts the mark column before them."
+  (min width (+ 1 octocat-repo-vui--mark-width
+                (apply #'max 0 (mapcar #'string-width lines)))))
 
 (defun octocat-repo-vui--item-row (state cells width on-visit help
-                                         &optional compact-line prefetch url)
+                                         &optional compact-line prefetch url number marked)
   "Return the row vnode for an item with STATE text.
 CELLS are as made by `octocat-repo-vui--cells'; each line is cut to
 WIDTH.  ON-VISIT and HELP are as for `octocat-vui-row'.  COMPACT-LINE,
 when non-nil, is the one line drawn instead, as made by
 `octocat-repo-vui--compact-line'.  PREFETCH is the sync specs ON-VISIT
 opens, fetched while point rests on the row (see
-`octocat-vui--prefetch-schedule'), and URL its GitHub page."
-  (octocat-vui-row
-   (propertize
-    (or compact-line
-        (mapconcat #'identity
-                   (octocat-repo-vui--item-lines
-                    state cells '(:review :ci :prs :comments) width)
-                   "\n"))
-    'octocat-sync-prefetch prefetch)
-   on-visit help url))
+`octocat-vui--prefetch-schedule'), and URL its GitHub page.  NUMBER,
+the item's, is what the list's marks name (see `octocat-vui-list-mark');
+The row starts with its mark column (`octocat-repo-vui--mark-column'),
+which WIDTH counts: COMPACT-LINE is cut to the rest, as is each line
+drawn.  MARKED shows a check mark there and draws the row in
+`octocat-marked'.
+Each line is filled out to WIDTH by a stretch of space, so a marked
+row, and the row under the mouse, is lit as one block."
+  (let* ((lines (if compact-line
+                    (list compact-line)
+                  (octocat-repo-vui--item-lines
+                   state cells '(:review :ci :prs :comments)
+                   (- width octocat-repo-vui--mark-width))))
+         (last  (car (last lines)))
+         (cap   (max 10 (1- width))))
+    (octocat-vui-row
+     (let ((text (mapconcat
+                  (lambda (line)
+                    (concat (octocat-repo-vui--mark-column
+                             (and marked (eq line (car lines))))
+                            line
+                            ;; The newline after a line but the last is
+                            ;; lit too, a column on: the last fills it.
+                            (propertize " " 'display
+                                        `(space :align-to ,(if (eq line last) (1+ cap) cap)))))
+                  lines "\n")))
+       (when marked
+         (add-face-text-property 0 (length text) 'octocat-marked t text))
+       (propertize text
+                   'octocat-sync-prefetch prefetch
+                   'octocat-vui-list-item number))
+     on-visit help url)))
 
 (defun octocat-repo-vui--number (item)
   "Return the \"#N\" of the issue or PR ITEM."
@@ -724,36 +759,43 @@ BG is as for `octocat-repo-vui--cells'; WIDTH is as for
    (unless no-state (octocat-repo-vui--state-label (gethash "state" issue)))
    (octocat-repo-vui--number issue) (octocat-repo-vui--cells repo issue bg) width))
 
-(defun octocat-repo-vui--pr-row (repo pr width bg &optional compact no-state stack)
+(defun octocat-repo-vui--pr-row (repo pr width bg &optional compact no-state stack marked)
   "Return a row vnode for PR in REPO, cut to WIDTH.
 BG is as for `octocat-repo-vui--cells'; COMPACT draws it on one line,
 without the state when NO-STATE is non-nil.  STACK is as for
-`octocat-repo-vui--pr-cells'."
+`octocat-repo-vui--pr-cells', MARKED for `octocat-repo-vui--item-row'."
   (octocat-repo-vui--item-row
    (octocat-repo-vui--state-label (gethash "state" pr) (gethash "isDraft" pr))
    (octocat-repo-vui--pr-cells repo pr bg stack)
    width
    (lambda () (octocat-repo-vui--open-pr repo pr))
    "RET: view pull request"
-   (and compact (octocat-repo-vui--pr-compact-line repo pr bg no-state width stack))
+   (and compact (octocat-repo-vui--pr-compact-line
+                 repo pr bg no-state (- width octocat-repo-vui--mark-width) stack))
    (let ((n (gethash "number" pr)))
      `((pr ,repo ,n) (timeline-events ,repo ,n)))
-   (octocat--item-url 'pr repo (gethash "number" pr) pr)))
+   (octocat--item-url 'pr repo (gethash "number" pr) pr)
+   (gethash "number" pr)
+   marked))
 
-(defun octocat-repo-vui--issue-row (repo issue width bg &optional compact no-state)
+(defun octocat-repo-vui--issue-row (repo issue width bg &optional compact no-state marked)
   "Return a row vnode for ISSUE in REPO, cut to WIDTH.
 BG is as for `octocat-repo-vui--cells'; COMPACT draws it on one line,
-without the state when NO-STATE is non-nil."
+without the state when NO-STATE is non-nil.  MARKED is as for
+`octocat-repo-vui--item-row'."
   (octocat-repo-vui--item-row
    (octocat-repo-vui--state-label (gethash "state" issue))
    (octocat-repo-vui--cells repo issue bg)
    width
    (lambda () (octocat-repo-vui--open-issue repo issue))
    "RET: view issue"
-   (and compact (octocat-repo-vui--issue-compact-line repo issue bg no-state width))
+   (and compact (octocat-repo-vui--issue-compact-line
+                 repo issue bg no-state (- width octocat-repo-vui--mark-width)))
    (let ((n (gethash "number" issue)))
      `((issue ,repo ,n) (timeline-events ,repo ,n)))
-   (octocat--item-url 'issue repo (gethash "number" issue) issue)))
+   (octocat--item-url 'issue repo (gethash "number" issue) issue)
+   (gethash "number" issue)
+   marked))
 
 ;; The header of an issue or PR page starts as the other pages do, with
 ;; `owner/repo#N', then the title and author.  The state heads the line

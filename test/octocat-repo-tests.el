@@ -171,8 +171,22 @@
 
 (ert-deftest octocat-repo-test-compact-width ()
   "The widest line sets the width, up to the window's."
-  (should (= (octocat-repo-vui--compact-width '("abc" "abcdef") 80) 7))
+  ;; The mark column too.
+  (should (= (octocat-repo-vui--compact-width '("abc" "abcdef") 80) 9))
   (should (= (octocat-repo-vui--compact-width '("abc" "abcdef") 5) 5)))
+
+(ert-deftest octocat-repo-test-item-row-mark-column ()
+  "A row starts with a mark column, checked when it is marked."
+  (let ((text (lambda (mark)
+                (vui-vnode-text-content
+                 (car (vui-vnode-region-children
+                       (octocat-repo-vui--item-row
+                        "open" nil 40 #'ignore "" "#7  Title" nil nil 7 mark)))))))
+    (should (string-prefix-p "  #7  Title" (funcall text nil)))
+    (let ((marked (funcall text t)))
+      (should (string-prefix-p "✓ #7  Title" marked))
+      (should (memq 'octocat-marked (ensure-list (get-text-property 3 'face marked))))
+      (should (eql (get-text-property 0 'octocat-vui-list-item marked) 7)))))
 
 (ert-deftest octocat-repo-test-unpushed ()
   "Count local commits against the upstream, and how far it is ahead."

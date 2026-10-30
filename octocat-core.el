@@ -329,6 +329,16 @@ with a floor of 1."
   "Face for the search query field of the list pages, drawn like an input box."
   :group 'octocat)
 
+(defface octocat-marked
+  '((t :inherit lazy-highlight))
+  "Face beneath the rows marked in a PR or issue list."
+  :group 'octocat)
+
+(defface octocat-mark
+  '((t :inherit (success bold)))
+  "Face for the check mark in the margin of a marked row."
+  :group 'octocat)
+
 (defface octocat-pr-state-open
   '((t :inherit success))
   "Face for an open PR state badge."

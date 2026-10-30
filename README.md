@@ -78,8 +78,8 @@ Optional extras:
 | `RET` | Open the thing at point, or edit the field at point |
 | `S-RET` | The same, in another window (Evil: `O`, and `o` is `RET`) |
 | `q` | Back to the previous page, or out of octocat |
-| `TAB` / `S-TAB` | Fold the section at point / all sections |
 | `g` / `gr` | Refresh the page |
+| `m` / `u` / `U` | Mark / unmark the PR or issue at point, or those in the region / unmark all |
 | `C-c C-o` | Open the thing at point on GitHub |
 | `M-x octocat-copy-url` | Copy its URL instead (`C-u`: its short reference, as `owner/repo#12`) |
 | `C-c C-j` | Jump to a PR, issue, commit, workflow or file (`C-u`: another repo or user) |

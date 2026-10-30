@@ -16,7 +16,8 @@
 ;; by `octocat-COMMAND' when there is no such function, as (dashboard)
 ;; for `octocat' and (pr-list "acme/rocket").  :press lists buttons to
 ;; press first, by their text, or rows to press RET on, by a text on
-;; them, or (:key KEY) to call KEY's command.  :name names its files,
+;; them, or (:key KEY) to call KEY's command, (:key KEY TEXT) to call it
+;; on the row showing TEXT, as `m' marking it.  :name names its files,
 ;; NAME.png and NAME.txt; it defaults to COMMAND.  To add a shot, add a
 ;; marker; to
 ;; show other data, edit fixtures.el.  A `gh' call fixtures.el lacks
@@ -182,13 +183,18 @@ it is pressed."
 
 (defun octocat-screenshots--press (buffer label)
   "Press the button whose text is LABEL in BUFFER, or RET on its row.
-A LABEL of (:key KEY) calls the command KEY is bound to in BUFFER."
+A LABEL of (:key KEY) calls the command KEY is bound to in BUFFER;
+\(:key KEY TEXT) calls it with point on TEXT."
   (with-current-buffer buffer
     (goto-char (point-min))
     (let ((case-fold-search nil))
       (cond
        ((eq (car-safe label) :key)
-        (call-interactively (key-binding (kbd (cadr label)))))
+        (if (or (null (nth 2 label)) (search-forward (nth 2 label) nil t))
+            (progn (when (nth 2 label) (goto-char (match-beginning 0)))
+                   (call-interactively (key-binding (kbd (cadr label)))))
+          (push (format "No %S on %s" (nth 2 label) (buffer-name))
+                octocat-screenshots--problems)))
        ((search-forward label nil t)
           (let ((pos (match-beginning 0)))
             (if (button-at pos)

@@ -390,5 +390,58 @@ unsubscribes it."
       (should-not octocat-vui--slide-timer)
       (should-not (text-property-not-all (point-min) (point-max) 'display nil)))))
 
+(defun octocat-vui-tests--marks-buffer ()
+  "Insert a header, then three two-line rows, items 7, 5 and 3."
+  (insert "Filter  is:open\n")
+  (dolist (n '(7 5 3))
+    (insert (propertize (format "open    #%d\n        by @a" n) 'octocat-vui-list-item n)
+            "\n"))
+  (goto-char (point-min)))
+
+(ert-deftest octocat-vui-test-mark-moves-to-next-item ()
+  "`m' marks the item at point and moves to the next; `u' unmarks."
+  (with-temp-buffer
+    (octocat-vui-tests--marks-buffer)
+    (should-error (octocat-vui-list-mark) :type 'user-error)
+    (search-forward "#7")
+    (octocat-vui-list-mark)
+    (should (equal (octocat-vui-list-marks) '(7)))
+    (should (looking-at "open    #5"))
+    ;; Marking an item twice keeps one mark.
+    (octocat-vui-list-mark)
+    (forward-line -2)
+    (octocat-vui-list-mark)
+    (should (equal (octocat-vui-list-marks) '(7 5)))
+    (goto-char (point-max))
+    (search-backward "#3")
+    (octocat-vui-list-unmark)
+    (should (equal (octocat-vui-list-marks) '(7 5)))
+    (search-backward "#5")
+    (octocat-vui-list-unmark)
+    (should (equal (octocat-vui-list-marks) '(7)))))
+
+(ert-deftest octocat-vui-test-mark-region ()
+  "With a region, `m' marks each item it touches, and point stays."
+  (with-temp-buffer
+    (transient-mark-mode 1)
+    (octocat-vui-tests--marks-buffer)
+    (search-forward "@a")
+    (set-mark (point))
+    (search-forward "#5")
+    (activate-mark)
+    (let ((pos (point)))
+      (octocat-vui-list-mark)
+      (should (equal (octocat-vui-list-marks) '(7 5)))
+      (should (= (point) pos))
+      (should-not (use-region-p)))))
+
+(ert-deftest octocat-vui-test-unmark-all-clears-hidden ()
+  "`U' clears every mark, those of items not shown too."
+  (with-temp-buffer
+    (octocat-vui-tests--marks-buffer)
+    (setq octocat-vui-list--marks '(42 5))
+    (octocat-vui-list-unmark-all)
+    (should-not (octocat-vui-list-marks))))
+
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here

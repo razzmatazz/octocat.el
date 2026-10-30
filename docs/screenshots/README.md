@@ -87,9 +87,9 @@ a table; the drawer under a heading is left out.
 ## Pull requests
 
 `M-x octocat-pr-list`: the open pull requests, filtered by a GitHub
-search.
+search.  Two of them are marked with `m`, as files are in dired.
 
-<!-- screenshot: (pr-list "acme/rocket") -->
+<!-- screenshot: (pr-list "acme/rocket") :press ((:key "m" "Add RSS") (:key "m" "Cache parsed")) -->
 ![pr-list](pr-list.png)
 
 [As text](pr-list.txt)
@@ -97,7 +97,7 @@ search.
 
 Compact (`C-c C-v`):
 
-<!-- screenshot: (pr-list "acme/rocket") :name "pr-list-compact" :press ((:key "C-c C-v")) -->
+<!-- screenshot: (pr-list "acme/rocket") :name "pr-list-compact" :press ((:key "C-c C-v") (:key "m" "Add RSS") (:key "m" "Cache parsed")) -->
 ![pr-list-compact](pr-list-compact.png)
 
 [As text](pr-list-compact.txt)
@@ -138,9 +138,9 @@ A merged pull request: with no merge box, its checks end the page.
 
 ## Issues
 
-`M-x octocat-issue-list`:
+`M-x octocat-issue-list`, with two issues marked:
 
-<!-- screenshot: (issue-list "acme/rocket") -->
+<!-- screenshot: (issue-list "acme/rocket") :press ((:key "m" "Live reload") (:key "m" "Explain how")) -->
 ![issue-list](issue-list.png)
 
 [As text](issue-list.txt)

@@ -4,13 +4,13 @@ acme/rocket  [Code]  Issues (5)  [Pull requests (6)]  [Actions]
 Filter  is:open
         [State]  [Author]  [Assignee]  [Label]
 
-open    Build fails when a page's front matter has a BOM   bug   needs triage
-        acme/rocket#134 by @tgarcia · 1 hour ago
-open    Live reload doesn't pick up changes to templates   bug
-        acme/rocket#129 by @jlindqvist · 1 day ago · #130 · ✉ 3
-open    Builds of large sites are slow: templates are parsed for every page   performance
-        acme/rocket#97 by @pnair · 1 week ago · #128 · ✉ 5
-open    Support a dark variant in the default theme   enhancement   good first issue
-        acme/rocket#88 by @kwong · 2 weeks ago · ✉ 1
-open    Explain how to deploy to GitHub Pages   docs
-        acme/rocket#74 by @aokafor · 1 month ago
+  open    Build fails when a page's front matter has a BOM   bug   needs triage
+          acme/rocket#134 by @tgarcia · 1 hour ago
+✓ open    Live reload doesn't pick up changes to templates   bug
+          acme/rocket#129 by @jlindqvist · 1 day ago · #130 · ✉ 3
+  open    Builds of large sites are slow: templates are parsed for every page   performance
+          acme/rocket#97 by @pnair · 1 week ago · #128 · ✉ 5
+  open    Support a dark variant in the default theme   enhancement   good first issue
+          acme/rocket#88 by @kwong · 2 weeks ago · ✉ 1
+✓ open    Explain how to deploy to GitHub Pages   docs
+          acme/rocket#74 by @aokafor · 1 month ago

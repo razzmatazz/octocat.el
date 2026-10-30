@@ -54,6 +54,7 @@
 (defvar octocat-pr-list-mode-map)
 (defvar octocat-issue-list-mode-map)
 (defvar octocat-run-list-mode-map)
+(defvar octocat-vui-list-mark-map)
 (defvar octocat-pr-mode-map)
 (defvar octocat-commit-mode-map)
 (defvar octocat-compare-mode-map)
@@ -146,7 +147,12 @@ would start recording a macro."
   (pcase-dolist (`(,key . ,def) octocat-evil--list-bindings)
     (evil-local-set-key 'normal (kbd key) def))
   (when (derived-mode-p 'octocat-pr-list-mode 'octocat-issue-list-mode)
-    (evil-local-set-key 'normal (kbd "C-c C-n") #'octocat-issue-new)))
+    (evil-local-set-key 'normal (kbd "C-c C-n") #'octocat-issue-new)
+    ;; Visual state too: `V' then `m' marks the lines selected.
+    (map-keymap (lambda (key def)
+                  (evil-local-set-key 'normal (vector key) def)
+                  (evil-local-set-key 'visual (vector key) def))
+                octocat-vui-list-mark-map)))
 
 (defun octocat-evil--list-query-submitted ()
   "Leave insert state once the query field is submitted."

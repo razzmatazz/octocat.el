@@ -43,7 +43,7 @@
 ;; from octocat-repo.el, which requires this file (so cannot be required
 ;; here).
 (declare-function octocat-repo-vui--issue-row "octocat-repo"
-                  (repo issue width bg &optional compact no-state))
+                  (repo issue width bg &optional compact no-state marked))
 (declare-function octocat-repo-vui--issue-compact-line "octocat-repo"
                   (repo issue bg no-state &optional width))
 (declare-function octocat-repo-vui--state-label "octocat-repo" (state &optional draft))
@@ -429,16 +429,18 @@ the background, in place: what is unfolded stays so."
                                     :kind 'issues
                                     :query (octocat-vui-list-query)
                                     :compact (octocat-vui-list-compact-p)
-                                    :row-fn (lambda (issue width compact no-state _)
+                                    :marks (octocat-vui-list-marks)
+                                    :row-fn (lambda (issue width compact no-state _ marked)
                                               (octocat-repo-vui--issue-row
-                                               repo issue width bg compact no-state))
+                                               repo issue width bg compact no-state marked))
                                     :line-fn (lambda (issue no-state _)
                                                (octocat-repo-vui--issue-compact-line
                                                 repo issue bg no-state))))))
 
 (defvar octocat-issue-list-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-list-mode-map)
+    (set-keymap-parent map (make-composed-keymap octocat-vui-list-mark-map
+                                                 octocat-vui-list-mode-map))
     (define-key map (kbd "C-c C-n") #'octocat-issue-new)
     map)
   "Keymap for `octocat-issue-list-mode'.")

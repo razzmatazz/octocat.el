@@ -47,7 +47,7 @@
 ;; plumbing from octocat-repo.el, which requires this file (so cannot be
 ;; required here).
 (declare-function octocat-repo-vui--pr-row "octocat-repo"
-                  (repo pr width bg &optional compact no-state stack))
+                  (repo pr width bg &optional compact no-state stack marked))
 (declare-function octocat-repo-vui--pr-compact-line "octocat-repo"
                   (repo pr bg no-state &optional width stack))
 (declare-function octocat-repo-vui--state-label"octocat-repo" (state &optional draft))
@@ -1432,11 +1432,13 @@ the background, in place: what is unfolded stays so."
                                     :kind 'pulls
                                     :query (octocat-vui-list-query)
                                     :compact (octocat-vui-list-compact-p)
-                                    :row-fn (lambda (pr width compact no-state stacks)
+                                    :marks (octocat-vui-list-marks)
+                                    :row-fn (lambda (pr width compact no-state stacks marked)
                                               (octocat-repo-vui--pr-row
                                                repo pr width bg compact no-state
                                                (octocat-pr--stacks-label
-                                                stacks (gethash "number" pr))))
+                                                stacks (gethash "number" pr))
+                                               marked))
                                     :line-fn (lambda (pr no-state stacks)
                                                (octocat-repo-vui--pr-compact-line
                                                 repo pr bg no-state nil
@@ -1447,7 +1449,8 @@ the background, in place: what is unfolded stays so."
 
 (defvar octocat-pr-list-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-list-mode-map)
+    (set-keymap-parent map (make-composed-keymap octocat-vui-list-mark-map
+                                                 octocat-vui-list-mode-map))
     (define-key map (kbd "C-c C-n") #'octocat-issue-new)
     map)
   "Keymap for `octocat-pr-list-mode'.")
