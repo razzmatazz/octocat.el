@@ -150,5 +150,33 @@ byte-order mark, and steps yet to start that get none of it."
                    '((1 "setting up")
                      (2 "Run make test" "running\tnow"))))))
 
+(ert-deftest octocat-job-test-annotations-wrap ()
+  "A long annotation message wraps within the width, hung under the job."
+  (let* ((ann (make-hash-table :test #'equal))
+         (_   (progn (puthash "annotation_level" "warning" ann)
+                     (puthash "message" (mapconcat #'identity (make-list 30 "word") " ") ann)))
+         (row (vui-vnode-text-content
+               (cadr (octocat-job-annotations (list (cons "build" ann)) 40))))
+         (lines (split-string row "\n")))
+    (should (> (length lines) 1))
+    (should (seq-every-p (lambda (l) (<= (string-width l) 40)) lines))
+    (should (string-prefix-p "     word" (cadr lines)))))
+
+(ert-deftest octocat-job-test-run-annotations-order ()
+  "A run's annotations come in its jobs' order, not their answers'."
+  (let (calls result)
+    (cl-letf (((symbol-function 'octocat--run-gh)
+               (lambda (_name _args _parse callback) (push callback calls))))
+      (octocat--fetch-run-annotations
+       "o/r"
+       (vector (let ((j (make-hash-table :test #'equal)))
+                 (puthash "databaseId" 1 j) (puthash "name" "a" j) j)
+               (let ((j (make-hash-table :test #'equal)))
+                 (puthash "databaseId" 2 j) (puthash "name" "b" j) j))
+       (lambda (r) (setq result r)))
+      ;; CALLS is newest first, so job 2 answers first.
+      (dolist (cb calls) (funcall cb [])))
+    (should (equal (mapcar #'car result) '(1 2)))))
+
 (provide 'octocat-job-tests)
 ;;; octocat-job-tests.el ends here

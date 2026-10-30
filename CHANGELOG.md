@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Run and job annotations wrap at the page width and keep their jobs' order
 * Rendered markdown always leaves a blank line after a code block
 * READMEs and markdown files join a paragraph's lines, as GitHub shows them
 * After a push, the repo page keeps its files and README until the new ones load

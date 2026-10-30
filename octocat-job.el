@@ -514,24 +514,30 @@ one downloads it."
                             (lambda () (octocat--do-download-artifact repo run-id art))
                             "RET: download artifact")))))
 
-(defun octocat-job-annotations (entries)
+(defun octocat-job-annotations (entries width)
   "Return the vnodes of the Annotations section, or nil when there are none.
 ENTRIES is a list of (JOB-NAME . ANNOTATION), the annotation a Checks API
-hash-table; a nil JOB-NAME is not shown."
+hash-table; a nil JOB-NAME is not shown.  A message wider than WIDTH
+wraps, hung under the job name."
   (when entries
     (cons (vui-text (propertize (format "Annotations (%d)" (length entries))
                                 'face 'octocat-section-heading))
           (mapcar (lambda (entry)
-                    (let ((level (downcase (or (gethash "annotation_level" (cdr entry))
-                                               "notice"))))
+                    (let* ((level  (downcase (or (gethash "annotation_level" (cdr entry))
+                                                 "notice")))
+                           (prefix (concat "  " (octocat--annotation-icon level) "  ")))
                       (vui-text
-                          (concat "  " (octocat--annotation-icon level) "  "
-                                  (when (car entry)
-                                    (concat (propertize (car entry) 'face 'octocat-run-job-name)
-                                            "  "))
-                                  (propertize (replace-regexp-in-string
-                                               "\n" " " (or (gethash "message" (cdr entry)) ""))
-                                              'face (octocat--annotation-face level))))))
+                          (string-join
+                           (octocat-markdown-wrap-hung
+                            (concat prefix
+                                    (when (car entry)
+                                      (concat (propertize (car entry) 'face 'octocat-run-job-name)
+                                              "  "))
+                                    (propertize (replace-regexp-in-string
+                                                 "\n" " " (or (gethash "message" (cdr entry)) ""))
+                                                'face (octocat--annotation-face level)))
+                            width (string-width prefix))
+                           "\n"))))
                   entries))))
 
 
@@ -617,7 +623,8 @@ unfolded, until the fresh data replaces it."
                              (cons (vui-newline) arts))
                            (when-let* ((anns (octocat-job-annotations
                                               (mapcar (lambda (a) (cons nil a))
-                                                      (gethash "annotations" data)))))
+                                                      (gethash "annotations" data))
+                                              width)))
                              (cons (vui-newline) anns))))))))))))
 
 

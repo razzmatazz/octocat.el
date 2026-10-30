@@ -76,8 +76,9 @@ whose value is a vector of job hash-tables), or a cons \\=(error . MSG)."
 
 (defun octocat--fetch-run-annotations (repo jobs callback)
   "Fetch check-run annotations for every job in the JOBS vector from REPO.
-Fires one async request per job in parallel.  Calls CALLBACK with an alist
-of (JOB-ID . ANNOTATIONS-VECTOR) entries, or nil when JOBS is empty.
+Fires one async request per job in parallel.  Calls CALLBACK with a list
+of (JOB-ID JOB-NAME ANNOTATIONS-VECTOR) in the order of JOBS, or nil when
+JOBS is empty.
 Individual job annotation failures are silently treated as empty vectors."
   (let* ((job-list (cl-coerce jobs 'list))
          (pending  (length job-list))
@@ -101,8 +102,11 @@ Individual job annotation failures are silently treated as empty vectors."
              (let ((anns (if (eq (car-safe ann-result) 'error) [] ann-result)))
                (push (list job-id job-name anns) results))
              (cl-decf pending)
+             ;; In the jobs' order, not the order their answers came in.
              (when (zerop pending)
-               (funcall callback (nreverse results))))))))))
+               (funcall callback
+                        (mapcar (lambda (job) (assq (gethash "databaseId" job) results))
+                                job-list))))))))))
 
 
 ;;;; Artifacts fetching
@@ -285,7 +289,7 @@ data replaces it."
                          (when-let* ((section (octocat-job-artifacts
                                                repo run-id (or (plist-get arts :data) []))))
                            (cons (vui-newline) section))
-                         (when-let* ((section (octocat-job-annotations annotations)))
+                         (when-let* ((section (octocat-job-annotations annotations width)))
                            (cons (vui-newline) section)))))))))))
 
 
