@@ -1321,7 +1321,8 @@ file.  A document larger than `octocat--max-file-size' is shown as it
 is, its long lines clipped, see `octocat--clip-line'."
   (let ((text (decode-coding-string content 'utf-8))
         (fmt (octocat-repo--format name))
-        (octocat-markdown-base (list repo (or ref "HEAD") (or (file-name-directory name) ""))))
+        (octocat-markdown-base (list repo (or ref "HEAD") (or (file-name-directory name) "")))
+        (octocat-markdown-document (list repo (or ref "HEAD") name)))
     (string-remove-suffix
      "\n" (if (and fmt (<= (length content) octocat--max-file-size))
               (octocat--markdown-string (if raw text (funcall (cdr fmt) text))

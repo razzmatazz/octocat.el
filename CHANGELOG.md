@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* RET shows a README's images from other sites, such as badges, via GitHub's proxy
 * A diff's comments switch on and off from a Comments | Diff only pill, and roll in and out
 * Replies to a review comment in a PR diff sit in its box, indented off bubbles on its edge
 * Posting a comment keeps the buttons under the timeline, its spinner on the comment only

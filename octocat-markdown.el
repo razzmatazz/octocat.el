@@ -172,6 +172,12 @@ and Evil state maps, so RET works in every buffer a rendered string lands in.")
 A list (REPO REF DIR): directory DIR, \"\" for the root, of REPO at REF,
 as for a README.  Bound around `octocat-markdown-render'.")
 
+(defvar octocat-markdown-document nil
+  "The file being rendered, (REPO REF PATH), or nil for a comment.
+An image of another site carries it as :doc, for GitHub's proxy of the
+image, see `octocat-image-proxy-function'.  Bound around
+`octocat-markdown-render'.")
+
 (defun octocat-markdown--relative-path (url)
   "Return the path in the repository that relative URL names, or nil.
 It is resolved against `octocat-markdown-base', a leading slash from
@@ -469,7 +475,8 @@ like \"defaced\" and numbers like 1234567 are not taken for hashes."
 It carries its SRC and WIDTH, in pixels, as `octocat-markdown-img', for
 `octocat-markdown--image-row' to tell an image alone on its line.  A
 relative SRC is a file of the repository, which it carries as :file,
-\(REPO REF PATH), see `octocat-markdown-base'."
+\(REPO REF PATH), see `octocat-markdown-base'; an absolute one in a file
+carries the file as :doc, see `octocat-markdown-document'."
   (let* ((path (octocat-markdown--relative-path src))
          (url  (octocat-markdown--absolute src "raw"))
          (s    (octocat-markdown--link
@@ -482,7 +489,10 @@ relative SRC is a file of the repository, which it carries as :file,
                                (and path (not (string-suffix-p "/" path))
                                     (list :file (list (nth 0 octocat-markdown-base)
                                                       (nth 1 octocat-markdown-base)
-                                                      (url-unhex-string path)))))
+                                                      (url-unhex-string path))))
+                               (and (not path) octocat-markdown-document
+                                    (string-match-p "\\`https?://" url)
+                                    (list :doc octocat-markdown-document)))
                        s)
     s))
 

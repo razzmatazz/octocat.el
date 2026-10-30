@@ -10,7 +10,34 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (require 'octocat)
+
+(ert-deftest octocat-tree-test-proxied-urls ()
+  "GitHub's HTML maps each image of another site to its proxy's URL."
+  (skip-unless (libxml-available-p))
+  (let ((table (octocat-tree--proxied-urls
+                (concat "<p><img src=\"https://camo.githubusercontent.com/a/b\" "
+                        "data-canonical-src=\"https://example.com/x.png?a=1&amp;b=2\">"
+                        "<img src=\"/o/r/raw/main/local.png\"></p>"))))
+    (should (equal (gethash "https://example.com/x.png?a=1&b=2" table)
+                   "https://camo.githubusercontent.com/a/b"))
+    (should (= (hash-table-count table) 1))))
+
+(ert-deftest octocat-tree-test-proxied-url-once ()
+  "A file's rendering is asked for once, for all its images."
+  (let ((octocat-tree--proxied (make-hash-table :test #'equal))
+        (calls 0) got)
+    (cl-letf (((symbol-function 'octocat--run-gh)
+               (lambda (_name args parse cb)
+                 (cl-incf calls)
+                 (should (member "repos/o/r/contents/docs/a%20b.md" args))
+                 (should (member "ref=main" args))
+                 (funcall cb (funcall parse "<img src=\"https://camo.githubusercontent.com/1\" data-canonical-src=\"https://e.com/1.png\">")))))
+      (octocat-tree--proxied-url "o/r" "main" "docs/a b.md" "https://e.com/1.png" (lambda (u) (push u got)))
+      (octocat-tree--proxied-url "o/r" "main" "docs/a b.md" "https://e.com/2.png" (lambda (u) (push u got)))
+      (should (= calls 1))
+      (should (equal got '(nil "https://camo.githubusercontent.com/1"))))))
 
 (ert-deftest octocat-tree-test-fontify-plain-text ()
   "octocat-tree--fontify returns the content string unchanged for plain text."

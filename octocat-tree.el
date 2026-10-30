@@ -52,6 +52,8 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'dom)
+(require 'url-util)
 (require 'octocat-core)
 (require 'octocat-sync)
 (require 'octocat-vui)
@@ -359,6 +361,47 @@ fetched once."
          (funcall callback nil)
        (octocat-tree--load-blob
         repo sha (lambda (r) (funcall callback (and (stringp r) r))))))))
+
+(defvar octocat-tree--proxied (make-hash-table :test #'equal)
+  "File (REPO REF PATH) to its images' URLs on GitHub's proxy.
+Each is a hash table from an image's own URL to the proxy's.")
+
+(defun octocat-tree--proxied-urls (html)
+  "Return the table of the images of GitHub's HTML, their URL to the proxy's.
+GitHub gives each image of another site as its proxy's, the image's
+own URL as `data-canonical-src'."
+  (let ((table (make-hash-table :test #'equal)))
+    (when (libxml-available-p)
+      (with-temp-buffer
+        (insert html)
+        (dolist (img (dom-by-tag (libxml-parse-html-region (point-min) (point-max)) 'img))
+          (let ((src  (dom-attr img 'src))
+                (orig (dom-attr img 'data-canonical-src)))
+            (when (and src orig)
+              (puthash orig src table))))))
+    table))
+
+(defun octocat-tree--proxied-url (repo ref path url callback)
+  "Call CALLBACK with the URL of image URL on GitHub's proxy, or nil.
+URL is shown by file PATH of REPO at REF.  For
+`octocat-image-proxy-function': the proxy's URLs are signed, so they
+are read from GitHub's rendering of the file, fetched once."
+  (let ((key (list repo ref path)))
+    (if-let* ((table (gethash key octocat-tree--proxied)))
+        (funcall callback (gethash url table))
+      (octocat--run-gh
+       "proxied"
+       (list "api" "-X" "GET"
+             (format "repos/%s/contents/%s" repo
+                     (mapconcat #'url-hexify-string (split-string path "/") "/"))
+             "-f" (concat "ref=" ref)
+             "-H" "Accept: application/vnd.github.html")
+       #'octocat-tree--proxied-urls
+       (lambda (r)
+         (if (hash-table-p r)
+             (progn (puthash key r octocat-tree--proxied)
+                    (funcall callback (gethash url r)))
+           (funcall callback nil)))))))
 
 ;;;; Syntax highlighting
 

@@ -31,6 +31,8 @@
 ;; is in, which `octocat-image-file-function' fetches through `gh': any
 ;; other URL in a comment would let its author learn who reads the
 ;; page, and when, and feed Emacs's image decoders whatever they like.
+;; A repository file's image of another site is fetched through
+;; GitHub's proxy, see `octocat-image-proxy-function'.
 ;; `url-retrieve' would follow a redirect anywhere, so redirects are
 ;; followed here instead, one hop at a time, each checked against
 ;; `octocat-image--redirect-hosts'.  An image that cannot be fetched, as
@@ -55,6 +57,7 @@
 ;; Only in builds that can show images, the only ones that call it.
 (declare-function image-size "ext:image.c" (spec &optional pixels frame))
 (declare-function octocat-tree--image-file "octocat-tree" (repo ref path callback))
+(declare-function octocat-tree--proxied-url "octocat-tree" (repo ref path url callback))
 (declare-function octocat-vui--image-loading "octocat-vui" (buf loading))
 
 (defcustom octocat-image-max-lines 20
@@ -79,6 +82,15 @@ without a session.")
   "Function that fetches a file of a repository, for a relative image.
 Called with REPO, REF, PATH and a callback, which it calls with the
 file's bytes, or nil if they cannot be had.")
+
+(defvar octocat-image-proxy-function #'octocat-tree--proxied-url
+  "Function that finds GitHub's proxy of an image a repository's file shows.
+Called with REPO, REF and PATH of the file, the image's URL and a
+callback, which it calls with the URL GitHub's rendering of the file
+gives the image, or nil.")
+
+(defconst octocat-image--proxy-host "camo.githubusercontent.com"
+  "The host of GitHub's image proxy.")
 
 (defvar octocat-image-loading-function #'octocat-vui--image-loading
   "Function that shows whether a buffer waits for an image.
@@ -119,9 +131,9 @@ signed private-user-images.githubusercontent.com links."
 (defun octocat-image--fetchable-p (plist)
   "Return non-nil if the image of PLIST can be fetched.
 PLIST is its `octocat-markdown-image'."
-  (if (plist-get plist :file)
-      octocat-image-file-function
-    (octocat-image-allowed-p (plist-get plist :url))))
+  (cond ((plist-get plist :file) octocat-image-file-function)
+        ((octocat-image-allowed-p (plist-get plist :url)))
+        ((plist-get plist :doc) octocat-image-proxy-function)))
 
 (defun octocat-image--redirect-allowed-p (url)
   "Return non-nil if an upload's URL may redirect to URL."
@@ -293,9 +305,22 @@ A failed fetch is retried."
           (funcall octocat-image-loading-function buffer t)))
       (unless (eq have 'pending)
         (puthash url 'pending octocat-image--cache)
-        (if file
-            (apply octocat-image-file-function (append file (list done)))
-          (octocat-image--fetch url octocat-image--max-hops done))))))
+        (cond (file (apply octocat-image-file-function (append file (list done))))
+              ((octocat-image-allowed-p url)
+               (octocat-image--fetch url octocat-image--max-hops done))
+              (t (octocat-image--fetch-proxied url (plist-get plist :doc) done)))))))
+
+(defun octocat-image--fetch-proxied (url doc callback)
+  "Fetch image URL of file DOC, (REPO REF PATH), through GitHub's proxy.
+Call CALLBACK with its bytes, or nil.  The proxy does not redirect."
+  (apply octocat-image-proxy-function
+         (append doc
+                 (list url
+                       (lambda (proxied)
+                         (if (and proxied (equal (octocat-image--https-host proxied)
+                                                 octocat-image--proxy-host))
+                             (octocat-image--fetch proxied 0 callback)
+                           (funcall callback nil)))))))
 
 (defun octocat-image-show (&optional event)
   "Fetch and show the image whose link is at point (or at EVENT)."

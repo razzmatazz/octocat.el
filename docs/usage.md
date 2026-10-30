@@ -375,15 +375,20 @@ caption, and when the window is too narrow for them they are stacked
 one under another instead.  Images within text or among a table's
 text, and every image in a terminal, are plain links to the browser.
 
-Only images uploaded to GitHub can be fetched: those on
-`user-images.githubusercontent.com` (uploads before 2023),
-`private-user-images.githubusercontent.com` and
+In a PR, issue or comment, only images uploaded to GitHub can be
+fetched: those on `user-images.githubusercontent.com` (uploads before
+2023), `private-user-images.githubusercontent.com` and
 `github.com/user-attachments/assets/` (uploads since); other images'
 links open the browser.  Any other URL would tell whoever wrote it who
 reads the page, and when.  Each redirect is checked too, so a fetch
 cannot be bounced elsewhere.  Uploads to private repositories need a
 GitHub web session, which octocat does not have, so they cannot be
 fetched.
+
+A README or other repository file can show images from any site, such
+as logos and badges: they are fetched through GitHub's image proxy,
+`camo.githubusercontent.com`, as on GitHub, so the site sees GitHub,
+not you.
 
 ## Keys in more depth
 

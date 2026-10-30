@@ -148,6 +148,54 @@
                           (get-text-property pos 'octocat-markdown-url))
                          '(blob "o/r" "main" "docs" "a.png"))))))))
 
+(ert-deftest octocat-image-test-proxied ()
+  "A file's image of another site is fetched through GitHub's proxy; a comment's is not."
+  (let* ((asked nil)
+         (fetched nil)
+         (camo "https://camo.githubusercontent.com/abc/def")
+         (octocat-image--cache (make-hash-table :test #'equal))
+         (octocat-image--waiting (make-hash-table :test #'equal))
+         (octocat-image-proxy-function
+          (lambda (repo ref path url cb) (push (list repo ref path url) asked) (funcall cb camo)))
+         (md "![logo](https://example.com/logo.png)"))
+    (cl-letf (((symbol-function 'display-images-p) #'always)
+              ((symbol-function 'image-type-from-data) (lambda (_) 'png))
+              ((symbol-function 'image-type-available-p) #'always)
+              ((symbol-function 'octocat-image--image) (lambda (data _plist) (list 'img data)))
+              ((symbol-function 'octocat-image--fetch)
+               (lambda (u hops cb) (push (list u hops) fetched) (funcall cb "BYTES"))))
+      (with-temp-buffer
+        (insert (octocat--markdown-string md "" nil 80))
+        (octocat-image--fontify (point-min) (point-max))
+        (goto-char (point-min))
+        (search-forward "[image: logo]")
+        (should-not (eq (get-text-property (match-beginning 0) 'keymap) octocat-image-map)))
+      (with-temp-buffer
+        (let ((octocat-markdown-document '("o/r" "main" "README.md")))
+          (insert (octocat--markdown-string md "" nil 80 t)))
+        (octocat-image--fontify (point-min) (point-max))
+        (goto-char (point-min))
+        (search-forward "[image: logo]")
+        (should (eq (get-text-property (match-beginning 0) 'keymap) octocat-image-map))
+        (backward-char)
+        (octocat-image-show)
+        (octocat-image--fontify (point-min) (point-max))
+        (should (equal asked '(("o/r" "main" "README.md" "https://example.com/logo.png"))))
+        (should (equal fetched (list (list camo 0))))
+        (should (equal (get-text-property (match-beginning 0) 'display) '(img "BYTES")))))))
+
+(ert-deftest octocat-image-test-proxied-host ()
+  "Only a URL on GitHub's proxy is fetched for a file's image."
+  (let (result fetched)
+    (cl-letf (((symbol-function 'octocat-image--fetch)
+               (lambda (&rest _) (setq fetched t))))
+      (let ((octocat-image-proxy-function
+             (lambda (_repo _ref _path _url cb) (funcall cb "https://example.com/x.png"))))
+        (octocat-image--fetch-proxied "https://example.com/x.png" '("o/r" "main" "README.md")
+                                      (lambda (d) (setq result (list d)))))
+      (should (equal result '(nil)))
+      (should-not fetched))))
+
 (ert-deftest octocat-image-test-reset ()
   "A reset shows a shown image as its link again; asking again shows it from memory."
   (let* ((octocat-image--cache (make-hash-table :test #'equal))
