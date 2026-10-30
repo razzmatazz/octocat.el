@@ -392,6 +392,24 @@ TITLE, AUTHOR and AGO are its own; FIELDS, a plist, override the rest."
 
 ;;;; Pull request #128
 
+(defconst octocat-screenshots--pr-128-commits
+  (let ((h octocat-screenshots--h) (d octocat-screenshots--d) (m octocat-screenshots--m))
+    `((,(octocat-screenshots--sha "pr-128-1") "Cache parsed templates by path" ,(* 2 d))
+      (,(octocat-screenshots--sha "pr-128-2") "Key cached templates by modification time too"
+       ,(- (* 2 d) (* 35 m)))
+      (,(octocat-screenshots--sha "pr-128-3") "Drop a cached template when its file is removed"
+       ,(- (* 2 d) h))
+      (,(octocat-screenshots--sha "pr-128-4") "Share the cache between build workers"
+       ,(- (* 2 d) (* 2 h)))
+      (,(octocat-screenshots--sha "pr-128-5") "Bench template parsing on the docs site"
+       ,(- (* 2 d) (* 3 h)))
+      (,(octocat-screenshots--sha "pr-128-6") "Note the template cache in the changelog"
+       ,(- (* 2 d) (* 3 h) (* 20 m)))
+      (,octocat-screenshots--pr-head "Invalidate a template when one it includes changes"
+       ,(+ d h))))
+  "The commits of pull request #128, oldest first: (SHA HEADLINE AGO).
+A run of them in a row, to show the timeline folding it.")
+
 (defconst octocat-screenshots--pr-128
   (let ((h octocat-screenshots--h) (d octocat-screenshots--d) (m octocat-screenshots--m))
     `(:number 128 :title "Cache parsed templates between builds"
@@ -426,12 +444,13 @@ Closes #97"
       :milestone (:number 4 :title "0.10" :description "" :dueOn :null)
       :closingIssuesReferences [(:number 97 :url "https://github.com/acme/rocket/issues/97"
                                  :repository (:name "rocket" :owner (:login "acme")))]
-      :commits [(:oid ,(octocat-screenshots--sha "pr-128-1") :messageHeadline "Cache parsed templates by path"
-                 :messageBody "" :authoredDate ,(octocat-screenshots--ago (* 2 d)) :committedDate ,(octocat-screenshots--ago (* 2 d))
-                 :authors [(:login "srivera" :name "Sam Rivera" :email "srivera@example.com" :id "U_1")])
-                (:oid ,octocat-screenshots--pr-head :messageHeadline "Invalidate a template when one it includes changes"
-                 :messageBody "" :authoredDate ,(octocat-screenshots--ago (+ d h)) :committedDate ,(octocat-screenshots--ago (+ d h))
-                 :authors [(:login "srivera" :name "Sam Rivera" :email "srivera@example.com" :id "U_1")])]
+      :commits [,@(mapcar (pcase-lambda (`(,sha ,headline ,ago))
+                             `(:oid ,sha :messageHeadline ,headline :messageBody ""
+                               :authoredDate ,(octocat-screenshots--ago ago)
+                               :committedDate ,(octocat-screenshots--ago ago)
+                               :authors [(:login "srivera" :name "Sam Rivera"
+                                          :email "srivera@example.com" :id "U_1")]))
+                           octocat-screenshots--pr-128-commits)]
       :statusCheckRollup
       [,@(mapcar (pcase-lambda (`(,name ,minutes))
                    `(:__typename "CheckRun" :name ,name :workflowName "CI" :status "COMPLETED"
@@ -1045,13 +1064,11 @@ FIELDS, a plist, override the rest."
          :body "Released in 0.10: the docs site builds in 2s now."
          :reactions (:total_count 2 :+1 0 :-1 0 :laugh 0 :hooray 2 :confused 0 :heart 0 :rocket 0 :eyes 0))])
       ("compare" ("compare/main...template-cache")
-       (:status "ahead" :ahead_by 2 :behind_by 0 :total_commits 2
-        :commits [,(octocat-screenshots--commit-rest-short
-                    (octocat-screenshots--sha "pr-128-1") "Cache parsed templates by path"
-                    "srivera" "Sam Rivera" (* 2 octocat-screenshots--d))
-                  ,(octocat-screenshots--commit-rest-short
-                    octocat-screenshots--pr-head "Invalidate a template when one it includes changes"
-                    "srivera" "Sam Rivera" (+ octocat-screenshots--d octocat-screenshots--h))]
+       (:status "ahead" :ahead_by 7 :behind_by 0 :total_commits 7
+        :commits [,@(mapcar (pcase-lambda (`(,sha ,headline ,ago))
+                              (octocat-screenshots--commit-rest-short
+                               sha headline "srivera" "Sam Rivera" ago))
+                            octocat-screenshots--pr-128-commits)]
         :files ,octocat-screenshots--pr-128-files))
       ("commit-branch" () (:data (:repository (:defaultBranchRef (:name "main" :compare (:status "BEHIND"))))))
 

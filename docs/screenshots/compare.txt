@@ -1,7 +1,12 @@
-acme/rocket  main...template-cache · 2 commits · 3 files changed
+acme/rocket  main...template-cache · 7 commits · 3 files changed
 
-Commits (2)
+Commits (7)
 Cache parsed templates by path                      @srivera  2 days ago  dc0c893
+Key cached templates by modification time too       @srivera  1 day ago   7a139e8
+Drop a cached template when its file is removed     @srivera  1 day ago   074192a
+Share the cache between build workers               @srivera  1 day ago   c37f1f3
+Bench template parsing on the docs site             @srivera  1 day ago   2779955
+Note the template cache in the changelog            @srivera  1 day ago   d83176c
 Invalidate a template when one it includes changes  @srivera  1 day ago   8ee9a2c
 
 Files (3)  [Expand all]

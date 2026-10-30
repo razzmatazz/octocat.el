@@ -214,6 +214,48 @@
                  (list (list :time "2026-01-01T10:00:00Z" :kind 'commit :actor "" :text "c")))))
     (should (equal (mapcar (lambda (i) (plist-get i :kind)) items) '(post commit)))))
 
+;; A run of N single lines, the Nth at minute N; KIND is `commit' or `event'.
+(defun octocat-timeline-tests--lines (n kind)
+  (mapcar (lambda (i)
+            (list :time (format "2026-01-01T10:%02d:00Z" i) :kind kind
+                  :actor "@ann" :text (format "line %d" i)))
+          (number-sequence 1 n)))
+
+(ert-deftest octocat-timeline-test-groups-long-runs ()
+  "Only a run that would hide two lines or more is grouped."
+  (let ((post (list :kind 'post :time "2026-01-01T09:00:00Z")))
+    (should (equal (octocat-timeline--group-lines
+                    (cons post (octocat-timeline-tests--lines 4 'commit)) 2)
+                   (cons post (octocat-timeline-tests--lines 4 'commit))))
+    (let ((groups (octocat-timeline--group-lines
+                   (cons post (octocat-timeline-tests--lines 5 'event)) 2)))
+      (should (eq (car groups) post))
+      (should (eq (car (nth 1 groups)) 'lines))
+      (should (= (length (cdr (nth 1 groups))) 5)))
+    (should (equal (octocat-timeline--group-lines
+                    (octocat-timeline-tests--lines 9 'commit) nil)
+                   (octocat-timeline-tests--lines 9 'commit)))))
+
+(vui-defcomponent octocat-timeline-tests--entries (items)
+  :render (apply #'vui-vstack (octocat-timeline-entries items nil 80)))
+
+(ert-deftest octocat-timeline-test-folds-commit-run ()
+  "A long run of commits shows its first few and its last; RET shows the rest."
+  (let ((vui-render-delay nil)
+        (octocat-timeline-lines-shown 2))
+    (unwind-protect
+        (progn
+          (vui-mount (vui-component 'octocat-timeline-tests--entries
+                       :items (octocat-timeline-tests--lines 7 'commit))
+                     "*octocat-timeline-test*")
+          (with-current-buffer "*octocat-timeline-test*"
+            (let ((text (buffer-string)))
+              (should (string-search "line 2" text))
+              (should-not (string-search "line 3" text))
+              (should (string-search "4 more commits" text))
+              (should (string-search "line 7" text)))))
+      (kill-buffer "*octocat-timeline-test*"))))
+
 (ert-deftest octocat-timeline-test-review-events ()
   "Review requests name a user or a team."
   (let ((text (lambda (json) (octocat-timeline--event-text (json-parse-string json) nil))))

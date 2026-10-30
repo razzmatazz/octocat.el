@@ -500,36 +500,98 @@ RAW and WIDTH are as for `octocat-timeline--entry-string'."
      octocat-timeline--body-prefix
      (and visit (lambda (text) (octocat-vui-row text visit (plist-get item :help)))))))
 
+(defcustom octocat-timeline-lines-shown 3
+  "Single lines shown of a long run of them before the rest folds away.
+Such as a PR's commits in a row, or a string of label changes and
+renames: entries of one line each.  The run's last one, the newest,
+always shows too; the ones between expand on RET.  Nil never folds."
+  :type '(choice (const :tag "Never fold" nil) integer)
+  :group 'octocat)
+
+(defun octocat-timeline--group-lines (items limit)
+  "Return ITEMS with each long run of single lines in a row as one element.
+That element is (lines . RUN), RUN being commits and events.  A run is
+long when showing its first LIMIT items and its last one would hide at
+least two; shorter runs, and every other item, stay as they are.  Nil
+LIMIT groups nothing."
+  (let (result run)
+    (cl-flet ((flush ()
+                (if (and limit (> (length run) (+ limit 2)))
+                    (push (cons 'lines (reverse run)) result)
+                  (setq result (append run result)))
+                (setq run nil)))
+      (dolist (item items)
+        (if (memq (plist-get item :kind) '(event commit))
+            (push item run)
+          (flush)
+          (push item result)))
+      (flush))
+    (nreverse result)))
+
 (defun octocat-timeline-entries (items raw width)
   "Return the vnodes of timeline ITEMS, rail lines included.
 RAW and WIDTH are as for `octocat-timeline--entry-string'; the page reads
 WIDTH from its window, so building the entries touches no window state.
 An item with an :on-visit function is a RET-able row.  Long bodies and
 comments are folded (see `octocat-timeline-body-lines'), except in the
-last item."
+last item, and so are long runs of single lines (see
+`octocat-timeline-lines-shown')."
   (let ((index 0)
         (seen (make-hash-table :test #'equal))
+        (groups (octocat-timeline--group-lines items octocat-timeline-lines-shown))
         nodes)
-    (while items
-      (let* ((item (pop items))
-             ;; Keyed by what the item is, not where it stands: events and
-             ;; the cached timeline arrive later and slot in between
-             ;; existing entries, and positional matching would hand an
-             ;; entry the fold state and buffer region of its neighbour.
-             (base (format "%s|%s|%s|%s" (plist-get item :kind)
-                           (plist-get item :time) (plist-get item :actor)
-                           (or (plist-get item :verb) (plist-get item :text)
-                               (plist-get item :state) "")))
-             (key  (intern (format "%s#%d" base
-                                   (puthash base (1+ (gethash base seen 0)) seen)))))
-        (when nodes
-          (push (vui-text octocat-timeline--rail :key (intern (format "rail-%s" key)))
-                nodes))
-        (push (vui-component 'octocat-timeline--entry
-                :key key
-                :item item :raw raw :width width :index (cl-incf index)
-                :limit (and items (octocat-timeline--line-limit item)))
-              nodes)))
+    (cl-labels ((key-of (item)
+                  ;; Keyed by what the item is, not where it stands: events
+                  ;; and the cached timeline arrive later and slot in
+                  ;; between existing entries, and positional matching
+                  ;; would hand an entry the fold state and buffer region
+                  ;; of its neighbour.
+                  (let ((base (format "%s|%s|%s|%s" (plist-get item :kind)
+                                      (plist-get item :time) (plist-get item :actor)
+                                      (or (plist-get item :verb) (plist-get item :text)
+                                          (plist-get item :state) ""))))
+                    (intern (format "%s#%d" base
+                                    (puthash base (1+ (gethash base seen 0)) seen)))))
+                (rail (key)
+                  (vui-text octocat-timeline--rail :key (intern (format "rail-%s" key))))
+                (entry (item key whole)
+                  (vui-component 'octocat-timeline--entry
+                    :key key
+                    :item item :raw raw :width width :index (cl-incf index)
+                    :limit (and (not whole) (octocat-timeline--line-limit item))))
+                (add (key node)
+                  (when nodes (push (rail key) nodes))
+                  (push node nodes)))
+      (while groups
+        (let ((group (pop groups)))
+          (if (not (eq (car group) 'lines))
+              (let ((key (key-of group)))
+                (add key (entry group key (null groups))))
+            ;; All but the last line, the first few showing; each is
+            ;; built once here, not on every frame of an unfolding.
+            (let* ((folded (mapcar (lambda (item)
+                                     (let ((key (key-of item)))
+                                       (cons key (entry item key t))))
+                                   (butlast (cdr group))))
+                   (newest (car (last group)))
+                   (key    (key-of newest)))
+              (add (caar folded)
+                   (vui-component 'octocat-vui-fold-rest
+                     :key (intern (format "lines-%s" (caar folded)))
+                     :total (length folded)
+                     :limit octocat-timeline-lines-shown
+                     :noun (if (seq-every-p (lambda (item) (eq (plist-get item :kind) 'commit))
+                                            (nthcdr octocat-timeline-lines-shown
+                                                    (butlast (cdr group))))
+                               "commits"
+                             "events")
+                     :prefix octocat-timeline--body-prefix
+                     :render (lambda (shown)
+                               (apply #'vui-vstack
+                                      (cdr (mapcan (lambda (pair)
+                                                     (list (rail (car pair)) (cdr pair)))
+                                                   (seq-take folded shown)))))))
+              (add key (entry newest key (null groups))))))))
     (nreverse nodes)))
 
 (defun octocat-timeline-buttons (buttons &optional joined)

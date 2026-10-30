@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Long runs of commits or events in a timeline fold behind `▸ N more`; RET expands them
 * Downloading a run's artifact uploaded as a lone file, not a zip, no longer fails
 * RET on a run's or job's artifact previews it, asking first if binary; `d` downloads it
 * A run's annotations stay on screen while its jobs change, and refresh as they finish
