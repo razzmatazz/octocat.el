@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* RET on a run's or job's artifact previews it in Emacs; `d` downloads it to a directory
 * A run's annotations stay on screen while its jobs change, and refresh as they finish
 * Run and job annotations wrap at the page width and keep their jobs' order
 * Rendered markdown always leaves a blank line after a code block

@@ -474,6 +474,43 @@ groups: BULK and ON-BULK are as for `octocat-vui-expand-all-button'."
 ;;
 ;; Shared with the run page.
 
+(defcustom octocat-artifact-preview-max-size (* 20 1024 1024)
+  "Largest artifact, in bytes, that RET previews without asking first.
+A preview downloads the whole artifact."
+  :type 'integer
+  :group 'octocat)
+
+(defvar octocat--artifact-preview-dir nil
+  "The directory this session unzips previewed artifacts into, or nil.
+It is deleted when Emacs exits, and each artifact's directory in it once
+no buffer shows it, see `octocat--artifact-cleanup'.")
+
+(defun octocat--artifact-cleanup ()
+  "Delete the previewed artifact of the current buffer, unless another is in it.
+For `kill-buffer-hook'."
+  (let ((root (and octocat--artifact-preview-dir
+                   (file-name-as-directory octocat--artifact-preview-dir)))
+        (dir  (expand-file-name default-directory)))
+    (when (and root (string-prefix-p root dir) (not (equal root dir)))
+      (let* ((art   (concat root (car (split-string (substring dir (length root)) "/"))
+                            "/"))
+             (shown (lambda (b)
+                      (and (not (eq b (current-buffer)))
+                           (string-prefix-p art (expand-file-name
+                                                 (buffer-local-value 'default-directory b)))))))
+        (unless (seq-some shown (buffer-list))
+          (delete-directory art t))))))
+
+(defun octocat--fetch-artifact (repo run-id name dir callback)
+  "Download artifact NAME of RUN-ID in REPO, unzipped, into DIR.
+Calls CALLBACK with nil, or with (error . MESSAGE)."
+  (octocat--run-gh
+   "artifact-download"
+   (list "run" "download" (number-to-string run-id)
+         "--repo" repo "--name" name "--dir" (expand-file-name dir))
+   #'ignore
+   callback))
+
 (defun octocat--do-download-artifact (repo run-id art)
   "Download artifact ART (a hash-table) from RUN-ID in REPO.
 Prompts for a destination directory and runs `gh run download' asynchronously."
@@ -482,37 +519,89 @@ Prompts for a destination directory and runs `gh run download' asynchronously."
                 (format "Download \"%s\" to: " name)
                 default-directory)))
     (message "Octocat: Downloading \"%s\"…" name)
-    (octocat--run-gh
-     "artifact-download"
-     (list "run" "download"
-           (number-to-string run-id)
-           "--repo" repo
-           "--name" name
-           "--dir"  (expand-file-name dir))
-     #'identity
+    (octocat--fetch-artifact
+     repo run-id name dir
      (lambda (result)
        (if (eq (car-safe result) 'error)
            (message "Octocat: Download failed: %s" (cdr result))
          (message "Octocat: Downloaded \"%s\" to %s" name dir))))))
 
+(defun octocat--artifact-preview-buffer (dir)
+  "Return a buffer showing the files of DIR, an unzipped artifact.
+A lone file is visited; several are listed in Dired."
+  (let ((files (directory-files-recursively dir "")))
+    (if (= (length files) 1)
+        (find-file-noselect (car files))
+      (dired-noselect dir))))
+
+(defun octocat--do-preview-artifact (repo run-id art)
+  "Show artifact ART (a hash-table) of RUN-ID in REPO, unzipped.
+It is downloaded again only once no buffer shows it, asking first when
+it is larger than `octocat-artifact-preview-max-size'."
+  (let* ((name (or (gethash "name" art) ""))
+         (size (gethash "size_in_bytes" art))
+         (buf  (current-buffer)))
+    (unless octocat--artifact-preview-dir
+      ;; The true name, as a visited file's buffer may show it.
+      (setq octocat--artifact-preview-dir
+            (file-truename (make-temp-file "octocat-artifacts-" t)))
+      (add-hook 'kill-buffer-hook #'octocat--artifact-cleanup)
+      (add-hook 'kill-emacs-hook
+                (lambda ()
+                  (when (file-directory-p octocat--artifact-preview-dir)
+                    (delete-directory octocat--artifact-preview-dir t)))))
+    (let ((dir (expand-file-name (format "%s" (gethash "id" art))
+                                 octocat--artifact-preview-dir)))
+      (cond
+       ((and (file-directory-p dir) (directory-files-recursively dir ""))
+        (octocat-display-buffer (octocat--artifact-preview-buffer dir)))
+       ((and size (> size octocat-artifact-preview-max-size)
+             (not (y-or-n-p (format "Download \"%s\" (%s) to preview it? "
+                                    name (octocat--format-artifact-size size)))))
+        (message "Octocat: Not previewed"))
+       (t
+        (message "Octocat: Downloading \"%s\"…" name)
+        (octocat--fetch-artifact
+         repo run-id name dir
+         (lambda (result)
+           (cond
+            ((eq (car-safe result) 'error)
+             (message "Octocat: Download failed: %s" (cdr result)))
+            ((octocat--still-selected-p buf)
+             (message nil)
+             (with-current-buffer buf
+               (octocat-display-buffer (octocat--artifact-preview-buffer dir))))
+            (t (message "Octocat: \"%s\" is in %s" name dir))))))))))
+
+(defun octocat--artifact-row (repo run-id art)
+  "Return the row of artifact ART of run RUN-ID of REPO.
+RET previews it; \\`d' downloads it to a directory."
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "RET")
+                (lambda () (interactive) (octocat--do-preview-artifact repo run-id art)))
+    (define-key map (kbd "d")
+                (lambda () (interactive) (octocat--do-download-artifact repo run-id art)))
+    (vui-region :keymap map
+                (octocat-vui-row--text
+                 (concat "  \U0001f4e6 "
+                         (propertize (or (gethash "name" art) "")
+                                     'face 'octocat-run-job-name)
+                         "  "
+                         (propertize (octocat--format-artifact-size
+                                      (gethash "size_in_bytes" art))
+                                     'face 'octocat-dimmed))
+                 "RET: preview artifact, d: download it"
+                 nil))))
+
 (defun octocat-job-artifacts (repo run-id artifacts)
   "Return the vnodes of the Artifacts section, or nil when there are none.
-ARTIFACTS is a vector from the Actions API of run RUN-ID of REPO; RET on
-one downloads it."
+ARTIFACTS is a vector from the Actions API of run RUN-ID of REPO, each a
+row of `octocat--artifact-row'."
   (unless (zerop (length artifacts))
     (cons (vui-text (propertize (format "Artifacts (%d)" (length artifacts))
                                 'face 'octocat-section-heading))
           (cl-loop for art across artifacts
-                   collect (octocat-vui-row
-                            (concat "  \U0001f4e6 "
-                                    (propertize (or (gethash "name" art) "")
-                                                'face 'octocat-run-job-name)
-                                    "  "
-                                    (propertize (octocat--format-artifact-size
-                                                 (gethash "size_in_bytes" art))
-                                                'face 'octocat-dimmed))
-                            (lambda () (octocat--do-download-artifact repo run-id art))
-                            "RET: download artifact")))))
+                   collect (octocat--artifact-row repo run-id art)))))
 
 (defun octocat-job-annotations (entries width)
   "Return the vnodes of the Annotations section, or nil when there are none.

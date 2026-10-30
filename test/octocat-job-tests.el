@@ -178,5 +178,25 @@ byte-order mark, and steps yet to start that get none of it."
       (dolist (cb calls) (funcall cb [])))
     (should (equal (mapcar #'car result) '(1 2)))))
 
+(ert-deftest octocat-job-test-artifact-cleanup ()
+  "A previewed artifact is deleted once the last buffer showing it is killed."
+  (let* ((octocat--artifact-preview-dir (file-truename (make-temp-file "octocat-test-" t)))
+         (art (expand-file-name "7" octocat--artifact-preview-dir))
+         (sub (expand-file-name "logs" art)))
+    (unwind-protect
+        (progn
+          (make-directory sub t)
+          (let ((a (generate-new-buffer "a")) (b (generate-new-buffer "b")))
+            (with-current-buffer a (setq default-directory (file-name-as-directory art)))
+            (with-current-buffer b (setq default-directory (file-name-as-directory sub)))
+            (with-current-buffer a (octocat--artifact-cleanup))
+            (kill-buffer a)
+            (should (file-directory-p art))
+            (with-current-buffer b (octocat--artifact-cleanup))
+            (kill-buffer b)
+            (should-not (file-directory-p art))
+            (should (file-directory-p octocat--artifact-preview-dir))))
+      (delete-directory octocat--artifact-preview-dir t))))
+
 (provide 'octocat-job-tests)
 ;;; octocat-job-tests.el ends here
