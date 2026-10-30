@@ -223,7 +223,9 @@ vector: a shape the store can hold as JSON."
 
 (octocat-sync-define-resource run (repo run-id)
   :entity (format "run:%s/%s" (downcase repo) run-id)
-  :invalidates (lambda () `((runs ,repo _ _) (workflow ,repo _ _)))
+  ;; Annotations come as the run's jobs finish.
+  :invalidates (lambda () `((runs ,repo _ _) (workflow ,repo _ _)
+                            (run-annotations ,repo ,run-id)))
   :poll (lambda (data) (octocat-sync-poll-status (octocat--get data "item" "status")))
   :fetch (lambda (done)
            (octocat--fetch-run
@@ -234,18 +236,18 @@ vector: a shape the store can hold as JSON."
                               (octocat-sync-detail r '("jobs")
                                                    (lambda (f) (octocat-sync-run repo f)))))))))
 
-(octocat-sync-define-resource run-annotations (repo _run-id jobs)
-  ;; JOBS, the (ID . NAME) of each job, are only known once the run is.
+(octocat-sync-define-resource run-annotations (repo run-id)
+  ;; The run's jobs are fetched here, not taken from the page: keyed by
+  ;; them, the annotations would vanish whenever the jobs changed.
   :fetch (lambda (done)
-           (octocat--fetch-run-annotations
-            repo
-            (vconcat (mapcar (pcase-lambda (`(,id . ,name))
-                               (let ((job (make-hash-table :test #'equal)))
-                                 (puthash "databaseId" id job)
-                                 (puthash "name" name job)
-                                 job))
-                             jobs))
-            (lambda (r) (funcall done (octocat-run--annotation-entries r))))))
+           (octocat--fetch-run
+            repo run-id
+            (lambda (run)
+              (if (eq (car-safe run) 'error)
+                  (funcall done run)
+                (octocat--fetch-run-annotations
+                 repo (gethash "jobs" run)
+                 (lambda (r) (funcall done (octocat-run--annotation-entries r)))))))))
 
 (octocat-sync-define-resource run-artifacts (repo run-id)
   :fetch (lambda (done) (octocat--fetch-run-artifacts repo run-id done)))
@@ -260,12 +262,7 @@ data replaces it."
          (run   (octocat-vui-use-detail (list 'run repo run-id) tick))
          (data  (or (plist-get run :data) (plist-get run :partial)))
          (jobs  (and data (octocat-run--jobs data)))
-         (anns  (octocat-vui-use-resource
-                 (list 'run-annotations repo run-id
-                       (mapcar (lambda (j)
-                                 (cons (gethash "databaseId" j) (or (gethash "name" j) "")))
-                               jobs))
-                 tick))
+         (anns  (octocat-vui-use-resource (list 'run-annotations repo run-id) tick))
          (arts  (octocat-vui-use-resource (list 'run-artifacts repo run-id) tick))
          (annotations (cl-loop for entry across (or (plist-get anns :data) [])
                                append (cl-loop for ann across (gethash "annotations" entry)
