@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* On Emacs 31, markdown with non-ASCII in an HTML tag's attributes no longer fails to render
 * Lists and Actions pages head with a short `owner/repo › Actions › CI › #42` path
 * Run a workflow by hand from its page: [Run workflow ▾] asks its inputs, opens the run
 * The Assignee filter of PR and issue lists offers (none), for items assigned to nobody

@@ -780,13 +780,17 @@ lines.  Tags in code spans are skipped."
   "Return TEXT with the attributes of its HTML tags blanked out.
 Markdown rules match against it, so that a `*', `~' or `(' in an href
 does not start or end emphasis or a link: tags bind tighter."
-  (let ((pos 0) (masked text))
+  ;; Not `aset': Emacs 31 refuses to put an ASCII char over a non-ASCII
+  ;; one in a multibyte string.
+  (let ((pos 0) (parts nil))
     (while (string-match "</?[a-zA-Z][a-zA-Z0-9-]*\\([ \t/][^<>\n]*\\)>" text pos)
-      (when (eq masked text) (setq masked (copy-sequence text)))
-      (cl-loop for i from (match-beginning 1) below (match-end 1)
-               do (aset masked i ?\s))
+      (push (substring text pos (match-beginning 1)) parts)
+      (push (make-string (- (match-end 1) (match-beginning 1)) ?\s) parts)
+      (push (substring text (match-end 1) (match-end 0)) parts)
       (setq pos (match-end 0)))
-    masked))
+    (if parts
+        (apply #'concat (nreverse (cons (substring text pos) parts)))
+      text)))
 
 (defun octocat-markdown--inline (text)
   "Return TEXT (a paragraph's lines) with inline markdown rendered.

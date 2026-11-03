@@ -212,6 +212,15 @@ the window's point; mid-render that scrambled the page."
       (should (string-prefix-p "https://x.org/"
                                (octocat-markdown-tests--prop out "view" 'octocat-markdown-url))))))
 
+(ert-deftest octocat-markdown-test-non-ascii-attribute ()
+  "A tag whose attributes are not ASCII renders, its link intact."
+  (let ((out (octocat-markdown-render
+              "*<a href=\"https://x.org/日本\" title=\"日本語\">ビュー</a>*" "")))
+    (should (equal (substring-no-properties out) "ビュー\n"))
+    (should (memq 'italic (ensure-list (octocat-markdown-tests--prop out "ビュー" 'face))))
+    (should (equal (octocat-markdown-tests--prop out "ビュー" 'octocat-markdown-url)
+                   "https://x.org/日本"))))
+
 (ert-deftest octocat-markdown-test-inline-html ()
   "Inline HTML formatting tags become faces and <a href> a link."
   (let ((out (octocat-markdown-render
