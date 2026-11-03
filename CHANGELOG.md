@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* PR and issue rows read as GitHub's: comments, then "assigned to @x", at the right
+* Compact PR and issue lists leave out the author, to give the title more room
 * `C-c C-o` and the copied URL of a PR or issue list keep its filter on GitHub
 * The compare page shows a full SHA as its short form, so its header fits on one line
 * A PR's Files page no longer fails with "args out of range" when you have no pending review

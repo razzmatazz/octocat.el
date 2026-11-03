@@ -1,0 +1,10 @@
+acme/rocket › Issues  5 open · 61 closed
+
+Filter  is:open
+        [State]  [Author]  [Assignee]  [Label]
+
+  #134  Build fails when a page's front matter has a BOM   bug   needs triage
+  #129  Live reload doesn't pick up changes to templates   bug   #130  ✉ 3  assigned to @jlindqvist
+  #97  Builds of large sites are slow: templates a…   performance   #128  ✉ 5  assigned to @srivera
+  #88  Support a dark variant in the default theme   enhancement   good first issue             ✉ 1
+  #74  Explain how to deploy to GitHub Pages   docs

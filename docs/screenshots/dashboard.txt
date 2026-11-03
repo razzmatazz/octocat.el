@@ -1,18 +1,18 @@
 GitHub Dashboard
 
 Pull Requests
-open    Incremental builds: skip pages whose inputs are unchanged   performance   enhancement
-        acme/rocket#133 by @srivera · 3 hours ago · Review required · ● 2/4 · ✉ 4
-open    Cache parsed templates between builds   performance
-        acme/rocket#128 by @srivera · 2 days ago · Approved · ✓ 4/4 · ✉ 3
-open    Fix: `rocket serve` drops changes saved twice in a second   bug
-        acme/rocket#130 by @jlindqvist · 1 day ago · Changes requested · ✗ 3/4 · ✉ 6
+open    Incremental builds: skip…  ● 2/4   performance   enhancement   ✉ 4  assigned to @srivera +1
+        acme/rocket#133 opened 3 hours ago by @srivera · Review required
+open    Cache parsed templates between builds  ✓ 4/4   performance        ✉ 3  assigned to @srivera
+        acme/rocket#128 opened 2 days ago by @srivera · Approved
+open    Fix: `rocket serve` drops changes saved twice …  ✗ 3/4   bug   ✉ 6  assigned to @jlindqvist
+        acme/rocket#130 opened 1 day ago by @jlindqvist · Changes requested
 
 Issues
-open    Live reload doesn't pick up changes to templates   bug
-        acme/rocket#129 by @jlindqvist · 1 day ago · #130 · ✉ 3
-open    Builds of large sites are slow: templates are parsed for every page   performance
-        acme/rocket#97 by @pnair · 1 week ago · #128 · ✉ 5
+open    Live reload doesn't pick up changes to templates   bug   #130  ✉ 3  assigned to @jlindqvist
+        acme/rocket#129 opened 1 day ago by @jlindqvist
+open    Builds of large sites are slow: templates …   performance   #128  ✉ 5  assigned to @srivera
+        acme/rocket#97 opened 1 week ago by @pnair
 
 Recent Repositories
   acme/rocket                          Rust            2 hours ago   A small, fast static site generator

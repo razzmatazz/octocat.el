@@ -320,7 +320,7 @@ TITLE, AUTHOR and AGO are its own; FIELDS, a plist, override the rest."
   (let ((node (copy-tree `(:number ,number :title ,title :state "OPEN" :isDraft :false
                 :reviewDecision "REVIEW_REQUIRED" :createdAt ,(octocat-screenshots--ago ago)
                 :author (:login ,author) :labels (:nodes []) :comments (:totalCount 0)
-                :commits ,(octocat-screenshots--rollup "SUCCESS" 4)))))
+                :assignees (:nodes []) :commits ,(octocat-screenshots--rollup "SUCCESS" 4)))))
     (while fields
       (setq node (plist-put node (pop fields) (pop fields))))
     node))
@@ -331,6 +331,7 @@ TITLE, AUTHOR and AGO are its own; FIELDS, a plist, override the rest."
      (octocat-screenshots--pr-node 133 "Incremental builds: skip pages whose inputs are unchanged" "srivera" (* 3 h)
                                    :labels (octocat-screenshots--labels "performance" "enhancement")
                                    :comments '(:totalCount 4)
+                                   :assignees '(:nodes [(:login "srivera") (:login "mchen")])
                                    :commits (octocat-screenshots--rollup "PENDING" 2 0 2))
      (octocat-screenshots--pr-node 132 "Add RSS and Atom feeds for each section" "pnair" (* 9 h)
                                    :reviewDecision "APPROVED" :comments '(:totalCount 2)
@@ -338,10 +339,12 @@ TITLE, AUTHOR and AGO are its own; FIELDS, a plist, override the rest."
      (octocat-screenshots--pr-node 130 "Fix: `rocket serve` drops changes saved twice in a second" "jlindqvist" (* 1 d)
                                    :labels (octocat-screenshots--labels "bug")
                                    :commits (octocat-screenshots--rollup "FAILURE" 3 1)
-                                   :reviewDecision "CHANGES_REQUESTED" :comments '(:totalCount 6))
+                                   :reviewDecision "CHANGES_REQUESTED" :comments '(:totalCount 6)
+                                   :assignees '(:nodes [(:login "jlindqvist")]))
      (octocat-screenshots--pr-node 128 "Cache parsed templates between builds" "srivera" (* 2 d)
                                    :labels (octocat-screenshots--labels "performance")
-                                   :reviewDecision "APPROVED" :comments '(:totalCount 3))
+                                   :reviewDecision "APPROVED" :comments '(:totalCount 3)
+                                   :assignees '(:nodes [(:login "srivera")]))
      (octocat-screenshots--pr-node 125 "Docs: a guide to writing your first theme" "aokafor" (* 5 d)
                                    :isDraft t :reviewDecision :null
                                    :labels (octocat-screenshots--labels "docs"))
@@ -355,7 +358,7 @@ TITLE, AUTHOR and AGO are its own; FIELDS, a plist, override the rest."
 TITLE, AUTHOR and AGO are its own; FIELDS, a plist, override the rest."
   (let ((node (copy-tree `(:number ,number :title ,title :state "OPEN" :createdAt ,(octocat-screenshots--ago ago)
                 :author (:login ,author) :labels (:nodes []) :comments (:totalCount 0)
-                :closedByPullRequestsReferences (:nodes [])))))
+                :assignees (:nodes []) :closedByPullRequestsReferences (:nodes [])))))
     (while fields
       (setq node (plist-put node (pop fields) (pop fields))))
     node))
@@ -368,11 +371,13 @@ TITLE, AUTHOR and AGO are its own; FIELDS, a plist, override the rest."
      (octocat-screenshots--issue-node 129 "Live reload doesn't pick up changes to templates" "jlindqvist" (* 1 d)
                                       :labels (octocat-screenshots--labels "bug")
                                       :comments '(:totalCount 3)
+                                      :assignees '(:nodes [(:login "jlindqvist")])
                                       :closedByPullRequestsReferences
                                       '(:nodes [(:number 130 :repository (:name "rocket" :owner (:login "acme")))]))
      (octocat-screenshots--issue-node 97 "Builds of large sites are slow: templates are parsed for every page" "pnair" (* 9 d)
                                       :labels (octocat-screenshots--labels "performance")
                                       :comments '(:totalCount 5)
+                                      :assignees '(:nodes [(:login "srivera")])
                                       :closedByPullRequestsReferences
                                       '(:nodes [(:number 128 :repository (:name "rocket" :owner (:login "acme")))]))
      (octocat-screenshots--issue-node 88 "Support a dark variant in the default theme" "kwong" (* 20 d)

@@ -140,33 +140,52 @@
     (should (= (octocat-workflow-list--name-width (list (car wfs)) 200 6) 4))))
 
 (ert-deftest octocat-repo-test-item-lines ()
-  "Item lines put the labels on the title line and cut only given a width."
+  "Item lines read as GitHub's: the comments and assignees at the right edge."
   (let ((cells (list :title (make-string 60 ?t) :author "@a" :date "1d"
-                     :chips "bug" :branch "b" :number "#1")))
-    (pcase-let ((`(,top ,bottom) (octocat-repo-vui--item-lines "open" cells '(:review :branch))))
-      (should (string-suffix-p "  bug" top))
-      (should (string-match-p (make-string 60 ?t) top))
-      (should (string-suffix-p "#1 by @a · 1d · b" bottom)))
-    (dolist (line (octocat-repo-vui--item-lines "open" cells '(:branch) 40))
-      (should (<= (string-width line) 39)))))
+                     :chips "bug" :ci "✓ 1/1" :review "Approved" :number "#1"
+                     :assignees "@b +1" :comments "✉ 2")))
+    (pcase-let ((`(,top ,bottom) (octocat-repo-vui--item-lines "open" cells)))
+      (should (string-match-p (concat (make-string 60 ?t) "  ✓ 1/1  bug  ✉ 2  @b \\+1\\'") top))
+      (should (string-suffix-p "#1 opened 1d by @a · Approved" bottom)))
+    (pcase-let ((`(,top ,bottom) (octocat-repo-vui--item-lines "open" cells 60)))
+      (should (= (string-width top) 59))
+      (should (string-suffix-p "  bug  ✉ 2  @b +1" top))
+      (should (<= (string-width bottom) 59)))
+    ;; With nothing for the right edge, a short title isn't padded out.
+    (let ((short (list :title "t" :author "" :date "1d" :number "#1")))
+      (should (equal (car (octocat-repo-vui--item-lines "open" short 60)) "open  t")))))
+
+(ert-deftest octocat-repo-test-assignees ()
+  "The first assignee shows, and how many more."
+  (let ((item (make-hash-table :test #'equal))
+        (user (lambda (login) (let ((u (make-hash-table :test #'equal)))
+                                (puthash "login" login u) u))))
+    (should-not (octocat-repo-vui--assignees item))
+    (puthash "assignees" [] item)
+    (should-not (octocat-repo-vui--assignees item))
+    (puthash "assignees" (vector (funcall user "a")) item)
+    (should (equal (octocat-repo-vui--assignees item) "assigned to @a"))
+    (puthash "assignees" (vector (funcall user "a") (funcall user "b") (funcall user "c")) item)
+    (should (equal (octocat-repo-vui--assignees item) "assigned to @a +2"))))
 
 (ert-deftest octocat-repo-test-compact-line ()
-  "A compact line has the number, title, labels and author, without the age."
+  "A compact line has the number, title and labels, the assignees right."
   (let* ((cells (list :title (make-string 60 ?t) :author "@a" :date "1d"
-                      :chips "bug" :number "o/r#1"))
+                      :chips "bug" :number "o/r#1" :assignees "@b"))
          (line  (octocat-repo-vui--compact-line "open" "#1" cells)))
     (should (string-prefix-p "open  #1  t" line))
-    (should (string-suffix-p "  bug · @a" line))
+    (should (string-suffix-p "  bug  @b" line))
+    (should-not (string-search "@a" line))
     (should-not (string-search "o/r" line))
     (should-not (string-search "1d" line))
     (let ((cut (octocat-repo-vui--compact-line "open" "#1" cells 40)))
-      (should (<= (string-width cut) 39))
-      (should (string-suffix-p "  bug · @a" cut)))
-    ;; A short title leaves the author at the right edge all the same.
+      (should (= (string-width cut) 39))
+      (should (string-suffix-p "  bug  @b" cut)))
+    ;; A short title leaves the assignee at the right edge all the same.
     (let ((short (octocat-repo-vui--compact-line
                   "open" "#1" (plist-put (copy-sequence cells) :title "t") 40)))
       (should (= (string-width short) 39))
-      (should (string-suffix-p " · @a" short)))
+      (should (string-match-p "bug +@b\\'" short)))
     (should (string-prefix-p "#1  t" (octocat-repo-vui--compact-line nil "#1" cells)))))
 
 (ert-deftest octocat-repo-test-compact-width ()

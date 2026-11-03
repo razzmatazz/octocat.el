@@ -386,7 +386,7 @@ pages' two lines, cut to WIDTH; BG is as for `octocat--label-face'."
                   (octocat-repo-vui--state-label (gethash "state" item)
                                                  (gethash "isDraft" item))
                   (octocat-repo-vui--cells repo item bg)
-                  '(:review :ci :prs :comments) width)
+                  width)
                  "\n")
       'octocat-url (octocat--item-url (if pr 'pr 'issue) repo number item)
       'octocat-sync-prefetch `((,(if pr 'pr 'issue) ,repo ,number)

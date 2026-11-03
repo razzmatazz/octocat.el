@@ -174,6 +174,14 @@ Two issues marked with `m`: the Marked bar takes the filters' place.
 [As text](issue-list-marked.txt)
 <!-- /screenshot -->
 
+Compact (`C-c C-v`):
+
+<!-- screenshot: (issue-list "acme/rocket") :name "issue-list-compact" :press ((:key "C-c C-v")) -->
+![issue-list-compact](issue-list-compact.png)
+
+[As text](issue-list-compact.txt)
+<!-- /screenshot -->
+
 An issue, and the pull request that will close it:
 
 <!-- screenshot: (issue "acme/rocket" 97) -->

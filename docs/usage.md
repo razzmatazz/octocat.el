@@ -129,10 +129,13 @@ a file or directory.
 ## Pull request and issue lists (`M-x octocat-pr-list`, `M-x octocat-issue-list`)
 
 Each list shows a page of items, filtered by the query field above it,
-with a button to load the next page.  An item takes two lines: its
-state, title and labels, then its number, author, age, review, checks
-and comments.  `C-c C-v` switches the page to a compact view of one line
-per item — state, `#N`, title, labels and author — which fits more on
+with a button to load the next page.  An item takes two lines, laid
+out as on GitHub: its state, title, checks and labels, with the PRs
+that close an issue, the comment count and "assigned to" the first
+assignee (and how many more) at the right edge; then its number, when and by whom it
+was opened, and its review.  `C-c C-v` switches the page to a compact
+view of one line per item — state, `#N`, title and labels, with the
+same right edge — which fits more on
 screen, so it loads `octocat-list-compact-page-size` (30) items at a time
 against `octocat-list-page-size` (15) in the full view.  The choice is
 remembered per repository and page in `octocat-settings-file`, so it

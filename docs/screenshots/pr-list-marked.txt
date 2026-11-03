@@ -3,15 +3,15 @@ acme/rocket › Pull requests  6 open · 14 closed · 108 merged
 Marked  2 PRs  [Unmark all]
         [Label]  [Assign]  [Request review]
 
-  open    Incremental builds: skip pages whose inputs are unch…  ≡ 2/2   performance   enhancement
-          acme/rocket#133 by @srivera · 3 hours ago · Review required · ● 2/4 · ✉ 4
-✓ open    Add RSS and Atom feeds for each section   enhancement
-          acme/rocket#132 by @pnair · 9 hours ago · Approved · ✓ 4/4 · ✉ 2
-  open    Fix: `rocket serve` drops changes saved twice in a second  ≡ 1/2   bug
-          acme/rocket#130 by @jlindqvist · 1 day ago · Changes requested · ✗ 3/4 · ✉ 6
-✓ open    Cache parsed templates between builds   performance
-          acme/rocket#128 by @srivera · 2 days ago · Approved · ✓ 4/4 · ✉ 3
-  draft   Docs: a guide to writing your first theme   docs
-          acme/rocket#125 by @aokafor · 5 days ago · ✓ 4/4
-  open    Syntax-highlight code blocks at build time
-          acme/rocket#119 by @mchen · 1 week ago · Review required · ✓ 4/4 · ✉ 11
+  open    Incremental bui…  ≡ 2/2  ● 2/4   performance   enhancement   ✉ 4  assigned to @srivera +1
+          #133 opened 3 hours ago by @srivera · Review required
+✓ open    Add RSS and Atom feeds for each section  ✓ 4/4   enhancement                          ✉ 2
+          #132 opened 9 hours ago by @pnair · Approved
+  open    Fix: `rocket serve` drops changes sav…  ≡ 1/2  ✗ 3/4   bug   ✉ 6  assigned to @jlindqvist
+          #130 opened 1 day ago by @jlindqvist · Changes requested
+✓ open    Cache parsed templates between builds  ✓ 4/4   performance      ✉ 3  assigned to @srivera
+          #128 opened 2 days ago by @srivera · Approved
+  draft   Docs: a guide to writing your first theme  ✓ 4/4   docs
+          #125 opened 5 days ago by @aokafor
+  open    Syntax-highlight code blocks at build time  ✓ 4/4                                    ✉ 11
+          #119 opened 1 week ago by @mchen · Review required
