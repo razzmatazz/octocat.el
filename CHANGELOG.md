@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* The inputs of a workflow's Run workflow form can be typed in again; with Evil, RET edits one
 * PR and issue rows read as GitHub's: comments, then "assigned to @x", at the right
 * Compact PR and issue lists leave out the author, to give the title more room
 * `C-c C-o` and the copied URL of a PR or issue list keep its filter on GitHub

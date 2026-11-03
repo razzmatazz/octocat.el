@@ -597,7 +597,8 @@ the fetched one meanwhile.  A new TICK fetches them again."
 
 \\{octocat-workflow-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
+  ;; Not read-only, so the run form's fields can be edited; see
+  ;; `octocat-vui-list-mode'.
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-workflow-refresh)
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)

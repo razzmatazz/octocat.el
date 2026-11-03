@@ -128,6 +128,19 @@ insert a newline into it."
         (octocat-evil-list-edit-query)
       (call-interactively #'evil-ret))))
 
+(defun octocat-evil-field-ret ()
+  "Start editing the field at point, in insert state, else `evil-ret'.
+`evil-ret' would insert a newline into the field."
+  (interactive)
+  (if (widget-field-at (point))
+      (evil-insert-state)
+    (call-interactively #'evil-ret)))
+
+(defun octocat-evil--field-setup ()
+  "Bind RET to `octocat-evil-field-ret' in the current buffer.
+Buffer-local, as a field's keymap hides the mode's Evil bindings."
+  (evil-local-set-key 'normal (kbd "RET") #'octocat-evil-field-ret))
+
 (defconst octocat-evil--list-bindings
   '(("RET"     . octocat-evil-list-ret)
     ("o"       . octocat-visit)
@@ -325,6 +338,7 @@ Off an entry, such as on the header, move left."
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)
+  (add-hook 'octocat-workflow-mode-hook #'octocat-evil--field-setup)
 
   ;; ── octocat-run-mode ──────────────────────────────────────────────────
   (evil-define-key* 'normal octocat-run-mode-map

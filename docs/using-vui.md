@@ -10,6 +10,15 @@ Gotchas of vui.el as octocat uses it, and how the code works around them.
 - Rows use `vui-text` inside a `vui-region` (not `vui-button`) so per-segment
   faces are preserved; see "Row rendering" in `octocat-repo.el`.
 
+## Editable fields
+
+A page with a `vui-field` must not set `buffer-read-only`: the field
+can't be typed in then.  `widget-setup` already refuses edits outside
+fields.  Under Evil, normal-state RET on a field runs `evil-ret`, which
+inserts a newline into it, and the field's keymap hides the mode's
+Evil bindings, so bind RET buffer-locally to `octocat-evil-field-ret`
+(see `octocat-evil--field-setup`), which enters insert state instead.
+
 ## Timers
 
 Every repeating timer goes through `octocat-vui-use-timer`, never a bare
