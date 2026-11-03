@@ -1467,6 +1467,7 @@ the background, in place: what is unfolded stays so."
                 ("Reviewer" . octocat-vui-list-filter-reviewer)
                 ("Label"    . octocat-vui-list-filter-label)))
   (setq-local octocat-vui-list--view "pr-list")
+  (setq-local octocat-vui-list--web-scope "is:pr")
   (setq-local revert-buffer-function #'octocat-pr-list-refresh))
 
 (provide 'octocat-pr)

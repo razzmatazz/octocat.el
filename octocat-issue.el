@@ -451,6 +451,7 @@ the background, in place: what is unfolded stays so."
   :group 'octocat
   (setq-local octocat-vui-list--states '("open" "closed" "all"))
   (setq-local octocat-vui-list--view "issue-list")
+  (setq-local octocat-vui-list--web-scope "is:issue")
   (setq-local revert-buffer-function #'octocat-issue-list-refresh))
 
 (provide 'octocat-issue)

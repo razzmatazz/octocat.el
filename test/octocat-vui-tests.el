@@ -43,6 +43,22 @@
   (should (octocat-vui-list-filter-active-p "is:closed"))
   (should (octocat-vui-list-filter-active-p "")))
 
+(ert-deftest octocat-vui-test-list-page-url-query ()
+  "A list's web URL carries a filter other than the default, after its scope."
+  (with-temp-buffer
+    (setq-local process-environment (cons "GH_HOST" process-environment))
+    (setq-local octocat-vui-list--repo "acme/rocket"
+                octocat-vui-list--path "pulls")
+    (setq-local octocat-vui-list--query "is:closed author:@me")
+    (should (equal (octocat-vui-list--page-url) "https://github.com/acme/rocket/pulls"))
+    (setq-local octocat-vui-list--web-scope "is:pr")
+    (should (equal (octocat-vui-list--page-url)
+                   "https://github.com/acme/rocket/pulls?q=is%3Apr%20is%3Aclosed%20author%3A%40me"))
+    (setq-local octocat-vui-list--query "")
+    (should (equal (octocat-vui-list--page-url) "https://github.com/acme/rocket/pulls?q=is%3Apr"))
+    (setq-local octocat-vui-list--query nil)
+    (should (equal (octocat-vui-list--page-url) "https://github.com/acme/rocket/pulls"))))
+
 (ert-deftest octocat-vui-test-run-args ()
   "A runs query becomes gh run list options; the last of a qualifier wins."
   (should (equal (octocat-run-list--args "") '(nil)))

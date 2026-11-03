@@ -58,6 +58,7 @@
 (require 'cl-lib)
 (require 'seq)
 (require 'subr-x)
+(require 'url-util)
 (require 'vui)
 (require 'vui-components)
 
@@ -1293,10 +1294,23 @@ The choice is remembered for this page of this repository."
     (or (octocat-vui-update-page :compact compact)
         (revert-buffer nil t))))
 
+(defvar octocat-vui-list--query)
+
+(defvar-local octocat-vui-list--web-scope nil
+  "Search term GitHub's page of this list needs before its query, or nil.
+Such as \"is:pr\": a `q' given to github.com/OWNER/REPO/pulls replaces
+its own.  A nil scope leaves the query out of the page's URL.")
+
 (defun octocat-vui-list--page-url ()
-  "Return the URL of the GitHub page matching this list."
+  "Return the URL of the GitHub page matching this list.
+A filter other than the default goes along, so the page lists the same."
   (and octocat-vui-list--repo octocat-vui-list--path
-       (octocat--web-url "%s/%s" octocat-vui-list--repo octocat-vui-list--path)))
+       (concat (octocat--web-url "%s/%s" octocat-vui-list--repo octocat-vui-list--path)
+               (and octocat-vui-list--web-scope
+                    (octocat-vui-list-filter-active-p octocat-vui-list--query)
+                    (concat "?q=" (url-hexify-string
+                                   (string-trim (concat octocat-vui-list--web-scope " "
+                                                        (octocat-vui-list-query)))))))))
 
 (defvar octocat-vui-list-mode-map
   (let ((map (make-sparse-keymap)))
