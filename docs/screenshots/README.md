@@ -224,6 +224,15 @@ files.
 [As text](compare.txt)
 <!-- /screenshot -->
 
+Two commits compared, as from a commit page's link: a full SHA shows as
+its short form, whole on hover.
+
+<!-- screenshot: (compare "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6" "..." "8ee9a2cbe60f637fd8e3a16e17c94d9b90f19fa1") :name "compare-shas" -->
+![compare-shas](compare-shas.png)
+
+[As text](compare-shas.txt)
+<!-- /screenshot -->
+
 ## Actions
 
 `M-x octocat-run-list` (or `M-x octocat-actions`): the recent workflow

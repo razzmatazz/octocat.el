@@ -1006,6 +1006,15 @@ FIELDS, a plist, override the rest."
 
 ;;;; Fixtures
 
+(defconst octocat-screenshots--compare
+  `(:status "ahead" :ahead_by 7 :behind_by 0 :total_commits 7
+    :commits [,@(mapcar (pcase-lambda (`(,sha ,headline ,ago))
+                          (octocat-screenshots--commit-rest-short
+                           sha headline "srivera" "Sam Rivera" ago))
+                        octocat-screenshots--pr-128-commits)]
+    :files ,octocat-screenshots--pr-128-files)
+  "The comparison of main and pull request #128's head, as the REST API returns it.")
+
 (defvar octocat-screenshots-fixtures
   (let ((d octocat-screenshots--d) (h octocat-screenshots--h))
     `(;; Dashboard
@@ -1131,13 +1140,10 @@ FIELDS, a plist, override the rest."
          :user ,(octocat-screenshots--user "pnair") :created_at ,(octocat-screenshots--ago (* 4 h))
          :body "Released in 0.10: the docs site builds in 2s now."
          :reactions (:total_count 2 :+1 0 :-1 0 :laugh 0 :hooray 2 :confused 0 :heart 0 :rocket 0 :eyes 0))])
-      ("compare" ("compare/main...template-cache")
-       (:status "ahead" :ahead_by 7 :behind_by 0 :total_commits 7
-        :commits [,@(mapcar (pcase-lambda (`(,sha ,headline ,ago))
-                              (octocat-screenshots--commit-rest-short
-                               sha headline "srivera" "Sam Rivera" ago))
-                            octocat-screenshots--pr-128-commits)]
-        :files ,octocat-screenshots--pr-128-files))
+      ("compare" ("compare/main...template-cache") ,octocat-screenshots--compare)
+      ("compare" (,(format "compare/%s...%s" octocat-screenshots--head
+                           octocat-screenshots--pr-head))
+       ,octocat-screenshots--compare)
       ("commit-branch" () (:data (:repository (:defaultBranchRef (:name "main" :compare (:status "BEHIND"))))))
 
       ;; Actions

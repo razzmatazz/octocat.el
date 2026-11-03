@@ -130,6 +130,13 @@ COMMITS is a REST commits vector of REPO."
                          commits)
                  (list (vui-newline))))))
 
+(defun octocat-compare--ref-label (ref)
+  "Return REF for the top row: a SHA cut to 7 chars, whole on hover.
+Two full SHAs would push the counts onto another line."
+  (if (and (octocat-compare--sha-p ref) (> (length ref) 7))
+      (propertize (substring ref 0 7) 'face 'octocat-branch 'help-echo ref)
+    (propertize ref 'face 'octocat-branch)))
+
 (defun octocat-compare--top-row (repo base dots head data)
   "Return the top row of the comparison of BASE and HEAD of REPO.
 That is `owner/repo BASE...HEAD', as the commit page's `owner/repo@sha',
@@ -137,9 +144,9 @@ then the counts of DATA, the comparison, once it is loaded."
   (vui-hstack :spacing 0
               (octocat-vui-repo-heading repo)
               (vui-text (concat "  "
-                                (propertize base 'face 'octocat-branch)
+                                (octocat-compare--ref-label base)
                                 (propertize dots 'face 'octocat-dimmed)
-                                (propertize head 'face 'octocat-branch)
+                                (octocat-compare--ref-label head)
                                 (and data
                                      (propertize (concat " · " (octocat-compare--counts data))
                                                  'face 'octocat-dimmed))))))

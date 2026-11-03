@@ -35,6 +35,15 @@
                      "{\"status\":\"identical\",\"total_commits\":0,\"commits\":[],\"files\":[]}"))
                    "identical"))))
 
+(ert-deftest octocat-compare-test-ref-label ()
+  "A SHA shows its first 7 chars, whole on hover; a branch shows as is."
+  (let ((sha (octocat-compare--ref-label "0123456789abcdef0123456789abcdef01234567")))
+    (should (equal sha "0123456"))
+    (should (equal (get-text-property 0 'help-echo sha)
+                   "0123456789abcdef0123456789abcdef01234567")))
+  (should (equal (octocat-compare--ref-label "template-cache") "template-cache"))
+  (should-not (get-text-property 0 'help-echo (octocat-compare--ref-label "main"))))
+
 (ert-deftest octocat-compare-test-max-age ()
   "Only a comparison of two commits is kept, as a commit is; refs move."
   (let ((max-age (lambda (base head)
