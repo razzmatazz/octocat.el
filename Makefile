@@ -31,7 +31,8 @@ RUN_ONLINE = $(DOCKER) run $(ISOLATED) -e CI \
 RUN = $(DOCKER) run $(ISOLATED) --network=none \
   -v "$(CURDIR)":/src:ro -v "$(CURDIR)/.eldev":/src/.eldev -w /src $(IMAGE)
 
-.PHONY: ci ci-all image deps clean compile lint test melpazoid screenshots
+.PHONY: ci ci-all image deps clean compile lint test melpazoid melpazoid-prepare \
+  melpazoid-image melpazoid-check screenshots
 
 # What ci runs at once.  ci-all runs melpazoid, which is the same on every
 # release, with 31.1's only.
@@ -108,13 +109,18 @@ test:
 # so a function only some builds have shows.  It is built and run with
 # melpazoid's Makefile, from a copy of its checkout with the files the
 # first step wrote, and fails on a "━" section too.  Its make, under ci's
-# -j, would warn of the jobserver.
+# -j, would warn of the jobserver.  The steps are also targets of their
+# own: CI builds melpazoid's image between them, with its layers cached,
+# as building it compiles Emacs.
 MELPAZOID_COMMIT := fcf5d883c6ced74ba16963d48c9e9e0bf0a1ff37
 MELPAZOID_RECIPE := (octocat :fetcher github :repo "razzmatazz/octocat.el")
 MELPAZOID_MAKE = MAKEFLAGS= MFLAGS= $(MAKE) -s -C .ci/melpazoid-build DOCKER="$(DOCKER)" \
-  DOCKER_OUTPUT=--quiet PACKAGE_MAIN="$$(cat .ci/melpazoid-out/package-main)"
+  DOCKER_OUTPUT="$(NO_PULL)" PACKAGE_MAIN="$$(cat .ci/melpazoid-out/package-main)"
 
 melpazoid:
+	@$(MAKE) -s melpazoid-prepare && $(MAKE) -s melpazoid-image && $(MAKE) -s melpazoid-check
+
+melpazoid-prepare:
 	@mkdir -p .ci/melpazoid
 	@$(DOCKER) run $(ISOLATED) -v "$(CURDIR)/.ci/melpazoid:/melpazoid" -w /melpazoid $(IMAGE) \
 	  sh -c 'if [ ! -d .git ]; then git clone -q https://github.com/riscy/melpazoid .; fi; \
@@ -134,8 +140,17 @@ melpazoid:
 	  if [ $$status != 0 ] || grep -q '^━ ' .ci/melpazoid-report.txt; then \
 	    echo "melpazoid: found something, see above"; exit 1; fi
 	@cp -a .ci/melpazoid .ci/melpazoid-build && cp -a .ci/melpazoid-out/. .ci/melpazoid-build
-	@$(MELPAZOID_MAKE) image > /dev/null
-	@$(MELPAZOID_MAKE) test > .ci/melpazoid-test.txt 2>&1; cat .ci/melpazoid-test.txt; \
+
+# Its build's log shows only when the build fails.  Its FROM is
+# BASE_IMAGE too, so Podman skips the registry for it, as for ours.
+melpazoid-image:
+	@$(MELPAZOID_MAKE) image > .ci/melpazoid-image.txt 2>&1 || \
+	  { cat .ci/melpazoid-image.txt; echo "melpazoid: its image failed to build, see above"; exit 1; }
+
+# As melpazoid's `make test', without building its image again.
+melpazoid-check:
+	@$(DOCKER) run --rm --network=none --cap-drop all --security-opt=no-new-privileges \
+	  --pids-limit=50 melpazoid > .ci/melpazoid-test.txt 2>&1; cat .ci/melpazoid-test.txt; \
 	  if grep -q '^━ ' .ci/melpazoid-test.txt; then \
 	    echo "melpazoid: found something, see above"; exit 1; fi
 
