@@ -279,6 +279,76 @@ when given, \"description\" and \"default\", strings."
              spec)
     spec))
 
+;;;; Jobs and their needs
+;;
+;; GitHub's API doesn't say which jobs of a run wait for which: their
+;; `needs' is read from the workflow's file, at the run's commit, for
+;; the run page's job graph (see octocat-run.el).
+
+(defun octocat-workflow--yaml-jobs (yaml)
+  "Return the jobs of workflow file YAML as a vector of hash-tables.
+Each has the job's \"id\", its \"name\" when it has one, and \"needs\",
+a vector of the ids of the jobs it waits for.  Only those two keys of
+each job are given to `octocat-workflow--yaml-parse', so what its steps
+are written in does not matter."
+  (let* ((lines (mapcar (lambda (l) (string-trim-right l "[ \t\r]+"))
+                        (split-string yaml "\n")))
+         (indent (lambda (l) (- (length l) (length (string-trim-left l)))))
+         (blank-p (lambda (l) (string-empty-p (octocat-workflow--yaml-uncomment l))))
+         jobs)
+    (while (and lines (not (string-match-p "\\`jobs[ \t]*:[ \t]*\\(#.*\\)?\\'" (car lines))))
+      (setq lines (cdr lines)))
+    (setq lines (cdr lines))
+    ;; The jobs' block: what follows `jobs:', up to the next top-level key.
+    (let* ((block (cl-loop for l in lines
+                           until (and (not (funcall blank-p l)) (zerop (funcall indent l)))
+                           unless (funcall blank-p l) collect l))
+           (job-ind (and block (funcall indent (car block)))))
+      (while block
+        (let ((id (car (octocat-workflow--yaml-key (string-trim (car block)))))
+              body)
+          (setq block (cdr block))
+          (while (and block (> (funcall indent (car block)) job-ind))
+            (push (car block) body)
+            (setq block (cdr block)))
+          (setq body (nreverse body))
+          (when (stringp id)
+            (let* ((key-ind (and body (funcall indent (car body))))
+                   (kept (cl-loop with keep = nil
+                                  for l in body
+                                  for ind = (funcall indent l)
+                                  do (when (= ind key-ind)
+                                       (setq keep (string-match-p
+                                                   "\\`\\(name\\|needs\\)[ \t]*:"
+                                                   (string-trim-left l))))
+                                  when keep collect (substring l (min key-ind (length l)))))
+                   (props (and kept (octocat-workflow--yaml-parse (string-join kept "\n"))))
+                   (needs (cdr (assoc "needs" props)))
+                   (name (cdr (assoc "name" props)))
+                   (job (make-hash-table :test #'equal)))
+              (puthash "id" id job)
+              (when (stringp name) (puthash "name" name job))
+              (puthash "needs" (vconcat (seq-filter #'stringp (if (stringp needs)
+                                                                  (list needs)
+                                                                (append needs nil))))
+                       job)
+              (push job jobs))))))
+    (vconcat (nreverse jobs))))
+
+(octocat-sync-define-resource workflow-jobs (repo path sha)
+  ;; A file at a commit never changes.
+  :max-age (* 30 24 60 60)
+  :fetch (lambda (done)
+           (octocat--run-gh
+            "workflow-file"
+            (list "api" "-X" "GET"
+                  (format "repos/%s/contents/%s" repo
+                          (mapconcat #'url-hexify-string (split-string path "/") "/"))
+                  "-f" (concat "ref=" sha)
+                  "-H" "Accept: application/vnd.github.raw")
+            #'octocat-workflow--yaml-jobs
+            done)))
+
 (defun octocat-workflow--dispatchable-path-p (path)
   "Return non-nil if PATH is a workflow file, which can be run by hand.
 Not one of GitHub's own, such as \"dynamic/pages/pages-build-deployment\"."

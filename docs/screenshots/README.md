@@ -260,12 +260,31 @@ runs, filterable.
 [As text](workflow-list.txt)
 <!-- /screenshot -->
 
-A run's jobs and artifacts:
+A run's jobs and artifacts.  Each job's row has its steps done and how
+long it took, beside a graph of which job waits for which, as the
+workflow's `needs` say; `RET` on one opens it:
 
 <!-- screenshot: (run "acme/rocket" 9100200300) -->
 ![run](run.png)
 
 [As text](run.txt)
+<!-- /screenshot -->
+
+A run still going: a running job's row names the step it is on.
+
+<!-- screenshot: (run "acme/rocket" 9100200310) :name "run-in-progress" -->
+![run-in-progress](run-in-progress.png)
+
+[As text](run-in-progress.txt)
+<!-- /screenshot -->
+
+`C-c C-v` draws the same run's jobs as a graph instead, as GitHub
+does, a running job's node counting its steps done:
+
+<!-- screenshot: (run "acme/rocket" 9100200310) :name "run-graph" :press ((:key "C-c C-v")) -->
+![run-graph](run-graph.png)
+
+[As text](run-graph.txt)
 <!-- /screenshot -->
 
 A job's steps, with `Run cargo` unfolded to its log:

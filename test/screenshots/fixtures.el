@@ -880,6 +880,32 @@ TITLE, WORKFLOW, BRANCH, STATUS, CONCLUSION and AGO are its own."
        (27100200301 "test (beta)" 7) (27100200302 "docs" 3))))
   "The jobs of run 9100200300, as `gh run view' gives them.")
 
+(defconst octocat-screenshots--running-jobs
+  (let ((start (* 4 octocat-screenshots--m)))
+    (mapcar
+     (pcase-lambda (`(,id ,name ,status ,steps-done ,running))
+       (let ((names '("Set up job" "Check out" "Install Rust" "Run cargo" "Complete job")))
+         `(:databaseId ,id :name ,name :status ,status
+           :conclusion ,(if (equal status "completed") "success" "")
+           :startedAt ,(if (equal status "queued") "" (octocat-screenshots--ago start))
+           :completedAt ,(if (equal status "completed")
+                             (octocat-screenshots--ago (- start 90))
+                           "")
+           :url ,(format "https://github.com/acme/rocket/actions/runs/9100200310/job/%d" id)
+           :steps ,(vconcat
+                    (cl-loop for step-name in names
+                             for n from 1
+                             collect `(:number ,n :name ,step-name
+                                       :status ,(cond ((<= n steps-done) "completed")
+                                                      ((and running (= n (1+ steps-done))) "in_progress")
+                                                      (t "queued"))
+                                       :conclusion ,(if (<= n steps-done) "success" "")))))))
+     '((27100200320 "lint" "completed" 5 nil)
+       (27100200321 "test (stable)" "in_progress" 3 t)
+       (27100200322 "test (beta)" "in_progress" 2 t)
+       (27100200323 "docs" "queued" 0 nil))))
+  "The jobs of run 9100200310, still running.")
+
 (defconst octocat-screenshots--job-log
   (let ((lines
          '((1 "Current runner version: '2.329.0'")
@@ -1169,6 +1195,16 @@ FIELDS, a plist, override the rest."
         :createdAt ,(octocat-screenshots--ago (+ d h))
         :updatedAt ,(octocat-screenshots--ago (- (+ d h) (* 7 60)))
         :jobs ,(vconcat octocat-screenshots--run-jobs)))
+      ("run-view" ("9100200310")
+       (:databaseId 9100200310 :number 310
+        :displayTitle "Incremental builds: skip pages whose inputs are unchanged"
+        :workflowName "CI" :workflowDatabaseId 4200
+        :status "in_progress" :conclusion "" :event "pull_request"
+        :headBranch "incremental" :headSha ,(octocat-screenshots--sha "pr-133-1")
+        :createdAt ,(octocat-screenshots--ago (* 4 octocat-screenshots--m))
+        :updatedAt ,(octocat-screenshots--ago octocat-screenshots--m)
+        :jobs ,(vconcat octocat-screenshots--running-jobs)))
+      ("run-artifacts" ("9100200310") (:total_count 0 :artifacts []))
       ("run-artifacts" () ,octocat-screenshots--artifacts)
       ("job-artifacts" () ,octocat-screenshots--artifacts)
       ("job-detail" ("27100200300")
@@ -1213,11 +1249,25 @@ on:
         description: Also run the benchmarks
         type: boolean
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo clippy -- -D warnings
   test:
+    needs: lint
+    strategy:
+      matrix:
+        toolchain: [stable, beta]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: cargo test
+  docs:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo doc --no-deps
 ")
 
       ;; People

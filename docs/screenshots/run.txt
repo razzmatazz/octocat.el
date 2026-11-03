@@ -2,11 +2,11 @@ acme/rocket › Actions › CI › #300  Cache parsed templates between builds
 success  Event pull_request · Branch template-cache · SHA 8ee9a2c
          Run 9100200300 · Created 1 day ago · Duration 7m00s
 
-Jobs (4)
-  ✓  lint                                           2m00s
-  ✓  test (stable)                                  6m00s
-  ✓  test (beta)                                    7m00s
-  ✓  docs                                           3m00s
+Jobs (4)   Table  Graph
+  ✓─┐  lint             5/5   2m00s
+  ✓ │  test (stable)    5/5   6m00s
+  ├─✓  test (beta)      5/5   7m00s
+  ✓    docs             5/5   3m00s
 
 Artifacts (1)
   📦 coverage-report  470.8 KB

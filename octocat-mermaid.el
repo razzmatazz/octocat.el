@@ -52,12 +52,13 @@
   (height 0))
 
 (defun octocat-mermaid--put (cv x y string)
-  "Write STRING into canvas CV from column X of row Y, one character per cell."
+  "Write STRING into canvas CV from column X of row Y, one character per cell.
+Each cell keeps the text properties its character has in STRING."
   (when (and (>= x 0) (>= y 0))
     (let ((cells (octocat-mermaid--canvas-cells cv)))
-      (dolist (ch (string-to-list string))
-        (let ((cw (max 1 (char-width ch))))
-          (puthash (cons x y) (string ch) cells)
+      (dotimes (i (length string))
+        (let ((cw (max 1 (char-width (aref string i)))))
+          (puthash (cons x y) (substring string i (1+ i)) cells)
           (when (> cw 1) (puthash (cons (1+ x) y) "" cells))
           (setf (octocat-mermaid--canvas-width cv)
                 (max (octocat-mermaid--canvas-width cv) (+ x cw))
@@ -155,28 +156,31 @@ cons of the horizontal and vertical characters for straight stretches."
              bits)))
 
 (defun octocat-mermaid--draw-box (cv x y w h lines shape)
-  "Draw into CV a box of SHAPE at X,Y, W by H cells, holding LINES centred."
-  (pcase-let ((`(,tl ,tr ,bl ,br)
-               (pcase shape
-                 ((or 'round 'circle) '(?╭ ?╮ ?╰ ?╯))
-                 (_ '(?┌ ?┐ ?└ ?┘))))
-              (inner (- w 2)))
-    (octocat-mermaid--put cv x y (concat (string tl) (make-string inner ?─) (string tr)))
-    (octocat-mermaid--put cv x (+ y h -1)
-                          (concat (string bl) (make-string inner ?─) (string br)))
-    (dotimes (i (- h 2))
-      (let* ((line (or (nth i lines) ""))
-             (pad  (max 0 (- inner (string-width line))))
-             (left (/ pad 2)))
-        (octocat-mermaid--put cv x (+ y 1 i) "│")
-        (octocat-mermaid--put cv (+ x w -1) (+ y 1 i) "│")
-        (octocat-mermaid--put cv (1+ x) (+ y 1 i)
-                              (concat (make-string left ?\s) line
-                                      (make-string (- pad left) ?\s)))))
-    ;; A decision points outwards from the middle of its sides.
-    (when (eq shape 'diamond)
-      (octocat-mermaid--put cv x (+ y (/ (1- h) 2)) "<")
-      (octocat-mermaid--put cv (+ x w -1) (+ y (/ (1- h) 2)) ">"))))
+  "Draw into CV a box of SHAPE at X,Y, W by H cells, holding LINES centred.
+A `plain' one is its line alone, two blanks either side."
+  (if (eq shape 'plain)
+      (octocat-mermaid--put cv x y (concat "  " (car lines) "  "))
+    (pcase-let ((`(,tl ,tr ,bl ,br)
+                 (pcase shape
+                   ((or 'round 'circle) '(?╭ ?╮ ?╰ ?╯))
+                   (_ '(?┌ ?┐ ?└ ?┘))))
+                (inner (- w 2)))
+      (octocat-mermaid--put cv x y (concat (string tl) (make-string inner ?─) (string tr)))
+      (octocat-mermaid--put cv x (+ y h -1)
+                            (concat (string bl) (make-string inner ?─) (string br)))
+      (dotimes (i (- h 2))
+        (let* ((line (or (nth i lines) ""))
+               (pad  (max 0 (- inner (string-width line))))
+               (left (/ pad 2)))
+          (octocat-mermaid--put cv x (+ y 1 i) "│")
+          (octocat-mermaid--put cv (+ x w -1) (+ y 1 i) "│")
+          (octocat-mermaid--put cv (1+ x) (+ y 1 i)
+                                (concat (make-string left ?\s) line
+                                        (make-string (- pad left) ?\s)))))
+      ;; A decision points outwards from the middle of its sides.
+      (when (eq shape 'diamond)
+        (octocat-mermaid--put cv x (+ y (/ (1- h) 2)) "<")
+        (octocat-mermaid--put cv (+ x w -1) (+ y (/ (1- h) 2)) ">")))))
 
 ;;;; Text helpers
 
@@ -398,7 +402,13 @@ Nodes of different subgraphs are kept further apart, to fit their frames."
                     (t 2)))
         (ga (octocat-mermaid--n-group a))
         (gb (octocat-mermaid--n-group b)))
-    (cond ((equal ga gb) base)
+    (cond ((and (memq (octocat-mermaid--n-shape a) '(plain nil))
+                (memq (octocat-mermaid--n-shape b) '(plain nil))
+                (or (eq (octocat-mermaid--n-shape a) 'plain)
+                    (eq (octocat-mermaid--n-shape b) 'plain)))
+           ;; One-line nodes stack tightly; an edge passes beside them.
+           (if (or (octocat-mermaid--n-virtual a) (octocat-mermaid--n-virtual b)) 1 0))
+          ((equal ga gb) base)
           ((and ga gb) (+ base 3))
           (t (+ base 2)))))
 
@@ -423,11 +433,15 @@ They gather where the first of them stands."
         (truncate-string-to-width s 30 nil nil "…")))))
 
 (defun octocat-mermaid--make-node (spec maxlabel)
-  "Return the node for SPEC (ID LABEL SHAPE), its label wrapped to MAXLABEL."
-  (let* ((lines (octocat-mermaid--wrap (nth 1 spec) maxlabel))
-         (tw (max 1 (octocat-mermaid--lines-width lines))))
-    (octocat-mermaid--n :id (nth 0 spec) :lines lines :shape (nth 2 spec)
-                        :w (max 5 (+ tw 4)) :h (+ 2 (length lines)))))
+  "Return the node for SPEC (ID LABEL SHAPE), its label wrapped to MAXLABEL.
+A `plain' node is its label on one line, unwrapped and unboxed."
+  (if (eq (nth 2 spec) 'plain)
+      (octocat-mermaid--n :id (nth 0 spec) :lines (list (nth 1 spec)) :shape 'plain
+                          :w (+ (string-width (nth 1 spec)) 4) :h 1)
+    (let* ((lines (octocat-mermaid--wrap (nth 1 spec) maxlabel))
+           (tw (max 1 (octocat-mermaid--lines-width lines))))
+      (octocat-mermaid--n :id (nth 0 spec) :lines lines :shape (nth 2 spec)
+                          :w (max 5 (+ tw 4)) :h (+ 2 (length lines))))))
 
 (defun octocat-mermaid--break-cycles (nodes edges)
   "Mark as reversed the edges of EDGES that close a cycle among NODES."
@@ -547,7 +561,15 @@ chart."
   (let* ((nl (length layers))
          (sizes (make-vector nl 1))
          (starts (make-vector nl margin))
-         (gaps (make-vector nl (if octocat-mermaid--vertical 3 5))))
+         ;; Between one-line nodes, a line only needs room to turn.
+         (gaps (make-vector nl (cond ((cl-loop for l below nl
+                                               always (cl-every (lambda (n)
+                                                                  (memq (octocat-mermaid--n-shape n)
+                                                                        '(plain nil)))
+                                                                (aref layers l)))
+                                      3)
+                                     (octocat-mermaid--vertical 3)
+                                     (t 5)))))
     (dotimes (l nl)
       (aset sizes l (apply #'max 1 (mapcar (lambda (n)
                                              (if (octocat-mermaid--n-virtual n)
@@ -565,15 +587,19 @@ chart."
         (aset starts l (+ (aref starts (1- l)) (aref sizes (1- l)) (aref gaps (1- l)))))
       (dolist (n (aref layers l))
         (setf (octocat-mermaid--n-main n)
-              (if (octocat-mermaid--n-virtual n)
+              (if (or (octocat-mermaid--n-virtual n)
+                      (eq (octocat-mermaid--n-shape n) 'plain))
                   (aref starts l)
                 (+ (aref starts l) (/ (- (aref sizes l) (octocat-mermaid--msize n)) 2))))))
     (list starts sizes (+ (aref starts (1- nl)) (aref sizes (1- nl))))))
 
 (defun octocat-mermaid--spread (n j k)
-  "Return the cross position of attachment J of K on the side of node N."
-  (let ((inner (max 1 (- (octocat-mermaid--csize n) 2))))
-    (+ (octocat-mermaid--n-cross n) 1 (floor (* (+ j 0.5) inner) k))))
+  "Return the cross position of attachment J of K on the side of node N.
+A `plain' node is one cell across, so its edges all meet it there."
+  (if (eq (octocat-mermaid--n-shape n) 'plain)
+      (octocat-mermaid--n-cross n)
+    (let ((inner (max 1 (- (octocat-mermaid--csize n) 2))))
+      (+ (octocat-mermaid--n-cross n) 1 (floor (* (+ j 0.5) inner) k)))))
 
 (defun octocat-mermaid--attach (nodes edges)
   "Choose where the edges of EDGES meet the nodes of NODES.
@@ -906,6 +932,22 @@ does not fit is turned top-down."
             (and width (nth 3 spec)
                  (let ((octocat-mermaid--frame-widen '(nil)))
                    (try))))))))
+
+(defun octocat-mermaid-graph (nodes edges &optional width)
+  "Draw the graph of NODES and EDGES left to right, as a list of lines.
+NODES are (ID LABEL): each is drawn as LABEL, one line keeping its text
+properties, so a caller can find it again.  EDGES are (FROM TO), drawn
+as plain lines.  Return nil if the graph is too big or does not fit
+WIDTH columns (nil means no limit)."
+  (when (and (<= (length nodes) 40) (<= (length edges) 80))
+    (let ((out (octocat-mermaid--flow-draw
+                (list 'LR
+                      (mapcar (pcase-lambda (`(,id ,label)) (list id label 'plain)) nodes)
+                      (mapcar (pcase-lambda (`(,from ,to)) (list from to 'solid nil nil nil))
+                              edges)
+                      nil)
+                'LR 0)))
+      (and out (octocat-mermaid--fits-p out width) out))))
 
 ;;;; State diagrams
 

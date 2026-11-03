@@ -191,6 +191,20 @@ not one, then closes the form, shows the run starting in the button's
 place and opens the new run's page once GitHub has started it.  If
 GitHub refuses, the form comes back with what was typed.
 
+A run's page shows its jobs as a table, one per row: its steps done
+(`3/5`), how long it took, and the step it is on or failed at.  Down
+its left runs a graph of which job waits for which, as gitk draws one:
+a line runs down to a job from the jobs it waits for.  `RET` on a job
+opens it.  GitHub's API doesn't give a job's `needs`, so octocat reads
+them from the workflow's file at the run's commit; a job it can't match
+to one in the file, by its name, waits for nothing.  `C-c C-v`, or
+**Graph** beside the heading, draws the jobs as a graph instead, as
+GitHub does: each job's icon, name, and how long it took, or, while it
+runs, its steps done; `TAB` steps from job to job.  The choice is
+remembered for every run.  A graph too wide for the window, or of more
+than 40 jobs, shows as the table, and the table leaves out its graph
+when more than 8 lines would run side by side.
+
 The runs are filtered as the pull request list is: a query in the field
 above them, such as `branch:main status:failure`, edited by hand (with
 completion) or through the **[Branch]**, **[Status]**, **[Workflow]**
@@ -495,7 +509,8 @@ the markup can be read or copied as written.  The file page has more
 than two views and cycles through them: rendered, raw and blame for
 Markdown and org, source and blame for other files (see
 [Files](#files-octocat-file-mode)).  The commit page switches between
-its diff and the commit as a patch.  The PR's files changed
+its diff and the commit as a patch, a run's page its jobs between a
+table and a graph.  The PR's files changed
 page instead shows or hides the review comments in the diff, which
 opening the page shows again; they roll down out of their first line
 and back up into it.  The Comments (N) | Diff only switch in the Files

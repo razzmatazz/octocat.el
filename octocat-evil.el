@@ -93,6 +93,7 @@
 (declare-function octocat-diff-add-comment  "octocat-diff"      ())
 (declare-function octocat-diff-edit-comment "octocat-diff"      ())
 (declare-function octocat-diff-toggle-comments "octocat-diff"   ())
+(declare-function octocat-run-toggle-view     "octocat-run"    ())
 (declare-function octocat-compare-refresh   "octocat-compare"   (&optional _ignore-auto _noconfirm))
 (declare-function octocat-checks-refresh    "octocat-checks"    (&optional _ignore-auto _noconfirm))
 (declare-function octocat-issue-refresh      "octocat-issue"
@@ -343,6 +344,7 @@ Off an entry, such as on the header, move left."
   ;; ── octocat-run-mode ──────────────────────────────────────────────────
   (evil-define-key* 'normal octocat-run-mode-map
     (kbd "C-c C-o") #'octocat-browse
+    (kbd "C-c C-v") #'octocat-run-toggle-view
     (kbd "gs")      #'octocat-search-repo
     (kbd "gr")      #'octocat-vui-refresh
     (kbd "q")       #'octocat-quit-window)

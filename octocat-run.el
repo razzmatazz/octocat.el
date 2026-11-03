@@ -35,11 +35,13 @@
 
 (require 'octocat-core)
 (require 'octocat-job)
+(require 'octocat-mermaid)
 (require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)
 
 (declare-function octocat-workflow-open "octocat-workflow" (repo id name path))
+(declare-function octocat-workflow--dispatchable-path-p "octocat-workflow" (path))
 (declare-function octocat-run-list      "octocat" (&optional repo))
 (declare-function octocat-workflow-list "octocat" (&optional repo))
 
@@ -190,33 +192,308 @@ is the run's."
                                         created
                                         (octocat--nonempty (gethash "updatedAt" run))))))))))
 
-(defun octocat-run--job-row (repo run-id job)
-  "Return a RET-able row for JOB of run RUN-ID of REPO."
-  (let* ((status     (downcase (or (gethash "status" job) "")))
-         (conclusion (let ((c (octocat--nonempty (gethash "conclusion" job))))
-                       (and c (downcase c))))
-         (duration   (and conclusion
-                          (octocat--run-duration
-                           (octocat--nonempty (gethash "startedAt" job))
-                           (octocat--nonempty (gethash "completedAt" job)))))
-         (name       (or (gethash "name" job) "")))
+;;;; Jobs
+;;
+;; The jobs show as a graph of what waits for what, as GitHub draws
+;; it, or as a table, `C-c C-v'.  GitHub's API doesn't give a job's
+;; `needs': the workflow's file is read for it, at the run's commit
+;; (`octocat-workflow--yaml-jobs').  A file's job is matched to the
+;; run's jobs by its name, which GitHub follows with the matrix's
+;; values, as "test (stable)", or the jobs of a reusable workflow, as
+;; "deploy / build".
+
+(defun octocat-run--job-steps (job)
+  "Return (DONE TOTAL CURRENT FAILED), how far JOB has got.
+DONE of its TOTAL steps are done; CURRENT is the name of the step
+running, FAILED that of the first that failed; either may be nil."
+  (let ((steps (append (gethash "steps" job) nil))
+        (is (lambda (key value)
+              (lambda (s)
+                (and (equal (downcase (or (octocat--nonempty (gethash key s)) "")) value)
+                     (gethash "name" s))))))
+    (list (cl-count-if (funcall is "status" "completed") steps)
+          (length steps)
+          (seq-some (funcall is "status" "in_progress") steps)
+          (seq-some (funcall is "conclusion" "failure") steps))))
+
+(defun octocat-run--job-status (job)
+  "Return (STATUS CONCLUSION DURATION) of JOB, downcased; each may be nil."
+  (let ((conclusion (let ((c (octocat--nonempty (gethash "conclusion" job))))
+                      (and c (downcase c)))))
+    (list (downcase (or (gethash "status" job) ""))
+          conclusion
+          (and conclusion
+               (octocat--run-duration (octocat--nonempty (gethash "startedAt" job))
+                                      (octocat--nonempty (gethash "completedAt" job)))))))
+
+(defun octocat-run--job-icon (status conclusion)
+  "Return the icon of a job of STATUS and CONCLUSION.
+One waiting to start is dimmed, set apart from one running."
+  (if (and (member status '("queued" "waiting" "pending" "requested")) (null conclusion))
+      (propertize "○" 'face 'octocat-dimmed)
+    (octocat--run-icon status conclusion)))
+
+(defun octocat-run--spec-regexp (spec)
+  "Return a regexp matching the names of the run's jobs started from SPEC.
+SPEC is a job of `octocat-workflow--yaml-jobs'; an expression in its
+name, as \"${{ matrix.os }}\", matches anything."
+  (concat "\\`"
+          (mapconcat #'regexp-quote
+                     (split-string (or (gethash "name" spec) (gethash "id" spec))
+                                   "\\${{[^}]*}}")
+                     ".*")
+          "\\(?: (.*)\\| / .*\\)?\\'"))
+
+(defun octocat-run--job-edges (jobs specs)
+  "Return what JOBS wait for, by SPECS, as edges (FROM TO) of their IDs.
+SPECS are the jobs of the workflow's file, see
+`octocat-workflow--yaml-jobs'.  A job no spec names waits for nothing."
+  (let* ((spec-of (lambda (job)
+                    (let ((name (or (gethash "name" job) "")))
+                      (or (seq-find (lambda (s)
+                                      (equal name (or (gethash "name" s) (gethash "id" s))))
+                                    specs)
+                          (seq-find (lambda (s) (string-match-p (octocat-run--spec-regexp s) name))
+                                    specs)))))
+         (owners (mapcar (lambda (job) (cons job (funcall spec-of job))) jobs)))
+    (cl-loop for (job . spec) in owners
+             when spec
+             append (cl-loop for need across (gethash "needs" spec)
+                             append (cl-loop for (other . ospec) in owners
+                                             when (and ospec (equal (gethash "id" ospec) need))
+                                             collect (list (gethash "databaseId" other)
+                                                           (gethash "databaseId" job)))))))
+
+(defun octocat-run--job-order (jobs edges)
+  "Return JOBS with each after those it waits for by EDGES, else in order."
+  (let ((done (make-hash-table :test #'equal)) out)
+    (while jobs
+      (let ((next (or (seq-find (lambda (job)
+                                  (let ((id (gethash "databaseId" job)))
+                                    (cl-every (lambda (e) (or (not (equal (nth 1 e) id))
+                                                              (gethash (nth 0 e) done)))
+                                              edges)))
+                                jobs)
+                      (car jobs))))
+        (puthash (gethash "databaseId" next) t done)
+        (push next out)
+        (setq jobs (delq next jobs))))
+    (nreverse out)))
+
+(defconst octocat-run--max-lanes 8
+  "The most lines the table's graph runs side by side; past it, it has none.")
+
+(defun octocat-run--lanes (ids edges)
+  "Return the graph beside each of IDS, rows in that order, as gitk draws one.
+Each is (TEXT . COLUMN): TEXT is drawn left of the row, its job's own
+cell blank at COLUMN, counted in cells of two characters.  A line runs
+down from the jobs that join it to the one it ends at, which waits for
+them.  EDGES are (FROM TO) of IDS, each FROM before its TO.  Return nil
+if more than `octocat-run--max-lanes' lines would run side by side."
+  (let ((slots nil) rows (widest 0))
+    (cl-flet ((free () (or (cl-position nil slots)
+                           (prog1 (length slots) (setq slots (append slots (list nil)))))))
+      (dolist (id ids)
+        (let* ((k (or (cl-position id slots) (free)))
+               (before (copy-sequence slots))
+               (marks nil))
+          (setf (nth k slots) nil)
+          (dolist (child (seq-filter (lambda (c) (member (list id c) edges)) ids))
+            (let ((c (cl-position child slots)))
+              (if c
+                  (push (cons c 'join) marks)
+                (setq c (if (and (null (nth k slots)) (not (assq k marks))) k (free)))
+                (setf (nth c slots) child)
+                (unless (= c k) (push (cons c 'new) marks)))))
+          (let* ((cols (cons k (mapcar #'car marks)))
+                 (lo (apply #'min cols))
+                 (hi (apply #'max cols))
+                 (n (length slots))
+                 (text (mapconcat
+                        (lambda (c)
+                          (concat
+                           (cond ((= c k) " ")
+                                 ((eq (alist-get c marks) 'join) (if (> c k) "┤" "├"))
+                                 ((eq (alist-get c marks) 'new) (if (> c k) "┐" "┌"))
+                                 ((and (nth c before) (nth c slots)) (if (<= lo c hi) "┼" "│"))
+                                 ((<= lo c hi) "─")
+                                 (t " "))
+                           (if (and (>= c lo) (< c hi)) "─" " ")))
+                        (number-sequence 0 (1- n)) "")))
+            (setq widest (max widest n))
+            (push (cons (string-trim-right text) k) rows))
+          (while (and slots (null (car (last slots))))
+            (setq slots (butlast slots))))))
+    (unless (> widest octocat-run--max-lanes)
+      (mapcar (lambda (row)
+                (cons (truncate-string-to-width (car row) (1- (* 2 widest)) nil ?\s) (cdr row)))
+              (nreverse rows)))))
+
+(defun octocat-run--job-open (repo run-id job)
+  "Return a function opening JOB of run RUN-ID of REPO."
+  (lambda () (octocat-job-open repo run-id (gethash "databaseId" job) (gethash "name" job))))
+
+(defun octocat-run--job-url (repo run-id job)
+  "Return the web page of JOB of run RUN-ID of REPO."
+  (octocat--web-url "%s/actions/runs/%s/job/%s" repo run-id (gethash "databaseId" job)))
+
+(defun octocat-run--job-row (repo run-id job name-width &optional lane)
+  "Return the table's RET-able row for JOB of run RUN-ID of REPO.
+Its name takes NAME-WIDTH columns.  LANE, from `octocat-run--lanes',
+is drawn first, the job's status icon in its own cell."
+  (pcase-let* ((`(,status ,conclusion ,duration) (octocat-run--job-status job))
+               (`(,done ,total ,current ,failed) (octocat-run--job-steps job))
+               (icon (octocat-run--job-icon status conclusion))
+               (name (or (gethash "name" job) ""))
+               (note (or current (and (equal conclusion "failure") failed))))
     (octocat-vui-row
      (string-trim-right
-      (concat "  " (octocat--run-icon status conclusion) "  "
-              (propertize (truncate-string-to-width name 45 nil ?\s "…")
+      (concat "  "
+              (if lane
+                  (let ((at (* 2 (cdr lane))))
+                    (concat (substring (car lane) 0 at) icon (substring (car lane) (1+ at))))
+                icon)
+              "  "
+              (propertize (truncate-string-to-width name name-width nil ?\s "…")
                           'face 'octocat-run-job-name)
-              (if duration (propertize (concat "  " duration) 'face 'octocat-dimmed) "")))
-     (lambda () (octocat-job-open repo run-id (gethash "databaseId" job) name))
+              (propertize (format "  %5s  %6s" (if (> total 0) (format "%d/%d" done total) "")
+                                  (or duration ""))
+                          'face 'octocat-dimmed)
+              (if note (propertize (concat "  " note) 'face 'octocat-dimmed) "")))
+     (octocat-run--job-open repo run-id job)
      "RET: open job"
-     (octocat--web-url "%s/actions/runs/%s/job/%s" repo run-id (gethash "databaseId" job)))))
+     (octocat-run--job-url repo run-id job))))
 
-(defun octocat-run--jobs-section (repo run-id jobs)
-  "Return the vnodes of the Jobs section: JOBS of run RUN-ID of REPO."
-  (cons (vui-text (propertize (format "Jobs (%d)" (length jobs))
-                              'face 'octocat-section-heading))
-        (if (null jobs)
-            (list (vui-text "  (no jobs)" :face 'octocat-dimmed))
-          (mapcar (lambda (job) (octocat-run--job-row repo run-id job)) jobs))))
+(defun octocat-run--table (repo run-id jobs edges)
+  "Return the table rows of JOBS of run RUN-ID of REPO, with EDGES beside."
+  (let* ((jobs (octocat-run--job-order jobs edges))
+         (lanes (and edges (octocat-run--lanes (mapcar (lambda (j) (gethash "databaseId" j)) jobs)
+                                               edges)))
+         (name-width (min 45 (apply #'max 1 (mapcar (lambda (j)
+                                                      (string-width (or (gethash "name" j) "")))
+                                                    jobs)))))
+    (cl-loop for job in jobs
+             for i from 0
+             collect (octocat-run--job-row repo run-id job name-width (nth i lanes)))))
+
+(defun octocat-run--node-parts (job)
+  "Return (ICON NAME SUFFIX), the parts of JOB's node in the graph.
+SUFFIX is how many of its steps are done while it runs, else how long
+it took, or \"\"."
+  (pcase-let* ((`(,status ,conclusion ,duration) (octocat-run--job-status job))
+               (`(,done ,total) (octocat-run--job-steps job)))
+    (list (octocat-run--job-icon status conclusion)
+          (propertize (truncate-string-to-width (or (gethash "name" job) "") 30 nil nil "…")
+                      'face 'octocat-run-job-name)
+          (propertize (cond ((and (equal status "in_progress") (> total 0))
+                             (format "%d/%d" done total))
+                            (duration)
+                            (t ""))
+                      'face 'octocat-dimmed))))
+
+(defun octocat-run--graph (jobs edges width)
+  "Return JOBS drawn as a graph of EDGES within WIDTH, as a list of lines.
+Each node's text has the property `octocat-run-job', its job.  Return
+nil if the graph does not fit."
+  (octocat-mermaid-graph
+   (mapcar (lambda (job)
+             (list (gethash "databaseId" job)
+                   (propertize (string-trim-right (string-join (octocat-run--node-parts job) " "))
+                               'octocat-run-job job)))
+           jobs)
+   edges width))
+
+(defun octocat-run--graph-line (repo run-id line)
+  "Return LINE of `octocat-run--graph' as a vnode, its jobs RET-able.
+On a job, RET opens it, of run RUN-ID of REPO, and its name is a TAB
+stop."
+  (let ((pos 0) parts)
+    (while (< pos (length line))
+      (let* ((job (get-text-property pos 'octocat-run-job line))
+             (next (next-single-property-change pos 'octocat-run-job line (length line))))
+        (push (if (not job)
+                  (vui-text (substring line pos next))
+                (pcase-let ((`(,icon ,name ,suffix) (octocat-run--node-parts job))
+                            (open (octocat-run--job-open repo run-id job)))
+                  (octocat-vui-row
+                   (list icon " "
+                         (vui-button name :no-decoration t :face 'octocat-run-job-name
+                                     :help-echo "RET: open job" :on-click open)
+                         (if (string-empty-p suffix) "" (concat " " suffix)))
+                   open "RET: open job" (octocat-run--job-url repo run-id job))))
+              parts)
+        (setq pos next)))
+    (apply #'vui-hstack :spacing 0 (nreverse parts))))
+
+(defun octocat-run--view-tabs (view)
+  "Return the pill of the Jobs section's views, the one of VIEW filled in."
+  (let ((key (substitute-command-keys "\\[octocat-run-toggle-view]")))
+    (octocat-vui-segmented
+     (list (list "Table" (eq view 'table)
+                 (propertize (format "RET, %s: show the jobs as a table" key) 'octocat-key-help t)
+                 #'octocat-run-toggle-view)
+           (list "Graph" (eq view 'graph)
+                 (propertize (format "RET, %s: show the jobs as a graph" key) 'octocat-key-help t)
+                 #'octocat-run-toggle-view)))))
+
+(defun octocat-run--jobs-section (repo run-id jobs specs view width)
+  "Return the vnodes of the Jobs section: JOBS of run RUN-ID of REPO.
+SPECS are the jobs of the workflow's file, for what each waits for, or
+nil.  VIEW is `graph' or `table'; a graph wider than WIDTH shows as the
+table."
+  (let* ((edges (octocat-run--job-edges jobs specs))
+         (lines (and jobs (eq view 'graph) (octocat-run--graph jobs edges width))))
+    (append
+     (list (vui-hstack :spacing 0
+                       (vui-text (propertize (format "Jobs (%d)" (length jobs))
+                                             'face 'octocat-section-heading))
+                       (and jobs (vui-text "  "))
+                       (and jobs (octocat-run--view-tabs view))))
+     (cond ((null jobs) (list (vui-text "  (no jobs)" :face 'octocat-dimmed)))
+           (lines (mapcar (lambda (line) (octocat-run--graph-line repo run-id line)) lines))
+           (t (append (and (eq view 'graph)
+                           (list (vui-text "  (too many jobs to draw as a graph)"
+                                   :face 'octocat-dimmed)))
+                      (octocat-run--table repo run-id jobs edges)))))))
+
+(vui-defcomponent octocat-run--job-specs (repo run-id jobs path sha view width tick)
+  "The Jobs section of run RUN-ID of REPO, JOBS by what each waits for.
+That is read from the workflow file PATH at SHA.  VIEW, WIDTH and TICK
+are the page's."
+  :render
+  (let ((snap (octocat-vui-use-resource (list 'workflow-jobs repo path sha) tick)))
+    (apply #'vui-vstack
+           (octocat-run--jobs-section repo run-id jobs
+                                      (append (plist-get snap :data) nil)
+                                      view width))))
+
+(vui-defcomponent octocat-run--jobs (repo run-id jobs workflow-id sha view width tick)
+  "The Jobs section of run RUN-ID of REPO, of workflow WORKFLOW-ID, at SHA.
+The workflow is fetched for its file, which says what each of JOBS
+waits for.  VIEW, WIDTH and TICK are the page's."
+  :render
+  (let* ((snap (octocat-vui-use-resource (list 'workflow repo workflow-id) tick))
+         (path (let ((data (plist-get snap :data))) (and data (gethash "path" data)))))
+    (if (and sha (octocat-workflow--dispatchable-path-p path))
+        (vui-component 'octocat-run--job-specs
+          :repo repo :run-id run-id :jobs jobs :path path :sha sha
+          :view view :width width :tick tick)
+      (apply #'vui-vstack (octocat-run--jobs-section repo run-id jobs nil view width)))))
+
+(defun octocat-run--view ()
+  "Return the view of the run page's jobs the reader last chose."
+  (or (octocat--setting '(run-jobs-view)) 'table))
+
+(defun octocat-run-toggle-view ()
+  "Show the run's jobs as a graph, or back as a table.
+The choice is remembered for every run."
+  (interactive)
+  (unless (derived-mode-p 'octocat-run-mode)
+    (user-error "Octocat: Not in a run buffer"))
+  (let ((view (if (eq (octocat-run--view) 'table) 'graph 'table)))
+    (octocat--setting-put '(run-jobs-view) (and (eq view 'graph) view))
+    (message "Jobs view: %s" view)
+    (octocat-vui-update-page :view view)))
 
 (defun octocat-run--annotation-entries (results)
   "Return the RESULTS of `octocat--fetch-run-annotations' as a vector.
@@ -261,10 +538,10 @@ vector: a shape the store can hold as JSON."
 (octocat-sync-define-resource run-artifacts (repo run-id)
   :fetch (lambda (done) (octocat--fetch-run-artifacts repo run-id done)))
 
-(vui-defcomponent octocat-run--page (repo run-id tick)
+(vui-defcomponent octocat-run--page (repo run-id view tick)
   "Workflow run RUN-ID of REPO.
-A new TICK refetches everything, keeping what is shown until the fresh
-data replaces it."
+VIEW is how its jobs show, `graph' or `table'.  A new TICK refetches
+everything, keeping what is shown until the fresh data replaces it."
   :render
   (let* ((local-branch (vui-use-memo () (octocat--current-branch)))
          (width (octocat-vui-window-width))
@@ -291,7 +568,13 @@ data replaces it."
         :render
         (lambda (_)
           (apply #'vui-vstack
-                 (append (octocat-run--jobs-section repo run-id jobs)
+                 (append (if-let* ((workflow-id (gethash "workflowDatabaseId" data)))
+                             (list (vui-component 'octocat-run--jobs
+                                     :repo repo :run-id run-id :jobs jobs
+                                     :workflow-id workflow-id
+                                     :sha (octocat--nonempty (gethash "headSha" data))
+                                     :view view :width width :tick tick))
+                           (octocat-run--jobs-section repo run-id jobs nil view width))
                          (when-let* ((section (octocat-job-artifacts
                                                repo (or (plist-get arts :data) []))))
                            (cons (vui-newline) section))
@@ -310,6 +593,7 @@ data replaces it."
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-vui-page-map)
     (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (define-key map (kbd "C-c C-v") #'octocat-run-toggle-view)
     map)
   "Keymap for `octocat-run-mode'.")
 
@@ -336,7 +620,8 @@ content up until the fresh data arrives, for following a running job."
   (unless (and octocat--run-repo octocat--run-id)
     (user-error "Octocat: Buffer is not associated with a workflow run"))
   (octocat-vui-refresh-page 'octocat-run--page octocat--run-id
-                            (list :repo octocat--run-repo :run-id octocat--run-id)))
+                            (list :repo octocat--run-repo :run-id octocat--run-id
+                                  :view (octocat-run--view))))
 
 (defun octocat-run-open (repo run-id)
   "Show workflow run RUN-ID of REPO in its own buffer."
