@@ -121,7 +121,7 @@ That is a table of the PR's \"id\", its \"head\" commit, the
 of its \"id\" and \"commit\", or nil."
   (let* ((pages (append (json-parse-string output) nil))
          (pr    (octocat--get (car pages) "data" "repository" "pullRequest"))
-         (review (seq-first (octocat--get pr "reviews" "nodes")))
+         (review (car (append (octocat--get pr "reviews" "nodes") nil)))
          (tree  (make-hash-table :test #'equal)))
     (puthash "id" (gethash "id" pr) tree)
     (puthash "head" (gethash "headRefOid" pr) tree)

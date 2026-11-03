@@ -345,6 +345,28 @@ The thread's own fields go on its first comment; a draft is pending."
       (should (= (length (octocat--get (aref (gethash "threads" data) 0) "comments" "nodes"))
                  1)))))
 
+(ert-deftest octocat-diff-test-parse-threads ()
+  "The pages' threads join; with no pending review, \"pending\" is nil."
+  (let* ((page (lambda (reviews threads)
+                 (format (concat "{\"data\":{\"repository\":{\"pullRequest\":{"
+                                 "\"id\":\"PR1\",\"headRefOid\":\"abc\","
+                                 "\"reviews\":{\"nodes\":[%s]},"
+                                 "\"reviewThreads\":{\"nodes\":[%s]}}}}}")
+                         reviews threads)))
+         (none (octocat-pr-diff--parse-threads
+                (format "[%s,%s]" (funcall page "" "{\"id\":\"T1\"}")
+                        (funcall page "" "{\"id\":\"T2\"}"))))
+         (some (octocat-pr-diff--parse-threads
+                (format "[%s]" (funcall page "{\"id\":\"R1\",\"commit\":{\"oid\":\"def\"}}"
+                                        "")))))
+    (should (equal (gethash "id" none) "PR1"))
+    (should (equal (gethash "head" none) "abc"))
+    (should-not (gethash "pending" none))
+    (should (equal (mapcar (lambda (th) (gethash "id" th)) (gethash "threads" none))
+                   '("T1" "T2")))
+    (should (equal (octocat--get some "pending" "id") "R1"))
+    (should (equal (octocat--get some "pending" "commit") "def"))))
+
 (ert-deftest octocat-diff-test-underline-last ()
   "Only the last line of a file's diff is underlined, across the width."
   (let ((text (octocat-diff--underline-last "+a\n+b" 10)))
