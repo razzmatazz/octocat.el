@@ -236,98 +236,55 @@ One waiting to start is dimmed, set apart from one running."
 (defun octocat-run--spec-regexp (spec)
   "Return a regexp matching the names of the run's jobs started from SPEC.
 SPEC is a job of `octocat-workflow--yaml-jobs'; an expression in its
-name, as \"${{ matrix.os }}\", matches anything."
-  (concat "\\`"
-          (mapconcat #'regexp-quote
-                     (split-string (or (gethash "name" spec) (gethash "id" spec))
-                                   "\\${{[^}]*}}")
-                     ".*")
-          "\\(?: (.*)\\| / .*\\)?\\'"))
+name, as \"${{ matrix.os }}\", matches anything.  Past a few, only what
+comes before the first is matched, so the regexp can't backtrack for
+long."
+  (let ((parts (split-string (or (gethash "name" spec) (gethash "id" spec))
+                             "\\${{[^}]*}}")))
+    (if (> (length parts) 4)
+        (concat "\\`" (regexp-quote (car parts)))
+      (concat "\\`" (mapconcat #'regexp-quote parts ".*") "\\(?: (.*)\\| / .*\\)?\\'"))))
 
 (defun octocat-run--job-edges (jobs specs)
   "Return what JOBS wait for, by SPECS, as edges (FROM TO) of their IDs.
 SPECS are the jobs of the workflow's file, see
 `octocat-workflow--yaml-jobs'.  A job no spec names waits for nothing."
-  (let* ((spec-of (lambda (job)
+  (let* ((regexps (mapcar (lambda (s) (cons (octocat-run--spec-regexp s) s)) specs))
+         (spec-of (lambda (job)
                     (let ((name (or (gethash "name" job) "")))
                       (or (seq-find (lambda (s)
                                       (equal name (or (gethash "name" s) (gethash "id" s))))
                                     specs)
-                          (seq-find (lambda (s) (string-match-p (octocat-run--spec-regexp s) name))
-                                    specs)))))
-         (owners (mapcar (lambda (job) (cons job (funcall spec-of job))) jobs)))
+                          (cdr (seq-find (lambda (r) (string-match-p (car r) name)) regexps))))))
+         (owners (mapcar (lambda (job) (cons job (funcall spec-of job))) jobs))
+         (by-id (make-hash-table :test #'equal)))
+    (pcase-dolist (`(,job . ,spec) (reverse owners))
+      (when spec (push job (gethash (gethash "id" spec) by-id))))
     (cl-loop for (job . spec) in owners
              when spec
              append (cl-loop for need across (gethash "needs" spec)
-                             append (cl-loop for (other . ospec) in owners
-                                             when (and ospec (equal (gethash "id" ospec) need))
-                                             collect (list (gethash "databaseId" other)
-                                                           (gethash "databaseId" job)))))))
+                             append (mapcar (lambda (other)
+                                              (list (gethash "databaseId" other)
+                                                    (gethash "databaseId" job)))
+                                            (gethash need by-id))))))
 
 (defun octocat-run--job-order (jobs edges)
   "Return JOBS with each after those it waits for by EDGES, else in order."
-  (let ((done (make-hash-table :test #'equal)) out)
+  (let ((waits (make-hash-table :test #'equal))
+        (targets (make-hash-table :test #'equal))
+        out)
+    (dolist (e edges)
+      (cl-incf (gethash (nth 1 e) waits 0))
+      (push (nth 1 e) (gethash (nth 0 e) targets)))
     (while jobs
-      (let ((next (or (seq-find (lambda (job)
-                                  (let ((id (gethash "databaseId" job)))
-                                    (cl-every (lambda (e) (or (not (equal (nth 1 e) id))
-                                                              (gethash (nth 0 e) done)))
-                                              edges)))
+      (let ((next (or (seq-find (lambda (job) (zerop (gethash (gethash "databaseId" job) waits 0)))
                                 jobs)
                       (car jobs))))
-        (puthash (gethash "databaseId" next) t done)
+        (dolist (target (gethash (gethash "databaseId" next) targets))
+          (cl-decf (gethash target waits 0)))
         (push next out)
         (setq jobs (delq next jobs))))
     (nreverse out)))
-
-(defconst octocat-run--max-lanes 8
-  "The most lines the table's graph runs side by side; past it, it has none.")
-
-(defun octocat-run--lanes (ids edges)
-  "Return the graph beside each of IDS, rows in that order, as gitk draws one.
-Each is (TEXT . COLUMN): TEXT is drawn left of the row, its job's own
-cell blank at COLUMN, counted in cells of two characters.  A line runs
-down from the jobs that join it to the one it ends at, which waits for
-them.  EDGES are (FROM TO) of IDS, each FROM before its TO.  Return nil
-if more than `octocat-run--max-lanes' lines would run side by side."
-  (let ((slots nil) rows (widest 0))
-    (cl-flet ((free () (or (cl-position nil slots)
-                           (prog1 (length slots) (setq slots (append slots (list nil)))))))
-      (dolist (id ids)
-        (let* ((k (or (cl-position id slots) (free)))
-               (before (copy-sequence slots))
-               (marks nil))
-          (setf (nth k slots) nil)
-          (dolist (child (seq-filter (lambda (c) (member (list id c) edges)) ids))
-            (let ((c (cl-position child slots)))
-              (if c
-                  (push (cons c 'join) marks)
-                (setq c (if (and (null (nth k slots)) (not (assq k marks))) k (free)))
-                (setf (nth c slots) child)
-                (unless (= c k) (push (cons c 'new) marks)))))
-          (let* ((cols (cons k (mapcar #'car marks)))
-                 (lo (apply #'min cols))
-                 (hi (apply #'max cols))
-                 (n (length slots))
-                 (text (mapconcat
-                        (lambda (c)
-                          (concat
-                           (cond ((= c k) " ")
-                                 ((eq (alist-get c marks) 'join) (if (> c k) "┤" "├"))
-                                 ((eq (alist-get c marks) 'new) (if (> c k) "┐" "┌"))
-                                 ((and (nth c before) (nth c slots)) (if (<= lo c hi) "┼" "│"))
-                                 ((<= lo c hi) "─")
-                                 (t " "))
-                           (if (and (>= c lo) (< c hi)) "─" " ")))
-                        (number-sequence 0 (1- n)) "")))
-            (setq widest (max widest n))
-            (push (cons (string-trim-right text) k) rows))
-          (while (and slots (null (car (last slots))))
-            (setq slots (butlast slots))))))
-    (unless (> widest octocat-run--max-lanes)
-      (mapcar (lambda (row)
-                (cons (truncate-string-to-width (car row) (1- (* 2 widest)) nil ?\s) (cdr row)))
-              (nreverse rows)))))
 
 (defun octocat-run--job-open (repo run-id job)
   "Return a function opening JOB of run RUN-ID of REPO."
@@ -339,8 +296,8 @@ if more than `octocat-run--max-lanes' lines would run side by side."
 
 (defun octocat-run--job-row (repo run-id job name-width &optional lane)
   "Return the table's RET-able row for JOB of run RUN-ID of REPO.
-Its name takes NAME-WIDTH columns.  LANE, from `octocat-run--lanes',
-is drawn first, the job's status icon in its own cell."
+Its name takes NAME-WIDTH columns.  LANE, from `octocat-vui-lanes', is
+drawn first, the job's status icon in its own cell."
   (pcase-let* ((`(,status ,conclusion ,duration) (octocat-run--job-status job))
                (`(,done ,total ,current ,failed) (octocat-run--job-steps job))
                (icon (octocat-run--job-icon status conclusion))
@@ -349,10 +306,7 @@ is drawn first, the job's status icon in its own cell."
     (octocat-vui-row
      (string-trim-right
       (concat "  "
-              (if lane
-                  (let ((at (* 2 (cdr lane))))
-                    (concat (substring (car lane) 0 at) icon (substring (car lane) (1+ at))))
-                icon)
+              (if lane (octocat-vui-lane-text lane icon) icon)
               "  "
               (propertize (truncate-string-to-width name name-width nil ?\s "…")
                           'face 'octocat-run-job-name)
@@ -367,8 +321,8 @@ is drawn first, the job's status icon in its own cell."
 (defun octocat-run--table (repo run-id jobs edges)
   "Return the table rows of JOBS of run RUN-ID of REPO, with EDGES beside."
   (let* ((jobs (octocat-run--job-order jobs edges))
-         (lanes (and edges (octocat-run--lanes (mapcar (lambda (j) (gethash "databaseId" j)) jobs)
-                                               edges)))
+         (lanes (and edges (octocat-vui-lanes (mapcar (lambda (j) (gethash "databaseId" j)) jobs)
+                                              edges)))
          (name-width (min 45 (apply #'max 1 (mapcar (lambda (j)
                                                       (string-width (or (gethash "name" j) "")))
                                                     jobs)))))

@@ -97,13 +97,35 @@
       (,(octocat-screenshots--sha "c10") "Add a --drafts flag to `rocket build`" "srivera" "Sam Rivera" ,(* 11 d))))
   "The history of main, newest first: (SHA HEADLINE LOGIN NAME AGO).")
 
-(defun octocat-screenshots--history-node (commit)
-  "Return COMMIT, of `octocat-screenshots--commits', as a GraphQL history node."
+(defun octocat-screenshots--history-node (commit &optional parents)
+  "Return COMMIT, of `octocat-screenshots--commits', as a GraphQL history node.
+PARENTS are the SHAs of its parents, when the node lists them."
   (pcase-let ((`(,sha ,headline ,login ,name ,ago) commit))
     `(:oid ,sha :messageHeadline ,headline :authoredDate ,(octocat-screenshots--ago ago)
       :committedDate ,(octocat-screenshots--ago ago)
       :author (:name ,name :email ,(format "%s@example.com" (or login "bot"))
-               :user ,(if login `(:login ,login) :null)))))
+               :user ,(if login `(:login ,login) :null))
+      ,@(and parents
+             `(:parents (:nodes ,(vconcat (mapcar (lambda (p) `(:oid ,p)) parents))))))))
+
+(defconst octocat-screenshots--history
+  (let* ((merge `(,(octocat-screenshots--sha "merge-126")
+                  "Merge pull request #126 from aokafor/watch-mode" "aokafor" "Ada Okafor"
+                  ,(+ octocat-screenshots--d (* 12 octocat-screenshots--h))))
+         (commits (append (seq-take octocat-screenshots--commits 3)
+                          (list merge)
+                          (seq-drop octocat-screenshots--commits 3)))
+         (sha (lambda (i) (car (nth i commits)))))
+    ;; The watch-mode branch left main before c5 and was merged after it.
+    (seq-map-indexed
+     (lambda (c i)
+       (cons c (pcase i
+                 (3 (list (funcall sha 5) (funcall sha 4)))
+                 (4 (list (funcall sha 6)))
+                 (_ (list (or (funcall sha (1+ i)) (octocat-screenshots--sha "c11")))))))
+     commits))
+  "The history of main as its commit list shows it: (COMMIT . PARENTS).
+COMMIT is as in `octocat-screenshots--commits', with a merge put in.")
 
 (defun octocat-screenshots--tree-entry (path type &optional size)
   "Return a tree entry PATH of TYPE, \"blob\" or \"tree\", of SIZE bytes."
@@ -406,7 +428,7 @@ TITLE, AUTHOR and AGO are its own; FIELDS, a plist, override the rest."
        ,(- (* 2 d) h))
       (,(octocat-screenshots--sha "pr-128-4") "Share the cache between build workers"
        ,(- (* 2 d) (* 2 h)))
-      (,(octocat-screenshots--sha "pr-128-5") "Bench template parsing on the docs site"
+      (,(octocat-screenshots--sha "pr-128-5") "Merge branch 'main' into template-cache"
        ,(- (* 2 d) (* 3 h)))
       (,(octocat-screenshots--sha "pr-128-6") "Note the template cache in the changelog"
        ,(- (* 2 d) (* 3 h) (* 20 m)))
@@ -1040,8 +1062,11 @@ FIELDS, a plist, override the rest."
 (defconst octocat-screenshots--compare
   `(:status "ahead" :ahead_by 7 :behind_by 0 :total_commits 7
     :commits [,@(mapcar (pcase-lambda (`(,sha ,headline ,ago))
-                          (octocat-screenshots--commit-rest-short
-                           sha headline "srivera" "Sam Rivera" ago))
+                          (append (octocat-screenshots--commit-rest-short
+                                   sha headline "srivera" "Sam Rivera" ago)
+                                  (and (string-prefix-p "Merge" headline)
+                                       `(:parents [(:sha ,(octocat-screenshots--sha "pr-128-4"))
+                                                   (:sha ,octocat-screenshots--head)]))))
                         octocat-screenshots--pr-128-commits)]
     :files ,octocat-screenshots--pr-128-files)
   "The comparison of main and pull request #128's head, as the REST API returns it.")
@@ -1082,8 +1107,9 @@ FIELDS, a plist, override the rest."
                           :edges ,(vconcat
                                    (seq-map-indexed
                                     (lambda (c i) `(:cursor ,(format "cursor-%d" i)
-                                                    :node ,(octocat-screenshots--history-node c)))
-                                    octocat-screenshots--commits))))))))
+                                                    :node ,(octocat-screenshots--history-node
+                                                            (car c) (cdr c))))
+                                    octocat-screenshots--history))))))))
       ("repo-head" ("dir=main:docs/guide.md")
        (:data (:repository (:object (:history (:totalCount 12 :nodes [,(octocat-screenshots--history-node
                                                                         (nth 2 octocat-screenshots--commits))]))
@@ -1143,6 +1169,17 @@ FIELDS, a plist, override the rest."
                          (:number 133 :state "open" :draft :false :merged_at :null
                           :head (:ref "incremental-builds" :sha ,(octocat-screenshots--sha "pr-133-1")))])])
       ("pr-stack" () (:data (:repository (:pullRequest (:stack :null)))))
+      ("pr-merges" ("number=128")
+       (:data (:repository
+               (:pullRequest
+                (:commits
+                 (:nodes ,(vconcat
+                           (mapcar (pcase-lambda (`(,sha ,headline ,_))
+                                     `(:commit (:oid ,sha :parents
+                                                     (:totalCount ,(if (string-prefix-p "Merge" headline)
+                                                                       2 1)))))
+                                   octocat-screenshots--pr-128-commits))))))))
+      ("pr-merges" () (:data (:repository (:pullRequest (:commits (:nodes []))))))
       ("pr-diff" ("pulls/128/files") ,octocat-screenshots--pr-128-files)
       ("pr-review-threads" ("number=128") ,octocat-screenshots--pr-128-review-threads)
       ("viewer" () (:login "jlindqvist"))

@@ -557,5 +557,20 @@ The marks are kept in a variable, as the page keeps them in its state."
     (goto-char (point-min))
     (should-error (octocat-vui-list-mark) :type 'user-error)))
 
+(ert-deftest octocat-vui-test-lanes ()
+  "A line runs down from a row to each of its targets, joining on its row."
+  (should (equal (octocat-vui-lanes '(a b c d e) '((a b) (a c) (c d) (b e) (d e)))
+                 '((" ─┐" . 0) ("  │" . 0) ("│  " . 1) ("│  " . 1) (" ─┘" . 0))))
+  ;; A merge's first parent keeps its column; the branch rejoins below.
+  (should (equal (octocat-vui-lanes '(h m f p b) '((h m) (m p) (m f) (f b) (p b)))
+                 '(("   " . 0) (" ─┐" . 0) ("│  " . 1) ("  │" . 0) (" ─┘" . 0))))
+  ;; A target not loaded yet runs off the bottom; one above is left out.
+  (should (equal (octocat-vui-lanes '(x y) '((x z) (y x) (x y)))
+                 '((" ─┐" . 0) ("│  " . 1))))
+  (should (equal (mapcar #'octocat-vui-lane-mirror '(("   " . 0) (" ─┐" . 0) ("│  " . 1)))
+                 '(("   " . 1) ("┌─ " . 1) ("  │" . 0))))
+  (should-not (octocat-vui-lanes (cons 'root (number-sequence 1 9))
+                                 (mapcar (lambda (n) (list 'root n)) (number-sequence 1 9)))))
+
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here

@@ -121,7 +121,9 @@ load more; `C-c C-l` in the file viewer lists a file's.  Its top line is
 the tree browser's, `owner/repo  [main ▾]:/dir`, with how many commits
 there are, underlined: the picker shows another branch's history, and
 a directory of the path its own.  Each row reads as on GitHub: the
-subject, the author, when it was committed, then the short SHA.  The
+subject, the author, when it was committed, then the short SHA.  A
+branch's history, not a path's, has a graph down its left, as gitk's:
+a merge's branch runs beside it and rejoins where it left.  The
 local `HEAD` commit is highlighted, and `RET` on a commit opens it.  A github.com
 `/commits/REF` link opens it too, and `/commits/REF/PATH` the history of
 a file or directory.

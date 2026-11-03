@@ -1,0 +1,14 @@
+acme/rocket#128  Cache parsed templates between builds · @srivera
+open    Assignees @srivera · Labels  performance
+        Reviewers @mchen (approved)
+                  @jlindqvist (pending)
+        template-cache → main · Approved · Milestone 0.10 · Closes #97
+
+[Conversation]  Commits (7)  [Files changed (3)]
+○ Cache parsed templates by path                      @srivera  2 days ago  dc0c893
+○ Key cached templates by modification time too       @srivera  1 day ago   7a139e8
+○ Drop a cached template when its file is removed     @srivera  1 day ago   074192a
+○ Share the cache between build workers               @srivera  1 day ago   c37f1f3
+⊕ Merge branch 'main' into template-cache             @srivera  1 day ago   2779955
+○ Note the template cache in the changelog            @srivera  1 day ago   d83176c
+○ Invalidate a template when one it includes changes  @srivera  1 day ago   8ee9a2c

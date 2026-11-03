@@ -375,6 +375,13 @@ message as `git show` does, indented four columns, as written, never passed thro
 `octocat--markdown-string`.  `C-c C-v` therefore leaves it alone; it only
 toggles the markdown in comments, which GitHub does render.
 
+## A commit starts with ○
+
+A commit, wherever shown, starts with `octocat--commit-symbol`, `○`, a
+merge with `octocat--merge-symbol`, `⊕`, in `octocat-commit-sha`, one
+space before its subject: `○ Fix the sitemap`.  In a list's graph
+(`octocat-vui-lanes`) it is the node: `┌─⊕ Merge pull request #126`.
+
 ---
 
 ## Indicating the active (currently checked-out) branch

@@ -1027,6 +1027,99 @@ faces show (a button would draw it in one face).  RET on either toggles."
         ((nth (1- n) ends) (substring string 0 (nth (1- n) ends)))
         (t string)))
 
+;;;; Lanes
+;;
+;; A graph drawn down the left of a list, as gitk draws one: a run's
+;; jobs by what each waits for, a branch's commits by their parents.
+;; Each row is a node; a line runs down from it to each of its
+;; targets, and the lines to a target join on its row.
+
+(defcustom octocat-vui-max-lanes 8
+  "The most lines a list's graph runs side by side; past it, it has none."
+  :type 'integer
+  :group 'octocat)
+
+(defun octocat-vui-lanes (ids edges)
+  "Return the graph beside each of IDS, rows in that order.
+Each is (TEXT . COLUMN): TEXT is drawn left of the row, its node's own
+cell blank at COLUMN, counted in cells of two characters.  EDGES are
+\(FROM TO), from a row down to its target; a node's first target keeps
+its column, so a branch's first parents run straight down.  A target
+above FROM is left out, and one not in IDS runs off the bottom, as one
+on a page not yet loaded.  Return nil if more than
+`octocat-vui-max-lanes' lines would run side by side, as soon as they
+do: a row costs at most that many cells, whatever the graph."
+  (let ((slots nil) (seen (make-hash-table :test #'equal)) rows (widest 0)
+        (targets (make-hash-table :test #'equal)))
+    (dolist (e (reverse edges))
+      (push (cadr e) (gethash (car e) targets)))
+    (cl-flet ((free (taken)
+                (or (cl-loop for s in slots for i from 0
+                             when (and (null s) (not (memq i taken))) return i)
+                    (prog1 (length slots) (setq slots (append slots (list nil)))))))
+      (cl-dolist (id ids)
+        (puthash id t seen)
+        (let* ((ends (cl-loop for s in slots for i from 0 when (equal s id) collect i))
+               (k (if ends (car ends) (free nil)))
+               (before (copy-sequence slots))
+               (marks (mapcar (lambda (c) (cons c 'end)) (cdr ends)))
+               (first t))
+          (dolist (c ends) (setf (nth c slots) nil))
+          (dolist (target (gethash id targets))
+            (unless (gethash target seen)
+              (let ((c (if first k (free (cons k ends)))))
+                (when (>= c octocat-vui-max-lanes)
+                  (setq rows nil)
+                  (cl-return))
+                (setf (nth c slots) target)
+                (unless first (push (cons c 'new) marks))
+                (setq first nil))))
+          (setq widest (max widest (length slots)))
+          (push (cons (octocat-vui--lane-row k marks before slots) k) rows)
+          (while (and slots (null (car (last slots))))
+            (setq slots (butlast slots))))))
+    (mapcar (lambda (row)
+              (cons (truncate-string-to-width (car row) (1- (* 2 widest)) nil ?\s) (cdr row)))
+            (nreverse rows))))
+
+(defun octocat-vui--lane-row (k marks before after)
+  "Return the text of a row of `octocat-vui-lanes', its node at column K.
+MARKS are (COLUMN . end) for a line ending there and (COLUMN . new) for
+one starting; BEFORE and AFTER are the lines' targets above and below."
+  (let* ((cols (cons k (mapcar #'car marks)))
+         (lo (apply #'min cols))
+         (hi (apply #'max cols)))
+    (string-trim-right
+     (mapconcat
+      (lambda (c)
+        (concat
+         (pcase (alist-get c marks)
+           ((guard (= c k)) " ")
+           ('end (if (> c k) "┘" "└"))
+           ('new (if (> c k) "┐" "┌"))
+           (_ (cond ((and (nth c before) (nth c after)) (if (<= lo c hi) "┼" "│"))
+                    ((<= lo c hi) "─")
+                    (t " "))))
+         (if (and (>= c lo) (< c hi)) "─" " ")))
+      (number-sequence 0 (1- (length after))) ""))))
+
+(defun octocat-vui-lane-mirror (lane)
+  "Return LANE, of `octocat-vui-lanes', drawn right to left.
+Its first column is then the one beside the row's text."
+  (let ((text (car lane)))
+    (cons (apply #'string
+                 (mapcar (lambda (ch) (alist-get ch '((?┐ . ?┌) (?┌ . ?┐) (?┘ . ?└) (?└ . ?┘))
+                                                 ch))
+                         (reverse text)))
+          (- (/ (1+ (length text)) 2) 1 (cdr lane)))))
+
+(defun octocat-vui-lane-text (lane node)
+  "Return LANE, of `octocat-vui-lanes', dimmed, with NODE in its node's cell."
+  (let ((at (* 2 (cdr lane))))
+    (concat (propertize (substring (car lane) 0 at) 'face 'octocat-dimmed)
+            node
+            (propertize (substring (car lane) (1+ at)) 'face 'octocat-dimmed))))
+
 (defun octocat-vui-reveal-list (items row-fn key-fn)
   "Return a `vui-list' of ITEMS drawn by ROW-FN and keyed by KEY-FN.
 Items that arrive after the first render unfold progressively, see

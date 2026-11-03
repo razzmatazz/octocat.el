@@ -63,7 +63,7 @@
 (declare-function octocat-issue-new "octocat-issue" ())
 (declare-function octocat-repo-vui--milestone "octocat-repo" (item))
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
-                  (repo commit head-info author-w &optional subject-w date-w))
+                  (repo commit head-info author-w &optional subject-w date-w lane))
 (declare-function octocat-repo-vui--date-width "octocat-repo" (commits))
 (declare-function octocat-repo-vui--subject-width "octocat-repo" (commits width author-w))
 (declare-function octocat-repo-vui--author-width "octocat-repo" (commits))
@@ -804,6 +804,37 @@ is in none."
               #'octocat-pr--parse-stack
               done))))
 
+(defconst octocat-pr--merges-query
+  (concat "query($owner:String!,$name:String!,$number:Int!){"
+          "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+          ;; The last 100: a longer PR's first commits show as plain ones.
+          "commits(last:100){nodes{commit{oid parents{totalCount}}}}}}}")
+  "GraphQL query for which commits of a pull request are merges.
+`gh pr view' gives no commit's parents.")
+
+(defun octocat-pr--parse-merges (output)
+  "Return the SHAs of the merge commits in OUTPUT, of `octocat-pr--merges-query'."
+  (vconcat
+   (cl-loop for node across (or (octocat--get (json-parse-string output)
+                                              "data" "repository" "pullRequest" "commits" "nodes")
+                                [])
+            for commit = (gethash "commit" node)
+            when (> (or (octocat--get commit "parents" "totalCount") 0) 1)
+            collect (gethash "oid" commit))))
+
+(octocat-sync-define-resource pr-merges (repo number)
+  :fetch (lambda (done)
+           (let ((parts (split-string repo "/")))
+             (octocat--run-gh
+              "pr-merges"
+              (list "api" "graphql"
+                    "-f" (concat "query=" octocat-pr--merges-query)
+                    "-f" (concat "owner=" (car parts))
+                    "-f" (concat "name=" (cadr parts))
+                    "-F" (format "number=%d" number))
+              #'octocat-pr--parse-merges
+              done))))
+
 (defun octocat-pr--use-stack (repo number tick)
   "Return the stack pull request NUMBER of REPO is in, a hash-table, or nil.
 Nil too until it is fetched, or when it cannot be.  A new TICK fetches
@@ -1276,7 +1307,13 @@ A new TICK fetches them again."
          (snap  (octocat-pr--use-data repo number tick))
          (stack (octocat-pr--use-stack repo number tick))
          (pr    (plist-get snap :data))
-         (commits (vui-use-memo (pr) (and pr (octocat-pr--commits pr)))))
+         (merges (plist-get (octocat-vui-use-resource (list 'pr-merges repo number) tick) :data))
+         (commits (vui-use-memo (pr merges)
+                    (and pr (mapcar (lambda (c)
+                                      (when (seq-contains-p merges (gethash "sha" c))
+                                        (puthash "merge" t c))
+                                      c)
+                                    (octocat-pr--commits pr))))))
     (octocat-vui-resource-view
      snap
      :skeleton (lambda (_)

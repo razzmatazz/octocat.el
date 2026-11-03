@@ -86,14 +86,6 @@ env:
                            (octocat-run--job-order jobs '((3 1))))
                    '(2 3 1)))))
 
-(ert-deftest octocat-run-test-lanes ()
-  "The table's graph runs a line down to each job from those it waits for."
-  (should (equal (octocat-run--lanes '(a b c d e) '((a b) (a c) (c d) (b e) (d e)))
-                 '((" ─┐" . 0) ("  │" . 0) ("│  " . 1) ("├─ " . 1) ("   " . 0))))
-  ;; Too many side by side: no graph.
-  (should-not (octocat-run--lanes (cons 'root (number-sequence 1 9))
-                                  (mapcar (lambda (n) (list 'root n)) (number-sequence 1 9)))))
-
 (ert-deftest octocat-run-test-mermaid-graph ()
   "One-line nodes are joined left to right, and keep their properties."
   (let ((lines (octocat-mermaid-graph

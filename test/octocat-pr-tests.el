@@ -148,7 +148,7 @@ Each of PRS is (NUMBER STATE DRAFT MERGEABLE)."
     (should (= (octocat-repo-vui--subject-width commits 112 3)
                octocat-repo-vui--subject-min-width))
     (puthash "message" (make-string 200 ?x) (gethash "commit" (car commits)))
-    (should (= (+ (octocat-repo-vui--subject-width commits 112 3) 7 2 2 3 2
+    (should (= (+ (octocat-repo-vui--subject-width commits 112 3) 2 7 2 2 3 2
                   (apply #'max (mapcar (lambda (c) (string-width (octocat-repo-vui--date c)))
                                        commits)))
                112))))

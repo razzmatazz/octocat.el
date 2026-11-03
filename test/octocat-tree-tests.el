@@ -605,7 +605,7 @@ It does not fold, however long."
               (should (derived-mode-p 'octocat-commit-list-mode))
               (should (string-match-p
                        (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md  3 commits  "
-                               "\\[reset to main\\]\n\nAdd the guide +Ann +[^ ].* +abc1234$")
+                               "\\[reset to main\\]\n\n○ Add the guide +Ann +[^ ].* +abc1234$")
                        text))
               ;; A directory on the way shows its own commits.
               (let (opened)

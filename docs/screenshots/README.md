@@ -76,7 +76,7 @@ a table; the drawer under a heading is left out.
 [As text](file-org.txt)
 <!-- /screenshot -->
 
-`[342 commits]` lists the history of the branch:
+`[342 commits]` lists the history of the branch, with its merges:
 
 <!-- screenshot: (commit-list "acme/rocket") -->
 ![commit-list](commit-list.png)
@@ -118,6 +118,14 @@ between it and a merge.
 ![pr](pr.png)
 
 [As text](pr.txt)
+<!-- /screenshot -->
+
+Its commits, a merge of `main` marked `⊕`:
+
+<!-- screenshot: (pr-commits "acme/rocket" 128) -->
+![pr-commits](pr-commits.png)
+
+[As text](pr-commits.txt)
 <!-- /screenshot -->
 
 Its changed files, with `[Expand all]` pressed: a conversation boxed

@@ -354,6 +354,13 @@ with a floor of 1."
   "Face for a merged PR state badge."
   :group 'octocat)
 
+(defconst octocat--commit-symbol "○"
+  "The symbol before a commit wherever one is shown.
+See \"A commit starts with ○\" in docs/user-interface-conventions.md.")
+
+(defconst octocat--merge-symbol "⊕"
+  "The symbol before a merge commit, in place of `octocat--commit-symbol'.")
+
 (defface octocat-run-job-name
   '((t :weight bold))
   "Face for a job name in a workflow-run view."

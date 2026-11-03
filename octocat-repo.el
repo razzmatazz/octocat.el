@@ -255,7 +255,7 @@ elsewhere is followed; a page on a picked ref stays on it."
           "$path:String){repository(owner:$owner,name:$name){object(expression:$ref){...on "
           "Commit{history(first:$limit,after:$after,path:$path){totalCount edges{cursor "
           "node{oid messageHeadline authoredDate committedDate author{name email user{"
-          "login}}}}}}}}}")
+          "login}} parents(first:2){nodes{oid}}}}}}}}}")
   "GraphQL query behind `octocat-repo--list-commits'.
 Only what a row shows: the REST commits endpoint sends ~15 times as much.")
 
@@ -285,8 +285,8 @@ a list of commits from `octocat-repo--parse-history', or a cons
   "Return the commit NODE of a GraphQL history shaped as REST has it.
 That is what the rows read: \"sha\"; \"commit\", with the \"message\"
 \(its headline only), the git \"author\" (name, email, date) and the
-\"committer\" (date); and
-\"author\", the GitHub user or :null."
+\"committer\" (date); \"author\", the GitHub user or :null; and, when
+NODE has them, the SHAs of its \"parents\", for the graph beside it."
   (let* ((a      (gethash "author" node))
          (user   (and (hash-table-p a) (gethash "user" a)))
          (git    (make-hash-table :test #'equal))
@@ -304,6 +304,10 @@ That is what the rows read: \"sha\"; \"commit\", with the \"message\"
     (puthash "sha" (gethash "oid" node) commit)
     (puthash "commit" c commit)
     (puthash "author" (if (hash-table-p user) user :null) commit)
+    (when-let* ((parents (gethash "parents" node)))
+      (puthash "parents" (vconcat (mapcar (lambda (p) (gethash "oid" p))
+                                          (gethash "nodes" parents)))
+               commit))
     commit))
 
 (defun octocat-repo--parse-history (json-string)
@@ -1053,9 +1057,9 @@ commit landed where it is, after a rebase or a merge on GitHub."
 (defun octocat-repo-vui--subject-width (commits width author-w)
   "Return the width of the subject column for COMMITS: the longest subject.
 It is at least `octocat-repo-vui--subject-min-width', and at most what
-WIDTH columns leave beside the AUTHOR-W wide author, the date and the
-SHA, so the rows fill the page but do not wrap."
-  (let ((rest (+ 2 author-w 2 (octocat-repo-vui--date-width commits) 2 7)))
+WIDTH columns leave beside the commit symbol, the AUTHOR-W wide author,
+the date and the SHA, so the rows fill the page but do not wrap."
+  (let ((rest (+ 2 2 author-w 2 (octocat-repo-vui--date-width commits) 2 7)))
     (max octocat-repo-vui--subject-min-width
          (min (- width rest)
               (apply #'max 0 (mapcar (lambda (c) (string-width (octocat-repo-vui--subject c)))
@@ -1094,10 +1098,38 @@ highlighted.  AUTHOR-W is the width of the author column, see
      "  "
      (propertize short 'face (if is-head 'octocat-branch-current 'octocat-commit-sha)))))
 
-(defun octocat-repo-vui--commit-row (repo commit head-info author-w &optional subject-w date-w)
+(defun octocat-repo-vui--commit-lanes (commits)
+  "Return the graph beside COMMITS, newest first, as a hash-table by SHA.
+Each is a lane of `octocat-vui-lanes', mirrored, so the first parents
+run down beside the subjects.  Return nil when no line would branch, as
+in a history of squashed merges, or there are too many."
+  (let ((lanes (octocat-vui-lanes
+                (mapcar (lambda (c) (gethash "sha" c)) commits)
+                (cl-loop for c in commits
+                         append (cl-loop for p across (or (gethash "parents" c) [])
+                                         collect (list (gethash "sha" c) p))))))
+    (when (seq-some (lambda (lane) (string-match-p "[^ ]" (car lane))) lanes)
+      (let ((table (make-hash-table :test #'equal)))
+        (cl-loop for c in commits for lane in lanes
+                 do (puthash (gethash "sha" c) (octocat-vui-lane-mirror lane) table))
+        table))))
+
+(defun octocat-repo-vui--commit-row (repo commit head-info author-w
+                                          &optional subject-w date-w lane)
   "Return a row vnode for COMMIT in REPO, RET opening it.
-The other arguments are as for `octocat-repo-vui--commit-line'."
-  (octocat-vui-row (octocat-repo-vui--commit-line commit head-info author-w subject-w date-w)
+It starts with `octocat--commit-symbol', or `octocat--merge-symbol'
+for a merge, one with two \"parents\" or a \"merge\" of t; in LANE, of
+`octocat-repo-vui--commit-lanes', when given.  The other arguments are
+as for `octocat-repo-vui--commit-line'."
+  (octocat-vui-row (let ((node (propertize (if (or (eq (gethash "merge" commit) t)
+                                                   (> (length (gethash "parents" commit)) 1))
+                                               octocat--merge-symbol
+                                             octocat--commit-symbol)
+                                           'face 'octocat-commit-sha)))
+                     (concat (if lane (octocat-vui-lane-text lane node) node)
+                             " "
+                             (octocat-repo-vui--commit-line commit head-info author-w
+                                                            subject-w date-w)))
                    (lambda () (octocat-repo-vui--open-commit repo commit))
                    "RET: view commit"
                    (octocat--web-url "%s/commit/%s" repo
@@ -1254,14 +1286,21 @@ pinned to the head shown."
            (if (null shown)
                (vui-text "(no commits)" :face 'octocat-dimmed)
              ;; Columns from all loaded commits, so they hold as more show.
-             (let* ((author-w  (octocat-repo-vui--author-width commits))
+             ;; A path's history skips the parents between: no graph.
+             (let* ((lanes     (and (null path) (octocat-repo-vui--commit-lanes commits)))
+                    ;; Beyond the symbol's own column.
+                    (lanes-w   (if lanes
+                                   (1- (string-width (car (car (hash-table-values lanes)))))
+                                 0))
+                    (author-w  (octocat-repo-vui--author-width commits))
                     (subject-w (octocat-repo-vui--subject-width
-                                commits (octocat-vui-window-width) author-w))
+                                commits (- (octocat-vui-window-width) lanes-w) author-w))
                     (date-w    (octocat-repo-vui--date-width commits)))
                (octocat-vui-reveal-list
                 shown
                 (lambda (c)
-                  (octocat-repo-vui--commit-row repo c head-info author-w subject-w date-w))
+                  (octocat-repo-vui--commit-row repo c head-info author-w subject-w date-w
+                                                (and lanes (gethash (gethash "sha" c) lanes))))
                 (lambda (c) (gethash "sha" c)))))
            (when (and shown (or (> (length commits) limit) (not done)))
              (octocat-vui-load-more-button

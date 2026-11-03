@@ -285,14 +285,19 @@ when given, \"description\" and \"default\", strings."
 ;; `needs' is read from the workflow's file, at the run's commit, for
 ;; the run page's job graph (see octocat-run.el).
 
+(defconst octocat-workflow--max-file-size (* 512 1024)
+  "The longest workflow file read for its jobs; a longer one has none.")
+
 (defun octocat-workflow--yaml-jobs (yaml)
   "Return the jobs of workflow file YAML as a vector of hash-tables.
 Each has the job's \"id\", its \"name\" when it has one, and \"needs\",
 a vector of the ids of the jobs it waits for.  Only those two keys of
 each job are given to `octocat-workflow--yaml-parse', so what its steps
-are written in does not matter."
-  (let* ((lines (mapcar (lambda (l) (string-trim-right l "[ \t\r]+"))
-                        (split-string yaml "\n")))
+are written in does not matter.  A file longer than
+`octocat-workflow--max-file-size' is not read."
+  (let* ((lines (and (<= (length yaml) octocat-workflow--max-file-size)
+                     (mapcar (lambda (l) (string-trim-right l "[ \t\r]+"))
+                             (split-string yaml "\n"))))
          (indent (lambda (l) (- (length l) (length (string-trim-left l)))))
          (blank-p (lambda (l) (string-empty-p (octocat-workflow--yaml-uncomment l))))
          jobs)

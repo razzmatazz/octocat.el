@@ -46,7 +46,7 @@
 (require 'vui)
 
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
-                  (repo commit head-info author-w &optional subject-w date-w))
+                  (repo commit head-info author-w &optional subject-w date-w lane))
 (declare-function octocat-repo-vui--date-width "octocat-repo" (commits))
 (declare-function octocat-repo-vui--author-width "octocat-repo" (commits))
 (declare-function octocat-repo-vui--subject-width "octocat-repo" (commits width author-w))
