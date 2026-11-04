@@ -8,7 +8,7 @@ Gotchas of vui.el as octocat uses it, and how the code works around them.
   2`).  Rows here carry their own two-space prefix, so every collapsible
   passes `:indent 0`; otherwise the first row is indented by four spaces.
 - Rows use `vui-text` inside a `vui-region` (not `vui-button`) so per-segment
-  faces are preserved; see "Row rendering" in `octocat-repo.el`.
+  faces are preserved; see "Rows of PRs, issues and commits" in `octocat-vui.el`.
 
 ## Editable fields
 

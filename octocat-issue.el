@@ -39,21 +39,7 @@
 (require 'vui)
 (require 'vui-components) ; vui-list, vui-vstack, etc.
 
-;; The issue list page below reuses the row builder and fetch plumbing
-;; from octocat-repo.el, which requires this file (so cannot be required
-;; here).
-(declare-function octocat-repo-vui--issue-row "octocat-repo"
-                  (repo issue width bg &optional compact no-state marked))
-(declare-function octocat-repo-vui--issue-compact-line "octocat-repo"
-                  (repo issue bg no-state &optional width))
-(declare-function octocat-repo-vui--state-label "octocat-repo" (state &optional draft))
-(declare-function octocat-repo-vui--detail-header "octocat-repo"
-                  (repo item state on-edit-title bg width fields shown
-                        &optional branch omit badge))
-(declare-function octocat-repo-vui--login-items "octocat-repo" (users))
-(declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
 (declare-function octocat-pr-open "octocat-pr" (repo number))
-(declare-function octocat-repo-vui--milestone "octocat-repo" (item))
 
 (defvar octocat--issue-repo)
 (defvar octocat--issue-number)
@@ -303,15 +289,15 @@ Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG
 BG is as for `octocat--label-face'; the title is cut to fit WIDTH."
   (let ((state (or (gethash "state" issue) "OPEN")))
     (append
-     (octocat-repo-vui--detail-header
-      repo issue (octocat-repo-vui--state-label state)
+     (octocat-vui--detail-header
+      repo issue (octocat-vui--state-label state)
       #'octocat-issue-edit-title bg width
       (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
-                  (cons :stack (octocat-repo-vui--login-items (gethash "assignees" issue))))
+                  (cons :stack (octocat-vui--login-items (gethash "assignees" issue))))
             (cons (octocat-timeline-edit-field "issue" repo issue "label")
                   (octocat--format-labels (gethash "labels" issue) bg)))
-      (list (cons "Milestone" (octocat-repo-vui--milestone issue))
-            (cons "Fixed by"  (octocat-repo-vui--numbers
+      (list (cons "Milestone" (octocat-vui--milestone issue))
+            (cons "Fixed by"  (octocat-vui--numbers
                                repo (gethash "closedByPullRequestsReferences" issue)
                                #'octocat-pr-open)))
       nil '(:comments))
@@ -411,7 +397,6 @@ the background, in place: what is unfolded stays so."
     (octocat-issue-refresh)))
 
 
-
 ;;;; Issue list page
 ;;
 ;; Opened by `M-x octocat-issue-list' (octocat.el); the page is
@@ -430,10 +415,10 @@ the background, in place: what is unfolded stays so."
                                     :query (octocat-vui-list-query)
                                     :compact (octocat-vui-list-compact-p)
                                     :row-fn (lambda (issue width compact no-state _ marked)
-                                              (octocat-repo-vui--issue-row
+                                              (octocat-vui--issue-row
                                                repo issue width bg compact no-state marked))
                                     :line-fn (lambda (issue no-state _)
-                                               (octocat-repo-vui--issue-compact-line
+                                               (octocat-vui--issue-compact-line
                                                 repo issue bg no-state))))))
 
 (defvar octocat-issue-list-mode-map

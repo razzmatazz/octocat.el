@@ -23,9 +23,10 @@
 
 ;; Small building blocks on top of vui.el: hooks, components and vnode
 ;; builders shared by the vui-based buffers.  The generic ones (rows,
-;; load-more, folds) know nothing about GitHub; the list-page
-;; section below is the exception and knows just enough about a repo to
-;; share the keymap, the header counts and the search-query filter.
+;; load-more, folds) know nothing about GitHub; the list-page and
+;; PR/issue/commit row sections below are the exceptions, and know just
+;; enough about a repo to share the keymap, the header counts, the
+;; search-query filter and the rows.
 ;; Everything buffer-specific stays in the buffer's own file (e.g.
 ;; `octocat-repo.el').
 ;;
@@ -50,6 +51,9 @@
 ;;                                   tab strip of the repo page
 ;;   `octocat-vui-list-header'       list page header with open/closed counts
 ;;   `octocat-vui-list-filter-bar'   query field + facet buttons
+;;   `octocat-vui--pr-row', `octocat-vui--issue-row', `octocat-vui--commit-row'
+;;                                   rows of PRs, issues and commits
+;;   `octocat-vui--detail-header'    title and fields atop PR and issue pages
 ;;   `octocat--async-search-repos'   repo search stage of `octocat-switch-repo'
 ;;   `octocat--read-branch'          branch picker
 
@@ -65,9 +69,8 @@
 (require 'vui)
 (require 'vui-components)
 
-(defvar octocat-repo-vui--state-width)  ; defconst in octocat-repo.el
-(defvar octocat-repo-vui--mark-width)   ; defconst in octocat-repo.el
-(declare-function octocat-repo-vui--compact-width "octocat-repo" (lines width))
+(defvar octocat-vui--state-width)  ; defconst under "Row builders"
+(defvar octocat-vui--mark-width)   ; likewise
 
 (defvar octocat-vui-page-map
   (let ((map (make-sparse-keymap)))
@@ -498,8 +501,8 @@ Shown when there is neither a cache nor a response yet: the header and
 the opening timeline entry, laid out as the real page lays them out.
 TABS, a list of tab labels, adds the tab strip of a PR page (see
 `octocat-vui-tab-row')."
-  (let* ((state  octocat-repo-vui--state-width)
-         (indent (make-string (+ octocat-repo-vui--state-width 2) ?\s))
+  (let* ((state  octocat-vui--state-width)
+         (indent (make-string (+ octocat-vui--state-width 2) ?\s))
          (strip  (and tabs (string-join tabs "  "))))
     (octocat-vui-skeleton
      `((,(propertize repo 'face 'octocat-repo)
@@ -534,9 +537,9 @@ Shown under a header painted from data another page fetched."
 COMPACT shapes them as one-line rows instead, without the state when
 NO-STATE is non-nil.  Each starts with a blank mark column.  Shown when
 there is neither a cache nor a response yet; see
-`octocat-repo-vui--item-row' for the layout it imitates."
-  (let* ((mark   (make-string octocat-repo-vui--mark-width ?\s))
-         (state  octocat-repo-vui--state-width)
+`octocat-vui--item-row' for the layout it imitates."
+  (let* ((mark   (make-string octocat-vui--mark-width ?\s))
+         (state  octocat-vui--state-width)
          (indent (concat mark (make-string (+ state 2) ?\s))))
     (octocat-vui-skeleton
      (if compact
@@ -1729,7 +1732,7 @@ for one-line rows, and NO-STATE, non-nil to leave a compact row's state
 out: under the default query, every item is open.  LINE-FN returns the
 uncut compact line of an item, given it and NO-STATE; the widest of them
 sets the width the compact rows are laid out in (see
-`octocat-repo-vui--compact-width').  EXTRA-FN, when non-nil, is called
+`octocat-vui--compact-width').  EXTRA-FN, when non-nil, is called
 with TICK during render, like a hook, for more the rows show, such as a
 PR's place in its stack; ROW-FN and LINE-FN get what it returns, ROW-FN
 as its last argument but one: its last is non-nil for a marked item.
@@ -1831,7 +1834,7 @@ dropped, so that only items shown are marked."
        (let* ((items  (append (gethash "nodes" data) nil))
               (cursor (gethash "cursor" data))
               (row-w  (if compact
-                          (octocat-repo-vui--compact-width
+                          (octocat-vui--compact-width
                            (mapcar (lambda (item) (funcall line-fn item no-state extra)) items)
                            width)
                         width)))
@@ -2552,6 +2555,649 @@ such as \"Labelled\", how it went once the last is answered."
     (define-key map (kbd "U") #'octocat-vui-list-unmark-all)
     map)
   "Keys that mark items, in the lists whose items can be marked.")
+
+;;;; Rows of PRs, issues and commits
+;;
+;; The rows and detail headers the repo, list, PR, issue, commit and
+;; compare pages draw.
+
+(declare-function octocat-pr-open     "octocat-pr"     (repo number))
+(declare-function octocat-issue-open  "octocat-issue"  (repo number))
+(declare-function octocat-commit-open "octocat-commit" (repo sha))
+
+;;;;; Navigation
+;;
+;; Each of these opens (or switches to) the corresponding detail buffer,
+;; from a row's RET handler.
+
+(defun octocat-vui--open-pr (repo pr)
+  "Open the PR detail buffer for PR (a hash-table) in REPO."
+  (octocat-pr-open repo (gethash "number" pr)))
+
+(defun octocat-vui--open-issue (repo issue)
+  "Open the issue detail buffer for ISSUE (a hash-table) in REPO."
+  (octocat-issue-open repo (gethash "number" issue)))
+
+(defun octocat-vui--open-commit (repo commit)
+  "Open the commit detail buffer for COMMIT (a hash-table) in REPO."
+  (octocat-commit-open repo (or (gethash "sha" commit) (gethash "oid" commit) "")))
+
+;;;;; Row builders
+
+(defconst octocat-vui--state-width 6
+  "Display width of the state column (\"closed\", \"merged\") in PR and issue rows.")
+
+(defun octocat-vui--state-label (state &optional draft)
+  "Return the coloured, padded state text for a PR/issue STATE (any case).
+DRAFT is the JSON isDraft value; t shows an open pull request as \"draft\"."
+  (let* ((state (downcase (or state "open")))
+         (text  (cond ((equal state "merged") "merged")
+                      ((equal state "closed") "closed")
+                      ((eq draft t) "draft")
+                      (t "open")))
+         (face  (cond ((equal text "merged") 'octocat-pr-state-merged)
+                      ((equal text "closed") 'octocat-pr-state-closed)
+                      ((equal text "draft")  'octocat-dimmed)
+                      (t                     'octocat-pr-state-open))))
+    (propertize (format (format "%%-%ds" octocat-vui--state-width) text)
+                'face face)))
+
+;; PR and issue rows are two lines, each cut to the window width, laid
+;; out as GitHub's: the title, its checks and its labels, with the PRs
+;; that close an issue, the comments and the assignees at the right
+;; edge; then its number, when and by whom it was opened, and its
+;; review.  The title gives way to the rest.  The branch is left to the
+;; page.
+;;
+;;   open  Another dummy PR  ✓ 4/5  duplicate enhancement  ✉ 3  assigned to @you +1
+;;         #5 opened 3 days ago by @me · Review required
+
+(defun octocat-vui--assignees (item)
+  "Return \"assigned to @login\" for the first assignee of ITEM, or nil.
+How many more there are follows, as \" +2\".  Said in words, as GitHub's
+tooltip on its avatars does: a bare login reads as the author."
+  (let ((users (gethash "assignees" item)))
+    (when (and (vectorp users) (> (length users) 0))
+      (concat (propertize "assigned to " 'face 'octocat-dimmed)
+              (propertize (concat "@" (or (gethash "login" (aref users 0)) ""))
+                          'face 'octocat-pr-author)
+              (and (> (length users) 1)
+                   (propertize (format " +%d" (1- (length users))) 'face 'octocat-dimmed))))))
+
+(defun octocat-vui--cells (repo item bg)
+  "Return the display cells of the PR or issue ITEM of REPO as a plist.
+The keys are :title, :chips (label chips), :review, :ci, :author,
+:assignees, :prs \(the PRs that close an issue), :comments, :date and
+:number \(\"owner/repo#N\");
+a cell that ITEM does not have is nil or empty.  BG is as for
+`octocat--label-face'."
+  (let* ((checks   (gethash "statusCheckRollup" item))
+         (closers  (gethash "closedByPullRequestsReferences" item))
+         ;; A list row's item has the count; a page's, the comments.
+         (comments (or (gethash "commentCount" item)
+                       (let ((c (gethash "comments" item)))
+                         (if (vectorp c) (length c) 0)))))
+    (list :title  (or (gethash "title" item) "")
+          :number (concat (propertize repo 'face 'octocat-repo)
+                          (propertize (format "#%d" (gethash "number" item))
+                                      'face 'octocat-pr-number))
+          :date   (propertize (octocat--format-ts-relative
+                               (or (gethash "createdAt" item) ""))
+                              'face 'octocat-dimmed)
+          :prs    (and (vectorp closers) (> (length closers) 0)
+                       (propertize
+                        (mapconcat (lambda (pr) (format "#%d" (gethash "number" pr)))
+                                   closers " ")
+                        'face 'octocat-pr-number))
+          :comments (and (> comments 0)
+                         (propertize (format "✉ %d" comments)
+                                     'face 'octocat-dimmed))
+          :chips  (octocat--format-labels (gethash "labels" item) bg)
+          ;; As GitHub's list, only while open: a draft says so instead.
+          :review (and (equal (upcase (or (gethash "state" item) "")) "OPEN")
+                       (not (eq (gethash "isDraft" item) t))
+                       (when-let* ((text (pcase (gethash "reviewDecision" item)
+                                           ("REVIEW_REQUIRED"   "Review required")
+                                           ("APPROVED"          "Approved")
+                                           ("CHANGES_REQUESTED" "Changes requested"))))
+                         (propertize text 'face 'octocat-dimmed)))
+          :ci     (and (or (octocat--nonempty (gethash "ciState" item))
+                           (and checks (not (eq checks :null)) (> (length checks) 0)))
+                       (octocat--ci-count-label item))
+          :assignees (octocat-vui--assignees item)
+          :author (propertize (octocat--author-login item)
+                              'face 'octocat-pr-author))))
+
+(defun octocat-vui--join-cells (cells keys &optional sep)
+  "Return the non-empty CELLS under KEYS, joined by SEP or a dimmed dot."
+  (mapconcat #'identity
+             (seq-remove (lambda (s) (or (null s) (string-empty-p s)))
+                         (mapcar (lambda (key) (plist-get cells key)) keys))
+             (or sep (propertize " · " 'face 'octocat-dimmed))))
+
+(defun octocat-vui--after-title (cells keys)
+  "Return what follows the title in CELLS: the cells under KEYS.
+Each after two spaces, or \"\" when it has none.  A PR's place in its
+stack, :stack, goes right after its title (see the UI conventions)."
+  (mapconcat (lambda (c) (if (or (null c) (string-empty-p c)) "" (concat "  " c)))
+             (mapcar (lambda (key) (plist-get cells key)) keys)
+             ""))
+
+(defun octocat-vui--right-cells (cells)
+  "Return the cells of CELLS for the right edge of an item's row, or \"\".
+That is the PRs that close it, its comments and its assignees, as
+GitHub's list shows them there."
+  (octocat-vui--join-cells cells '(:prs :comments :assignees) "  "))
+
+(defun octocat-vui--with-right (left right cap)
+  "Return LEFT with RIGHT at its right edge, CAP columns on, or nil CAP after it.
+LEFT is cut to leave RIGHT room."
+  (cond ((string-empty-p right)
+         (if cap (truncate-string-to-width left cap nil nil "…") left))
+        (cap (truncate-string-to-width
+              (concat (truncate-string-to-width
+                       left (max 0 (- cap (string-width right) 2)) nil ?\s "…")
+                      "  " right)
+              cap nil nil "…"))
+        (t (concat left "  " right))))
+
+(defun octocat-vui--fit-cut-title (title cap used)
+  "Return TITLE fit to the room CAP columns leave beside USED, or whole if no CAP.
+See `octocat-vui--fit-title'."
+  (if cap (octocat-vui--fit-title title (- cap used)) title))
+
+(defun octocat-vui--item-lines (state cells &optional width)
+  "Return the two lines of an item with STATE text, as a list of strings.
+The first is the state, title, checks and label chips, and at its right
+edge `octocat-vui--right-cells'; the second the number, when and by
+whom it was opened, and its review.  CELLS are as made by
+`octocat-vui--cells'.  WIDTH, when non-nil, cuts each line to fit,
+shortening the title to make room for the rest.  Shared by the list rows
+and the dashboard so the two read alike."
+  (let* ((cap    (and width (max 10 (1- width))))
+         (dim    (lambda (s) (propertize s 'face 'octocat-dimmed)))
+         (after  (octocat-vui--after-title cells '(:stack :ci :chips)))
+         (right  (octocat-vui--right-cells cells))
+         (author (plist-get cells :author))
+         (who    (concat (plist-get cells :number) (funcall dim " opened ")
+                         (plist-get cells :date)
+                         (if (string-empty-p author) ""
+                           (concat (funcall dim " by ") author))))
+         (review (plist-get cells :review)))
+    (list
+     (octocat-vui--with-right
+      (concat state "  "
+              (octocat-vui--fit-cut-title
+               (plist-get cells :title) cap
+               (+ (string-width state) 2 (string-width after)
+                  (if (string-empty-p right) 0 (+ 2 (string-width right)))))
+              after)
+      right cap)
+     (let ((line (concat (make-string (+ octocat-vui--state-width 2) ?\s)
+                         who
+                         (if review (concat (funcall dim " · ") review) ""))))
+       (if cap (truncate-string-to-width line cap nil nil "…") line)))))
+
+(defun octocat-vui--compact-line (state number cells &optional width)
+  "Return the one line of an item in a compact list.
+That is STATE text, NUMBER (\"#N\"), the title, its place in a stack
+and its label chips, and at its right edge
+`octocat-vui--right-cells'; CELLS are as made by
+`octocat-vui--cells'.  A nil STATE leaves it out.  The repo is the
+page's, and the author and age are left out, to make room for the title.  WIDTH,
+when non-nil, cuts the line to fit, shortening the title first, and
+puts the right cells at its right edge, so those of a list laid out to
+one WIDTH line up."
+  (let* ((cap    (and width (max 10 (1- width))))
+         (after  (octocat-vui--after-title cells '(:stack :chips)))
+         (right  (octocat-vui--right-cells cells))
+         (head   (concat (and state (concat state "  ")) number "  ")))
+    (octocat-vui--with-right
+     (concat head
+             (octocat-vui--fit-cut-title
+              (plist-get cells :title) cap
+              (+ (string-width head) (string-width after)
+                 (if (string-empty-p right) 0 (+ 2 (string-width right)))))
+             after)
+     right cap)))
+
+;; Each list row starts with a column that shows whether it is marked,
+;; always there, so marking an item does not reflow the page.
+
+(defconst octocat-vui--mark-width 2
+  "Width of the column that starts each list row.")
+
+(defun octocat-vui--mark-column (marked)
+  "Return the mark column of a list row: a check mark if MARKED, else blank."
+  (if marked
+      (propertize "✓ " 'face 'octocat-mark)
+    (make-string octocat-vui--mark-width ?\s)))
+
+(defun octocat-vui--compact-width (lines width)
+  "Return the width to lay out compact LINES in, at most WIDTH.
+LINES are uncut (see `octocat-vui--compact-line'): the widest sets
+it, so the authors line up after the longest title, not at the window's
+edge when every title is short.  It counts the mark column before them."
+  (min width (+ 1 octocat-vui--mark-width
+                (apply #'max 0 (mapcar #'string-width lines)))))
+
+(defun octocat-vui--item-row (state cells width on-visit help
+                                    &optional compact-line prefetch url number marked)
+  "Return the row vnode for an item with STATE text.
+CELLS are as made by `octocat-vui--cells'; each line is cut to
+WIDTH.  ON-VISIT and HELP are as for `octocat-vui-row'.  COMPACT-LINE,
+when non-nil, is the one line drawn instead, as made by
+`octocat-vui--compact-line'.  PREFETCH is the sync specs ON-VISIT
+opens, fetched while point rests on the row (see
+`octocat-vui--prefetch-schedule'), and URL its GitHub page.  NUMBER,
+the item's, is what the list's marks name (see `octocat-vui-list-mark');
+The row starts with its mark column (`octocat-vui--mark-column'),
+which WIDTH counts: COMPACT-LINE is cut to the rest, as is each line
+drawn.  MARKED shows a check mark there and draws the row in
+`octocat-marked'.
+Each line is filled out to WIDTH by a stretch of space, so a marked
+row, and the row under the mouse, is lit as one block."
+  (let* ((lines (if compact-line
+                    (list compact-line)
+                  (octocat-vui--item-lines
+                   state cells (- width octocat-vui--mark-width))))
+         (last  (car (last lines)))
+         (cap   (max 10 (1- width))))
+    (octocat-vui-row
+     (let ((text (mapconcat
+                  (lambda (line)
+                    (concat (octocat-vui--mark-column
+                             (and marked (eq line (car lines))))
+                            line
+                            ;; The newline after a line but the last is
+                            ;; lit too, a column on: the last fills it.
+                            (propertize " " 'display
+                                        `(space :align-to ,(if (eq line last) (1+ cap) cap)))))
+                  lines "\n")))
+       (when marked
+         (add-face-text-property 0 (length text) 'octocat-marked t text))
+       (propertize text
+                   'octocat-sync-prefetch prefetch
+                   'octocat-vui-list-item number))
+     on-visit help url)))
+
+(defun octocat-vui--number (item)
+  "Return the \"#N\" of the issue or PR ITEM."
+  (propertize (format "#%d" (gethash "number" item)) 'face 'octocat-pr-number))
+
+(defun octocat-vui--pr-cells (repo pr bg stack)
+  "Return the cells of PR in REPO, as `octocat-vui--cells'.
+STACK, when non-nil, is where PR sits in its stack, \"≡ 2/3\", its
+:stack cell."
+  (let ((cells (octocat-vui--cells repo pr bg)))
+    (if stack (plist-put cells :stack (propertize stack 'face 'octocat-dimmed)) cells)))
+
+(defun octocat-vui--pr-compact-line (repo pr bg no-state &optional width stack)
+  "Return the compact line of PR in REPO, without the state when NO-STATE.
+BG is as for `octocat-vui--cells'; WIDTH is as for
+`octocat-vui--compact-line', and STACK for
+`octocat-vui--pr-cells'."
+  (let ((cells (octocat-vui--pr-cells repo pr bg stack)))
+    ;; Without the state column, a draft says so before its title, in
+    ;; parentheses: bare it reads as part of it, bracketed as a button.
+    (when (and no-state (eq (gethash "isDraft" pr) t))
+      (plist-put cells :title (concat (propertize "(draft) " 'face 'octocat-dimmed)
+                                      (plist-get cells :title))))
+    (octocat-vui--compact-line
+     (unless no-state
+       (octocat-vui--state-label (gethash "state" pr) (gethash "isDraft" pr)))
+     (octocat-vui--number pr) cells width)))
+
+(defun octocat-vui--issue-compact-line (repo issue bg no-state &optional width)
+  "Return the compact line of ISSUE in REPO, without the state when NO-STATE.
+BG is as for `octocat-vui--cells'; WIDTH is as for
+`octocat-vui--compact-line'."
+  (octocat-vui--compact-line
+   (unless no-state (octocat-vui--state-label (gethash "state" issue)))
+   (octocat-vui--number issue) (octocat-vui--cells repo issue bg) width))
+
+(defun octocat-vui--pr-row (repo pr width bg &optional compact no-state stack marked)
+  "Return a row vnode for PR in REPO, cut to WIDTH.
+BG is as for `octocat-vui--cells'; COMPACT draws it on one line,
+without the state when NO-STATE is non-nil.  STACK is as for
+`octocat-vui--pr-cells', MARKED for `octocat-vui--item-row'."
+  (octocat-vui--item-row
+   (octocat-vui--state-label (gethash "state" pr) (gethash "isDraft" pr))
+   (plist-put (octocat-vui--pr-cells repo pr bg stack)
+              :number (octocat-vui--number pr))
+   width
+   (lambda () (octocat-vui--open-pr repo pr))
+   "RET: view pull request"
+   (and compact (octocat-vui--pr-compact-line
+                 repo pr bg no-state (- width octocat-vui--mark-width) stack))
+   (let ((n (gethash "number" pr)))
+     `((pr ,repo ,n) (timeline-events ,repo ,n)))
+   (octocat--item-url 'pr repo (gethash "number" pr) pr)
+   (gethash "number" pr)
+   marked))
+
+(defun octocat-vui--issue-row (repo issue width bg &optional compact no-state marked)
+  "Return a row vnode for ISSUE in REPO, cut to WIDTH.
+BG is as for `octocat-vui--cells'; COMPACT draws it on one line,
+without the state when NO-STATE is non-nil.  MARKED is as for
+`octocat-vui--item-row'."
+  (octocat-vui--item-row
+   (octocat-vui--state-label (gethash "state" issue))
+   (plist-put (octocat-vui--cells repo issue bg)
+              :number (octocat-vui--number issue))
+   width
+   (lambda () (octocat-vui--open-issue repo issue))
+   "RET: view issue"
+   (and compact (octocat-vui--issue-compact-line
+                 repo issue bg no-state (- width octocat-vui--mark-width)))
+   (let ((n (gethash "number" issue)))
+     `((issue ,repo ,n) (timeline-events ,repo ,n)))
+   (octocat--item-url 'issue repo (gethash "number" issue) issue)
+   (gethash "number" issue)
+   marked))
+
+;; The header of an issue or PR page starts as the other pages do, with
+;; `owner/repo#N', then the title and author.  The state heads the line
+;; of the fields one edits (assignees, labels, ...), and a last line
+;; shows the rest: its branch, review, milestone.
+
+(defun octocat-vui--detail-header (repo item state on-edit-title
+                                        bg width fields shown
+                                        &optional branch omit badge)
+  "Return the header vnodes of the issue or PR ITEM of REPO.
+The first row is the breadcrumb (`octocat-vui-repo-heading'), number,
+title and author, the `title' target of the page's edit command, on
+which RET calls ON-EDIT-TITLE; the title is cut to fit WIDTH, its whole
+shown on hover and by ElDoc.  Then the FIELDS one edits, as for
+`octocat-vui--field-lines', headed by STATE, its coloured state
+text (see `octocat-vui--state-label').  Last, the cells of ITEM,
+then SHOWN, fields as for `octocat-vui--detail-fields'; not the
+date, which the opening timeline entry shows.  BG is as for
+`octocat-vui--cells'.  BRANCH, when non-nil, is shown first.
+OMIT is a list of cell keys (see `octocat-vui--cells') to leave
+out.  BADGE, when non-nil, is (LABEL HELP ACTION): a link showing LABEL
+right after the title, on which RET calls ACTION."
+  (let* ((cells  (octocat-vui--cells repo item bg))
+         (cells  (if branch (plist-put cells :branch branch) cells))
+         (number (propertize (format "#%d  " (gethash "number" item))
+                             'face 'octocat-pr-number))
+         (author (plist-get cells :author))
+         (dot    (propertize " · " 'face 'octocat-dimmed))
+         (by     (if (string-empty-p author) "" (concat dot author)))
+         (after  (if badge (+ 2 (string-width (car badge))) 0))
+         (title  (octocat-vui--fit-title
+                  (plist-get cells :title)
+                  (- width 1 (string-width repo) (string-width number)
+                     (string-width by) after))))
+    (append
+     (list
+      (octocat-vui-row
+       (list (octocat-vui-repo-heading repo)
+             (propertize (concat number title) 'octocat-timeline-target 'title)
+             (if badge
+                 (pcase-let ((`(,label ,help ,action) badge))
+                   (list (vui-text "  ")
+                         (octocat-vui--link label 'default action help)))
+               "")
+             (if (string-empty-p author)
+                 ""
+               (list (vui-text dot)
+                     (octocat-vui--login-link (substring author 1)))))
+       on-edit-title
+       "RET: edit title"))
+     (octocat-vui--field-lines fields (concat state "  "))
+     (list
+      (octocat-vui--detail-fields
+       (cons (cons nil (octocat-vui--join-cells
+                        cells (seq-difference '(:branch :review :ci :prs :comments) omit)))
+             shown))))))
+
+(defun octocat-vui--fit-title (title width)
+  "Return TITLE cut with an ellipsis to WIDTH columns, at least 10.
+A cut title carries its whole as `help-echo' and `octocat-full-text',
+so hovering or resting point on it shows it."
+  (let ((width (max 10 width)))
+    (if (<= (string-width title) width)
+        title
+      (let ((full (substring-no-properties title)))
+        (propertize (truncate-string-to-width title width nil nil "…")
+                    'help-echo full 'octocat-full-text full)))))
+
+(defun octocat-vui--detail-fields (fields &optional head)
+  "Return a vnode listing FIELDS under the title, or nil when none has a value.
+FIELDS is a list of (LABEL . VALUE), VALUE a string or a list of vnodes;
+a nil or empty VALUE is skipped, and a nil LABEL shows VALUE alone.  A
+LABEL of (NAME . EDIT) is a button calling EDIT, shown even with no
+VALUE.  HEAD, a string as wide as the state column and its gap, starts
+the line, blank by default, so the line is lined up with the title
+column."
+  (let ((parts (delq nil
+                     (mapcar (lambda (f)
+                               (pcase-let ((`(,name . ,edit) (if (consp (car f)) (car f)
+                                                               (list (car f))))
+                                           (empty (member (cdr f) '(nil ""))))
+                                 (unless (and empty (not edit))
+                                   (append
+                                    (cond (edit (list (octocat-vui--link
+                                                       name 'octocat-dimmed edit
+                                                       (concat "RET: edit " (downcase name)))
+                                                      (vui-text " ")))
+                                          (name (list (vui-text (concat name " ")
+                                                        :face 'octocat-dimmed))))
+                                    (cond (empty (list (vui-text "none" :face 'octocat-dimmed)))
+                                          ((stringp (cdr f)) (list (vui-text (cdr f))))
+                                          (t (cdr f)))))))
+                             fields))))
+    (and parts
+         (vui-hstack :spacing 0
+                     (vui-text (or head (make-string (+ octocat-vui--state-width 2) ?\s)))
+                     (octocat-vui--separate parts (propertize " · " 'face 'octocat-dimmed))))))
+
+(defun octocat-vui--detail-stack (label values)
+  "Return the field LABEL with VALUES, one per line, as a vnode.
+LABEL is as for `octocat-vui--detail-fields' and each of VALUES a
+list of vnodes: the first goes beside LABEL, the others under it, so
+many of them don't make one long line."
+  (apply #'vui-vstack
+         (octocat-vui--detail-fields (list (cons label (car values))))
+         (mapcar (lambda (value)
+                   (apply #'vui-hstack :spacing 0
+                          (vui-text (make-string (+ octocat-vui--state-width 3
+                                                    (string-width (if (consp label)
+                                                                      (car label)
+                                                                    label)))
+                                                 ?\s))
+                          value))
+                 (cdr values))))
+
+(defun octocat-vui--field-lines (fields &optional head)
+  "Return the vnodes of FIELDS: one line of them, then each stacked one.
+HEAD starts the line, as for `octocat-vui--detail-fields'.
+FIELDS is as for `octocat-vui--detail-fields', except that a VALUE
+may be (:stack . ITEMS), ITEMS a list of vnode lists such as the users
+of `octocat-vui--login-items'.  One item stays on the line; several
+stack under their label below it (see `octocat-vui--detail-stack'),
+in the order of FIELDS."
+  (let ((items (lambda (f) (and (eq (car-safe (cdr f)) :stack) (cddr f)))))
+    (delq nil
+          (cons (octocat-vui--detail-fields
+                 (mapcar (lambda (f)
+                           (cond ((not (eq (car-safe (cdr f)) :stack)) f)
+                                 ((cdr (funcall items f)) nil)
+                                 (t (cons (car f) (car (funcall items f))))))
+                         fields)
+                 head)
+                (mapcar (lambda (f)
+                          (when (cdr (funcall items f))
+                            (octocat-vui--detail-stack (car f) (funcall items f))))
+                        fields)))))
+
+(defun octocat-vui--separate (items sep)
+  "Return ITEMS (vnodes or lists of them) with a `vui-text' of SEP between."
+  (cdr (mapcan (lambda (item) (list (vui-text sep) item)) items)))
+
+(defun octocat-vui--link (label face action &optional help)
+  "Return an unbracketed `vui-button' showing LABEL in FACE: a TAB stop.
+ACTION is called on RET or a click; HELP is its hover text, by default
+\"RET: open LABEL\"."
+  (vui-button label
+    :no-decoration t
+    :face face
+    :help-echo (or help (concat "RET: open " label))
+    :on-click action))
+
+(defun octocat-vui--login-link (login)
+  "Return \"@LOGIN\" as a link to the page of the user LOGIN."
+  (octocat-vui--link (concat "@" login) 'octocat-pr-author
+                     (lambda () (octocat-user-open login))))
+
+(defun octocat-vui--login-items (users)
+  "Return the \"@login\" names of USERS (a vector of user objects), or nil.
+Each is a list of one vnode, which opens the page of its user."
+  (and (vectorp users)
+       (mapcar (lambda (u)
+                 (let ((login (gethash "login" u)))
+                   (list (if (octocat--nonempty login)
+                             (octocat-vui--login-link login)
+                           (vui-text (concat "@" (or (gethash "name" u) ""))
+                             :face 'octocat-pr-author)))))
+               users)))
+
+(defun octocat-vui--numbers (repo refs open)
+  "Return the \"#N\" numbers of REFS (a vector of issue/PR objects), or nil.
+A list of vnodes, space-separated; each calls OPEN with its repository,
+REPO unless it names another, and number."
+  (and (vectorp refs) (> (length refs) 0)
+       (octocat-vui--separate
+        (mapcar (lambda (r)
+                  (let* ((n     (gethash "number" r))
+                         (other (gethash "repository" r))
+                         (owner (and (hash-table-p other) (gethash "owner" other)))
+                         (where (if (and (hash-table-p owner) (gethash "login" owner))
+                                    (format "%s/%s" (gethash "login" owner)
+                                            (gethash "name" other))
+                                  repo)))
+                    (octocat-vui--link
+                     (if (equal where repo) (format "#%d" n) (format "%s#%d" where n))
+                     'octocat-pr-number (lambda () (funcall open where n)))))
+                refs)
+        " ")))
+
+(defun octocat-vui--milestone (item)
+  "Return the milestone title of ITEM, or nil."
+  (let ((m (gethash "milestone" item)))
+    (and (hash-table-p m) (octocat--nonempty (gethash "title" m)))))
+
+(defconst octocat-vui--author-max-width 30
+  "Widest author column of the commit list; longer names are truncated.")
+
+(defun octocat-vui--author-width (commits)
+  "Return the width of the author column for COMMITS: the longest name.
+It is no wider than `octocat-vui--author-max-width', so the dates
+line up with no more padding than the different names require."
+  (min octocat-vui--author-max-width
+       (apply #'max 0 (mapcar (lambda (c) (string-width (octocat--commit-author c)))
+                              commits))))
+
+(defun octocat-vui--subject (commit)
+  "Return the first line of COMMIT's message."
+  (let ((c (gethash "commit" commit)))
+    (car (split-string (or (and c (gethash "message" c)) "") "\n"))))
+
+(defconst octocat-vui--subject-min-width 24
+  "Narrowest subject column, so short subjects still leave a gap before the author.")
+
+(defun octocat-vui--date (commit)
+  "Return when COMMIT was committed, \"2 days ago\", as on its row.
+The commit date, not the author's, as GitHub shows: it is when the
+commit landed where it is, after a rebase or a merge on GitHub."
+  (let ((ts (octocat--commit-date commit)))
+    (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
+
+(defun octocat-vui--date-width (commits)
+  "Return the width of the date column for COMMITS: the longest date."
+  (apply #'max 0 (mapcar (lambda (c) (string-width (octocat-vui--date c))) commits)))
+
+(defun octocat-vui--subject-width (commits width author-w)
+  "Return the width of the subject column for COMMITS: the longest subject.
+It is at least `octocat-vui--subject-min-width', and at most what
+WIDTH columns leave beside the commit symbol, the AUTHOR-W wide author,
+the date and the SHA, so the rows fill the page but do not wrap."
+  (let ((rest (+ 2 2 author-w 2 (octocat-vui--date-width commits) 2 7)))
+    (max octocat-vui--subject-min-width
+         (min (- width rest)
+              (apply #'max 0 (mapcar (lambda (c) (string-width (octocat-vui--subject c)))
+                                     commits))))))
+
+(defun octocat-vui--commit-line (commit head-info author-w &optional subject-w date-w)
+  "Return the line of COMMIT: its subject, author, date and short SHA.
+As GitHub's commit list has them, the SHA at the end.  HEAD-INFO as in
+`octocat-repo-vui--commits-section'; the local HEAD commit is
+highlighted.  AUTHOR-W is the width of the author column, see
+`octocat-vui--author-width'; SUBJECT-W that of the subject column,
+`octocat-title-width' by default; DATE-W that of the date column, see
+`octocat-vui--date-width', which lines the SHAs up."
+  (let* ((subject-w (or subject-w octocat-title-width))
+         (head-hash (and head-info (plist-get head-info :hash)))
+         (sha       (or (gethash "sha" commit) ""))
+         (short     (substring sha 0 (min 7 (length sha))))
+         (is-head   (and head-hash
+                         (>= (length sha) (length head-hash))
+                         (string-prefix-p head-hash sha)))
+         (subject   (octocat-vui--subject commit))
+         (author    (octocat--commit-author commit))
+         (date      (octocat-vui--date commit)))
+    (concat
+     (if is-head
+         (let* ((text (truncate-string-to-width subject subject-w nil nil "…"))
+                (pad  (make-string (- subject-w (string-width text)) ?\s)))
+           (concat (propertize text 'face 'octocat-branch-current) pad))
+       (octocat--format-title subject subject-w))
+     "  "
+     (propertize (truncate-string-to-width author author-w nil ?\s "…")
+                 'face 'octocat-pr-author)
+     "  "
+     (propertize date 'face 'octocat-dimmed)
+     (make-string (max 0 (- (or date-w 0) (string-width date))) ?\s)
+     "  "
+     (propertize short 'face (if is-head 'octocat-branch-current 'octocat-commit-sha)))))
+
+(defun octocat-vui--commit-lanes (commits)
+  "Return the graph beside COMMITS, newest first, as a hash-table by SHA.
+Each is a lane of `octocat-vui-lanes', mirrored, so the first parents
+run down beside the subjects.  Return nil when no line would branch, as
+in a history of squashed merges, or there are too many."
+  (let ((lanes (octocat-vui-lanes
+                (mapcar (lambda (c) (gethash "sha" c)) commits)
+                (cl-loop for c in commits
+                         append (cl-loop for p across (or (gethash "parents" c) [])
+                                         collect (list (gethash "sha" c) p))))))
+    (when (seq-some (lambda (lane) (string-match-p "[^ ]" (car lane))) lanes)
+      (let ((table (make-hash-table :test #'equal)))
+        (cl-loop for c in commits for lane in lanes
+                 do (puthash (gethash "sha" c) (octocat-vui-lane-mirror lane) table))
+        table))))
+
+(defun octocat-vui--commit-row (repo commit head-info author-w
+                                     &optional subject-w date-w lane)
+  "Return a row vnode for COMMIT in REPO, RET opening it.
+It starts with `octocat--commit-symbol', or `octocat--merge-symbol'
+for a merge, one with two \"parents\" or a \"merge\" of t; in LANE, of
+`octocat-vui--commit-lanes', when given.  The other arguments are
+as for `octocat-vui--commit-line'."
+  (octocat-vui-row (let ((node (propertize (if (or (eq (gethash "merge" commit) t)
+                                                   (> (length (gethash "parents" commit)) 1))
+                                               octocat--merge-symbol
+                                             octocat--commit-symbol)
+                                           'face 'octocat-commit-sha)))
+                     (concat (if lane (octocat-vui-lane-text lane node) node)
+                             " "
+                             (octocat-vui--commit-line commit head-info author-w
+                                                       subject-w date-w)))
+                   (lambda () (octocat-vui--open-commit repo commit))
+                   "RET: view commit"
+                   (octocat--web-url "%s/commit/%s" repo
+                                     (or (gethash "sha" commit) (gethash "oid" commit) ""))))
 
 ;;;; Repo search and branch picker
 ;;

@@ -1010,7 +1010,7 @@ Every page showing it changes at once; the mode line shows it under way."
 
 (defun octocat-timeline-edit-field (kind repo item flag)
   "Return the label of the FLAG field of ITEM, a button picking its values.
-See `octocat-repo-vui--detail-fields' and `octocat-timeline-edit-values'.
+See `octocat-vui--detail-fields' and `octocat-timeline-edit-values'.
 ITEM is an issue or PR (KIND) of REPO."
   (let ((number (gethash "number" item)))
     ;; The target says which field `C-c C-e' edits.

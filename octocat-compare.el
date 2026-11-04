@@ -44,12 +44,6 @@
 
 (require 'vui)
 
-(declare-function octocat-repo-vui--commit-row "octocat-repo"
-                  (repo commit head-info author-w &optional subject-w date-w lane))
-(declare-function octocat-repo-vui--date-width "octocat-repo" (commits))
-(declare-function octocat-repo-vui--author-width "octocat-repo" (commits))
-(declare-function octocat-repo-vui--subject-width "octocat-repo" (commits width author-w))
-
 
 ;;;; Buffer-local declarations
 
@@ -118,14 +112,14 @@ have diverged gets a note that the three-dot one is shown."
   "Return the vnodes of the Commits section, fitted to WIDTH.
 COMMITS is a REST commits vector of REPO."
   (let* ((commits   (append commits nil))
-         (author-w  (octocat-repo-vui--author-width commits))
-         (subject-w (octocat-repo-vui--subject-width commits width author-w))
-         (date-w    (octocat-repo-vui--date-width commits)))
+         (author-w  (octocat-vui--author-width commits))
+         (subject-w (octocat-vui--subject-width commits width author-w))
+         (date-w    (octocat-vui--date-width commits)))
     (and commits
          (append (list (octocat-vui-section-heading
                         (format "Commits (%d)" (length commits)) width))
                  (mapcar (lambda (c)
-                           (octocat-repo-vui--commit-row repo c nil author-w subject-w date-w))
+                           (octocat-vui--commit-row repo c nil author-w subject-w date-w))
                          commits)
                  (list (vui-newline))))))
 

@@ -145,11 +145,11 @@ Each of PRS is (NUMBER STATE DRAFT MERGEABLE)."
     (should (equal (mapcar (lambda (c) (gethash "sha" c)) commits) '("aaa" "bbb" "ccc")))
     (should (equal (mapcar #'octocat--commit-author (butlast commits)) '("@me" "Anon")))
     ;; Short subjects get the minimum column; long ones what the page leaves.
-    (should (= (octocat-repo-vui--subject-width commits 112 3)
-               octocat-repo-vui--subject-min-width))
+    (should (= (octocat-vui--subject-width commits 112 3)
+               octocat-vui--subject-min-width))
     (puthash "message" (make-string 200 ?x) (gethash "commit" (car commits)))
-    (should (= (+ (octocat-repo-vui--subject-width commits 112 3) 2 7 2 2 3 2
-                  (apply #'max (mapcar (lambda (c) (string-width (octocat-repo-vui--date c)))
+    (should (= (+ (octocat-vui--subject-width commits 112 3) 2 7 2 2 3 2
+                  (apply #'max (mapcar (lambda (c) (string-width (octocat-vui--date c)))
                                        commits)))
                112))))
 
@@ -211,12 +211,12 @@ One stays on the line of the other fields; the stacks follow it in order."
                       "\"assignees\":[{\"login\":\"cy\"},{\"login\":\"di\"}]}")))
          (render (lambda (fields)
                    (with-temp-buffer
-                     (vui-render (apply #'vui-vstack (octocat-repo-vui--field-lines fields)))
+                     (vui-render (apply #'vui-vstack (octocat-vui--field-lines fields)))
                      (split-string (buffer-substring-no-properties (point-min) (point-max))
                                    "\n" t))))
          (lines (funcall render
                          (list (cons (cons "Assignees" #'ignore)
-                                     (cons :stack (octocat-repo-vui--login-items
+                                     (cons :stack (octocat-vui--login-items
                                                    (gethash "assignees" pr))))
                                (cons (cons "Reviewers" #'ignore)
                                      (cons :stack (octocat-pr--reviewers pr)))

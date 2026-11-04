@@ -44,11 +44,7 @@
 (require 'octocat-vui)
 (require 'vui)
 
-(declare-function octocat-repo-vui--link       "octocat-repo" (label face action &optional help))
-(declare-function octocat-repo-vui--login-link "octocat-repo" (login))
 (declare-function octocat-tree-open            "octocat-repo" (repo &optional ref path))
-
-
 
 
 ;;;; Custom faces
@@ -207,7 +203,7 @@ GitHub account linked to it, @login, opening its page."
                                        " ")
                   :face 'octocat-pr-author)
                 (and login (vui-text " "))
-                (and login (octocat-repo-vui--login-link login))))))
+                (and login (octocat-vui--login-link login))))))
 
 (defun octocat-commit--date (commit role)
   "Return the date of COMMIT's ROLE as `git show' prints it, then its age.
@@ -251,7 +247,7 @@ the commit.  Each parent and the branch open their page."
             (cdr (mapcan (lambda (p)
                            (let ((sha (or (gethash "sha" p) "")))
                              (list " "
-                                   (octocat-repo-vui--link
+                                   (octocat-vui--link
                                     (substring sha 0 (min 7 (length sha))) 'octocat-commit-sha
                                     (lambda () (octocat-commit-open repo sha))
                                     "RET: view parent commit"))))
@@ -263,7 +259,7 @@ the commit.  Each parent and the branch open their page."
               (and holder
                    (octocat-commit--field
                     "Branch"
-                    (list (octocat-repo-vui--link
+                    (list (octocat-vui--link
                            holder 'octocat-branch
                            (lambda () (octocat-tree-open repo holder))
                            (format "RET: browse %s, which holds this commit" holder)))))))))))

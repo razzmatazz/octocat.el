@@ -43,33 +43,8 @@
 (require 'vui)
 (require 'vui-components) ; vui-list, vui-vstack, etc.
 
-;; The PR page and the PR list page below reuse the row builder and fetch
-;; plumbing from octocat-repo.el, which requires this file (so cannot be
-;; required here).
-(declare-function octocat-repo-vui--pr-row "octocat-repo"
-                  (repo pr width bg &optional compact no-state stack marked))
-(declare-function octocat-repo-vui--pr-compact-line "octocat-repo"
-                  (repo pr bg no-state &optional width stack))
-(declare-function octocat-repo-vui--state-label"octocat-repo" (state &optional draft))
-(declare-function octocat-repo-vui--detail-header "octocat-repo"
-                  (repo item state on-edit-title bg width fields shown
-                        &optional branch omit badge))
-(declare-function octocat-repo-vui--cells "octocat-repo" (repo item bg))
-(declare-function octocat-repo-vui--login-items   "octocat-repo" (users))
-(declare-function octocat-repo-vui--numbers "octocat-repo" (repo refs open))
-(declare-function octocat-repo-vui--login-link "octocat-repo" (login))
-(declare-function octocat-repo-vui--separate "octocat-repo" (items sep))
 (declare-function octocat-issue-open "octocat-issue" (repo number))
 (declare-function octocat-issue-new "octocat-issue" ())
-(declare-function octocat-repo-vui--milestone "octocat-repo" (item))
-(declare-function octocat-repo-vui--commit-row "octocat-repo"
-                  (repo commit head-info author-w &optional subject-w date-w lane))
-(declare-function octocat-repo-vui--date-width "octocat-repo" (commits))
-(declare-function octocat-repo-vui--subject-width "octocat-repo" (commits width author-w))
-(declare-function octocat-repo-vui--author-width "octocat-repo" (commits))
-(declare-function octocat-repo-vui--fit-title "octocat-repo" (title width))
-(declare-function octocat-repo-vui--link "octocat-repo" (label face action &optional help))
-(defvar octocat-repo-vui--state-width)
 
 ;; The views the PR page opens; octocat.el loads them all.
 (declare-function octocat-pr-diff-open "octocat-pr-diff" (repo number))
@@ -874,7 +849,7 @@ Each is (\"2/3 #N TITLE\" . N); NUMBER's own is marked \"(this)\"."
 
 (defun octocat-pr--stack-badge (repo stack number)
   "Return the header badge of pull request NUMBER of REPO in STACK, or nil.
-As for `octocat-repo-vui--detail-header': where NUMBER sits in STACK,
+As for `octocat-vui--detail-header': where NUMBER sits in STACK,
 on which RET reads another pull request of it, in its order, and opens
 it."
   (when-let* ((label (octocat-pr--stack-label stack number)))
@@ -1024,7 +999,7 @@ in bold; their titles are cut to fit WIDTH."
                             (concat "  " (octocat-pr--merge-icon 'fail) " "
                                     (propertize why 'face 'octocat-ci-failure))
                           ""))
-                 (title (octocat-repo-vui--fit-title
+                 (title (octocat-vui--fit-title
                          (or (octocat--nonempty (gethash "title" p)) "")
                          (- width (string-width head) (string-width tail)))))
             (if (eql n number)
@@ -1092,7 +1067,7 @@ BG is as for `octocat--label-face'."
 
 (defun octocat-pr--rest-commit (commit)
   "Return COMMIT of `gh pr view' shaped as the REST commits endpoint has it.
-That is what `octocat-repo-vui--commit-row' reads."
+That is what `octocat-vui--commit-row' reads."
   (let* ((writers (octocat--get commit "authors"))
          (writer  (and writers (> (length writers) 0) (aref writers 0)))
          (login   (and writer (octocat--nonempty (octocat--get writer "login"))))
@@ -1159,20 +1134,20 @@ TAB is the page showing it, `conversation' (the default), `commits' or
          (local    (octocat--current-branch))
          (reviewers (octocat-pr--reviewers pr)))
     (append
-     (octocat-repo-vui--detail-header
+     (octocat-vui--detail-header
       repo pr
-      (octocat-repo-vui--state-label state (gethash "isDraft" pr))
+      (octocat-vui--state-label state (gethash "isDraft" pr))
       (lambda () (octocat-timeline-rename "pr" repo number))
       bg width
       ;; Several assignees or reviewers stack under their line.
       (list (cons (octocat-timeline-edit-field "pr" repo pr "assignee")
-                  (cons :stack (octocat-repo-vui--login-items (gethash "assignees" pr))))
+                  (cons :stack (octocat-vui--login-items (gethash "assignees" pr))))
             (cons (octocat-timeline-edit-field "pr" repo pr "reviewer")
                   (cons :stack reviewers))
             (cons (octocat-timeline-edit-field "pr" repo pr "label")
                   (octocat--format-labels (gethash "labels" pr) bg)))
-      (list (cons "Milestone" (octocat-repo-vui--milestone pr))
-            (cons "Closes"    (octocat-repo-vui--numbers
+      (list (cons "Milestone" (octocat-vui--milestone pr))
+            (cons "Closes"    (octocat-vui--numbers
                                repo (gethash "closingIssuesReferences" pr)
                                #'octocat-issue-open)))
       ;; The list leaves the branch out; the page shows it and its base,
@@ -1210,7 +1185,7 @@ user's page."
          (requests (octocat--get pr "reviewRequests"))
          (reviewer (lambda (login name state)
                      (list (if (octocat--nonempty login)
-                               (octocat-repo-vui--login-link login)
+                               (octocat-vui--login-link login)
                              (vui-text (concat "@" (or name ""))))
                            (vui-text (format " (%s)" state)))))
          (parts
@@ -1320,15 +1295,15 @@ A new TICK fetches them again."
                                                         octocat-pr--tab-labels)))
      :render
      (lambda (_)
-       (let* ((author-w  (octocat-repo-vui--author-width commits))
-              (subject-w (octocat-repo-vui--subject-width commits width author-w))
-              (date-w    (octocat-repo-vui--date-width commits)))
+       (let* ((author-w  (octocat-vui--author-width commits))
+              (subject-w (octocat-vui--subject-width commits width author-w))
+              (date-w    (octocat-vui--date-width commits)))
          (apply #'vui-vstack
                 (append
                  (delq nil (octocat-pr--header repo pr (octocat--label-background) width
                                                'commits stack))
                  (mapcar (lambda (c)
-                           (octocat-repo-vui--commit-row repo c nil author-w subject-w date-w))
+                           (octocat-vui--commit-row repo c nil author-w subject-w date-w))
                          commits))))))))
 
 
@@ -1391,7 +1366,6 @@ the background, in place: what is unfolded stays so."
     (setq octocat--pr-repo   repo
           octocat--pr-number number)
     (octocat-pr-refresh)))
-
 
 
 ;;;; Commits page
@@ -1469,13 +1443,13 @@ the background, in place: what is unfolded stays so."
                                     :query (octocat-vui-list-query)
                                     :compact (octocat-vui-list-compact-p)
                                     :row-fn (lambda (pr width compact no-state stacks marked)
-                                              (octocat-repo-vui--pr-row
+                                              (octocat-vui--pr-row
                                                repo pr width bg compact no-state
                                                (octocat-pr--stacks-label
                                                 stacks (gethash "number" pr))
                                                marked))
                                     :line-fn (lambda (pr no-state stacks)
-                                               (octocat-repo-vui--pr-compact-line
+                                               (octocat-vui--pr-compact-line
                                                 repo pr bg no-state nil
                                                 (octocat-pr--stacks-label
                                                  stacks (gethash "number" pr))))

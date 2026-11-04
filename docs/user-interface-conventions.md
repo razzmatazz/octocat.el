@@ -73,7 +73,7 @@ it open paints open, without animating).
 |---|---|
 | The whole line opens something | `octocat-vui-row` with a `help-echo` |
 | One control among others on a line | `vui-button` |
-| A name or number within a line opens its page (a header's `#N`, `@author`, Assignees, Closes) | `octocat-repo-vui--link`: an unbracketed `vui-button`, so TAB stops on it; inside a row, pass `octocat-vui-row` a list of strings and vnodes |
+| A name or number within a line opens its page (a header's `#N`, `@author`, Assignees, Closes) | `octocat-vui--link`: an unbracketed `vui-button`, so TAB stops on it; inside a row, pass `octocat-vui-row` a list of strings and vnodes |
 | A foldable block | `vui-collapsible` for a plain title; `octocat-vui-fold` with `octocat-vui-fold-header` when the title has its own faces or the body should be built only once unfolded (see "Folds") |
 
 ### Go along with vui.el
