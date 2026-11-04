@@ -136,6 +136,7 @@ success; on failure a message is shown in the echo area.
 | Multi-line markdown (body, comment) | `octocat-edit-open` | Needs line editing, markdown mode, and an explicit discard path |
 | Single-line string (title) | `read-string` minibuffer | Single line; a split window would be disproportionate |
 | List search query | inline `vui-field` (`octocat-vui-list-query-field`) | Always on screen; editing it below in the minibuffer was confusing |
+| Form input (Run workflow) | inline `vui-field`; RET moves to the next control | Typed in place beside its label; only the form's button sends it, so finishing a field never does |
 
 ---
 

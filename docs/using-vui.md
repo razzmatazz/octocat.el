@@ -24,7 +24,16 @@ can't be typed in then.  `widget-setup` already refuses edits outside
 fields.  Under Evil, normal-state RET on a field runs `evil-ret`, which
 inserts a newline into it, and the field's keymap hides the mode's
 Evil bindings, so bind RET buffer-locally to `octocat-evil-field-ret`
-(see `octocat-evil--field-setup`), which enters insert state instead.
+(see `octocat-evil--field-setup`), which enters insert state at the end
+of the field's text instead, past the padding that fills the field to
+its `:size` (`octocat-vui-field-value-end`).
+
+A field in a form, such as the Run workflow inputs, gets an
+`:on-submit` that calls `octocat-vui-field-next`, never the form's own
+action: RET then moves to the next control, and only RET on the form's
+button sends it.  `octocat-vui-field-next` runs
+`octocat-vui-field-next-hook` first, through which Evil leaves insert
+state.
 
 ## Timers
 
