@@ -87,7 +87,8 @@ compile:
 	  && cd /tmp/build && eldev compile --warnings-as-errors --set all"
 
 # checkdoc, package-lint and elisp-lint, as the Eldev file says, then
-# check-declare, then that docs/architecture.md's module graph is current.
+# check-declare, which flags redundant declarations too, then that
+# docs/architecture.md's module graph is current.
 lint:
 	$(RUN) sh -c 'eldev lint && eldev exec -R --file tools/check-declare.el \
 	  && emacs -Q --batch -l tools/module-graph.el check'

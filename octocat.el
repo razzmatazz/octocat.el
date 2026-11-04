@@ -67,10 +67,6 @@
 ;; byte-compiler when `octocat-evil' has not been loaded yet.
 (declare-function octocat-evil-setup "octocat-evil" ())
 
-;; Repo-mode entry point (defined in octocat-repo.el, already required).
-(declare-function octocat-repo-refresh      "octocat-repo" (&optional _ignore-auto _noconfirm))
-(declare-function octocat-repo--local-dir-for "octocat-repo" (repo))
-
 
 ;;;; Dashboard major mode
 

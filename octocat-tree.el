@@ -70,7 +70,6 @@
 (declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
 (declare-function octocat-commit-list-open "octocat-repo" (repo &optional ref path))
 (declare-function octocat-user-open "octocat-user" (login))
-(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional linked))
 (declare-function octocat-repo--history-commit "octocat-repo" (node))
 (declare-function octocat-repo--format "octocat-repo" (name))
 (declare-function octocat-repo--blame-column-width "octocat-repo" ())

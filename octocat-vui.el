@@ -1360,12 +1360,6 @@ would pull the user back to it (see docs/using-vui.md)."
 ;; `revert-buffer-function', and is opened via `octocat--open-list'
 ;; (octocat.el).
 
-(declare-function octocat--fetch-counts "octocat-core" (repo kind callback))
-(declare-function octocat--list-labels "octocat-core" (repo callback))
-(declare-function octocat--list-people "octocat-core" (repo callback))
-(declare-function octocat--setting "octocat-core" (key))
-(declare-function octocat--setting-put "octocat-core" (key value))
-(declare-function octocat-visit-repo "octocat-core" (repo &optional ref))
 (declare-function octocat-user-open "octocat-user" (login))
 (declare-function octocat-issue-list "octocat" (&optional repo))
 (declare-function octocat-pr-list "octocat" (&optional repo))

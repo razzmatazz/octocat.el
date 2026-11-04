@@ -50,23 +50,13 @@
 (require 'octocat-search) ; `octocat--read-branch'
 (require 'octocat-vui)
 
-(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional linked))
 (require 'vui)
 (require 'vui-components) ; vui-collapsible, vui-heading-*, etc.
 
-;; Cross-file calls: declared per AGENTS.md's "Byte-compiler warnings about
-;; functions not known to be defined" -- `make ci' compiles all files in
-;; parallel, so a plain `require' does not guarantee the callee is already
-;; compiled when this file is.
-(declare-function octocat-run-open                 "octocat-run"      (repo run-id))
-(declare-function octocat-tree-find-file           "octocat-tree"     ())
 (declare-function octocat-issue-list               "octocat"          (&optional repo))
 (declare-function octocat-pr-list                  "octocat"          (&optional repo))
 (declare-function octocat-actions                  "octocat"          (&optional repo))
 (declare-function octocat-user-open                "octocat-user"     (login))
-(declare-function octocat-file-show-view           "octocat-tree"     (view))
-(declare-function octocat-file--views              "octocat-tree"     (path))
-(declare-function octocat-file--view               "octocat-tree"     (path raw blame))
 
 
 ;;;; User options

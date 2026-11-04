@@ -72,7 +72,6 @@
 (defvar octocat-repo-vui--state-width)
 
 ;; The views the PR page opens; octocat.el loads them all.
-(declare-function octocat-checks-open  "octocat-checks"  (repo sha ref))
 (declare-function octocat-pr-diff-open "octocat-pr-diff" (repo number))
 
 ;; Forward declarations for buffer-locals defined later in this file.

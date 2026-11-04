@@ -1499,7 +1499,6 @@ After toggling, the buffer is refreshed via `octocat--refresh-fn'."
 (defvar octocat-repo--ref)
 
 (declare-function octocat--async-search-repos "octocat-search" (&optional gate))
-(declare-function octocat-user-open "octocat-user" (login))
 
 (defun octocat-switch-repo ()
   "Search GitHub repositories or users interactively with live API queries.

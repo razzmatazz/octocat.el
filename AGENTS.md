@@ -197,6 +197,9 @@ top of A, alongside the other declarations:
 The `declare-function` form tells the byte-compiler the function exists
 without actually loading the file.  `make lint` checks every one with
 `check-declare`: the file must define the function with that arglist.
+It fails too on a redundant one: repeated, naming its own file, or
+naming a module the file already loads through its top-level
+`require`s, as that `require` already defines the function.
 Prefix the file with `ext:` when it may be missing: an optional package
 (`"ext:evil-core"`) or a C primitive some builds lack (`"ext:sqlite.c"`).
 Pass `t` as the fourth argument for a function defined by another

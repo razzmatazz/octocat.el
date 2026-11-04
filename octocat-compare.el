@@ -42,7 +42,6 @@
 (require 'octocat-sync)
 (require 'octocat-vui)
 
-(declare-function octocat-vui-repo-heading "octocat-vui" (repo &optional linked))
 (require 'vui)
 
 (declare-function octocat-repo-vui--commit-row "octocat-repo"
