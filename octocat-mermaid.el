@@ -380,7 +380,7 @@ follow, the \"cross\" axis the one nodes of a layer are spread along.")
   id lines shape (w 1) (h 1) virtual layer (cross 0) (main 0) group)
 
 (cl-defstruct (octocat-mermaid--e (:constructor octocat-mermaid--e) (:copier nil))
-  from to style head tail text reversed path start-c end-c)
+  from to style head tail text reversed path start-c end-c legs)
 
 (defun octocat-mermaid--msize (n)
   "Return the size of node N along the main axis."
@@ -553,9 +553,10 @@ UPS and DOWNS map a node to its neighbours in the layer above and below."
         (dolist (n (aref layers l))
           (cl-decf (octocat-mermaid--n-cross n) (- low margin)))))))
 
-(defun octocat-mermaid--place-main (layers edges margin)
+(defun octocat-mermaid--place-main (layers edges margin tracks)
   "Set the main positions of the nodes of LAYERS, from MARGIN on.
-Leave room for the labels of EDGES.  Return (STARTS SIZES TOTAL): the
+Leave room for the labels of EDGES, and for the TRACKS each gap needs,
+see `octocat-mermaid--assign-tracks'.  Return (STARTS SIZES TOTAL): the
 first row (column) and extent of each layer, and the extent of the whole
 chart."
   (let* ((nl (length layers))
@@ -582,6 +583,8 @@ chart."
         (when-let* ((label (octocat-mermaid--edge-label e)))
           (let ((l (octocat-mermaid--n-layer (car (octocat-mermaid--e-path e)))))
             (aset gaps l (max (aref gaps l) (+ 4 (string-width label))))))))
+    (dotimes (l nl)
+      (cl-incf (aref gaps l) (1- (aref tracks l))))
     (dotimes (l nl)
       (when (> l 0)
         (aset starts l (+ (aref starts (1- l)) (aref sizes (1- l)) (aref gaps (1- l)))))
@@ -644,11 +647,75 @@ each its only one on that side is made straight when it can be."
               (setf (octocat-mermaid--e-start-c e) c
                     (octocat-mermaid--e-end-c e) c))))))))
 
+(defun octocat-mermaid--leg-before-p (r s)
+  "Return non-nil if leg R should turn before leg S, so cross it less.
+A leg is (FROM TO TRACK LAYER).  R's line into the gap crossing S's turn,
+or S's line out of it crossing R's, is avoided by R turning first."
+  (cl-flet ((in (x leg) (<= (min (car leg) (cadr leg)) x (max (car leg) (cadr leg)))))
+    (> (+ (if (in (car r) s) 1 0) (if (in (cadr s) r) 1 0))
+       (+ (if (in (car s) r) 1 0) (if (in (cadr r) s) 1 0)))))
+
+(defun octocat-mermaid--assign-tracks (edges nl)
+  "Set the legs of EDGES, each on a track of the gap between its layers.
+Two legs of a gap whose spans overlap would be drawn as one line, so
+each gets a row (a column, side by side) of its own, in the order of
+`octocat-mermaid--leg-before-p'.  Return a vector of the tracks each of
+the NL gaps needs."
+  (let ((tracks (make-vector nl 1))
+        (gaps (make-vector nl nil)))
+    (dolist (e edges)
+      (let ((path (octocat-mermaid--e-path e))
+            (cur (octocat-mermaid--e-start-c e)))
+        (setf (octocat-mermaid--e-legs e)
+              (cl-loop for (a b) on path while b
+                       collect (let* ((next (if (eq b (car (last path)))
+                                                (octocat-mermaid--e-end-c e)
+                                              (octocat-mermaid--n-cross b)))
+                                      (leg (list cur next 0 (octocat-mermaid--n-layer a))))
+                                 (unless (= cur next)
+                                   (push leg (aref gaps (octocat-mermaid--n-layer a))))
+                                 (setq cur next)
+                                 leg)))))
+    (dotimes (l nl)
+      (let ((todo (sort (aref gaps l)
+                        (lambda (a b) (< (min (car a) (cadr a)) (min (car b) (cadr b))))))
+            done)
+        (cl-flet ((overlap-p (a b)
+                    (and (<= (min (car a) (cadr a)) (max (car b) (cadr b)))
+                         (<= (min (car b) (cadr b)) (max (car a) (cadr a))))))
+          (while todo
+            ;; The first leg nothing left must turn before, else the
+            ;; first: a cycle of preferences is broken anywhere.
+            (let* ((leg (or (seq-find (lambda (s)
+                                        (not (seq-some (lambda (r)
+                                                         (and (not (eq r s)) (overlap-p r s)
+                                                              (octocat-mermaid--leg-before-p r s)))
+                                                       todo)))
+                                      todo)
+                            (car todo)))
+                   (track (or (cl-loop for r in done
+                                       when (and (overlap-p r leg)
+                                                 (octocat-mermaid--leg-before-p r leg))
+                                       maximize (1+ (nth 2 r)))
+                              0)))
+              (while (seq-some (lambda (r) (and (overlap-p r leg) (= (nth 2 r) track))) done)
+                (cl-incf track))
+              (setf (nth 2 leg) track)
+              (aset tracks l (max (aref tracks l) (1+ track)))
+              (push leg done)
+              (setq todo (delq leg todo)))))))
+    tracks))
+
 ;;;; Flowcharts: drawing
 
 (defun octocat-mermaid--xy (m c)
   "Return the (X . Y) cell of main position M and cross position C."
   (if octocat-mermaid--vertical (cons c m) (cons m c)))
+
+(defun octocat-mermaid--bus (layer track starts sizes)
+  "Return the main position of TRACK in the gap after LAYER.
+STARTS and SIZES are the layer extents from `octocat-mermaid--place-main'."
+  (+ (aref starts layer) (aref sizes layer) track))
 
 (defun octocat-mermaid--route (e starts sizes)
   "Return (POINTS START-MARK END-MARK) for edge E.
@@ -664,20 +731,16 @@ layer extents from `octocat-mermaid--place-main'."
          (emark (if (eq bot (octocat-mermaid--e-to e))
                     (octocat-mermaid--e-head e)
                   (octocat-mermaid--e-tail e)))
-         (cur (octocat-mermaid--e-start-c e))
          (pts (list (cons (+ (octocat-mermaid--n-main top) (octocat-mermaid--msize top) -1
                              (if smark 1 0))
-                          cur))))
-    (cl-loop for (a b) on path while b
-             do (let ((bus (+ (aref starts (octocat-mermaid--n-layer a))
-                              (aref sizes (octocat-mermaid--n-layer a))))
-                      (next (if (eq b bot)
-                                (octocat-mermaid--e-end-c e)
-                              (octocat-mermaid--n-cross b))))
-                  (push (cons bus cur) pts)
-                  (push (cons bus next) pts)
-                  (setq cur next)))
-    (push (cons (- (octocat-mermaid--n-main bot) (if emark 1 0)) cur) pts)
+                          (octocat-mermaid--e-start-c e)))))
+    (pcase-dolist (`(,from ,to ,track ,layer) (octocat-mermaid--e-legs e))
+      (let ((bus (octocat-mermaid--bus layer track starts sizes)))
+        (push (cons bus from) pts)
+        (push (cons bus to) pts)))
+    (push (cons (- (octocat-mermaid--n-main bot) (if emark 1 0))
+                (octocat-mermaid--e-end-c e))
+          pts)
     (list (nreverse pts) smark emark)))
 
 (defun octocat-mermaid--mark-glyph (mark startp)
@@ -692,14 +755,9 @@ layer extents from `octocat-mermaid--place-main'."
 (defun octocat-mermaid--place-label (cv e starts sizes)
   "Write the label of edge E onto CV, if there is room."
   (when-let* ((label (octocat-mermaid--edge-label e)))
-    (let* ((path (octocat-mermaid--e-path e))
-           (a (car path)) (b (cadr path))
-           (bus (+ (aref starts (octocat-mermaid--n-layer a))
-                   (aref sizes (octocat-mermaid--n-layer a))))
-           (next (if (eq b (car (last path)))
-                     (octocat-mermaid--e-end-c e)
-                   (octocat-mermaid--n-cross b)))
-           (w (string-width label)))
+    (pcase-let* ((`(,_ ,next ,track ,layer) (car (octocat-mermaid--e-legs e)))
+                 (bus (octocat-mermaid--bus layer track starts sizes))
+                 (w (string-width label)))
       (if octocat-mermaid--vertical
           ;; Beside the line, on the row below the bus: right, else left,
           ;; else across the line itself.
@@ -874,10 +932,12 @@ the chart cannot be drawn."
                              (octocat-mermaid--order-layer
                               (aref layers l) (aref layers (1+ l)) downs)))))
         (octocat-mermaid--place-cross layers ups downs margin)
-        (pcase-let ((`(,starts ,sizes ,_) (octocat-mermaid--place-main layers edges margin))
+        (octocat-mermaid--attach nodes edges)
+        (pcase-let ((`(,starts ,sizes ,_)
+                     (octocat-mermaid--place-main
+                      layers edges margin (octocat-mermaid--assign-tracks edges nl)))
                     (marks nil)
                     (frames nil))
-          (octocat-mermaid--attach nodes edges)
           (setq frames (octocat-mermaid--frames groups nodes))
           (dolist (n nodes)
             (let ((xy (octocat-mermaid--xy (octocat-mermaid--n-main n)
