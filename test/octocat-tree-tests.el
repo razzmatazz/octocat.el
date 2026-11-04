@@ -120,12 +120,12 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
   (octocat-tree-tests--with-store
     (let ((bytes (string-to-unibyte "a\377b\n"))
           got)
-      (cl-letf (((symbol-function 'octocat-tree--fetch-file)
+      (cl-letf (((symbol-function 'octocat-vui--fetch-file)
                  (lambda (_repo _sha callback) (funcall callback (base64-encode-string bytes)))))
         (octocat-tree--load-blob "owner/repo" "b1" (lambda (r) (setq got r))))
       (should (equal got bytes))
       (setq got nil)
-      (cl-letf (((symbol-function 'octocat-tree--fetch-file)
+      (cl-letf (((symbol-function 'octocat-vui--fetch-file)
                  (lambda (&rest _) (error "Unexpected blob fetch"))))
         (octocat-tree--load-blob "owner/repo" "b1" (lambda (r) (setq got r))))
       (should (equal got bytes)))))
@@ -140,7 +140,7 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
                    (funcall cb (if (equal (list repo ref path) '("o/r" "main" "a.png"))
                                    "b1"
                                  '(error . "No file")))))
-                ((symbol-function 'octocat-tree--fetch-file)
+                ((symbol-function 'octocat-vui--fetch-file)
                  (lambda (_repo _sha cb) (funcall cb (base64-encode-string bytes)))))
         (should (eq octocat-image-file-function #'octocat-tree--image-file))
         (octocat-tree--image-file "o/r" "main" "a.png" (lambda (r) (setq got r)))

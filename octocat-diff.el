@@ -34,7 +34,6 @@
 (require 'seq)
 (require 'diff-mode) ; The diff faces.
 (require 'octocat-core)
-(require 'octocat-tree) ; The `blob' resource.
 (require 'octocat-vui)
 (require 'vui)
 
@@ -804,7 +803,7 @@ Unless LAST, a line across WIDTH follows it, see
          (text (vui-use-memo (data width last)
                  (and data
                       (let ((image (octocat--image-text
-                                    (octocat-tree--blob-content data) width)))
+                                    (octocat-vui--blob-content data) width)))
                         ;; Under the image: on its line, the underline
                         ;; would cross it at the text's baseline.
                         (if last image

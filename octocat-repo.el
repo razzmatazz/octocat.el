@@ -37,14 +37,7 @@
 
 (require 'octocat-core)
 (require 'seq)
-(require 'octocat-pr)
 (require 'octocat-commit)
-(require 'octocat-pr-diff)
-(require 'octocat-issue)
-(require 'octocat-workflow)
-(require 'octocat-run)
-(require 'octocat-job)
-(require 'octocat-checks)
 (require 'octocat-tree)
 (require 'octocat-org)
 (require 'octocat-vui)
@@ -59,14 +52,6 @@
 
 
 ;;;; User options
-
-(defcustom octocat-section-limit 15
-  "Default number of items to display per paged section.
-Used as the initial page size for user repos.  Each
-section starts with this many items and increments by this amount
-every time its \"Load more\" button is used."
-  :type 'integer
-  :group 'octocat)
 
 (defcustom octocat-repo-commits-page-size 25
   "Number of commits the commits page shows, and loads, at a time."
@@ -415,7 +400,7 @@ cons \\=(error . MSG)."
 
 (octocat-sync-define-resource blame (repo commit path)
   ;; COMMIT names the history, so what it says never changes.
-  :max-age octocat-tree--fixed-max-age
+  :max-age octocat-vui--fixed-max-age
   :fetch (lambda (done) (octocat-repo--fetch-blame repo commit path done)))
 
 (defconst octocat-repo--doc-kinds
@@ -766,7 +751,7 @@ stays put no request is made."
          (text  (vui-use-memo ((plist-get blob :data) ref raw width)
                   (and entry (plist-get blob :data)
                        (octocat-repo--doc-text repo ref (gethash "path" entry)
-                                               (octocat-tree--blob-content
+                                               (octocat-vui--blob-content
                                                 (plist-get blob :data))
                                                raw width)))))
     (cond
@@ -1092,7 +1077,7 @@ each line beside the commit that last changed it, as GitHub's Blame."
                   (and (plist-get file :data)
                        (octocat-repo--blame-text
                         repo (octocat-repo--source-text
-                              path (octocat-tree--blob-content (plist-get file :data)))
+                              path (octocat-vui--blob-content (plist-get file :data)))
                         (plist-get snap :data) edge)))))
     (cond ((eq (octocat-vui-snapshot-status file) 'error)
            (vui-text (octocat-vui-error-text file) :face 'error))
@@ -1110,7 +1095,7 @@ RAW shows markdown as is."
          (text  (vui-use-memo ((plist-get snap :data) raw width)
                   (and (plist-get snap :data)
                        (octocat-repo--file-text repo ref path
-                                                (octocat-tree--blob-content
+                                                (octocat-vui--blob-content
                                                  (plist-get snap :data))
                                                 raw width)))))
     (pcase (octocat-vui-snapshot-status snap)

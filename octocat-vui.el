@@ -54,6 +54,7 @@
 ;;   `octocat-vui--pr-row', `octocat-vui--issue-row', `octocat-vui--commit-row'
 ;;                                   rows of PRs, issues and commits
 ;;   `octocat-vui--detail-header'    title and fields atop PR and issue pages
+;;   `blob'                          resource of a file's contents
 ;;   `octocat--async-search-repos'   repo search stage of `octocat-switch-repo'
 ;;   `octocat--read-branch'          branch picker
 
@@ -3198,6 +3199,47 @@ as for `octocat-vui--commit-line'."
                    "RET: view commit"
                    (octocat--web-url "%s/commit/%s" repo
                                      (or (gethash "sha" commit) (gethash "oid" commit) ""))))
+
+;;;; File contents
+;;
+;; The `blob' resource: a file's contents, named by blob SHA, which the
+;; file, diff and repo pages read.
+
+(defconst octocat-vui--fixed-max-age (* 30 24 60 60)
+  "Seconds to keep what a SHA names, which never changes.")
+
+(defun octocat-vui--fetch-file (repo sha callback)
+  "Fetch the content of blob SHA in REPO asynchronously.
+CALLBACK is called with the content, base64-encoded as GitHub sends it,
+or a cons (error . MSG).  Encoded, it can be stored as JSON: a file need
+not be text."
+  (octocat--run-gh
+   (format "tree-blob-%s" (substring sha 0 (min 8 (length sha))))
+   (list "api"
+         (format "repos/%s/git/blobs/%s" repo sha)
+         "--jq" ".content")
+   (lambda (output)
+     ;; GitHub wraps lines at 60 chars.
+     (replace-regexp-in-string "\n" "" (string-trim output)))
+   callback))
+
+(octocat-sync-define-resource blob (repo sha)
+  :max-age octocat-vui--fixed-max-age
+  :fetch (lambda (done)
+           (let ((h (make-hash-table :test #'equal)))
+             ;; No SHA, no file: a page asks for one before it knows it.
+             (if (null sha)
+                 (funcall done (progn (puthash "base64" "" h) h))
+               (octocat-vui--fetch-file
+                repo sha
+                (lambda (r)
+                  (funcall done (if (eq (car-safe r) 'error)
+                                    r
+                                  (progn (puthash "base64" r h) h)))))))))
+
+(defun octocat-vui--blob-content (data)
+  "Return the content of a file from DATA, the `blob' resource's."
+  (base64-decode-string (gethash "base64" data)))
 
 ;;;; Repo search and branch picker
 ;;

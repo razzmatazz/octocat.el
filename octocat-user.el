@@ -37,12 +37,19 @@
 
 (require 'octocat-avatar)
 (require 'octocat-core)
-(require 'octocat-repo)
 (require 'octocat-sync)
 (require 'octocat-vui)
 (require 'subr-x)
 (require 'vui)
 (require 'vui-components)
+
+(defcustom octocat-section-limit 15
+  "Default number of items to display per paged section.
+Used as the initial page size for user repos.  Each
+section starts with this many items and increments by this amount
+every time its \"Load more\" button is used."
+  :type 'integer
+  :group 'octocat)
 
 (defcustom octocat-user-show-avatar t
   "Whether the user page draws the avatar as ASCII art beside the profile."

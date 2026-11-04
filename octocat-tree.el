@@ -168,20 +168,7 @@ in the tree, or a cons (error . MSG) on failure."
          (error "Unexpected tree response format"))))
    callback))
 
-(defun octocat-tree--fetch-file (repo sha callback)
-  "Fetch the content of blob SHA in REPO asynchronously.
-CALLBACK is called with the content, base64-encoded as GitHub sends it,
-or a cons (error . MSG).  Encoded, it can be stored as JSON: a file need
-not be text."
-  (octocat--run-gh
-   (format "tree-blob-%s" (substring sha 0 (min 8 (length sha))))
-   (list "api"
-         (format "repos/%s/git/blobs/%s" repo sha)
-         "--jq" ".content")
-   (lambda (output)
-     ;; GitHub wraps lines at 60 chars.
-     (replace-regexp-in-string "\n" "" (string-trim output)))
-   callback))
+
 
 
 (defconst octocat-tree--blob-query
@@ -279,33 +266,18 @@ Calls CALLBACK once with a hash-table of path to commit, see
 ;;
 ;; Directory listings and file contents are named by tree and blob SHA,
 ;; which name fixed contents, so they are kept for
-;; `octocat-tree--fixed-max-age'.  The tree of a directory at a ref comes
+;; `octocat-vui--fixed-max-age'.  The tree of a directory at a ref comes
 ;; with its last commit, the repo page's `repo-head' resource.
 
-(defconst octocat-tree--fixed-max-age (* 30 24 60 60)
-  "Seconds to keep what a SHA names, which never changes.")
-
 (octocat-sync-define-resource tree-dir (repo sha)
-  :max-age octocat-tree--fixed-max-age
+  :max-age octocat-vui--fixed-max-age
   :fetch (lambda (done) (octocat-tree--fetch-dir repo sha done)))
 
-(octocat-sync-define-resource blob (repo sha)
-  :max-age octocat-tree--fixed-max-age
-  :fetch (lambda (done)
-           (let ((h (make-hash-table :test #'equal)))
-             ;; No SHA, no file: a page asks for one before it knows it.
-             (if (null sha)
-                 (funcall done (progn (puthash "base64" "" h) h))
-               (octocat-tree--fetch-file
-                repo sha
-                (lambda (r)
-                  (funcall done (if (eq (car-safe r) 'error)
-                                    r
-                                  (progn (puthash "base64" r h) h)))))))))
+
 
 (octocat-sync-define-resource tree-commits (repo commit dir sha)
   ;; COMMIT names the history, so what it says never changes.
-  :max-age octocat-tree--fixed-max-age
+  :max-age octocat-vui--fixed-max-age
   :fetch (lambda (done)
            ;; No COMMIT yet: the page asks before it knows it.
            (if (null commit)
@@ -322,7 +294,7 @@ Calls CALLBACK once with a hash-table of path to commit, see
                    done)))))))
 
 (octocat-sync-define-resource tree-files (repo sha)
-  :max-age octocat-tree--fixed-max-age
+  :max-age octocat-vui--fixed-max-age
   :fetch (lambda (done)
            (octocat-tree--fetch-all-files
             repo sha
@@ -335,9 +307,7 @@ Calls CALLBACK once with a hash-table of path to commit, see
                              (puthash path blob h))
                            h)))))))
 
-(defun octocat-tree--blob-content (data)
-  "Return the content of a file from DATA, the `blob' resource's."
-  (base64-decode-string (gethash "base64" data)))
+
 
 (defun octocat-tree--load-blob (repo sha callback)
   "Call CALLBACK with the content of blob SHA in REPO, or (error . MSG).
@@ -346,7 +316,7 @@ From the store at once when there, else once fetched."
                     (lambda (r)
                       (funcall callback (if (eq (car-safe r) 'error)
                                             r
-                                          (octocat-tree--blob-content r))))))
+                                          (octocat-vui--blob-content r))))))
 
 (defun octocat-tree--image-file (repo ref path callback)
   "Call CALLBACK with the bytes of file PATH of REPO at REF, or nil.
