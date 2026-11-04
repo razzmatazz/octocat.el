@@ -202,6 +202,15 @@ No re-render: a refetch shows only here until its data changes."
   (pcase-dolist (`(,buf . ,_) (gethash key octocat-vui--subscriptions))
     (octocat-vui--set-key-loading buf key loading)))
 
+(defun octocat-vui--listen ()
+  "Add the pages' handlers to the hooks of the sync store and images.
+Called as a page mounts, so the lower modules never name vui."
+  (add-hook 'octocat-sync-change-functions #'octocat-vui--on-sync-change)
+  (add-hook 'octocat-sync-loading-functions #'octocat-vui--on-sync-loading)
+  (add-hook 'octocat-sync-invalidate-functions #'octocat-vui--on-sync-invalidate)
+  (add-hook 'octocat-sync-pending-functions #'octocat-vui--on-sync-pending)
+  (add-hook 'octocat-image-loading-functions #'octocat-vui--image-loading))
+
 (defun octocat-vui--on-sync-invalidate (keys)
   "Refetch the resources of KEYS that are on a page; the rest wait to be opened."
   (dolist (key keys)
@@ -1283,7 +1292,7 @@ turns too, displayed as what it returns for each frame."
 (defun octocat-vui--image-loading (buf loading)
   "Show \":loading\" in BUF's mode line while an image it asked for is LOADING.
 Its link's spinner turns with the mode line's.  For
-`octocat-image-loading-function'."
+`octocat-image-loading-functions'."
   (when (and loading (buffer-live-p buf))
     (with-current-buffer buf (setq octocat-vui--page-spinner t)))
   (octocat-vui--add-loading buf (if loading 1 -1)))
@@ -1344,6 +1353,7 @@ would pull the user back to it (see docs/using-vui.md)."
     (if (and (eq (nth 0 octocat-vui--page) component)
              (equal (nth 1 octocat-vui--page) id))
         (vui-update-props (nth 2 octocat-vui--page) props)
+      (octocat-vui--listen)
       (setq octocat-vui--page
             (list component id
                   (vui-mount (apply #'vui-component component props)

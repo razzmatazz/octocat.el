@@ -1016,7 +1016,10 @@ window once, with `octocat--markdown-width'."
   (if raw
       (octocat-markdown-render-verbatim text indent)
     (octocat-image-enable)
-    (octocat-markdown-render text indent width file)))
+    (let ((octocat-markdown-ref-function #'octocat--markdown-open-ref)
+          (octocat-markdown-url-function #'octocat-follow-url)
+          (octocat-markdown-host         (octocat--host)))
+      (octocat-markdown-render text indent width file))))
 
 (defun octocat--markdown-width ()
   "Return the columns rendered markdown should fit in the current buffer.

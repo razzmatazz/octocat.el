@@ -38,9 +38,18 @@ a higher one, or a page opens a peer it cannot require, it calls
 `octocat-open` with the page's kind, such as `(octocat-open 'pr repo
 number)`: a generic function in `octocat-core` that each page module
 adds a `cl-defmethod` to for its kinds.  A key bound to a higher
-module's command names it quoted, as `'octocat-jump`, not `#'`.  Other
-calls up go through a variable or hook whose default the higher module
-sets, or through a `declare-function` (see AGENTS.md).
+module's command names it quoted, as `'octocat-jump`, not `#'`.
+
+A lower module never names a higher one's function otherwise.  What it
+needs from above, the caller hands it:
+
+- bound around the call, as core binds the link handlers and host
+  around `octocat-markdown-render`, which each link keeps;
+- set buffer-locally by the page's mode, as the repo and file pages
+  set the functions `octocat-image` fetches a repository's images with;
+- added to a hook from a function the higher module runs anyway, as
+  `octocat-vui--listen` adds vui's handlers to sync's and image's
+  hooks when a page mounts.
 
 ## Module graph
 

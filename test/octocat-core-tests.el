@@ -398,8 +398,10 @@ browser, skip it."
 (ert-deftest octocat-core-test-markdown-links-open-views ()
   "RET on a github.com link in markdown opens its view, in the repo it names;
 #123 and commit references still open in the buffer's own repository."
-  (let ((out (octocat-markdown-render
-              "https://github.com/torvalds/linux/commit/0123abc4567 and #7 and abc1234" ""))
+  (let ((out (with-temp-buffer
+               (octocat--markdown-string
+                "https://github.com/torvalds/linux/commit/0123abc4567 and #7 and abc1234"
+                "" nil nil)))
         opened)
     (cl-letf (((symbol-function 'octocat-commit-open)
                (lambda (&rest a) (push (cons 'commit a) opened)))

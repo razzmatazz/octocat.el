@@ -56,9 +56,6 @@
 
 ;; Only in builds that can show images, the only ones that call it.
 (declare-function image-size "ext:image.c" (spec &optional pixels frame))
-(declare-function octocat-tree--image-file "octocat-repo" (repo ref path callback))
-(declare-function octocat-tree--proxied-url "octocat-repo" (repo ref path url callback))
-(declare-function octocat-vui--image-loading "octocat-vui" (buf loading))
 
 (defcustom octocat-image-max-lines 20
   "The most lines of text an image may be as tall as."
@@ -78,22 +75,23 @@
 github.com/user-attachments/assets/ redirects to S3 when fetched
 without a session.")
 
-(defvar octocat-image-file-function #'octocat-tree--image-file
+(defvar-local octocat-image-file-function nil
   "Function that fetches a file of a repository, for a relative image.
 Called with REPO, REF, PATH and a callback, which it calls with the
-file's bytes, or nil if they cannot be had.")
+file's bytes, or nil if they cannot be had.  Set by the pages that
+show a repository's files; elsewhere such an image is not fetched.")
 
-(defvar octocat-image-proxy-function #'octocat-tree--proxied-url
+(defvar-local octocat-image-proxy-function nil
   "Function that finds GitHub's proxy of an image a repository's file shows.
 Called with REPO, REF and PATH of the file, the image's URL and a
 callback, which it calls with the URL GitHub's rendering of the file
-gives the image, or nil.")
+gives the image, or nil.  Set as `octocat-image-file-function' is.")
 
 (defconst octocat-image--proxy-host "camo.githubusercontent.com"
   "The host of GitHub's image proxy.")
 
-(defvar octocat-image-loading-function #'octocat-vui--image-loading
-  "Function that shows whether a buffer waits for an image.
+(defvar octocat-image-loading-functions nil
+  "Functions called when a buffer starts or stops waiting for an image.
 Called with the BUFFER and LOADING, t when it starts waiting for one,
 nil when that one arrived or failed.")
 
@@ -288,8 +286,7 @@ For `jit-lock-functions'."
     (unless ok (message "Octocat: could not load %s" url))
     (dolist (buf (gethash url octocat-image--waiting))
       (when (buffer-live-p buf)
-        (when octocat-image-loading-function
-          (funcall octocat-image-loading-function buf nil))
+        (run-hook-with-args 'octocat-image-loading-functions buf nil)
         (with-current-buffer buf (octocat-image--refontify url))))
     (remhash url octocat-image--waiting)))
 
@@ -304,8 +301,7 @@ A failed fetch is retried."
     (unless (stringp have)
       (unless (memq buffer (gethash url octocat-image--waiting))
         (push buffer (gethash url octocat-image--waiting))
-        (when octocat-image-loading-function
-          (funcall octocat-image-loading-function buffer t)))
+        (run-hook-with-args 'octocat-image-loading-functions buffer t))
       (unless (eq have 'pending)
         (puthash url 'pending octocat-image--cache)
         (cond (file (apply octocat-image-file-function (append file (list done))))
@@ -333,9 +329,9 @@ Call CALLBACK with its bytes, or nil.  The proxy does not redirect."
                   (current-buffer)))
          (plist (with-current-buffer buf (get-text-property pos 'octocat-markdown-image)))
          (url   (plist-get plist :url)))
-    (unless (and url (octocat-image--fetchable-p plist))
-      (user-error "Octocat: no image to show here"))
     (with-current-buffer buf
+      (unless (and url (octocat-image--fetchable-p plist))
+        (user-error "Octocat: no image to show here"))
       (cl-pushnew url octocat-image--shown :test #'equal)
       (octocat-image--request plist buf)
       (octocat-image--refontify url))))

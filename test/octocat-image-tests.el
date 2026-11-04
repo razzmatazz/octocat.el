@@ -234,6 +234,7 @@
          (octocat-image--cache (make-hash-table :test #'equal))
          (octocat-image--waiting (make-hash-table :test #'equal))
          (octocat-image-file-function (lambda (_repo _ref _path cb) (setq done cb)))
+         (octocat-image-loading-functions (list #'octocat-vui--image-loading))
          (octocat-markdown-base '("o/r" "main" "")))
     (cl-letf (((symbol-function 'display-images-p) #'always)
               ((symbol-function 'image-type-from-data) (lambda (_) 'png))

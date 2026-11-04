@@ -176,9 +176,9 @@ leaving dangling advice and repeated `jit-lock` errors. The `with-temp-buffer` +
 
 - No top-level `define-key`, `setq` or `add-hook`.  Bind keys inside the
   map's `defvar` (`(let ((map (make-sparse-keymap))) (define-key map ...)
-  map)`); where a lower file calls into a higher one through a variable
-  or hook, make the higher function its `defvar` default, with a
-  `declare-function`, as `octocat-sync-change-functions` does.
+  map)`); where a lower file calls into a higher one through a hook,
+  the higher one adds to it from a function it runs anyway, as
+  `octocat-vui--listen` does when a page mounts.
 - No `ignore-errors`: test for what can go wrong (`bound-and-true-p`, a
   nil check), or catch only the error meant (`condition-case` on
   `user-error`, `with-demoted-errors`).

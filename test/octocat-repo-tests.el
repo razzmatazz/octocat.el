@@ -544,7 +544,9 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
                                  '(error . "No file")))))
                 ((symbol-function 'octocat-vui--fetch-file)
                  (lambda (_repo _sha cb) (funcall cb (base64-encode-string bytes)))))
-        (should (eq octocat-image-file-function #'octocat-tree--image-file))
+        (with-temp-buffer
+          (octocat-file-mode)
+          (should (eq octocat-image-file-function #'octocat-tree--image-file)))
         (octocat-tree--image-file "o/r" "main" "a.png" (lambda (r) (setq got r)))
         (should (equal got bytes))
         (octocat-tree--image-file "o/r" "main" "b.png" (lambda (r) (setq got (list r))))

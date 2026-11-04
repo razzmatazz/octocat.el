@@ -53,11 +53,6 @@
 (declare-function sqlite-commit      "ext:sqlite.c" (db))
 (declare-function sqlite-rollback    "ext:sqlite.c" (db))
 
-(declare-function octocat-vui--on-sync-change     "octocat-vui" (keys))
-(declare-function octocat-vui--on-sync-loading    "octocat-vui" (key loading))
-(declare-function octocat-vui--on-sync-invalidate "octocat-vui" (keys))
-(declare-function octocat-vui--on-sync-pending    "octocat-vui" (labels))
-
 (defcustom octocat-sync-directory (locate-user-emacs-file "octocat/")
   "Directory of the sync store, one SQLite file per GitHub host.
 The file is named after the host, such as \"sync-github.com.sqlite\"."
@@ -112,21 +107,22 @@ after `octocat-gh-timeout'."
   :type 'integer
   :group 'octocat)
 
-(defvar octocat-sync-change-functions (list #'octocat-vui--on-sync-change)
+(defvar octocat-sync-change-functions nil
   "Functions called with the keys of resources whose snapshot changed.
-Called once per write, after it is committed.")
+Called once per write, after it is committed.  The pages add theirs
+when one mounts, see `octocat-vui--listen'.")
 
-(defvar octocat-sync-loading-functions (list #'octocat-vui--on-sync-loading)
+(defvar octocat-sync-loading-functions nil
   "Functions called with a resource's key and whether it is now loading.
 Starting or ending a fetch changes no snapshot a page draws from data,
 so it is reported here rather than as a change: a page keeps its
 spinner from it, and a refetch that finds nothing new renders nothing.")
 
-(defvar octocat-sync-invalidate-functions (list #'octocat-vui--on-sync-invalidate)
+(defvar octocat-sync-invalidate-functions nil
   "Functions called with the keys of resources found outdated.
 Their data stays; a page showing one should refetch it.")
 
-(defvar octocat-sync-pending-functions (list #'octocat-vui--on-sync-pending)
+(defvar octocat-sync-pending-functions nil
   "Functions called with the labels of the pending mutations, oldest first.
 Called whenever one is sent or answered; nil once none is left.")
 

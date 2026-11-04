@@ -61,10 +61,6 @@
 (require 'url-util)
 (require 'octocat-mermaid)
 
-(declare-function octocat--markdown-open-ref "octocat-core" (kind repo id))
-(declare-function octocat-follow-url "octocat-core" (url))
-(declare-function octocat--web-url "octocat-core" (path &rest args))
-
 ;;;; Faces
 
 (defgroup octocat-markdown nil
@@ -139,14 +135,25 @@
 
 ;;;; Following links
 
-(defvar octocat-markdown-ref-function #'octocat--markdown-open-ref
-  "Function that opens a reference found in rendered markdown.
+(defvar octocat-markdown-ref-function nil
+  "Function that opens a reference found in rendered markdown, or nil.
 Called with KIND (`issue' or `commit'), REPO (an \"owner/name\" string, or
 nil for the repository of the current buffer) and ID (an issue number or
-a commit SHA).")
+a commit SHA).  Bound around `octocat-markdown-render': each reference
+keeps the one it was drawn with, so RET opens it wherever it lands.")
 
-(defvar octocat-markdown-url-function #'octocat-follow-url
-  "Function that opens a URL linked from rendered markdown.")
+(defvar octocat-markdown-url-function #'browse-url
+  "Function that opens a URL linked from rendered markdown.
+Bound around `octocat-markdown-render', as `octocat-markdown-ref-function'.")
+
+(defvar octocat-markdown-host "github.com"
+  "The GitHub host the links of rendered markdown go to.
+Bound around `octocat-markdown-render', for GitHub Enterprise.")
+
+(defun octocat-markdown--web-url (path &rest args)
+  "Return the URL of the page at PATH, formatted with ARGS, on the host.
+The host is `octocat-markdown-host'."
+  (concat "https://" octocat-markdown-host "/" (apply #'format path args)))
 
 (defvar octocat-markdown-link-map
   (let ((map (make-sparse-keymap)))
@@ -204,21 +211,22 @@ A link to a directory keeps its trailing slash."
 See `octocat-markdown-base'.  KIND is the page of a file: \"blob\" to
 read it, \"raw\" for its bytes; a directory's is its \"tree\"."
   (if-let* ((path (octocat-markdown--relative-path url)))
-      (octocat--web-url "%s/%s/%s/%s%s"
-                        (nth 0 octocat-markdown-base)
-                        (if (string-suffix-p "/" path) "tree" kind)
-                        (nth 1 octocat-markdown-base)
-                        (string-remove-suffix "/" path)
-                        (if (string-match "#.*\\'" url) (match-string 0 url) ""))
+      (octocat-markdown--web-url "%s/%s/%s/%s%s"
+                                 (nth 0 octocat-markdown-base)
+                                 (if (string-suffix-p "/" path) "tree" kind)
+                                 (nth 1 octocat-markdown-base)
+                                 (string-remove-suffix "/" path)
+                                 (if (string-match "#.*\\'" url) (match-string 0 url) ""))
     url))
 
 (defun octocat-markdown--unlink (label)
   "Return LABEL without the #123, SHA and @mention links in it.
 As on GitHub, a link's label links only to the link's target."
   (let ((s (copy-sequence label)) (i 0))
-    (remove-text-properties 0 (length s)
-                            '(octocat-markdown-ref nil octocat-markdown-url nil)
-                            s)
+    (remove-text-properties
+     0 (length s)
+     '(octocat-markdown-ref nil octocat-markdown-url nil octocat-markdown-open nil)
+     s)
     (while (< i (length s))
       (let ((next (next-single-property-change i 'face s (length s)))
             (face (get-text-property i 'face s)))
@@ -236,13 +244,15 @@ As on GitHub, a link's label links only to the link's target."
     (octocat-markdown--interactive
      (octocat-markdown--face (octocat-markdown--unlink label)
                              'octocat-markdown-link)
-     (format "RET: open %s" url) 'octocat-markdown-url url)))
+     (format "RET: open %s" url) 'octocat-markdown-url url
+     'octocat-markdown-open octocat-markdown-url-function)))
 
 (defun octocat-markdown--ref (label kind repo id)
   "Return LABEL as a reference to KIND (`issue' or `commit') ID in REPO."
   (octocat-markdown--interactive
    (octocat-markdown--face label 'octocat-markdown-mention)
-   (format "RET: open %s" label) 'octocat-markdown-ref (list kind repo id)))
+   (format "RET: open %s" label) 'octocat-markdown-ref (list kind repo id)
+   'octocat-markdown-open octocat-markdown-ref-function))
 
 (defun octocat-markdown--mention (name)
   "Return @NAME (a user or an org/team) as a link to its GitHub page."
@@ -251,9 +261,10 @@ As on GitHub, a link's label links only to the link's target."
    (format "RET: open %s" name)
    'octocat-markdown-url
    (if (string-match "\\`@\\([^/]+\\)/\\(.+\\)\\'" name)
-       (octocat--web-url "orgs/%s/teams/%s"
-                         (match-string 1 name) (match-string 2 name))
-     (octocat--web-url "%s" (substring name 1)))))
+       (octocat-markdown--web-url "orgs/%s/teams/%s"
+                                  (match-string 1 name) (match-string 2 name))
+     (octocat-markdown--web-url "%s" (substring name 1)))
+   'octocat-markdown-open octocat-markdown-url-function))
 
 (defun octocat-markdown--ensure-invisibility ()
   "Make folded <details> bodies invisible in the current buffer."
@@ -310,13 +321,16 @@ Only an absolute one: a link left relative has nowhere to go."
   (let* ((pos (if (mouse-event-p event) (posn-point (event-start event)) (point)))
          (url (get-text-property pos 'octocat-markdown-url))
          (ref (get-text-property pos 'octocat-markdown-ref)))
-    (cond (ref (if octocat-markdown-ref-function
-                   (apply octocat-markdown-ref-function ref)
+    (cond (ref (if-let* ((open (or (get-text-property pos 'octocat-markdown-open)
+                                   octocat-markdown-ref-function)))
+                   (apply open ref)
                  (user-error "Octocat: no way to open %s" (nth 2 ref))))
           ;; `browse-url' would take a relative link for a local file.
           ((and url (not (string-match-p "\\`[a-zA-Z][a-zA-Z0-9+.-]*:" url)))
            (user-error "Octocat: no way to open %s" url))
-          (url (funcall octocat-markdown-url-function url))
+          (url (funcall (or (get-text-property pos 'octocat-markdown-open)
+                            octocat-markdown-url-function)
+                        url))
           ((get-text-property pos 'octocat-markdown-details)
            (octocat-markdown-toggle-details pos))
           (t (user-error "Octocat: nothing to follow here")))))
