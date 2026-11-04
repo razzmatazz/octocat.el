@@ -88,11 +88,11 @@ See `octocat-timeline-submit' for ON-SUCCESS."
    body source on-success))
 
 (defun octocat-pr--submit-edit-comment (body source on-success _on-error)
-  "Edit the comment identified in `octocat-edit--user-data' with BODY.
+  "Edit the comment identified in `octocat-edit-user-data' with BODY.
 The :comment-id plist key is read from the edit buffer (current-buffer at
 call time).  SOURCE supplies the PR.
 See `octocat-timeline-submit' for ON-SUCCESS."
-  (let ((comment-id (plist-get octocat-edit--user-data :comment-id)))
+  (let ((comment-id (plist-get octocat-edit-user-data :comment-id)))
     (octocat-timeline-submit
      (with-current-buffer source
        `(edit-comment "pr" ,octocat--pr-repo ,octocat--pr-number ,comment-id ,body))
@@ -107,7 +107,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
     (user-error "Octocat: Buffer is not associated with a pull request"))
   (octocat-timeline-ensure-idle (list 'pr octocat--pr-repo octocat--pr-number))
   (octocat-timeline-prepare-comment)
-  (octocat--open-edit-buffer
+  (octocat-edit-open
    (format "New comment on PR #%d" octocat--pr-number)
    #'octocat-pr--submit-comment
    #'ignore))
@@ -122,7 +122,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   ;; rather than retyping everything.
   (let* ((pr   (octocat-sync-detail-read (list 'pr octocat--pr-repo octocat--pr-number)))
          (body (and pr (octocat--nonempty (gethash "body" pr)))))
-    (octocat--open-edit-buffer
+    (octocat-edit-open
      (format "Edit body of PR #%d" octocat--pr-number)
      #'octocat-pr--submit-edit-body
      #'ignore
@@ -161,7 +161,7 @@ On a field such as Labels: pick its values."
         (octocat-timeline-ensure-idle (list 'pr octocat--pr-repo octocat--pr-number))
         (unless comment-id
           (user-error "Octocat: Could not determine comment ID from URL"))
-        (octocat--open-edit-buffer
+        (octocat-edit-open
          (format "Edit comment on PR #%d" octocat--pr-number)
          #'octocat-pr--submit-edit-comment
          #'ignore
@@ -457,8 +457,8 @@ a narrow window."
 
 (defun octocat-pr--merge-update (data)
   "Store DATA as the merge dialog's user data and redraw its header."
-  (setq octocat-edit--user-data data)
-  (let ((lines (octocat-pr--merge-header octocat-edit--title data)))
+  (setq octocat-edit-user-data data)
+  (let ((lines (octocat-pr--merge-header octocat-edit-title data)))
     ;; The tab line sits above the header line, giving a second line.
     (setq tab-line-format    (car lines)
           header-line-format (cadr lines)))
@@ -481,8 +481,8 @@ The method and branch deletion are read from the edit buffer's user
 data.  The dialog closes at once, through ON-SUCCESS, and the PR's pages
 show the merge under way until it ends, so a slow GitHub does not
 block; ON-ERROR is called only for a missing method."
-  (let ((method (plist-get octocat-edit--user-data :method))
-        (delete (plist-get octocat-edit--user-data :delete)))
+  (let ((method (plist-get octocat-edit-user-data :method))
+        (delete (plist-get octocat-edit-user-data :delete)))
     (if (not method)
         (funcall on-error (substitute-command-keys
                            "Pick a merge method with \\[octocat-pr-merge-cycle]"))
@@ -498,7 +498,7 @@ block; ON-ERROR is called only for a missing method."
   "Switch the merge dialog to the next allowed method.
 An unedited default message is replaced by the next method's."
   (interactive)
-  (let* ((data     octocat-edit--user-data)
+  (let* ((data     octocat-edit-user-data)
          (methods  (plist-get data :methods))
          (defaults (plist-get data :defaults))
          (method   (plist-get data :method))
@@ -515,7 +515,7 @@ An unedited default message is replaced by the next method's."
 (defun octocat-pr-merge-toggle-delete ()
   "Toggle whether the merge dialog deletes the head branch."
   (interactive)
-  (let ((data octocat-edit--user-data))
+  (let ((data octocat-edit-user-data))
     (octocat-pr--merge-update
      (plist-put (copy-sequence data) :delete (not (plist-get data :delete))))))
 
@@ -541,7 +541,7 @@ starts as in `octocat-pr--merge-initial-method'."
          (method   (octocat-pr--merge-initial-method
                     methods (octocat--setting (list 'merge-method repo))))
          (data     (octocat-pr--merge-data method methods defaults delete))
-         (win      (octocat--open-edit-buffer
+         (win      (octocat-edit-open
                     title #'octocat-pr--submit-merge
                     #'ignore
                     (cdr (assoc method defaults)) data)))
@@ -551,7 +551,7 @@ starts as in `octocat-pr--merge-initial-method'."
       ;; line; themes style it for tabs, some hiding its text.
       (face-remap-set-base 'tab-line 'header-line)
       (octocat-pr-merge-mode 1)
-      (octocat-pr--merge-update octocat-edit--user-data))))
+      (octocat-pr--merge-update octocat-edit-user-data))))
 
 (defun octocat-pr-merge ()
   "Open the dialog to merge the current PR, from any of its pages.
@@ -1924,7 +1924,7 @@ thread left with no comment is dropped."
                (data   (octocat-pr-diff--threads))
                (review (gethash "pending" data)))
     (octocat-timeline-prepare-comment)
-    (octocat--open-edit-buffer
+    (octocat-edit-open
      (format "Comment on %s" (octocat-diff-range-label range))
      (octocat-pr-diff--submitter
       (lambda (body)
@@ -1948,7 +1948,7 @@ pick between replying now and starting a review."
                                                  (?r "review" "start a review with it"))))
                                ?r))))
     (octocat-timeline-prepare-comment)
-    (octocat--open-edit-buffer
+    (octocat-edit-open
      (format "Reply on %s" (octocat-diff-range-label
                             (list :path (gethash "path" comment)
                                   :line (or (gethash "line" comment) 0)
@@ -1985,10 +1985,10 @@ pick between replying now and starting a review."
 (defun octocat-pr-diff-delete-comment ()
   "Delete the review comment this buffer edits, after asking."
   (interactive)
-  (when (octocat-pr-diff--delete octocat-edit--source-buffer
-                                 (plist-get octocat-edit--user-data :node-id))
+  (when (octocat-pr-diff--delete octocat-edit-source-buffer
+                                 (plist-get octocat-edit-user-data :node-id))
     (set-buffer-modified-p nil)
-    (quit-window t octocat-edit--window)))
+    (quit-window t octocat-edit-window)))
 
 (defun octocat-pr-diff--edit (comment)
   "Open the edit buffer of your review COMMENT."
@@ -1999,7 +1999,7 @@ pick between replying now and starting a review."
                                  (list :path (gethash "path" comment)
                                        :line (or (gethash "line" comment) 0)
                                        :side (gethash "side" comment)))))
-               (win (octocat--open-edit-buffer
+               (win (octocat-edit-open
                      title
                      (lambda (body source on-success on-error)
                        (cond ((not (string-empty-p body))
@@ -2015,7 +2015,7 @@ pick between replying now and starting a review."
     (with-current-buffer (window-buffer win)
       (octocat-pr-diff-comment-mode 1)
       (setq header-line-format
-            (concat (octocat-edit--header-line title) "   "
+            (concat (octocat-edit-header-line title) "   "
                     (propertize "C-c C-d" 'face 'help-key-binding) "  delete")))
     win))
 
@@ -2124,12 +2124,12 @@ is none until the user picks a decision.  The dialog closes at once,
 through ON-SUCCESS, and the PR's pages show the review under way until
 it is sent, so a slow GitHub does not block; ON-ERROR is called only
 for a missing decision."
-  (let ((flag (plist-get octocat-edit--user-data :flag))
-        (review-id (plist-get octocat-edit--user-data :review-id)))
+  (let ((flag (plist-get octocat-edit-user-data :flag))
+        (review-id (plist-get octocat-edit-user-data :review-id)))
     (cond
      ((not flag)
       (funcall on-error "Pick a decision with C-c C-t first"))
-     ((and (string-empty-p body) (not (plist-get octocat-edit--user-data :allow-empty)))
+     ((and (string-empty-p body) (not (plist-get octocat-edit-user-data :allow-empty)))
       (funcall on-error "Write the review's text first"))
      (t
       (pcase-let ((`(,repo . ,number) (with-current-buffer source (octocat-pr--current))))
@@ -2143,14 +2143,14 @@ for a missing decision."
   "Switch the review dialog to the next decision."
   (interactive)
   (let* ((events  (mapcar #'car octocat-pr-diff--review-events))
-         (next    (or (cadr (member (plist-get octocat-edit--user-data :event) events))
+         (next    (or (cadr (member (plist-get octocat-edit-user-data :event) events))
                       (car events)))
-         (pending (plist-get octocat-edit--user-data :pending)))
-    (setq octocat-edit--user-data
+         (pending (plist-get octocat-edit-user-data :pending)))
+    (setq octocat-edit-user-data
           (octocat-pr-diff--review-data
-           next (plist-get octocat-edit--user-data :review-id) pending))
+           next (plist-get octocat-edit-user-data :review-id) pending))
     (setq header-line-format
-          (octocat-pr-diff--review-header octocat-edit--title next pending))
+          (octocat-pr-diff--review-header octocat-edit-title next pending))
     (force-mode-line-update)))
 
 (defun octocat-pr-diff--discard (source review-id pending)
@@ -2165,12 +2165,12 @@ PENDING is how many drafts it holds.  Return non-nil when discarded."
 (defun octocat-pr-diff-review-discard ()
   "Discard your pending review, its drafts with it, after asking."
   (interactive)
-  (let ((review-id (or (plist-get octocat-edit--user-data :review-id)
+  (let ((review-id (or (plist-get octocat-edit-user-data :review-id)
                        (user-error "Octocat: No review to discard"))))
-    (when (octocat-pr-diff--discard octocat-edit--source-buffer review-id
-                                    (plist-get octocat-edit--user-data :pending))
+    (when (octocat-pr-diff--discard octocat-edit-source-buffer review-id
+                                    (plist-get octocat-edit-user-data :pending))
       (set-buffer-modified-p nil)
-      (quit-window t octocat-edit--window))))
+      (quit-window t octocat-edit-window))))
 
 (defvar octocat-pr-diff-review-mode-map
   (let ((map (make-sparse-keymap)))
@@ -2207,7 +2207,7 @@ Your draft comments are submitted with it, or discarded with
                     (user-error "Octocat: A review of PR #%d is being submitted" number)))
          (pending (octocat-pr-diff--pending-review (car current) number))
          (title (format "Review PR #%d" number))
-         (win   (octocat--open-edit-buffer
+         (win   (octocat-edit-open
                  title
                  #'octocat-pr-diff--submit-review
                  #'ignore

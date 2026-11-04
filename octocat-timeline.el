@@ -648,15 +648,15 @@ SOURCE.  The dialog closes at once through ON-SUCCESS and the page shows
 the mutation under way until GitHub answers, so a slow GitHub does not
 block.  On failure the dialog reopens with BODY, so nothing typed is
 lost."
-  (let ((title     octocat-edit--title)
-        (submit-fn octocat-edit--submit-fn)
-        (data      octocat-edit--user-data))
+  (let ((title     octocat-edit-title)
+        (submit-fn octocat-edit-submit-fn)
+        (data      octocat-edit-user-data))
     (octocat-sync-submit
      spec
      (lambda (result)
        (when (and (eq (car-safe result) 'error) (buffer-live-p source))
          (with-current-buffer source
-           (octocat--open-edit-buffer title submit-fn #'ignore body data)))))
+           (octocat-edit-open title submit-fn #'ignore body data)))))
     (funcall on-success)))
 
 (defun octocat-timeline--detail-spec (kind repo number)

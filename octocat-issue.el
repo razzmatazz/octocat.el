@@ -61,11 +61,11 @@ See `octocat-timeline-submit' for ON-SUCCESS."
    body source on-success))
 
 (defun octocat-issue--submit-edit-comment (body source on-success _on-error)
-  "Edit the comment identified in `octocat-edit--user-data' with BODY.
+  "Edit the comment identified in `octocat-edit-user-data' with BODY.
 The :comment-id plist key is read from the edit buffer (current-buffer at
 call time).  SOURCE supplies the issue.
 See `octocat-timeline-submit' for ON-SUCCESS."
-  (let ((comment-id (plist-get octocat-edit--user-data :comment-id)))
+  (let ((comment-id (plist-get octocat-edit-user-data :comment-id)))
     (octocat-timeline-submit
      (with-current-buffer source
        `(edit-comment "issue" ,octocat--issue-repo ,octocat--issue-number ,comment-id ,body))
@@ -80,7 +80,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
     (user-error "Octocat: Buffer is not associated with an issue"))
   (octocat-timeline-ensure-idle (list 'issue octocat--issue-repo octocat--issue-number))
   (octocat-timeline-prepare-comment)
-  (octocat--open-edit-buffer
+  (octocat-edit-open
    (format "New comment on issue #%d" octocat--issue-number)
    #'octocat-issue--submit-comment
    #'ignore))
@@ -95,7 +95,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   ;; rather than retyping everything.
   (let* ((issue (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))
          (body  (and issue (octocat--nonempty (gethash "body" issue)))))
-    (octocat--open-edit-buffer
+    (octocat-edit-open
      (format "Edit body of issue #%d" octocat--issue-number)
      #'octocat-issue--submit-edit-body
      #'ignore
@@ -134,7 +134,7 @@ On a field such as Labels: pick its values."
         (octocat-timeline-ensure-idle (list 'issue octocat--issue-repo octocat--issue-number))
         (unless comment-id
           (user-error "Octocat: Could not determine comment ID from URL"))
-        (octocat--open-edit-buffer
+        (octocat-edit-open
          (format "Edit comment on issue #%d" octocat--issue-number)
          #'octocat-issue--submit-edit-comment
          #'ignore
@@ -170,11 +170,11 @@ message."
                             (repo-summary ,repo))))
 
 (defun octocat-issue--submit-new (text source on-success on-error)
-  "Create an issue from TEXT in the repo of `octocat-edit--user-data'.
+  "Create an issue from TEXT in the repo of `octocat-edit-user-data'.
 Open it from SOURCE once GitHub answers; the editor stays open until
 then, through ON-SUCCESS or ON-ERROR, as there is no page to show the
 issue under way."
-  (let ((repo (plist-get octocat-edit--user-data :repo))
+  (let ((repo (plist-get octocat-edit-user-data :repo))
         (msg  (octocat-issue--parse-message text)))
     (if (string-empty-p (car msg))
         (funcall on-error "the first line, the title, is empty")
@@ -197,7 +197,7 @@ The first line is the title, the rest the body."
   (let ((repo (or octocat-vui-list--repo (octocat--search-repo--current-repo))))
     (unless repo
       (user-error "Octocat: Cannot determine current repository"))
-    (octocat--open-edit-buffer
+    (octocat-edit-open
      (format "New issue in %s — title on the first line" repo)
      #'octocat-issue--submit-new
      #'ignore

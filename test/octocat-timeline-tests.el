@@ -282,11 +282,11 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
               (funcall done result)))
     (unwind-protect
         (cl-letf (((symbol-function 'octocat-sync--props) (lambda (_) nil))
-                  ((symbol-function 'octocat--open-edit-buffer)
+                  ((symbol-function 'octocat-edit-open)
                    (lambda (&rest args) (setq reopened args))))
           (with-temp-buffer
-            (setq octocat-edit--title "New comment"
-                  octocat-edit--submit-fn #'ignore)
+            (setq octocat-edit-title "New comment"
+                  octocat-edit-submit-fn #'ignore)
             (octocat-timeline-submit '(post) "hello" source (lambda () (setq closed t))))
           (list running (plist-get (octocat-sync-read '(issue "o/r" 1)) :mutating)
                 reopened closed))

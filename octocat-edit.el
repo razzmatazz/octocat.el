@@ -43,7 +43,7 @@
 ;;   REFRESH-FN (source-buffer)
 ;;     Called with the source buffer after a successful submit.
 ;;
-;; Entry point: `octocat--open-edit-buffer'.
+;; Entry point: `octocat-edit-open'.
 
 ;;; Code:
 
@@ -52,11 +52,14 @@
 
 
 ;;;; Buffer-local state
+;;
+;; Those without `--' are for the callers, whose submit functions and
+;; minor modes read them in the edit buffer.
 
-(defvar-local octocat-edit--title nil
+(defvar-local octocat-edit-title nil
   "Short human-readable title shown in the buffer name and header line.")
 
-(defvar-local octocat-edit--submit-fn nil
+(defvar-local octocat-edit-submit-fn nil
   "Function (BODY SOURCE-BUFFER ON-SUCCESS ON-ERROR) called on submit.
 BODY is the trimmed buffer text.  The function must perform its async
 operation and call ON-SUCCESS () on success or ON-ERROR (MSG) on failure.")
@@ -64,16 +67,16 @@ operation and call ON-SUCCESS () on success or ON-ERROR (MSG) on failure.")
 (defvar-local octocat-edit--refresh-fn nil
   "Function called with SOURCE-BUFFER after a successful submit.")
 
-(defvar-local octocat-edit--source-buffer nil
+(defvar-local octocat-edit-source-buffer nil
   "The PR/issue buffer that opened this edit buffer.")
 
-(defvar-local octocat-edit--user-data nil
+(defvar-local octocat-edit-user-data nil
   "Caller-supplied plist for arbitrary extra state.
-Set via the USER-DATA argument to `octocat--open-edit-buffer'.
-Submit functions can read this with `octocat-edit--user-data' on
-`current-buffer', since they are called from inside the edit buffer.")
+Set via the USER-DATA argument to `octocat-edit-open'.  Submit
+functions read it as they run, since they are called from inside the
+edit buffer.")
 
-(defvar-local octocat-edit--window nil
+(defvar-local octocat-edit-window nil
   "The window displaying this edit buffer.
 Used by `quit-window' to close the split cleanly on submit or abort.")
 
@@ -115,7 +118,7 @@ Type your markdown text, then:
   "Return the name for an edit buffer with TITLE."
   (format "*%s*" title))
 
-(defun octocat-edit--header-line (title)
+(defun octocat-edit-header-line (title)
   "Return a header-line string for TITLE."
   (format "  %s    %s  submit   %s  discard"
           title
@@ -132,12 +135,12 @@ Type your markdown text, then:
   (interactive)
   (let ((body (string-trim (buffer-string))))
     (when (and (string-empty-p body)
-               (not (plist-get octocat-edit--user-data :allow-empty)))
+               (not (plist-get octocat-edit-user-data :allow-empty)))
       (user-error "Octocat: body is empty — nothing to submit"))
-    (let ((submit-fn  octocat-edit--submit-fn)
+    (let ((submit-fn  octocat-edit-submit-fn)
           (refresh-fn octocat-edit--refresh-fn)
-          (source     octocat-edit--source-buffer)
-          (edit-win   octocat-edit--window)
+          (source     octocat-edit-source-buffer)
+          (edit-win   octocat-edit-window)
           (edit-buf   (current-buffer)))
       (setq mode-line-process (octocat-vui-mode-line-busy ":submitting"))
       (funcall submit-fn body source
@@ -164,15 +167,15 @@ Type your markdown text, then:
   (interactive)
   (when (or (not (buffer-modified-p))
             (yes-or-no-p "Discard edit? "))
-    (let ((win octocat-edit--window))
+    (let ((win octocat-edit-window))
       (set-buffer-modified-p nil)
       (quit-window t win))))
 
 
 ;;;; Public entry point
 
-(defun octocat--open-edit-buffer (title submit-fn refresh-fn
-                                        &optional initial-content user-data)
+(defun octocat-edit-open (title submit-fn refresh-fn
+                                &optional initial-content user-data)
   "Open (or reuse) an edit buffer with TITLE, wired to SUBMIT-FN and REFRESH-FN.
 
 TITLE       — short human-readable string used in the buffer name and header.
@@ -180,11 +183,11 @@ SUBMIT-FN   — function (BODY SOURCE-BUFFER ON-SUCCESS ON-ERROR) called on
               \\[octocat-edit-submit].  Must perform its async operation and
               invoke ON-SUCCESS () on success or ON-ERROR (MSG) on failure.
               It is called from inside the edit buffer, so submit functions
-              can read `octocat-edit--user-data' from `current-buffer'.
+              can read `octocat-edit-user-data' from `current-buffer'.
 REFRESH-FN  — function (SOURCE-BUFFER) called after a successful submit.
 INITIAL-CONTENT — string pre-populated into the buffer; nil for blank.
-USER-DATA   — optional plist stored as `octocat-edit--user-data', available
-              to SUBMIT-FN via `(octocat-edit--user-data)' on current buffer.
+USER-DATA   — optional plist stored as `octocat-edit-user-data', which
+              SUBMIT-FN reads, as it runs in the edit buffer.
               A non-nil :allow-empty lets an empty body be submitted.
 
 The buffer is shown in a bottom window.  The source buffer is the one
@@ -198,13 +201,13 @@ Use \\[octocat-edit-abort] to discard."
         (octocat-edit-mode))
       ;; Restore state even if buffer already existed (e.g. re-opened after
       ;; a failed submit).
-      (setq octocat-edit--title          title
-            octocat-edit--submit-fn      submit-fn
+      (setq octocat-edit-title          title
+            octocat-edit-submit-fn      submit-fn
             octocat-edit--refresh-fn     refresh-fn
-            octocat-edit--source-buffer  source
-            octocat-edit--user-data      user-data)
+            octocat-edit-source-buffer  source
+            octocat-edit-user-data      user-data)
       (setq-local header-line-format
-                  (octocat-edit--header-line title))
+                  (octocat-edit-header-line title))
       ;; Only pre-populate when the buffer is fresh (not dirty from a
       ;; previous failed attempt the user wants to keep).
       (when (and initial-content
@@ -220,7 +223,7 @@ Use \\[octocat-edit-abort] to discard."
                                '(display-buffer-below-selected
                                  . ((window-height . 0.35))))))
       (with-current-buffer buf
-        (setq octocat-edit--window win))
+        (setq octocat-edit-window win))
       (select-window win))))
 
 (provide 'octocat-edit)
