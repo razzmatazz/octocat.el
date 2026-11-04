@@ -2,7 +2,7 @@
 
 Places where octocat works around vui.el, and what upstream could
 offer instead.  Each was checked against vui master 43ebe18
-(2026-11-03).  File them at https://github.com/d12frosted/vui.el/issues
+(2026-11-03).  File the rest at https://github.com/d12frosted/vui.el/issues
 one at a time, each with a repro run against vui master first: its code
 moves fast, and a fix can leave the code that looked at fault in place
 (a handler's remount was fixed that way, in vui 9ed056d).  Once one is
@@ -24,6 +24,8 @@ carries, such as a row's state, number and title faces.
   them (`add-face-text-property`, appended); or a `:title` that takes a
   vnode in `vui-collapsible`; or a clickable row element.
 - Removes the most code here of all the items.
+- **Filed:** https://github.com/d12frosted/vui.el/issues/290, with the
+  fix tried as advice: it keeps the label's faces.
 
 ## 2. No public way to find the field at point
 
@@ -34,8 +36,11 @@ carries, such as a row's state, number and title faces.
   `widget-field-start` and `widget-field-at`; `octocat-evil.el` calls
   `widget-field-at`.  Both depend on vui drawing fields as widgets,
   which vui's issue #113 says consumers should not.
-- **Ask:** `vui-field-at` (the field at a position, or nil) and
-  `vui-field-bounds` (a field's start and end).
+- **Ask:** `vui-field-at` (the field at a position, or nil),
+  `vui-element-bounds` (a field's start and end) and
+  `vui-field-element` (the field with a key).
+- **Filed:** https://github.com/d12frosted/vui.el/issues/291, as a
+  follow-up to #113.
 
 ## 3. No timer hook
 
@@ -44,6 +49,7 @@ carries, such as a row's state, number and title faces.
   when the callback returns nil, and when it signals, so a broken frame
   is reported once (see "Timers" in docs/using-vui.md).
 - **Ask:** a `vui-use-interval` with the same lifetime.
+- **Filed:** https://github.com/d12frosted/vui.el/issues/292.
 
 ## 4. No way to change some of a root's props
 
