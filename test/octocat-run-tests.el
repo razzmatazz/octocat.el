@@ -92,7 +92,7 @@ env:
                 (list (list 'a (propertize "A" 'tag 'a)) (list 'b "B") (list 'c "C"))
                 '((a b) (a c)))))
     (should (equal (mapcar #'substring-no-properties lines)
-                   '("  A ─┬─── B" "     └─── C")))
+                   '("  A ─┬─── B" "     ╰─── C")))
     (should (eq (get-text-property 2 'tag (nth 0 lines)) 'a))
     (should-not (octocat-mermaid-graph '((a "A") (b "B")) '((a b)) 5))))
 

@@ -133,6 +133,32 @@
     ;; A->B, A->C, A->D, B->E, C->E, D->E, A->E and E->F.
     (should (= 8 (cl-count ?▼ out)))))
 
+(ert-deftest octocat-mermaid-test-flow-edges-turn-round ()
+  "An edge turns on rounded corners, a box keeps its square ones."
+  (let ((out (octocat-mermaid-tests--draw "graph TD\nA --> B & C")))
+    (should (string-match-p "╭" out))
+    (should (string-match-p "╮" out))
+    (should (string-match-p "┌" out))))
+
+(defun octocat-mermaid-tests--lines (&rest lines)
+  "Return LINES, polylines of (X . Y), drawn on a canvas as a string."
+  (let ((cv (octocat-mermaid--canvas)))
+    (dolist (points lines)
+      (octocat-mermaid--draw-line cv points))
+    (octocat-mermaid--draw-hops cv)
+    (string-join (octocat-mermaid--lines cv) "\n")))
+
+(ert-deftest octocat-mermaid-test-flow-crossing-hops ()
+  "Lines crossing are told from lines joining: the horizontal one stops short."
+  (should (equal (octocat-mermaid-tests--lines '((3 . 0) (3 . 2)) '((0 . 1) (6 . 1)))
+                 (octocat-mermaid-tests--rows "   │" "──╴│╶──" "   │")))
+  ;; Drawn the other way round, too.
+  (should (equal (octocat-mermaid-tests--lines '((0 . 1) (6 . 1)) '((3 . 0) (3 . 2)))
+                 (octocat-mermaid-tests--rows "   │" "──╴│╶──" "   │")))
+  ;; A line ending on another still joins it.
+  (should (equal (octocat-mermaid-tests--lines '((3 . 0) (3 . 2)) '((0 . 1) (3 . 1)))
+                 (octocat-mermaid-tests--rows "   │" "───┤" "   │"))))
+
 (ert-deftest octocat-mermaid-test-flow-multiline-labels ()
   "<br> breaks a label into lines, which are centred."
   (should (equal (octocat-mermaid-tests--draw "graph TD\nA[one<br/>three]")

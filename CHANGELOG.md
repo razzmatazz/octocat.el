@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Mermaid edges turn on rounded corners, and where two cross they hop, not join: ─╴│╶─
 * Mermaid diagrams turn each edge on a row of its own, so their lines no longer merge
 * A mermaid diagram too wide for the window is drawn past it, to scroll to, not as source
 * A branch's commits show a graph of its merges, as gitk does; a commit starts with ○, a merge ⊕

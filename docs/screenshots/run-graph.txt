@@ -4,4 +4,4 @@ in_progress  Event pull_request · Branch incremental · SHA b7d444f
 
 Jobs (4)   Table  Graph
   ✓ lint 1m30s ─┬─── ● test (stable) 3/5 ─┬─── ○ docs
-                └─── ● test (beta) 2/5 ───┘
+                ╰─── ● test (beta) 2/5 ───╯

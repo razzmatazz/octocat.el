@@ -49,7 +49,8 @@
                                        (:copier nil))
   (cells (make-hash-table :test #'equal))
   (width 0)
-  (height 0))
+  (height 0)
+  hops)
 
 (defun octocat-mermaid--put (cv x y string)
   "Write STRING into canvas CV from column X of row Y, one character per cell.
@@ -98,13 +99,17 @@ Empty rows at the top and bottom are left out."
 (defconst octocat-mermaid--line-bits
   '((?─ . 10) (?│ . 5) (?┌ . 6) (?┐ . 12) (?└ . 3) (?┘ . 9) (?├ . 7) (?┤ . 13)
     (?┬ . 14) (?┴ . 11) (?┼ . 15) (?╭ . 6) (?╮ . 12) (?╰ . 3) (?╯ . 9)
-    (?━ . 10) (?┃ . 5) (?┄ . 10) (?┆ . 5))
+    (?━ . 10) (?┃ . 5) (?┄ . 10) (?┆ . 5) (?╴ . 8) (?╶ . 2) (?╸ . 8) (?╺ . 2))
   "Connections (N=1, E=2, S=4, W=8) of the line-drawing characters.")
 
 (defconst octocat-mermaid--bits-char
   '((1 . ?│) (2 . ?─) (3 . ?└) (4 . ?│) (5 . ?│) (6 . ?┌) (7 . ?├) (8 . ?─)
     (9 . ?┘) (10 . ?─) (11 . ?┴) (12 . ?┐) (13 . ?┤) (14 . ?┬) (15 . ?┼))
   "The line-drawing character for each set of connections.")
+
+(defconst octocat-mermaid--round-corners '((3 . ?╰) (6 . ?╭) (9 . ?╯) (12 . ?╮))
+  "The rounded corner for each pair of connections making one.
+An edge turns on these, so its corners are not taken for a box's.")
 
 (defun octocat-mermaid--add-bits (cv x y bits &optional glyph)
   "Join a line with connections BITS into the cell of CV at X,Y.
@@ -128,7 +133,10 @@ line make a junction); any other character stays."
 (defun octocat-mermaid--draw-line (cv points &optional glyphs)
   "Draw the polyline POINTS, a list of (X . Y), into CV.
 Consecutive points are on a common row or column.  GLYPHS is nil, or a
-cons of the horizontal and vertical characters for straight stretches."
+cons of the horizontal and vertical characters for straight stretches.
+The line turns on rounded corners.  Where it runs straight across
+another line, the vertical one is kept and the cell noted in CV's hops,
+for `octocat-mermaid--draw-hops' to tell the crossing from a join."
   (let ((bits (make-hash-table :test #'equal)))
     (cl-loop for (p q) on points while q
              do (let* ((dx (cl-signum (- (car q) (car p))))
@@ -150,10 +158,34 @@ cons of the horizontal and vertical characters for straight stretches."
                           (setq done t)
                         (setq x (+ x dx) y (+ y dy)))))))
     (maphash (lambda (key b)
-               (octocat-mermaid--add-bits
-                cv (car key) (cdr key) b
-                (and glyphs (if (= b 10) (car glyphs) (cdr glyphs)))))
+               (let* ((x (car key)) (y (cdr key))
+                      (glyph (and glyphs (if (= b 10) (car glyphs) (cdr glyphs))))
+                      (old (octocat-mermaid--get cv x y))
+                      (old-bits (and old (= (length old) 1)
+                                     (cdr (assq (aref old 0) octocat-mermaid--line-bits)))))
+                 (cond
+                  ((and old-bits (memq b '(5 10)) (= (+ b old-bits) 15))
+                   (unless (= old-bits 5)
+                     (octocat-mermaid--put cv x y (string (or glyph ?│))))
+                   (push key (octocat-mermaid--canvas-hops cv)))
+                  ((and (member old '(nil " ")) (assq b octocat-mermaid--round-corners))
+                   (octocat-mermaid--put
+                    cv x y (string (cdr (assq b octocat-mermaid--round-corners)))))
+                  (t (octocat-mermaid--add-bits cv x y b glyph)))))
              bits)))
+
+(defun octocat-mermaid--draw-hops (cv)
+  "Cut the lines crossing CV's hops short of them, so they read as crossings.
+A hop still a straight vertical line has the solid or thick horizontal
+line either side of it end a half cell before it: ─╴│╶─."
+  (dolist (key (octocat-mermaid--canvas-hops cv))
+    (let ((x (car key)) (y (cdr key)))
+      (when (eql 5 (cdr (assq (aref (or (octocat-mermaid--get cv x y) " ") 0)
+                              octocat-mermaid--line-bits)))
+        (pcase-dolist (`(,dx . ,cuts) '((-1 ("─" . "╴") ("━" . "╸"))
+                                        (1 ("─" . "╶") ("━" . "╺"))))
+          (when-let* ((cut (cdr (assoc (octocat-mermaid--get cv (+ x dx) y) cuts))))
+            (octocat-mermaid--put cv (+ x dx) y cut)))))))
 
 (defun octocat-mermaid--draw-box (cv x y w h lines shape)
   "Draw into CV a box of SHAPE at X,Y, W by H cells, holding LINES centred.
@@ -962,6 +994,7 @@ the chart cannot be drawn."
                   (push (cons (octocat-mermaid--xy (car p) (cdr p))
                               (octocat-mermaid--mark-glyph emark nil))
                         marks)))))
+          (octocat-mermaid--draw-hops cv)
           (dolist (m marks)
             (octocat-mermaid--put cv (car (car m)) (cdr (car m)) (cdr m)))
           (dolist (e edges)
