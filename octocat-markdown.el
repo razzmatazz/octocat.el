@@ -51,6 +51,9 @@
 ;; `octocat-markdown-render-verbatim'.  `octocat-markdown-font-lock-keywords'
 ;; highlights markdown source in an edit buffer, and
 ;; `octocat-markdown-from-org' turns org into markdown to render.
+;; `octocat-markdown-copy-setup' makes copying from a buffer leave out
+;; what the renderer only draws: indents, quote bars, and the breaks of
+;; lines wrapped to fit.
 
 ;;; Code:
 
@@ -271,6 +274,49 @@ As on GitHub, a link's label links only to the link's target."
   (unless (and (listp buffer-invisibility-spec)
                (memq 'octocat-markdown-details buffer-invisibility-spec))
     (add-to-invisibility-spec 'octocat-markdown-details)))
+
+;; Rails, bars, indents and the breaks of lines wrapped to fit are only
+;; drawn, so copying leaves them out: they carry `octocat-markdown-copy'.
+(defun octocat-markdown-copy-text (string)
+  "Return STRING as copied, its drawn-only text left out or rewritten.
+Text whose `octocat-markdown-copy' property is `drop' is left out, and
+`quote', a quote's bars, becomes `>'s.  A line broken to fit carries
+`octocat-markdown-wrapped': the newline before it turns back into a
+space, or, when it is `cut', as code is, anywhere, into nothing."
+  (let ((len (length string)) (pos 0) out)
+    (while (< pos len)
+      (let ((kind (get-text-property pos 'octocat-markdown-copy string))
+            (wrap (get-text-property pos 'octocat-markdown-wrapped string))
+            (next (min (next-single-property-change pos 'octocat-markdown-copy string len)
+                       (next-single-property-change pos 'octocat-markdown-wrapped string len))))
+        (when (and wrap out (string-suffix-p "\n" (car out)))
+          (setcar out (concat (substring (car out) 0 -1) (if (eq wrap 'cut) "" " "))))
+        (pcase kind
+          ('drop)
+          ('quote (push (string-replace "│" ">" (substring string pos next)) out))
+          (_ (push (substring string pos next) out)))
+        (setq pos next)))
+    (apply #'concat (nreverse out))))
+
+(defun octocat-markdown-copy-setup ()
+  "Make text copied from the current buffer leave out what is only drawn.
+See `octocat-markdown-copy-text'."
+  (add-function :filter-return (local 'filter-buffer-substring-function)
+                #'octocat-markdown-copy-text))
+
+(defun octocat-markdown--copy-as (kind string)
+  "Return a copy of STRING that copying treats as KIND.
+KIND is a value of `octocat-markdown-copy', see `octocat-markdown-copy-text'."
+  (let ((s (copy-sequence string)))
+    (put-text-property 0 (length s) 'octocat-markdown-copy kind s)
+    s))
+
+(defun octocat-markdown--wrapped (string &optional cut)
+  "Return a copy of STRING marked as a line broken to fit.
+CUT marks it cut anywhere, as code is; see `octocat-markdown-copy-text'."
+  (let ((s (copy-sequence string)))
+    (put-text-property 0 (length s) 'octocat-markdown-wrapped (if cut 'cut t) s)
+    s))
 
 (defun octocat-markdown-toggle-details (&optional pos)
   "Expand or collapse the <details> whose summary is at POS (default point)."
@@ -891,6 +937,15 @@ newlines are kept; any the HTML itself renders become spaces."
     (mapcar (lambda (c) (string-trim (replace-regexp-in-string "\0" "|" c)))
             (split-string (replace-regexp-in-string "\\\\|" "\0" line) "|"))))
 
+(defun octocat-markdown--table-line (s)
+  "Return S, a line of a table, marked as one and copied as drawn.
+Its cells' wrapped lines and code are copied as they are, so the
+columns stay lined up."
+  (let ((s (propertize s 'octocat-markdown-table t)))
+    (remove-text-properties 0 (length s)
+                            '(octocat-markdown-copy nil octocat-markdown-wrapped nil) s)
+    s))
+
 (defun octocat-markdown--pad (cell width align)
   "Pad CELL to WIDTH columns according to ALIGN (`left', `right', `center')."
   (let ((gap (max 0 (- width (string-width cell)))))
@@ -968,7 +1023,9 @@ link is replaced whole by the image."
                (setq beg b end e))))
     (push (substring s beg end) lines)
     (cons (car (last lines))
-          (mapcar (lambda (l) (concat hang l)) (cdr (nreverse lines))))))
+          (let ((hang (octocat-markdown--copy-as 'drop hang)))
+            (mapcar (lambda (l) (octocat-markdown--wrapped (concat hang l)))
+                    (cdr (nreverse lines)))))))
 
 (defconst octocat-markdown--min-column 6
   "Narrowest a table column is squeezed to before the table overflows instead.")
@@ -1074,7 +1131,7 @@ text onto several lines, with a rule between rows to keep them apart."
                                             " ")))
                                 specs (funcall bar "│"))
                                (funcall bar "│")))))))
-    (mapcar (lambda (s) (cons (propertize s 'octocat-markdown-table t) ""))
+    (mapcar (lambda (s) (cons (octocat-markdown--table-line s) ""))
             (append
              (list (funcall rule "┌" "┬" "┐"))
              (funcall row head 'bold)
@@ -1402,7 +1459,7 @@ squeezed the grid cannot fit `octocat-markdown--avail'."
                                                cells (funcall bar "│"))
                                               (funcall bar "│")))))))
           (mapcar (lambda (s) (octocat-markdown--standout
-                               (cons (propertize s 'octocat-markdown-table t) "")))
+                               (cons (octocat-markdown--table-line s) "")))
                   (append
                    (list (funcall rule nil (funcall bounds (car rows)) "┌" "┐"))
                    (cl-loop for (r . more) on rows
@@ -1503,8 +1560,10 @@ draw it, the source is shown, labelled as such."
                                            'octocat-markdown-dimmed 'italic)
                    "")))
      (cl-loop for (l . more) on (or code '(""))
-              collect (let ((s (concat " " l (make-string (max 0 (- width (string-width l))) ?\s)
-                                       " ")))
+              collect (let ((s (concat (octocat-markdown--copy-as 'drop " ") l
+                                       (octocat-markdown--copy-as
+                                        'drop (make-string (1+ (max 0 (- width (string-width l))))
+                                                           ?\s)))))
                         (add-face-text-property 0 (length s) 'octocat-markdown-code-block t s)
                         ;; `end' on the last line tells `octocat-markdown--tidy'
                         ;; where the box stops, even when another follows.
@@ -1750,7 +1809,8 @@ DEPTH is the list nesting depth, which picks the bullet."
             (when-let* ((alert (octocat-markdown--alert (car quoted))))
               (setq quoted (cons (concat "**" (substring-no-properties alert) "**")
                                  (cdr quoted))))
-            (let ((bar (propertize "│ " 'face 'octocat-markdown-dimmed)))
+            (let ((bar (propertize "│ " 'face 'octocat-markdown-dimmed
+                                   'octocat-markdown-copy 'quote)))
               (dolist (l (let ((octocat-markdown--avail
                                 (and octocat-markdown--avail (- octocat-markdown--avail 2))))
                            (octocat-markdown--tidy
@@ -1946,14 +2006,15 @@ sections are easy to tell apart."
 Its leading spaces are kept, and the lines after the first start with
 HANG, a string, or that many spaces, as a `wrap-prefix' would show it."
   (let* ((lead   (- (length string) (length (string-trim-left string " +"))))
-         (prefix (if (stringp hang) hang (make-string hang ?\s)))
+         (prefix (octocat-markdown--copy-as
+                  'drop (if (stringp hang) hang (make-string hang ?\s))))
          (text   (substring string lead))
          ;; The first line has no prefix, so it gets the whole width.
          (first  (car (octocat-markdown--wrap text (max 1 (- width lead)))))
          (rest   (string-trim-left (substring text (length first)) " +")))
     (cons (concat (substring string 0 lead) first)
           (unless (string-empty-p rest)
-            (mapcar (lambda (l) (concat prefix l))
+            (mapcar (lambda (l) (octocat-markdown--wrapped (concat prefix l)))
                     (octocat-markdown--wrap
                      rest (max 1 (- width (max lead (string-width prefix))))))))))
 
@@ -2006,16 +2067,17 @@ here.  A nil WIDTH leaves ROWS as they are."
                             (put-text-property 0 (length str) 'octocat-markdown-code t str)
                             str)))
               ;; Only the arrow joins the box: HANG lies outside it.
-              (setq arrow (concat hang (funcall code arrow)))
+              (setq arrow (octocat-markdown--copy-as 'drop (concat hang (funcall code arrow))))
               ;; Pad each piece, the last above all, so the block's
               ;; background reaches the column like its other lines.
               (cons (cons head hang)
                     (mapcar (lambda (piece)
-                              (cons (concat arrow piece
-                                            (funcall code (make-string
-                                                           (max 0 (- room (string-width piece)))
-                                                           ?\s)))
-                                    hang))
+                              (let ((pad (make-string (max 0 (- room (string-width piece))) ?\s)))
+                                (cons (octocat-markdown--wrapped
+                                       (concat arrow piece
+                                               (octocat-markdown--copy-as 'drop (funcall code pad)))
+                                       'cut)
+                                      hang)))
                             (octocat-markdown--cut (substring s (length head)) room)))))
            (t
             (mapcar (lambda (l) (cons l hang))
@@ -2027,7 +2089,8 @@ here.  A nil WIDTH leaves ROWS as they are."
   (if (not center)
       rows
     (mapcar (lambda (r)
-              (cons (concat (make-string (max 0 (/ (- width (string-width (car r))) 2)) ?\s)
+              (cons (concat (octocat-markdown--copy-as
+                             'drop (make-string (max 0 (/ (- width (string-width (car r))) 2)) ?\s))
                             (car r))
                     (cdr r)))
             rows)))
@@ -2038,7 +2101,7 @@ Wrapped continuation lines repeat INDENT, plus each row's hang, and a
 code line's also an arrow, so the wrap is not taken for a newline.  The
 lines of a collapsed <details> body are invisible, newline included."
   (mapconcat (lambda (row)
-               (let ((full (concat indent (car row) "\n"))
+               (let ((full (concat (octocat-markdown--copy-as 'drop indent) (car row) "\n"))
                      (fold (octocat-markdown--row-fold row)))
                  (put-text-property
                   0 (length full) 'wrap-prefix

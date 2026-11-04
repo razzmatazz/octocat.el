@@ -41,6 +41,20 @@
     (should (equal (substring-no-properties (octocat-diff--timeline cs nil 80))
                    "  ● @a  \n  │ q\n  │\n  ● @b  \n  │ r"))))
 
+(ert-deftest octocat-diff-test-copy-thread ()
+  "Copying a thread leaves out its box's edges and rails."
+  (let* ((cs (mapcar #'json-parse-string
+                     '("{\"user\":{\"login\":\"a\"},\"body\":\"q\"}"
+                       "{\"user\":{\"login\":\"b\"},\"body\":\"r\"}")))
+         (copy (lambda (lines)
+                 (octocat-markdown-copy-text (string-join lines "\n")))))
+    (should (equal (octocat-markdown-copy-text (octocat-diff--timeline cs nil 80))
+                   "@a  \nq\n\n@b  \nr"))
+    (should (equal (split-string (funcall copy (octocat-diff--comment-lines
+                                                (car cs) nil 80 (cdr cs)))
+                                 "\n")
+                   '("@a  " "q" "" "@b  " "r" "")))))
+
 (ert-deftest octocat-diff-test-threads ()
   "A reply joins the box of the comment it answers, a bubble on its edge.
 An edge row sets each comment apart from the one before.

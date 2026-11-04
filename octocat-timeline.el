@@ -404,10 +404,13 @@ single entry such as \"added the A B labels\".  BG is as for
 
 ;;;; Rendering
 
-(defconst octocat-timeline--rail (propertize "│" 'face 'octocat-dimmed)
-  "The timeline's vertical line, drawn between two entries.")
+(defconst octocat-timeline--rail
+  (propertize "│" 'face 'octocat-dimmed 'octocat-markdown-copy 'drop)
+  "The timeline's vertical line, drawn between two entries.
+Copying leaves it out, see `octocat-markdown-copy-text'.")
 
-(defconst octocat-timeline--body-prefix (propertize "│ " 'face 'octocat-dimmed)
+(defconst octocat-timeline--body-prefix
+  (propertize "│ " 'face 'octocat-dimmed 'octocat-markdown-copy 'drop)
   "Prefix of a box body: the rail, then the text.
 The text lines up with the author's handle in the heading above it.")
 

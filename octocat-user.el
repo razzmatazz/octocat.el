@@ -381,6 +381,7 @@ A new TICK fetches everything again."
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-user-refresh)
   (octocat--ts-eldoc-setup)
+  (octocat-markdown-copy-setup)
   (setq-local octocat--url-function #'octocat-user--page-url))
 
 (defun octocat-user-refresh (&optional _ignore-auto _noconfirm)

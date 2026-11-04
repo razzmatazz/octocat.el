@@ -117,6 +117,24 @@
     (should (eq (get-text-property (1- (length entry)) 'octocat-timeline-target entry)
                 comment))))
 
+(ert-deftest octocat-timeline-test-copy-entry ()
+  "Copying an entry leaves out the rail, and rejoins a line broken to fit."
+  (let ((copy (lambda (item)
+                (cadr (split-string (octocat-markdown-copy-text
+                                     (octocat-timeline--entry-string item nil 20))
+                                    "\n" nil)))))
+    (should (equal (funcall copy (list :time "2026-01-04T10:00:00Z" :kind 'comment
+                                       :actor "@bob" :verb "commented"
+                                       :body "one two three four five six"))
+                   "one two three four five six"))
+    (should (string-match-p
+             "\\`○ @bob added the label one two three four five [0-9]"
+             (octocat-markdown-copy-text
+              (octocat-timeline--entry-string
+               (list :time "2026-01-04T10:00:00Z" :kind 'event :actor "@bob"
+                     :text "added the label one two three four five")
+               nil 20))))))
+
 (ert-deftest octocat-timeline-test-reactions ()
   "The post, comments and a PR's reviews show their reactions after the date."
   (let* ((rg (lambda (content n)

@@ -1365,6 +1365,7 @@ A filter other than the default goes along, so the page lists the same."
             #'octocat-vui-list--qualifier-capf nil t)
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
   (octocat--ts-eldoc-setup)
+  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-vui-list--page-url)
   (setq-local octocat--repo-function (lambda () octocat-vui-list--repo)))

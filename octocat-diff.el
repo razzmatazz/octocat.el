@@ -166,21 +166,23 @@ heading, to the middle of WIDTH."
                                         'face 'octocat-dimmed)
                           "")))
          (rule (max 3 (- (/ width 2) (string-width "  ┌─ ") (string-width head) 1))))
-    (concat (propertize "  ┌─ " 'face face) head " "
-            (propertize (make-string rule ?─) 'face face))))
+    (concat (propertize "  ┌─ " 'face face 'octocat-markdown-copy 'drop) head
+            (propertize " " 'octocat-markdown-copy 'drop)
+            (propertize (make-string rule ?─) 'face face 'octocat-markdown-copy 'drop))))
 
 (defun octocat-diff--reply-head (reply)
   "Return the line leading into REPLY from a bubble on its box's edge."
-  (concat (propertize "  ○── " 'face (octocat-diff--edge-face reply))
+  (concat (propertize "  ○── " 'face (octocat-diff--edge-face reply) 'octocat-markdown-copy 'drop)
           (octocat-diff--comment-head reply)))
 
 (defun octocat-diff--bar (comment &optional indent)
   "Return the box edge before a body line of COMMENT, then INDENT."
-  (concat (propertize "  │ " 'face (octocat-diff--edge-face comment)) indent))
+  (concat (propertize "  │ " 'face (octocat-diff--edge-face comment) 'octocat-markdown-copy 'drop)
+          indent))
 
 (defun octocat-diff--spacer (root)
   "Return the box edge alone, a row between the comments of ROOT's thread."
-  (propertize "  │" 'face (octocat-diff--edge-face root)))
+  (propertize "  │" 'face (octocat-diff--edge-face root) 'octocat-markdown-copy 'drop))
 
 (defun octocat-diff--comment-lines (comment raw width &optional replies)
   "Return the lines of the boxed inline review COMMENT, without newlines.
@@ -198,16 +200,17 @@ RAW, to fit WIDTH columns."
                    (octocat-diff--reply-head r)
                    (octocat-diff--comment-body r (octocat-diff--bar r "  ") raw width)))
            replies)
-   (list (propertize "  └─" 'face (octocat-diff--edge-face comment)))))
+   (list (propertize "  └─" 'face (octocat-diff--edge-face comment)
+                     'octocat-markdown-copy 'drop))))
 
 (defun octocat-diff--timeline (comments raw width)
   "Return COMMENTS, on no line of the diff, as a timeline, without newline.
 With nothing to enclose, they are drawn as the PR timeline's comments,
 a bullet then the body on a rail.  RAW and WIDTH are as for
 `octocat-diff--comment-lines'."
-  (let ((rail (propertize "  │ " 'face 'octocat-dimmed)))
+  (let ((rail (propertize "  │ " 'face 'octocat-dimmed 'octocat-markdown-copy 'drop)))
     (mapconcat (lambda (c)
-                 (concat (propertize "  ● " 'face 'octocat-dimmed)
+                 (concat (propertize "  ● " 'face 'octocat-dimmed 'octocat-markdown-copy 'drop)
                          (octocat-diff--comment-head c) "\n"
                          (octocat-diff--comment-body c rail raw width)))
                comments
@@ -467,7 +470,8 @@ width, underlines the last line, see `octocat-diff--underline-last'."
   (let* ((root     (car thread))
          (resolved (eq (gethash "resolved" root) t))
          (toggle   (vui-async-callback () (vui-set-state :open (not open))))
-         (bottom   (octocat-diff--tag (propertize "  └─" 'face (octocat-diff--edge-face root))
+         (bottom   (octocat-diff--tag (propertize "  └─" 'face (octocat-diff--edge-face root)
+                                                  'octocat-markdown-copy 'drop)
                                       root)))
     (cl-flet ((under (s) (if underline (octocat-diff--underline-last s underline) s)))
       (if (and resolved (not open))
@@ -1632,6 +1636,7 @@ fetches them again."
   (setq-local octocat--refresh-fn #'octocat-commit-refresh)
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
+  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-commit--page-url)
   (setq-local octocat--repo-function (lambda () octocat--commit-repo)))
@@ -1850,6 +1855,7 @@ fetches it again."
   (setq-local octocat--refresh-fn #'octocat-compare-refresh)
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
+  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-compare--page-url)
   (setq-local octocat--repo-function (lambda () octocat--compare-repo)))

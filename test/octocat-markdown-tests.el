@@ -962,6 +962,48 @@ Text replaced by a `display' string shows as that string."
                            (octocat-markdown-tests--md "<details>\nbody\n</details>"))))
 
 
+;;; Copying
+
+(ert-deftest octocat-markdown-test-copy-text ()
+  "Copying leaves out what is drawn only, and rejoins lines broken to fit."
+  (let ((as   (lambda (kind s) (propertize s 'octocat-markdown-copy kind)))
+        (wrap (lambda (cut s) (propertize s 'octocat-markdown-wrapped (or cut t)))))
+    (should (equal (octocat-markdown-copy-text
+                    (concat (funcall as 'drop "│ ") (funcall as 'quote "│ │ ") "a\n"
+                            (funcall as 'drop "│ ")
+                            (funcall wrap nil (concat (funcall as 'drop "│ │   ") "b"))
+                            "\nc\n" (funcall wrap 'cut (concat (funcall as 'drop "↪ ") "d"))
+                            "\n" (funcall wrap nil "e")))
+                   "> > a b\ncd e"))
+    ;; Copied from the middle of a line, there is no newline to join.
+    (should (equal (octocat-markdown-copy-text (funcall wrap nil "b")) "b"))))
+
+(ert-deftest octocat-markdown-test-copy-rendered ()
+  "A rendered body copies without its indent, bars, wraps or code padding."
+  (let ((r (octocat-markdown-render
+            (concat "> one two three four five six seven\n"
+                    "> - item aaa bbb ccc ddd eee\n\ntext\n\n"
+                    "```\nabcdefghijklmnopqrstuvwxyz0123456789\nx\n```")
+            "│ " 20)))
+    (should (string-match-p "\n│ │   ccc" (substring-no-properties r)))
+    (should (equal (octocat-markdown-copy-text r)
+                   (concat "> one two three four five six seven\n"
+                           "> • item aaa bbb ccc ddd eee\n\ntext\n\n"
+                           "abcdefghijklmnopqrstuvwxyz0123456789\nx\n")))))
+
+(ert-deftest octocat-markdown-test-copy-table ()
+  "A table is copied as drawn, its borders and cells lined up."
+  (let ((r (octocat-markdown-render "| a | b |\n|---|---|\n| one two three | `x` |" "" 16)))
+    (should (equal (octocat-markdown-copy-text r) (substring-no-properties r)))))
+
+(ert-deftest octocat-markdown-test-copy-buffer ()
+  "Copying from a buffer set up for it goes through the filter."
+  (with-temp-buffer
+    (octocat-markdown-copy-setup)
+    (insert (octocat-markdown-render "> quoted" "│ "))
+    (should (equal (filter-buffer-substring (point-min) (point-max)) "> quoted\n"))))
+
+
 ;;; Font-lock in the edit buffer
 
 (ert-deftest octocat-markdown-test-edit-mode-font-lock ()

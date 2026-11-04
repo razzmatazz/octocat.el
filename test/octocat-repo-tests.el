@@ -854,7 +854,9 @@ the margin as wide whatever the window."
     (should (equal (get-text-property (1- (length (nth 1 lines))) 'display (nth 1 lines))
                    '(space :align-to 70)))
     (should-not (funcall ruled (nth 2 lines)))
-    (should (equal (string-search "│" (nth 0 lines)) (1+ octocat-repo--blame-width)))))
+    (should (equal (string-search "│" (nth 0 lines)) (1+ octocat-repo--blame-width)))
+    ;; Copying leaves the blame column out, keeping only the code.
+    (should (equal (octocat-markdown-copy-text text) "a\nb\nc"))))
 
 (ert-deftest octocat-tree-test-parse-last-commits ()
   "Each path gets the commit of its alias; one with no history is left out."
