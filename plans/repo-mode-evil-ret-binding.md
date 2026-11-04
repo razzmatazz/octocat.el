@@ -70,7 +70,7 @@ design" below) and from the test's first draft, in the order they came up:
 
 In Doom Emacs, with `(:editor (evil +everywhere) ...)` and `(:tools magit ...)`
 enabled, pressing `RET` in an `octocat-repo-mode` buffer (opened via
-`SPC g h` → `octocat-repo`, bound in `~/.config/doom/config.el` as
+`SPC g h` → `octocat-repo`, bound in Doom's `config.el` as
 `(:leader "g h" #'octocat-repo)`) does nothing — even though `describe-mode`
 correctly reports:
 
@@ -155,20 +155,20 @@ already-open buffers.
 
 This is a valid **interim, session-local stopgap** (does not survive an
 Emacs restart, and does not fix the upstream package) — e.g. worth noting
-in `~/.config/doom/config.el` as a temporary `(after! octocat-repo (require
+in Doom's `config.el` as a temporary `(after! octocat-repo (require
 'octocat))`-style nudge, or simply running `M-x octocat` once per session
 before `octocat-repo`, until the permanent fix below is applied.
 
 ## Findings (confirmed)
 
-- `$HOME/.config/doom/init.el` has `(doom! ... :editor (evil +everywhere) ... :tools magit ...)`.
-- `$HOME/.config/doom/packages.el`: `(package! octocat :recipe (:host github :repo "razzmatazz/octocat" :files ("*.el")))` — no `:pin`, so the two machines can silently drift to different upstream commits at `doom sync` time.
-- `$HOME/.config/doom/config.el`: `(:leader "g h" #'octocat-repo)` and `(after! octocat (setq octocat-debug t))` — the latter is gated on the `octocat` feature, which is also never provided on this code path.
+- Doom's `init.el` has `(doom! ... :editor (evil +everywhere) ... :tools magit ...)`.
+- Doom's `packages.el`: `(package! octocat :recipe (:host github :repo "razzmatazz/octocat" :files ("*.el")))` — no `:pin`, so the two machines can silently drift to different upstream commits at `doom sync` time.
+- Doom's `config.el`: `(:leader "g h" #'octocat-repo)` and `(after! octocat (setq octocat-debug t))` — the latter is gated on the `octocat` feature, which is also never provided on this code path.
 - No `evil-collection-octocat.el` exists anywhere in `evil-collection` — evil-collection has no knowledge of this package, so it is not a factor.
 - `evil-collection-magit-section.el` does **not** bind `RET` at all (only fold/navigation keys) — ruled out as a shadowing source.
 - `evil-define-key*` already passes `ignore-parent = t` internally (verified in `evil-core.el`) — the aux-keymap mechanism itself is sound; it just never runs.
-- The straight package cache (`/Users/saulius/.config/emacs/.local/straight/repos/octocat/octocat.el`) and the local checkout (`/Users/saulius/src/razzmatazz--octocat/octocat.el`, git `main` @ `c4257aa`, clean tree) are byte-identical at the relevant lines (1037–1047) — same bug present in both.
-- `/Users/saulius/src/razzmatazz--octocat/AGENTS.md` documents the very assumption that breaks here, in the "Byte-compiler warnings" section: *"At runtime all files are already loaded by `octocat.el`, so there is no actual missing-definition risk."* This is true only when `octocat.el` (dashboard) is the first entry point used in a session — not true for `octocat-repo`.
+- The straight package cache and the local checkout (git `main` @ `c4257aa`, clean tree) are byte-identical at the relevant lines (1037–1047) — same bug present in both.
+- `AGENTS.md` documents the very assumption that breaks here, in the "Byte-compiler warnings" section: *"At runtime all files are already loaded by `octocat.el`, so there is no actual missing-definition risk."* This is true only when `octocat.el` (dashboard) is the first entry point used in a session — not true for `octocat-repo`.
 
 ## Fix design (SUPERSEDED — see "Chosen fix design" below)
 
@@ -289,7 +289,7 @@ Using the project's own documented reload workflow (`AGENTS.md` → "Reloading i
 3. In a scratch buffer, simulate the bug scenario directly: with only `octocat-core`/`octocat-repo` (not `octocat`) loaded and `evil-mode` bound-and-true, confirm `octocat--evil-init` is now defined (from `octocat-core.el`) and that calling `octocat-repo` installs the `RET` → `octocat-visit` Evil binding without error.
 4. Then also load `octocat.el` afterwards in the same session and confirm the dashboard (`octocat-mode-map`) bindings still get installed (idempotency check — no errors on second `octocat-evil-setup` invocation).
 
-Also run from `/Users/saulius/src/razzmatazz--octocat`:
+Also run from the checkout:
 
 ```bash
 make compile   # eask compile --strict
@@ -300,15 +300,15 @@ make test      # eask test ert test/octocat-tests.el
 
 ## Doom integration
 
-1. Edit `/Users/saulius/.config/doom/packages.el`, replacing:
+1. Edit Doom's `packages.el`, replacing:
    ```elisp
    (package! octocat :recipe (:host github :repo "razzmatazz/octocat" :files ("*.el")))
    ```
    with:
    ```elisp
-   (package! octocat :recipe (:local-repo "~/src/razzmatazz--octocat" :files ("*.el")))
+   (package! octocat :recipe (:local-repo "/path/to/octocat" :files ("*.el")))
    ```
-2. Run `~/.config/emacs/bin/doom sync`.
+2. Run `doom sync`.
 3. Restart Emacs (fresh session, so nothing has pre-loaded `octocat.el`).
 4. Run `M-x octocat-repo` as the **first** octocat command in that session (the exact repro condition) and confirm `RET` now dispatches to `octocat-visit`.
 5. Separately, in another fresh session, confirm `M-x octocat` (dashboard) still works correctly and its own `RET` binding still functions (regression check for step 4 of Fix design).
@@ -337,9 +337,9 @@ If the `:local-repo` recipe causes friction (e.g. straight refusing to manage/up
 - [x] Reload live into the running Emacs session and verify by hand (`fboundp`, Evil `RET` binding in both normal/motion aux keymaps)
 - [x] Run `make ci` (compile + lint + test) — all green
 - [ ] Validate live via the documented Emacs reload workflow (no errors, RET resolves correctly in both load orders)
-- [ ] Run `make compile`, `make lint`, `make test` (and `make ci` if docker/podman available) in `~/src/razzmatazz--octocat`
-- [ ] Point `~/.config/doom/packages.el` at `:local-repo "~/src/razzmatazz--octocat"`
-- [ ] `~/.config/emacs/bin/doom sync`
+- [ ] Run `make compile`, `make lint`, `make test` (and `make ci` if docker/podman available) in the checkout
+- [ ] Point Doom's `packages.el` at the checkout with `:local-repo`
+- [ ] `doom sync`
 - [ ] Fresh-session test: `M-x octocat-repo` first, confirm RET works
 - [ ] Fresh-session test: `M-x octocat` first, confirm dashboard RET still works
-- [ ] Once validated, consider pushing the fix upstream (`git push origin main` from `~/src/razzmatazz--octocat`) and re-pinning `packages.el` back to the GitHub recipe at the fixed commit
+- [ ] Once validated, consider pushing the fix upstream (`git push origin main` from the checkout) and re-pinning `packages.el` back to the GitHub recipe at the fixed commit

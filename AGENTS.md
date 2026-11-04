@@ -75,7 +75,8 @@ check-parens` finds a paren left unbalanced.
 ## Reloading into Emacs
 
 Use `emacs__eval-elisp` to reload **all** `octocat*.el` files after every
-edit.  **Issue one `emacs__eval-elisp` call per phase** — `dolist` returns
+edit.  In the calls below, replace `/path/to/octocat.el` with the
+checkout's absolute path.  **Issue one `emacs__eval-elisp` call per phase** — `dolist` returns
 `nil`, so a single call with multiple phases returns `nil` whether it
 succeeded or crashed; splitting makes failures attributable.
 
@@ -118,10 +119,10 @@ keymaps stick to live buffers):
 (only when necessary, see above; `insert-file-contents` prefers the visited buffer over disk; `.elc` shadows
 source; `make ci` recreates `.elc`, so always delete even after a CI run):
 ```elisp
-(dolist (f (directory-files "/Users/bob/src/octocat" t "\\.el$"))
+(dolist (f (directory-files "/path/to/octocat.el" t "\\.el$"))
   (let ((buf (find-buffer-visiting f)))
     (when buf (kill-buffer buf))))
-(dolist (f (directory-files "/Users/bob/src/octocat" t "\\.elc$"))
+(dolist (f (directory-files "/path/to/octocat.el" t "\\.elc$"))
   (delete-file f))
 "source-buffers-killed-elc-deleted"
 ```
@@ -139,7 +140,7 @@ string rather than `ok` is an error — fix it before proceeding):
                    "octocat-user.el" "octocat-doctor.el" "octocat-evil.el" "octocat.el"))
     (condition-case err
         (with-temp-buffer
-          (insert-file-contents (expand-file-name f "/Users/bob/src/octocat"))
+          (insert-file-contents (expand-file-name f "/path/to/octocat.el"))
           (emacs-lisp-mode)
           (eval-buffer)
           (push (cons f 'ok) results))
