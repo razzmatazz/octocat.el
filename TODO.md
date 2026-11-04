@@ -210,7 +210,7 @@ dependencies). Write an `octocat--insert-markdown (text)` helper that:
 Apply this helper everywhere body text is currently inserted plain:
 - `octocat-pr.el` — PR body (`octocat--render-pr`)
 - `octocat-issue.el` — issue body (`octocat--render-issue`)
-- `octocat-commit.el` — commit message body (`octocat--render-commit`)
+- `octocat-diff.el` — commit message body (`octocat--render-commit`)
 
 Comment snippets (one-liner truncated previews) stay as plain text — no
 need to fontify a 72-char snippet.

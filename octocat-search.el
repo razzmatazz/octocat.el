@@ -44,7 +44,7 @@
 (require 'octocat-core)
 (require 'octocat-sync)
 (require 'octocat-vui)
-(require 'octocat-commit)
+(require 'octocat-diff)
 (require 'octocat-issue)
 (require 'octocat-pr)
 (require 'octocat-repo)

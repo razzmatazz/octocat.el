@@ -19,22 +19,6 @@
                       (json-parse-string "{\"filename\":\"logo.png\"}")))
              5)))
 
-(ert-deftest octocat-diff-test-review-args ()
-  "A review passes its flag, and its body only when there is one."
-  (should (equal (octocat-pr-diff--review-args "o/r" 7 "--approve" "")
-                 '("pr" "review" "7" "--repo" "o/r" "--approve")))
-  (should (equal (octocat-pr-diff--review-args "o/r" 7 "--comment" "LGTM")
-                 '("pr" "review" "7" "--repo" "o/r" "--comment" "--body" "LGTM"))))
-
-(ert-deftest octocat-diff-test-review-data ()
-  "Only an approval may be submitted without text, or a comment with drafts."
-  (should (plist-get (octocat-pr-diff--review-data "Approve") :allow-empty))
-  (should-not (plist-get (octocat-pr-diff--review-data "Comment") :allow-empty))
-  (should (plist-get (octocat-pr-diff--review-data "Comment" "R" 2) :allow-empty))
-  (should-not (plist-get (octocat-pr-diff--review-data "Request changes" "R" 2) :allow-empty))
-  (should (equal (plist-get (octocat-pr-diff--review-data "Request changes") :flag)
-                 "--request-changes")))
-
 (ert-deftest octocat-diff-test-comment-markdown ()
   "An inline comment's body is rendered markdown, unless raw."
   (let ((c (json-parse-string
@@ -308,65 +292,6 @@ A thread that can be resolved ends in a button doing it, a row apart."
     (should (string-prefix-p "  ┌─ @me  Pending ─" text))
     (should (string-search "  │ hm\n  │\n  │ [Resolve conversation]\n  └─" text))))
 
-(ert-deftest octocat-diff-test-thread-comments ()
-  "GraphQL's threads become REST-shaped comments, replies pointing at the first.
-The thread's own fields go on its first comment; a draft is pending."
-  (let* ((threads (json-parse-string
-                   (concat "[{\"id\":\"T1\",\"isResolved\":true,\"path\":\"a.el\","
-                           "\"line\":9,\"startLine\":7,\"diffSide\":\"RIGHT\","
-                           "\"startDiffSide\":\"LEFT\",\"subjectType\":\"LINE\","
-                           "\"viewerCanResolve\":false,\"viewerCanUnresolve\":true,"
-                           "\"resolvedBy\":{\"login\":\"b\"},\"comments\":{\"nodes\":["
-                           "{\"id\":\"C1\",\"databaseId\":11,\"body\":\"x\\r\\ny\","
-                           "\"state\":\"SUBMITTED\",\"author\":{\"login\":\"a\"}},"
-                           "{\"id\":\"C2\",\"databaseId\":12,\"body\":\"z\","
-                           "\"state\":\"PENDING\",\"viewerCanUpdate\":true,"
-                           "\"author\":{\"login\":\"me\"}}]}}]")
-                   :null-object :null))
-         (cs (append (octocat-pr-diff--thread-comments threads) nil))
-         (root (car cs)) (reply (cadr cs)))
-    (should (equal (mapcar (lambda (k) (gethash k root))
-                           '("id" "node_id" "thread_id" "path" "line" "start_line"
-                             "side" "start_side" "subject_type" "body" "resolved"
-                             "resolved_by" "can_unresolve" "pending"))
-                   '(11 "C1" "T1" "a.el" 9 7 "RIGHT" "LEFT" "line" "x\ny" t "b" t nil)))
-    (should (equal (octocat--get root "user" "login") "a"))
-    (should (equal (gethash "in_reply_to_id" reply) 11))
-    (should (eq (gethash "pending" reply) t))
-    (should (eq (gethash "can_edit" reply) t))
-    (should (equal (octocat-diff--threads cs) (list cs)))
-    (let ((data (make-hash-table :test #'equal)))
-      (puthash "threads" threads data)
-      (puthash "pending" (make-hash-table) data)
-      (should (= (octocat-pr-diff--pending-count data) 1))
-      (setq data (octocat-pr-diff--drop-drafts data))
-      (should (= (octocat-pr-diff--pending-count data) 0))
-      (should-not (gethash "pending" data))
-      (should (= (length (octocat--get (aref (gethash "threads" data) 0) "comments" "nodes"))
-                 1)))))
-
-(ert-deftest octocat-diff-test-parse-threads ()
-  "The pages' threads join; with no pending review, \"pending\" is nil."
-  (let* ((page (lambda (reviews threads)
-                 (format (concat "{\"data\":{\"repository\":{\"pullRequest\":{"
-                                 "\"id\":\"PR1\",\"headRefOid\":\"abc\","
-                                 "\"reviews\":{\"nodes\":[%s]},"
-                                 "\"reviewThreads\":{\"nodes\":[%s]}}}}}")
-                         reviews threads)))
-         (none (octocat-pr-diff--parse-threads
-                (format "[%s,%s]" (funcall page "" "{\"id\":\"T1\"}")
-                        (funcall page "" "{\"id\":\"T2\"}"))))
-         (some (octocat-pr-diff--parse-threads
-                (format "[%s]" (funcall page "{\"id\":\"R1\",\"commit\":{\"oid\":\"def\"}}"
-                                        "")))))
-    (should (equal (gethash "id" none) "PR1"))
-    (should (equal (gethash "head" none) "abc"))
-    (should-not (gethash "pending" none))
-    (should (equal (mapcar (lambda (th) (gethash "id" th)) (gethash "threads" none))
-                   '("T1" "T2")))
-    (should (equal (octocat--get some "pending" "id") "R1"))
-    (should (equal (octocat--get some "pending" "commit") "def"))))
-
 (ert-deftest octocat-diff-test-underline-last ()
   "Only the last line of a file's diff is underlined, across the width."
   (let ((text (octocat-diff--underline-last "+a\n+b" 10)))
@@ -393,6 +318,129 @@ The thread's own fields go on its first comment; a draft is pending."
                (buffer-substring-no-properties (point-min) (point-max)))))
     (should (string-search "▸ A a.png" out))
     (should (string-search "+x" out))))
+
+(ert-deftest octocat-commit-test-skeleton ()
+  "The commit skeleton keeps its grey bars within WIDTH."
+  (let ((text (octocat-commit--skeleton 30)))
+    (should (text-property-any 0 (length text) 'face 'octocat-skeleton text))
+    (dolist (line (split-string text "\n"))
+      (should (<= (string-width line) 29)))))
+
+(ert-deftest octocat-commit-test-date-committed ()
+  "Rows show when a commit was committed; its author date when it has no other."
+  (let ((both (octocat-repo--history-commit
+               (json-parse-string
+                "{\"oid\":\"a\",\"messageHeadline\":\"s\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"committedDate\":\"2026-10-02T10:00:00Z\",\"author\":null}")))
+        (old  (octocat-repo--history-commit
+               (json-parse-string
+                "{\"oid\":\"a\",\"messageHeadline\":\"s\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":null}"))))
+    (should (equal (octocat--commit-date both) "2026-10-02T10:00:00Z"))
+    (should (equal (octocat--commit-date old) "2026-10-01T10:00:00Z"))
+    (should (equal (octocat-vui--date both)
+                   (octocat--format-ts-relative "2026-10-02T10:00:00Z")))))
+
+(ert-deftest octocat-commit-test-parse-branch ()
+  "The default branch holds a commit behind its head or at it, not one ahead."
+  (dolist (case '(("BEHIND" . "main") ("IDENTICAL" . "main") ("AHEAD" . :null) ("DIVERGED" . :null)))
+    (should (equal (gethash "name"
+                            (octocat-commit--parse-branch
+                             (format "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\",\"compare\":{\"status\":\"%s\"}}}}}"
+                                     (car case))))
+                   (cdr case)))))
+
+(ert-deftest octocat-commit-test-date-as-git ()
+  "A date reads as `git show' prints it, its age after it."
+  (let ((commit (json-parse-string
+                 "{\"commit\":{\"author\":{\"date\":\"2026-10-01T10:00:00Z\"}}}"))
+        (process-environment (cons "TZ=UTC" process-environment)))
+    (set-time-zone-rule "UTC")
+    (unwind-protect
+        (should (string-prefix-p "Thu Oct 1 10:00:00 2026 +0000  ("
+                                 (octocat-commit--date commit "author")))
+      (set-time-zone-rule nil))
+    (should-not (octocat-commit--date commit "committer"))))
+
+(ert-deftest octocat-commit-test-patch-text ()
+  "A commit as a patch is as `git format-patch' writes it, binary files included."
+  (let* ((commit (json-parse-string
+                  (concat "{\"sha\":\"abc123\",\"commit\":{\"message\":\"Fix it\\n\\nWhy.\","
+                          "\"author\":{\"name\":\"Ann\",\"email\":\"a@x\","
+                          "\"date\":\"2026-10-01T10:00:00Z\"}},\"files\":["
+                          "{\"filename\":\"a.el\",\"status\":\"modified\","
+                          "\"patch\":\"@@ -1 +1 @@\\n-old\\n+new\"},"
+                          "{\"filename\":\"new.png\",\"status\":\"added\"}]}")))
+         (text   (substring-no-properties (octocat-commit--patch-text commit))))
+    (should (equal text (concat "From abc123 Mon Sep 17 00:00:00 2001\n"
+                                "From: Ann <a@x>\n"
+                                "Date: Thu, 01 Oct 2026 10:00:00 +0000\n"
+                                "Subject: [PATCH] Fix it\n\n"
+                                "Why.\n"
+                                "---\n\n"
+                                "diff --git a/a.el b/a.el\n"
+                                "--- a/a.el\n+++ b/a.el\n"
+                                "@@ -1 +1 @@\n-old\n+new\n"
+                                "diff --git a/new.png b/new.png\n"
+                                "new file mode 100644\n"
+                                "Binary files /dev/null and b/new.png differ")))))
+
+(defun octocat-compare-tests--json (s)
+  "Parse the JSON string S as the API's response is."
+  (json-parse-string s))
+
+(ert-deftest octocat-compare-test-summary ()
+  "The top row counts commits and files; notes say what differs from github.com."
+  (let ((ahead (octocat-compare-tests--json
+                "{\"status\":\"ahead\",\"total_commits\":1,\"behind_by\":0,
+                  \"commits\":[{}],\"files\":[{},{}]}"))
+        (diverged (octocat-compare-tests--json
+                   "{\"status\":\"diverged\",\"total_commits\":3,\"behind_by\":2,
+                     \"commits\":[{},{}],\"files\":[]}")))
+    (should (equal (octocat-compare--counts ahead) "1 commit · 2 files changed"))
+    (should-not (octocat-compare--summary ahead ".."))
+    (should (equal (octocat-compare--counts diverged) "3 commits · 0 files changed · 2 behind"))
+    (should (equal (octocat-compare--summary diverged "...")
+                   '("2 of the 3 commits listed, as GitHub's API returns at most 2")))
+    (should (string-search "two-dot" (car (octocat-compare--summary diverged ".."))))
+    (should (equal (octocat-compare--counts
+                    (octocat-compare-tests--json
+                     "{\"status\":\"identical\",\"total_commits\":0,\"commits\":[],\"files\":[]}"))
+                   "identical"))))
+
+(ert-deftest octocat-compare-test-ref-label ()
+  "A SHA shows its first 7 chars, whole on hover; a branch shows as is."
+  (let ((sha (octocat-compare--ref-label "0123456789abcdef0123456789abcdef01234567")))
+    (should (equal sha "0123456"))
+    (should (equal (get-text-property 0 'help-echo sha)
+                   "0123456789abcdef0123456789abcdef01234567")))
+  (should (equal (octocat-compare--ref-label "template-cache") "template-cache"))
+  (should-not (get-text-property 0 'help-echo (octocat-compare--ref-label "main"))))
+
+(ert-deftest octocat-compare-test-max-age ()
+  "Only a comparison of two commits is kept, as a commit is; refs move."
+  (let ((max-age (lambda (base head)
+                   (plist-get (octocat-sync--props (list 'compare "o/r" base head)) :max-age))))
+    (should (funcall max-age "abc1234" (make-string 40 ?f)))
+    (should-not (funcall max-age "abc1234" "main"))
+    (should-not (funcall max-age "v1.0" "v1.1"))))
+
+(ert-deftest octocat-compare-test-page-renders-files ()
+  "A loaded comparison shows its commits and its files."
+  (let ((data (octocat-compare-tests--json
+               "{\"status\":\"ahead\",\"total_commits\":0,\"behind_by\":0,\"commits\":[],
+                 \"files\":[{\"filename\":\"a.el\",\"status\":\"modified\",
+                             \"patch\":\"@@ -1 +1 @@\\n-old\\n+new\"}]}"))
+        (vui-render-delay nil))
+    (cl-letf (((symbol-function 'octocat-vui-use-resource)
+               (lambda (_spec _tick) (list :data data))))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'octocat-compare--page
+                                      :repo "o/r" :base "main" :dots "..." :head "topic"
+                                      :raw nil :tick 0)
+                       "*octocat-compare-test*")
+            (with-current-buffer "*octocat-compare-test*"
+              (should (string-search "Files (1)" (buffer-string)))))
+        (kill-buffer "*octocat-compare-test*")))))
 
 (provide 'octocat-diff-tests)
 ;;; octocat-diff-tests.el ends here

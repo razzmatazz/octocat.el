@@ -46,7 +46,7 @@
 (declare-function octocat-repo--current-repo   "octocat-repo" ())
 (declare-function octocat-pr-open              "octocat-pr"   (repo number))
 (declare-function octocat-issue-open           "octocat-issue" (repo number))
-(declare-function octocat-commit-open          "octocat-commit" (repo sha))
+(declare-function octocat-commit-open          "octocat-diff" (repo sha))
 
 ;; Buffer-local variable stubs: defined as defvar-local in their respective
 ;; files (loaded after octocat-core.el).  The plain defvar here lets the
@@ -1234,9 +1234,9 @@ PATH is relative to the repository root.  Mode hooks are delayed."
 ;; Other links go to `browse-url', which lets any package's handler claim
 ;; them; "open in browser" commands use `octocat-browse-external'.
 
-(declare-function octocat-pr-diff-open  "octocat-pr-diff"  (repo number))
+(declare-function octocat-pr-diff-open  "octocat-pr" (repo number))
 (declare-function octocat-pr-commits-open "octocat-pr"    (repo number))
-(declare-function octocat-compare-open  "octocat-compare"  (repo base dots head))
+(declare-function octocat-compare-open  "octocat-diff" (repo base dots head))
 (declare-function octocat-run-open      "octocat-actions"  (repo run-id))
 (declare-function octocat-job-open      "octocat-actions"  (repo run-id job-id name))
 (declare-function octocat-workflow-open "octocat-actions"  (repo id name path))

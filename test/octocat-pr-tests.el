@@ -233,5 +233,80 @@ One stays on the line of the other fields; the stacks follow it in order."
                                           (cons "Milestone" "v1"))))
                    '("Reviewers @ann · Milestone v1")))))
 
+(ert-deftest octocat-pr-diff-test-review-args ()
+  "A review passes its flag, and its body only when there is one."
+  (should (equal (octocat-pr-diff--review-args "o/r" 7 "--approve" "")
+                 '("pr" "review" "7" "--repo" "o/r" "--approve")))
+  (should (equal (octocat-pr-diff--review-args "o/r" 7 "--comment" "LGTM")
+                 '("pr" "review" "7" "--repo" "o/r" "--comment" "--body" "LGTM"))))
+
+(ert-deftest octocat-pr-diff-test-review-data ()
+  "Only an approval may be submitted without text, or a comment with drafts."
+  (should (plist-get (octocat-pr-diff--review-data "Approve") :allow-empty))
+  (should-not (plist-get (octocat-pr-diff--review-data "Comment") :allow-empty))
+  (should (plist-get (octocat-pr-diff--review-data "Comment" "R" 2) :allow-empty))
+  (should-not (plist-get (octocat-pr-diff--review-data "Request changes" "R" 2) :allow-empty))
+  (should (equal (plist-get (octocat-pr-diff--review-data "Request changes") :flag)
+                 "--request-changes")))
+
+(ert-deftest octocat-pr-diff-test-thread-comments ()
+  "GraphQL's threads become REST-shaped comments, replies pointing at the first.
+The thread's own fields go on its first comment; a draft is pending."
+  (let* ((threads (json-parse-string
+                   (concat "[{\"id\":\"T1\",\"isResolved\":true,\"path\":\"a.el\","
+                           "\"line\":9,\"startLine\":7,\"diffSide\":\"RIGHT\","
+                           "\"startDiffSide\":\"LEFT\",\"subjectType\":\"LINE\","
+                           "\"viewerCanResolve\":false,\"viewerCanUnresolve\":true,"
+                           "\"resolvedBy\":{\"login\":\"b\"},\"comments\":{\"nodes\":["
+                           "{\"id\":\"C1\",\"databaseId\":11,\"body\":\"x\\r\\ny\","
+                           "\"state\":\"SUBMITTED\",\"author\":{\"login\":\"a\"}},"
+                           "{\"id\":\"C2\",\"databaseId\":12,\"body\":\"z\","
+                           "\"state\":\"PENDING\",\"viewerCanUpdate\":true,"
+                           "\"author\":{\"login\":\"me\"}}]}}]")
+                   :null-object :null))
+         (cs (append (octocat-pr-diff--thread-comments threads) nil))
+         (root (car cs)) (reply (cadr cs)))
+    (should (equal (mapcar (lambda (k) (gethash k root))
+                           '("id" "node_id" "thread_id" "path" "line" "start_line"
+                             "side" "start_side" "subject_type" "body" "resolved"
+                             "resolved_by" "can_unresolve" "pending"))
+                   '(11 "C1" "T1" "a.el" 9 7 "RIGHT" "LEFT" "line" "x\ny" t "b" t nil)))
+    (should (equal (octocat--get root "user" "login") "a"))
+    (should (equal (gethash "in_reply_to_id" reply) 11))
+    (should (eq (gethash "pending" reply) t))
+    (should (eq (gethash "can_edit" reply) t))
+    (should (equal (octocat-diff--threads cs) (list cs)))
+    (let ((data (make-hash-table :test #'equal)))
+      (puthash "threads" threads data)
+      (puthash "pending" (make-hash-table) data)
+      (should (= (octocat-pr-diff--pending-count data) 1))
+      (setq data (octocat-pr-diff--drop-drafts data))
+      (should (= (octocat-pr-diff--pending-count data) 0))
+      (should-not (gethash "pending" data))
+      (should (= (length (octocat--get (aref (gethash "threads" data) 0) "comments" "nodes"))
+                 1)))))
+
+(ert-deftest octocat-pr-diff-test-parse-threads ()
+  "The pages' threads join; with no pending review, \"pending\" is nil."
+  (let* ((page (lambda (reviews threads)
+                 (format (concat "{\"data\":{\"repository\":{\"pullRequest\":{"
+                                 "\"id\":\"PR1\",\"headRefOid\":\"abc\","
+                                 "\"reviews\":{\"nodes\":[%s]},"
+                                 "\"reviewThreads\":{\"nodes\":[%s]}}}}}")
+                         reviews threads)))
+         (none (octocat-pr-diff--parse-threads
+                (format "[%s,%s]" (funcall page "" "{\"id\":\"T1\"}")
+                        (funcall page "" "{\"id\":\"T2\"}"))))
+         (some (octocat-pr-diff--parse-threads
+                (format "[%s]" (funcall page "{\"id\":\"R1\",\"commit\":{\"oid\":\"def\"}}"
+                                        "")))))
+    (should (equal (gethash "id" none) "PR1"))
+    (should (equal (gethash "head" none) "abc"))
+    (should-not (gethash "pending" none))
+    (should (equal (mapcar (lambda (th) (gethash "id" th)) (gethash "threads" none))
+                   '("T1" "T2")))
+    (should (equal (octocat--get some "pending" "id") "R1"))
+    (should (equal (octocat--get some "pending" "commit") "def"))))
+
 (provide 'octocat-pr-tests)
 ;;; octocat-pr-tests.el ends here

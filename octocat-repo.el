@@ -54,7 +54,7 @@
 (require 'url-util)
 (require 'octocat-core)
 (require 'octocat-sync)
-(require 'octocat-commit)
+(require 'octocat-diff)
 (require 'octocat-markdown)
 (require 'octocat-vui)
 

@@ -49,14 +49,11 @@
 ;; octocat.el loads this file last, once it has required every other
 ;; module, so requiring them here costs nothing.
 (require 'octocat-actions)
-(require 'octocat-commit)
-(require 'octocat-compare)
 (require 'octocat-core)
 (require 'octocat-diff)
 (require 'octocat-doctor)
 (require 'octocat-issue)
 (require 'octocat-pr)
-(require 'octocat-pr-diff)
 (require 'octocat-repo)
 (require 'octocat-search)
 (require 'octocat-user)

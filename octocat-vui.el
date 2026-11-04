@@ -2564,7 +2564,7 @@ such as \"Labelled\", how it went once the last is answered."
 
 (declare-function octocat-pr-open     "octocat-pr"     (repo number))
 (declare-function octocat-issue-open  "octocat-issue"  (repo number))
-(declare-function octocat-commit-open "octocat-commit" (repo sha))
+(declare-function octocat-commit-open "octocat-diff"   (repo sha))
 
 ;;;;; Navigation
 ;;

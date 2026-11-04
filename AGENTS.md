@@ -83,9 +83,9 @@ Load order: `octocat-mermaid.el` first (standalone), then
 `octocat-markdown.el` (requires mermaid), then `octocat-image.el` (requires
 that; `octocat-core.el` requires both), then
 `octocat-core.el` (everything else depends on it), then `octocat-sync.el`
-(`octocat-vui.el` requires it), then `octocat-vui.el`
-and `octocat-diff.el` (which the commit and PR diff pages require), and
-`octocat-actions.el` before the commit and PR pages, which require it;
+(`octocat-vui.el` requires it), then `octocat-vui.el`, then
+`octocat-actions.el` and `octocat-diff.el` (the diff and commit pages,
+which require actions) before `octocat-pr.el`, which requires both;
 `octocat-evil.el` before `octocat.el` (the last lines of `octocat.el` call
 `octocat-evil-setup`, and `require` is a no-op on an already-provided
 feature, so a stale evil file silently wins).
@@ -132,9 +132,7 @@ string rather than `ok` is an error — fix it before proceeding):
 (let (results)
   (dolist (f (list "octocat-mermaid.el" "octocat-markdown.el"
                    "octocat-image.el" "octocat-core.el" "octocat-sync.el" "octocat-vui.el"
-                   "octocat-diff.el"
-                   "octocat-edit.el" "octocat-actions.el"
-                   "octocat-commit.el" "octocat-compare.el" "octocat-pr-diff.el"
+                   "octocat-edit.el" "octocat-actions.el" "octocat-diff.el"
                    "octocat-timeline.el" "octocat-pr.el" "octocat-issue.el"
                    "octocat-repo.el"
                    "octocat-search.el" "octocat-avatar.el"
@@ -196,8 +194,8 @@ constraints), suppress the warning by adding a `declare-function` near the
 top of A, alongside the other declarations:
 
 ```elisp
-(declare-function octocat-commit-mode    "octocat-commit" ())
-(declare-function octocat-commit-refresh "octocat-commit" (&optional _ignore-auto _noconfirm))
+(declare-function octocat-commit-mode    "octocat-diff" ())
+(declare-function octocat-commit-refresh "octocat-diff" (&optional _ignore-auto _noconfirm))
 ```
 
 The `declare-function` form tells the byte-compiler the function exists
