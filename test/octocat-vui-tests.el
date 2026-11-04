@@ -171,9 +171,9 @@
     (let ((buf (current-buffer)))
       (octocat-vui--add-loading buf 1)
       (octocat-vui--add-loading buf 1)
-      (should (equal mode-line-process '(" " octocat-vui--spinner ":loading")))
+      (should (equal mode-line-process '(" " octocat--spinner ":loading")))
       (octocat-vui--add-loading buf -1)
-      (should (equal mode-line-process '(" " octocat-vui--spinner ":loading")))
+      (should (equal mode-line-process '(" " octocat--spinner ":loading")))
       (octocat-vui--add-loading buf -1)
       (should (null mode-line-process)))))
 
@@ -182,12 +182,12 @@
   (let ((global-mode-string '("" display-time-string))
         (octocat-vui--pending-mode-line nil)
         (octocat-mode-line-writes t))
-    (cl-letf (((symbol-function 'octocat-vui--spinner-start) #'ignore))
+    (cl-letf (((symbol-function 'octocat--spinner-start) #'ignore))
       (octocat-vui--on-sync-pending '("Merging pull request…"))
       (should (equal global-mode-string
                      '("" display-time-string octocat-vui--pending-mode-line)))
       (should (equal octocat-vui--pending-mode-line
-                     '(" " octocat-vui--spinner " " "Octocat: Merging pull request…")))
+                     '(" " octocat--spinner " " "Octocat: Merging pull request…")))
       (octocat-vui--on-sync-pending '("Merging pull request…" "Posting comment…"))
       (should (equal (car (last octocat-vui--pending-mode-line)) "Octocat: 2 changes…"))
       (should (= 1 (seq-count (lambda (x) (eq x 'octocat-vui--pending-mode-line))
@@ -203,20 +203,20 @@
   "A page spinner turns with the mode line's until the page drops it."
   (with-temp-buffer
     (let ((buf (current-buffer))
-          (octocat-vui--spinner "▝"))
-      (insert "  " (octocat-vui-spinner) " Merging…")
-      (should (octocat-vui--turn-page-spinners buf))
+          (octocat--spinner "▝"))
+      (insert "  " (octocat-spinner) " Merging…")
+      (should (octocat--turn-page-spinners buf))
       (should (equal (get-text-property 3 'display) "▝"))
       (erase-buffer)
-      (should-not (octocat-vui--turn-page-spinners buf))
-      (should-not octocat-vui--page-spinner))))
+      (should-not (octocat--turn-page-spinners buf))
+      (should-not octocat--page-spinner))))
 
 (ert-deftest octocat-vui-test-page-spinner-function ()
   "Text whose spinner is a function displays what it returns for each frame."
   (with-temp-buffer
-    (let ((octocat-vui--spinner "▗"))
-      (insert (propertize "[image]" 'octocat-vui-spinner (lambda (f) (concat f " [image]"))))
-      (should (octocat-vui--turn-page-spinners (current-buffer)))
+    (let ((octocat--spinner "▗"))
+      (insert (propertize "[image]" 'octocat-spinner (lambda (f) (concat f " [image]"))))
+      (should (octocat--turn-page-spinners (current-buffer)))
       (should (equal (get-text-property 1 'display) "▗ [image]")))))
 
 (ert-deftest octocat-vui-test-header-notice ()

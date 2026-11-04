@@ -233,7 +233,7 @@ For `jit-lock-functions'."
                (add-text-properties
                 ;; The link's underline would be drawn under the image.
                 b e (list 'face nil
-                          'octocat-vui-spinner nil
+                          'octocat-spinner nil
                           'display (octocat-image--image data plist)
                           'keymap octocat-markdown-link-map
                           'help-echo (if (plist-get plist :file)
@@ -245,8 +245,8 @@ For `jit-lock-functions'."
               ((eq data 'pending)
                (let ((link (octocat-image--link b e)))
                  (add-text-properties
-                  ;; `octocat-vui' turns the spinner, see `octocat-vui-spinner'.
-                  b e (list 'octocat-vui-spinner
+                  ;; Core turns the spinner, see `octocat-spinner'.
+                  b e (list 'octocat-spinner
                             (lambda (frame) (octocat-image--loading-label frame link))
                             'display (octocat-image--loading-label "…" link)
                             'keymap octocat-image-map
@@ -255,7 +255,7 @@ For `jit-lock-functions'."
                (when-let* ((face (get-text-property b 'octocat-image--face)))
                  (put-text-property b e 'face (car face)))
                (remove-text-properties
-                b e '(display nil octocat-vui-spinner nil octocat-image--face nil))
+                b e '(display nil octocat-spinner nil octocat-image--face nil))
                (add-text-properties
                 b e (list 'keymap octocat-image-map
                           'help-echo "RET: show image")))))))
@@ -264,7 +264,7 @@ For `jit-lock-functions'."
 (defun octocat-image--link (beg end)
   "Return the link from BEG to END, without what is displayed over it."
   (let ((link (buffer-substring beg end)))
-    (remove-text-properties 0 (length link) '(display nil octocat-vui-spinner nil) link)
+    (remove-text-properties 0 (length link) '(display nil octocat-spinner nil) link)
     link))
 
 (defun octocat-image--loading-label (frame link)

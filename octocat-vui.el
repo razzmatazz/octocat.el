@@ -1156,77 +1156,9 @@ this, so they do not shift as the new rows appear."
     :items items
     :render (lambda (shown) (vui-list shown row-fn key-fn))))
 
-(defconst octocat-vui--spinner-frames ["▖" "▘" "▝" "▗"]
-  "Frames of the busy spinner.")
-
-(defvar octocat-vui--spinner (aref octocat-vui--spinner-frames 0)
-  "The current spinner frame; mode-line constructs show it by name.")
-
 (defvar octocat-vui--pending-mode-line nil
   "The `global-mode-string' entry of the changes being sent, or nil.")
 (put 'octocat-vui--pending-mode-line 'risky-local-variable t)
-
-(defvar octocat-vui--spinner-index 0)
-(defvar octocat-vui--spinner-timer nil)
-
-(defun octocat-vui--spinner-start ()
-  "Start the spinner timer unless it is running, or on low battery.
-Without it, spinners stand still on their first frame."
-  (unless (or (timerp octocat-vui--spinner-timer) (eq (octocat-power) 'low))
-    (setq octocat-vui--spinner-timer
-          (run-at-time 0.1 0.1 #'octocat-vui--spinner-tick))))
-
-(defun octocat-vui--mode-line-busy-p (buf)
-  "Return non-nil if the mode line of BUF has the spinner."
-  (let ((mlp (buffer-local-value 'mode-line-process buf)))
-    (and (consp mlp) (memq 'octocat-vui--spinner mlp))))
-
-(defvar-local octocat-vui--page-spinner nil
-  "Non-nil if this buffer's text may hold a spinner, see `octocat-vui-spinner'.")
-
-(defun octocat-vui--turn-page-spinners (buf)
-  "Show the current frame on every spinner in BUF's text.
-Return nil, and forget BUF, once it has none."
-  (with-current-buffer buf
-    (let ((pos (point-min)) found)
-      (with-silent-modifications
-        (while (setq pos (text-property-not-all pos (point-max) 'octocat-vui-spinner nil))
-          (let ((spin (get-text-property pos 'octocat-vui-spinner))
-                (end  (or (next-single-property-change pos 'octocat-vui-spinner)
-                          (point-max))))
-            (setq found t)
-            (put-text-property pos end 'display (if (functionp spin)
-                                                    (funcall spin octocat-vui--spinner)
-                                                  octocat-vui--spinner))
-            (setq pos end))))
-      (setq octocat-vui--page-spinner found))))
-
-(defun octocat-vui--spinner-tick ()
-  "Advance the spinner in every visible mode line and page.
-Stop the timer once no buffer shows it."
-  (setq octocat-vui--spinner-index
-        (% (1+ octocat-vui--spinner-index) (length octocat-vui--spinner-frames))
-        octocat-vui--spinner
-        (aref octocat-vui--spinner-frames octocat-vui--spinner-index))
-  (let ((busy (and octocat-vui--pending-mode-line t)))
-    (when busy (force-mode-line-update t))
-    (dolist (buf (buffer-list))
-      (when (octocat-vui--mode-line-busy-p buf)
-        (setq busy t)
-        (when (get-buffer-window buf 'visible)
-          (with-current-buffer buf (force-mode-line-update))))
-      (when (and (buffer-local-value 'octocat-vui--page-spinner buf)
-                 (octocat-vui--turn-page-spinners buf))
-        (setq busy t)))
-    (unless (and busy (not (eq (octocat-power) 'low)))
-      (cancel-timer octocat-vui--spinner-timer)
-      (setq octocat-vui--spinner-timer nil))))
-
-(defun octocat-vui-mode-line-busy (label)
-  "Return a `mode-line-process' of a spinner, then LABEL, such as \":loading\".
-The spinner leads, so a narrow mode line that cuts LABEL still shows it."
-  (octocat-vui--spinner-start)
-  (list " " 'octocat-vui--spinner label))
 
 (defcustom octocat-mode-line-writes t
   "Whether every mode line shows the changes being sent to GitHub.
@@ -1247,7 +1179,8 @@ shows it under way wherever you are, as well as on its page."
 For `octocat-sync-pending-functions'."
   (let ((label (and octocat-mode-line-writes (octocat-vui--pending-label labels))))
     (setq octocat-vui--pending-mode-line
-          (and label (list " " 'octocat-vui--spinner " " label)))
+          (and label (list " " 'octocat--spinner " " label))
+          octocat--spinner-global (and label t))
     (if label
         (progn
           (unless (listp global-mode-string)
@@ -1255,22 +1188,12 @@ For `octocat-sync-pending-functions'."
           (unless (memq 'octocat-vui--pending-mode-line global-mode-string)
             (setq global-mode-string
                   (append global-mode-string '(octocat-vui--pending-mode-line))))
-          (octocat-vui--spinner-start))
+          (octocat--spinner-start))
       (setq global-mode-string
             (if (listp global-mode-string)
                 (delq 'octocat-vui--pending-mode-line global-mode-string)
               global-mode-string)))
     (force-mode-line-update t)))
-
-(defun octocat-vui-spinner ()
-  "Return a spinner to render in the current buffer's page.
-It turns in step with the mode line's, through its `display' property,
-so the page is not re-rendered for each frame; it stops once the page
-no longer shows it.  Text whose `octocat-vui-spinner' is a function
-turns too, displayed as what it returns for each frame."
-  (setq octocat-vui--page-spinner t)
-  (octocat-vui--spinner-start)
-  (propertize (aref octocat-vui--spinner-frames 0) 'octocat-vui-spinner t))
 
 (defvar-local octocat-vui--loading 0
   "How many components of this buffer are loading.")
@@ -1279,7 +1202,7 @@ turns too, displayed as what it returns for each frame."
   "Show whether the current buffer is loading in its mode line."
   (setq mode-line-process
         (and (or (> octocat-vui--loading 0) octocat-vui--loading-keys)
-             (octocat-vui-mode-line-busy ":loading")))
+             (octocat-mode-line-busy ":loading")))
   (force-mode-line-update))
 
 (defun octocat-vui--add-loading (buf n)
@@ -1294,7 +1217,7 @@ turns too, displayed as what it returns for each frame."
 Its link's spinner turns with the mode line's.  For
 `octocat-image-loading-functions'."
   (when (and loading (buffer-live-p buf))
-    (with-current-buffer buf (setq octocat-vui--page-spinner t)))
+    (with-current-buffer buf (setq octocat--page-spinner t)))
   (octocat-vui--add-loading buf (if loading 1 -1)))
 
 (defmacro octocat-vui-use-mode-line-loading (loading)
@@ -2403,7 +2326,7 @@ shown instead of the actions."
    (apply #'vui-hstack :spacing 2
           (vui-text "      ")
           (if busy
-              (list (vui-text (concat (octocat-vui-spinner) " " busy) :face 'octocat-dimmed))
+              (list (vui-text (concat (octocat-spinner) " " busy) :face 'octocat-dimmed))
             (delq nil
                   (mapcar (pcase-lambda (`(,flag . ,props))
                             (when (memq kind (or (plist-get props :kinds) (list kind)))

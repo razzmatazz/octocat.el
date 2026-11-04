@@ -43,7 +43,7 @@ supporting logic in its own `octocat-<feature>.el` file; and make sure
 ### Indicating loading / async activity
 
 Use the buffer-local `mode-line-process` variable to indicate that a
-background operation is in flight: `(octocat-vui-mode-line-busy ":loading")`,
+background operation is in flight: `(octocat-mode-line-busy ":loading")`,
 Emacs's `(Mode:run)` style plus a spinner (vui pages:
 `octocat-vui-use-mode-line-loading`).  Clear it to `nil`
 when the calls complete.  Do not erase or replace existing buffer content just to show a

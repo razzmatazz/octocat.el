@@ -36,9 +36,6 @@
 (require 'octocat-core)
 (require 'octocat-sync)
 (require 'octocat-vui)
-(require 'octocat-diff)
-(require 'octocat-pr)
-(require 'octocat-issue)
 
 ;;;; Dashboard major mode
 
@@ -294,11 +291,10 @@ Dispatches on the event type:
      ((not full-name)
       (message "Octocat: No repository associated with this event"))
      ((equal type "PushEvent")
-      (octocat-commit-open
-       full-name
-       (or (and (hash-table-p payload)
-                (octocat--nonempty (gethash "head" payload)))
-           "")))
+      (octocat-open 'commit full-name
+                    (or (and (hash-table-p payload)
+                             (octocat--nonempty (gethash "head" payload)))
+                        "")))
      ((member type '("PullRequestEvent"
                      "PullRequestReviewEvent"
                      "PullRequestReviewCommentEvent"))
@@ -309,7 +305,7 @@ Dispatches on the event type:
                          (and (hash-table-p pr-obj)
                               (gethash "number" pr-obj)))))
         (if number
-            (octocat-pr-open full-name number)
+            (octocat-open 'pr full-name number)
           (message "Octocat: No PR number in event payload"))))
      ((member type '("IssuesEvent" "IssueCommentEvent"))
       (let* ((issue-obj (and (hash-table-p payload)
@@ -317,7 +313,7 @@ Dispatches on the event type:
              (number    (and (hash-table-p issue-obj)
                              (gethash "number" issue-obj))))
         (if number
-            (octocat-issue-open full-name number)
+            (octocat-open 'issue full-name number)
           (message "Octocat: No issue number in event payload"))))
      (t (octocat-visit-repo full-name)))))
 
@@ -359,7 +355,7 @@ pages' two lines, cut to WIDTH; BG is as for `octocat--label-face'."
       'octocat-url (octocat--item-url (if pr 'pr 'issue) repo number item)
       'octocat-sync-prefetch `((,(if pr 'pr 'issue) ,repo ,number)
                                (timeline-events ,repo ,number)))
-     (lambda () (if pr (octocat-pr-open repo number) (octocat-issue-open repo number)))
+     (lambda () (octocat-open (if pr 'pr 'issue) repo number))
      (format "RET: view %s  C-c C-o: browse on GitHub" (if pr "pull request" "issue")))))
 
 (defun octocat--dashboard-feed-row (ev)

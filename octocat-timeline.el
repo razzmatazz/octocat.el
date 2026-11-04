@@ -430,7 +430,7 @@ under its actor.  The text carries ITEM's target in the
   (let* ((line  (memq (plist-get item :kind) '(event commit)))
          (actor (propertize (plist-get item :actor) 'face 'octocat-pr-author))
          (date  (if-let* ((pending (plist-get item :pending)))
-                    (concat (octocat-vui-spinner) " " (propertize pending 'face 'octocat-dimmed))
+                    (concat (octocat-spinner) " " (propertize pending 'face 'octocat-dimmed))
                   (propertize (octocat--format-ts-relative (plist-get item :time))
                               'face 'octocat-dimmed)))
          (bullet (propertize (if line "○" "●")
@@ -639,7 +639,7 @@ rail as the buttons do, behind a spinner."
   (if (not action)
       (octocat-timeline-buttons buttons t)
     (list (vui-text octocat-timeline--rail)
-          (vui-text (concat (octocat-vui-spinner) " " action) :face 'bold))))
+          (vui-text (concat (octocat-spinner) " " action) :face 'bold))))
 
 (defun octocat-timeline-submit (spec body source on-success)
   "Send the mutation SPEC for edit dialog text BODY, in the background.

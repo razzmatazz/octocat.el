@@ -44,12 +44,9 @@
 (require 'octocat-core)
 (require 'octocat-sync)
 (require 'octocat-vui)
-(require 'octocat-diff)
-(require 'octocat-issue)
-(require 'octocat-pr)
 (require 'octocat-repo)
-(require 'octocat-user)
-(require 'octocat-actions)
+
+(defvar octocat--commit-sha)          ; the commit page's, in octocat-diff
 
 
 
@@ -174,14 +171,14 @@ FILE is a (PATH . BLOB-SHA) cons; REF nil is the default branch."
        (octocat-tree--open-file-by-path repo (or (plist-get item :ref) "HEAD")
                                         (plist-get item :path)))
       ('pr
-       (octocat-pr-open repo (plist-get item :number)))
+       (octocat-open 'pr repo (plist-get item :number)))
       ('issue
-       (octocat-issue-open repo (plist-get item :number)))
+       (octocat-open 'issue repo (plist-get item :number)))
       ('commit
-       (octocat-commit-open repo (plist-get item :sha)))
+       (octocat-open 'commit repo (plist-get item :sha)))
       ('workflow
-       (octocat-workflow-open repo (plist-get item :id)
-                              (plist-get item :name) (plist-get item :path))))))
+       (octocat-open 'workflow repo (plist-get item :id)
+                     (plist-get item :name) (plist-get item :path))))))
 
 
 ;;;; Stored results
@@ -681,7 +678,7 @@ Uses `consult--read' with a custom async pipeline so Vertico, Embark,
 Marginalia, and other consult-aware packages integrate seamlessly.
 
 The selected repository is opened via `octocat-visit-repo', a selected
-\"@login\" via `octocat-user-open'."
+\"@login\" via `octocat-open'."
   (interactive)
   (let ((repo
          (consult--read
@@ -694,7 +691,7 @@ The selected repository is opened via `octocat-visit-repo', a selected
     (when (and repo (not (string-empty-p (string-trim repo))))
       (let ((choice (string-trim repo)))
         (if (string-prefix-p "@" choice)
-            (octocat-user-open choice)
+            (octocat-open 'user choice)
           (octocat-visit-repo choice))))))
 
 (defun octocat-jump (&optional other)

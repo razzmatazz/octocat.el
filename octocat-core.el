@@ -359,6 +359,11 @@ See \"A commit starts with ○\" in docs/user-interface-conventions.md.")
   "Face for a GitHub Actions notice annotation."
   :group 'octocat)
 
+(defface octocat-commit-sha
+  '((t :inherit font-lock-constant-face))
+  "Face for a commit SHA."
+  :group 'octocat)
+
 
 ;;;; Finding gh
 
@@ -1096,6 +1101,94 @@ Read at most once a minute, as on macOS it runs `pmset'."
                                      nil)))
                        (or (bound-and-true-p battery-load-low) 25)))))
     (cdr octocat--power)))
+
+;;;; Spinner
+;;
+;; One timer turns every spinner: in a mode line, through
+;; `octocat-mode-line-busy', and in a buffer's text, through
+;; `octocat-spinner'.
+
+(defconst octocat--spinner-frames ["▖" "▘" "▝" "▗"]
+  "Frames of the busy spinner.")
+
+(defvar octocat--spinner (aref octocat--spinner-frames 0)
+  "The current spinner frame; mode-line constructs show it by name.")
+
+(defvar octocat--spinner-global nil
+  "Non-nil while the spinner shows outside any one buffer's mode line.
+As in the changes being sent, see `octocat-mode-line-writes'.")
+
+(defvar octocat--spinner-index 0)
+(defvar octocat--spinner-timer nil)
+
+(defun octocat--spinner-start ()
+  "Start the spinner timer unless it is running, or on low battery.
+Without it, spinners stand still on their first frame."
+  (unless (or (timerp octocat--spinner-timer) (eq (octocat-power) 'low))
+    (setq octocat--spinner-timer
+          (run-at-time 0.1 0.1 #'octocat--spinner-tick))))
+
+(defun octocat--mode-line-busy-p (buf)
+  "Return non-nil if the mode line of BUF has the spinner."
+  (let ((mlp (buffer-local-value 'mode-line-process buf)))
+    (and (consp mlp) (memq 'octocat--spinner mlp))))
+
+(defvar-local octocat--page-spinner nil
+  "Non-nil if this buffer's text may hold a spinner, see `octocat-spinner'.")
+
+(defun octocat--turn-page-spinners (buf)
+  "Show the current frame on every spinner in BUF's text.
+Return nil, and forget BUF, once it has none."
+  (with-current-buffer buf
+    (let ((pos (point-min)) found)
+      (with-silent-modifications
+        (while (setq pos (text-property-not-all pos (point-max) 'octocat-spinner nil))
+          (let ((spin (get-text-property pos 'octocat-spinner))
+                (end  (or (next-single-property-change pos 'octocat-spinner)
+                          (point-max))))
+            (setq found t)
+            (put-text-property pos end 'display (if (functionp spin)
+                                                    (funcall spin octocat--spinner)
+                                                  octocat--spinner))
+            (setq pos end))))
+      (setq octocat--page-spinner found))))
+
+(defun octocat--spinner-tick ()
+  "Advance the spinner in every visible mode line and page.
+Stop the timer once no buffer shows it."
+  (setq octocat--spinner-index
+        (% (1+ octocat--spinner-index) (length octocat--spinner-frames))
+        octocat--spinner
+        (aref octocat--spinner-frames octocat--spinner-index))
+  (let ((busy octocat--spinner-global))
+    (when busy (force-mode-line-update t))
+    (dolist (buf (buffer-list))
+      (when (octocat--mode-line-busy-p buf)
+        (setq busy t)
+        (when (get-buffer-window buf 'visible)
+          (with-current-buffer buf (force-mode-line-update))))
+      (when (and (buffer-local-value 'octocat--page-spinner buf)
+                 (octocat--turn-page-spinners buf))
+        (setq busy t)))
+    (unless (and busy (not (eq (octocat-power) 'low)))
+      (cancel-timer octocat--spinner-timer)
+      (setq octocat--spinner-timer nil))))
+
+(defun octocat-mode-line-busy (label)
+  "Return a `mode-line-process' of a spinner, then LABEL, such as \":loading\".
+The spinner leads, so a narrow mode line that cuts LABEL still shows it."
+  (octocat--spinner-start)
+  (list " " 'octocat--spinner label))
+
+(defun octocat-spinner ()
+  "Return a spinner to render in the current buffer's page.
+It turns in step with the mode line's, through its `display' property,
+so the page is not re-rendered for each frame; it stops once the page
+no longer shows it.  Text whose `octocat-spinner' is a function
+turns too, displayed as what it returns for each frame."
+  (setq octocat--page-spinner t)
+  (octocat--spinner-start)
+  (propertize (aref octocat--spinner-frames 0) 'octocat-spinner t))
 
 ;;;; Long lines and large content
 ;;

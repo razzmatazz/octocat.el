@@ -54,7 +54,6 @@
 (require 'url-util)
 (require 'octocat-core)
 (require 'octocat-sync)
-(require 'octocat-diff)
 (require 'octocat-markdown)
 (require 'octocat-vui)
 
@@ -1998,7 +1997,7 @@ commit.  Works from the repo page and from a file viewer."
                (buf (current-buffer)))
     (unless repo
       (user-error "Octocat: Buffer is not associated with a repository"))
-    (setq mode-line-process (octocat-vui-mode-line-busy ":loading"))
+    (setq mode-line-process (octocat-mode-line-busy ":loading"))
     (octocat-tree--load-files
      repo ref
      (lambda (files)

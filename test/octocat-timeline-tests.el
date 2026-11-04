@@ -395,7 +395,7 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
       (with-temp-buffer
         (let ((entry (octocat-timeline--entry-string new nil 80)))
           (should (string-match-p "@me commented  . posting…" (substring-no-properties entry)))
-          (should (text-property-any 0 (length entry) 'octocat-vui-spinner t entry)))))
+          (should (text-property-any 0 (length entry) 'octocat-spinner t entry)))))
     ;; Not stored before GitHub accepts it.
     (should (= (length (gethash "comments"
                                 (car (octocat-sync--read octocat-sync--db

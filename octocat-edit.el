@@ -48,7 +48,6 @@
 ;;; Code:
 
 (require 'octocat-core)
-(require 'octocat-vui)
 
 
 ;;;; Buffer-local state
@@ -142,7 +141,7 @@ Type your markdown text, then:
           (source     octocat-edit-source-buffer)
           (edit-win   octocat-edit-window)
           (edit-buf   (current-buffer)))
-      (setq mode-line-process (octocat-vui-mode-line-busy ":submitting"))
+      (setq mode-line-process (octocat-mode-line-busy ":submitting"))
       (funcall submit-fn body source
                ;; on-success: close edit window then refresh source
                (lambda ()

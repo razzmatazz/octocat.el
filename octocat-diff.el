@@ -1036,11 +1036,6 @@ across WIDTH."
 
 ;;;;; Custom faces
 
-(defface octocat-commit-sha
-  '((t :inherit font-lock-constant-face))
-  "Face for a commit SHA in the commit view."
-  :group 'octocat)
-
 ;;;;; Buffer-local declarations
 
 (defvar-local octocat--commit-repo nil

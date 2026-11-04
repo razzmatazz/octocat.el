@@ -748,7 +748,7 @@ hide the buttons that would start it again, and make their commands
 refuse with a `user-error`.
 
 Lead the in-progress line with the turning block spinner the mode line
-shows while loading, `octocat-vui-spinner`: `▘ Merging pull request…`.
+shows while loading, `octocat-spinner`: `▘ Merging pull request…`.
 The mode line's `:loading` is for fetching; an action under way is shown
 where its button was.  The spinner animates through its `display`
 property, without re-rendering the page; not on low battery, see [On

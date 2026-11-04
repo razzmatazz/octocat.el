@@ -381,7 +381,7 @@ under way in its place."
        (list (vui-newline))
        (cond
         (merging
-         (list (vui-text (concat "  " (octocat-vui-spinner) " " merging)
+         (list (vui-text (concat "  " (octocat-spinner) " " merging)
                  :face 'bold)))
         (draft
          (append
@@ -410,7 +410,7 @@ under way in its place."
   "Return the indented button approving each workflow run in AWAITING.
 APPROVING, a label or nil, shows the approval under way instead."
   (if approving
-      (list (vui-text (concat "    " (octocat-vui-spinner) " " approving) :face 'bold))
+      (list (vui-text (concat "    " (octocat-spinner) " " approving) :face 'bold))
     ;; Indented a further two, under its row's title.
     (list (vui-hstack
            :spacing 0
@@ -2282,7 +2282,7 @@ everything again."
                                                                  :data comments)
                                     raw (octocat--markdown-width))
      (if-let* ((reviewing (alist-get 'review (plist-get pr :mutating))))
-         (vui-text (concat "  " (octocat-vui-spinner) " " reviewing) :face 'bold)
+         (vui-text (concat "  " (octocat-spinner) " " reviewing) :face 'bold)
        (octocat-pr-diff--buttons pending)))))
 
 

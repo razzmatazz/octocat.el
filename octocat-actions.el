@@ -2236,7 +2236,7 @@ run being started, shown in the button's place.  TICK is the page's."
                          (vui-text "This workflow has a workflow_dispatch event trigger."
                            :face 'octocat-dimmed)
                          (if busy
-                             (vui-text (concat (octocat-vui-spinner) " " busy) :face 'bold)
+                             (vui-text (concat (octocat-spinner) " " busy) :face 'bold)
                            (vui-button (if open "Run workflow ▴" "Run workflow ▾")
                              :key 'dispatch-toggle
                              :help-echo (if open
