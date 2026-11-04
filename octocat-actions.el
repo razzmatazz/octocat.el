@@ -2103,10 +2103,10 @@ nothing."
                            #'octocat-workflow--parse-dispatched done))
   :invalidates (lambda () `((runs ,repo _ _))))
 
-(defun octocat-workflow--input-control (input value on-change on-submit)
+(defun octocat-workflow--input-control (input value on-change)
   "Return the control of INPUT showing VALUE, a string.
-ON-CHANGE is called with each new value; ON-SUBMIT runs on RET in a
-text field."
+ON-CHANGE is called with each new value.  RET in a text field moves on
+to the next control: only the button sends the form."
   (let ((name (gethash "name" input)))
     (pcase (gethash "type" input)
       ("boolean" (vui-checkbox :key (list 'input name)
@@ -2122,7 +2122,7 @@ text field."
                     :size 30
                     :face 'octocat-filter-input
                     :on-change on-change
-                    :on-submit (lambda (_) (funcall on-submit)))))))
+                    :on-submit (lambda (_) (octocat-vui-field-next)))))))
 
 (vui-defcomponent octocat-workflow--dispatch (repo id path default-branch local busy tick)
   "The \"Run workflow\" button of workflow ID of REPO, and its form.
@@ -2209,8 +2209,7 @@ run being started, shown in the button's place.  TICK is the page's."
                                      (funcall label (octocat-workflow--input-label in label-w))
                                      (octocat-workflow--input-control
                                       in (cdr (assoc name current))
-                                      (lambda (v) (funcall set-value name v))
-                                      run)
+                                      (lambda (v) (funcall set-value name v)))
                                      (and error (vui-text (concat "  " error) :face 'error)))))
                      inputs)))
            (list (vui-hstack :spacing 2

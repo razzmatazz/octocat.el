@@ -323,6 +323,39 @@ unsubscribes it."
             (should (= (hash-table-count octocat-vui--subscriptions) 0)))
         (when (buffer-live-p buf) (kill-buffer buf))))))
 
+(vui-defcomponent octocat-vui-tests--form ()
+  "Two fields whose RET moves on, and a button."
+  :render
+  (vui-vstack
+   (vui-field :key 'a :value "one" :size 10
+              :on-submit (lambda (_) (octocat-vui-field-next)))
+   (vui-field :key 'b :value "" :size 10
+              :on-submit (lambda (_) (octocat-vui-field-next)))
+   (vui-button "Send" :key 'send :on-click #'ignore)))
+
+(ert-deftest octocat-vui-test-field-next ()
+  "RET in a form's field moves to the next control, past its padding."
+  (let ((vui-render-delay nil)
+        (left 0))
+    (unwind-protect
+        (progn
+          (vui-mount (vui-component 'octocat-vui-tests--form) "*octocat-vui-test*")
+          (with-current-buffer "*octocat-vui-test*"
+            (let ((octocat-vui-field-next-hook (list (lambda () (cl-incf left)))))
+              (goto-char (point-min))
+              (let ((a (widget-field-at (point))))
+                (should (= (octocat-vui-field-value-end a)
+                           (+ (widget-field-start a) 3)))
+                (vui-activate)
+                (should-not (eq (widget-field-at (point)) a))
+                (should (widget-field-at (point)))
+                (vui-activate)
+                (should-not (widget-field-at (point)))
+                (should (looking-at-p "\\[?Send"))
+                (should (= left 2))))))
+      (when (get-buffer "*octocat-vui-test*")
+        (kill-buffer "*octocat-vui-test*")))))
+
 (ert-deftest octocat-vui-test-list-stored-candidates ()
   "Stored candidates are given at once and refreshed behind; none stored waits."
   (let ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))

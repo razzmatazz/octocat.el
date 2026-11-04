@@ -79,11 +79,12 @@ insert a newline into it."
       (call-interactively #'evil-ret))))
 
 (defun octocat-evil-field-ret ()
-  "Start editing the field at point, in insert state, else `evil-ret'.
+  "Edit the field at point from the end of its text, else `evil-ret'.
 `evil-ret' would insert a newline into the field."
   (interactive)
-  (if (widget-field-at (point))
-      (evil-insert-state)
+  (if-let* ((widget (widget-field-at (point))))
+      (progn (goto-char (octocat-vui-field-value-end widget))
+             (evil-insert-state))
     (call-interactively #'evil-ret)))
 
 (defun octocat-evil--field-setup ()
@@ -119,8 +120,8 @@ would start recording a macro."
                   (evil-local-set-key 'visual (vector key) def))
                 octocat-vui-list-mark-map)))
 
-(defun octocat-evil--list-query-submitted ()
-  "Leave insert state once the query field is submitted."
+(defun octocat-evil--field-left ()
+  "Leave insert state once a field is submitted or left by RET."
   (when evil-local-mode
     (evil-normal-state)))
 
@@ -191,7 +192,8 @@ Off an entry, such as on the header, move left."
     (evil-define-key* 'motion map
       (kbd "F")       #'octocat-vui-list-filter))
   (add-hook 'octocat-vui-list-mode-hook #'octocat-evil--list-setup)
-  (add-hook 'octocat-vui-list-query-submit-hook #'octocat-evil--list-query-submitted)
+  (add-hook 'octocat-vui-list-query-submit-hook #'octocat-evil--field-left)
+  (add-hook 'octocat-vui-field-next-hook #'octocat-evil--field-left)
 
   ;; ── octocat-pr-mode ───────────────────────────────────────────────────
   ;; vui.el-rendered like octocat-issue-mode: row RET actions come from

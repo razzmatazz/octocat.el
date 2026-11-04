@@ -1971,15 +1971,27 @@ See `octocat-vui-list--qualifiers'."
                  (point))))
       (list beg end octocat-vui-list--qualifiers))))
 
+(defun octocat-vui-field-value-end (widget)
+  "Return the position after the text of the field WIDGET."
+  ;; The field is padded with spaces, which its value leaves out.
+  (+ (widget-field-start widget) (length (widget-value widget))))
+
+(defvar octocat-vui-field-next-hook nil
+  "Hook run as `octocat-vui-field-next' leaves a field.")
+
+(defun octocat-vui-field-next ()
+  "Move from the field at point to the next control, as RET in it does.
+For a form's field, whose RET should not send the form."
+  (run-hooks 'octocat-vui-field-next-hook)
+  (vui-forward))
+
 (defun octocat-vui-list-edit-query ()
   "Move point to the end of the search query in the query field."
   (interactive)
   (octocat-vui-list--check-filterable)
-  (let ((widget (or (octocat-vui-list--query-widget)
-                    (user-error "Octocat: No query field on this page"))))
-    ;; The field is padded with spaces, which its value leaves out.
-    (goto-char (+ (widget-field-start widget)
-                  (length (widget-value widget))))))
+  (goto-char (octocat-vui-field-value-end
+              (or (octocat-vui-list--query-widget)
+                  (user-error "Octocat: No query field on this page")))))
 
 (defun octocat-vui-list--query-submitted (query)
   "Run QUERY, submitted by RET in the query field."

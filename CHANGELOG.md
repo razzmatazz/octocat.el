@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* RET in a Run workflow input moves to the next one; only the button starts the run
+* Under Evil, RET on a Run workflow input edits it from the end of its text
 * RET on a file whose diff is too large for GitHub diffs it in a buffer of its own
 * PR Files lists every changed file, not just the first 30, and says if GitHub left any out
 * Links to lines (`#L12-L20`, `#diff-…R12`) scroll to and highlight them; copied URLs name them
