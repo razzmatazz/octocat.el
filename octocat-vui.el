@@ -1085,22 +1085,31 @@ do: a row costs at most that many cells, whatever the graph."
 (defun octocat-vui--lane-row (k marks before after)
   "Return the text of a row of `octocat-vui-lanes', its node at column K.
 MARKS are (COLUMN . end) for a line ending there and (COLUMN . new) for
-one starting; BEFORE and AFTER are the lines' targets above and below."
+one starting; BEFORE and AFTER are the lines' targets above and below.
+Lines turn on rounded corners.  One running on across the row's
+horizontal line hops it, the horizontal stopping short either side, as
+in ─╴│╶─, so it is not taken for a line joining there."
   (let* ((cols (cons k (mapcar #'car marks)))
          (lo (apply #'min cols))
-         (hi (apply #'max cols)))
+         (hi (apply #'max cols))
+         (hop-p (lambda (c) (and (< lo c hi) (not (assq c marks))
+                                 (nth c before) (nth c after)))))
     (string-trim-right
      (mapconcat
       (lambda (c)
         (concat
          (pcase (alist-get c marks)
            ((guard (= c k)) " ")
-           ('end (if (> c k) "┘" "└"))
-           ('new (if (> c k) "┐" "┌"))
-           (_ (cond ((and (nth c before) (nth c after)) (if (<= lo c hi) "┼" "│"))
+           ('end (if (> c k) "╯" "╰"))
+           ('new (if (> c k) "╮" "╭"))
+           (_ (cond ((and (nth c before) (nth c after)) "│")
                     ((<= lo c hi) "─")
                     (t " "))))
-         (if (and (>= c lo) (< c hi)) "─" " ")))
+         (cond ((not (and (>= c lo) (< c hi))) " ")
+               ((and (funcall hop-p c) (funcall hop-p (1+ c))) " ")
+               ((funcall hop-p c) "╶")
+               ((funcall hop-p (1+ c)) "╴")
+               (t "─"))))
       (number-sequence 0 (1- (length after))) ""))))
 
 (defun octocat-vui-lane-mirror (lane)
@@ -1108,8 +1117,10 @@ one starting; BEFORE and AFTER are the lines' targets above and below."
 Its first column is then the one beside the row's text."
   (let ((text (car lane)))
     (cons (apply #'string
-                 (mapcar (lambda (ch) (alist-get ch '((?┐ . ?┌) (?┌ . ?┐) (?┘ . ?└) (?└ . ?┘))
-                                                 ch))
+                 (mapcar (lambda (ch)
+                           (alist-get ch '((?╮ . ?╭) (?╭ . ?╮) (?╯ . ?╰) (?╰ . ?╯)
+                                           (?╴ . ?╶) (?╶ . ?╴))
+                                      ch))
                          (reverse text)))
           (- (/ (1+ (length text)) 2) 1 (cdr lane)))))
 
