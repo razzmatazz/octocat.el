@@ -141,7 +141,8 @@ melpazoid-prepare:
 	  status=$$?; cat .ci/melpazoid-report.txt; \
 	  if [ $$status != 0 ] || grep -q '^━ ' .ci/melpazoid-report.txt; then \
 	    echo "melpazoid: found something, see above"; exit 1; fi
-	@cp -a .ci/melpazoid .ci/melpazoid-build && cp -a .ci/melpazoid-out/. .ci/melpazoid-build
+	@cp -a .ci/melpazoid .ci/melpazoid-build && rm -rf .ci/melpazoid-build/pkg && \
+	  cp -a .ci/melpazoid-out/. .ci/melpazoid-build
 
 # Its build's log shows only when the build fails.  Its FROM is
 # BASE_IMAGE too, so Podman skips the registry for it, as for ours.
