@@ -2236,10 +2236,11 @@ PENDING is (REVIEW-ID . COUNT), your pending review, or nil."
 
 ;;;;; Components
 
-(vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw tick)
+(vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw at tick)
   "The diff of pull request NUMBER of REPO, under the PR page's header.
 HIDE-COMMENTS leaves the review comments out of the diff, and RAW shows
-their markdown verbatim.  A review being
+their markdown verbatim.  AT is the lines a link named, see
+`octocat-diff--file'.  A review being
 submitted shows in place of the submit button.  A new TICK fetches
 everything again."
   :render
@@ -2275,7 +2276,7 @@ everything again."
        ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
        ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
        (_ (octocat-diff-files-section repo (plist-get files :data) by-path
-                                      hide-comments raw (octocat--markdown-width))))
+                                      hide-comments raw (octocat--markdown-width) nil at)))
      (vui-newline)
      (octocat-diff-comments-section "Review Comments" (plist-put (copy-sequence threads)
                                                                  :data comments)
@@ -2288,9 +2289,12 @@ everything again."
 ;;;;; Major mode
 
 (defun octocat-pr-diff--page-url ()
-  "Return the URL of the files changed of this pull request."
+  "Return the URL of the files changed of this pull request.
+It is at the diff line of point or the region."
   (and octocat--pr-diff-repo octocat--pr-diff-number
-       (octocat--web-url "%s/pull/%d/files" octocat--pr-diff-repo octocat--pr-diff-number)))
+       (concat (octocat--web-url "%s/pull/%d/files" octocat--pr-diff-repo
+                                 octocat--pr-diff-number)
+               (octocat-diff--url-fragment))))
 
 (defvar octocat-pr-diff-mode-map
   (let ((map (make-sparse-keymap)))
@@ -2335,22 +2339,26 @@ in place."
                             (list :repo octocat--pr-diff-repo
                                   :number octocat--pr-diff-number
                                   :hide-comments octocat-diff--hide-comments
-                                  :raw octocat--markdown-raw)))
+                                  :raw octocat--markdown-raw
+                                  :at octocat-diff--at)))
 
-(defun octocat-pr-diff-open (repo number)
-  "Show the diff of pull request NUMBER of REPO in its own buffer."
+(defun octocat-pr-diff-open (repo number &optional at)
+  "Show the diff of pull request NUMBER of REPO in its own buffer.
+AT is the lines a link named, see `octocat-diff--file'."
   (let ((buf (get-buffer-create (format "*%s pr %d diff*" repo number))))
     (octocat-display-buffer buf)
     (unless (derived-mode-p 'octocat-pr-diff-mode)
       (octocat-pr-diff-mode))
     (setq octocat--pr-diff-repo   repo
           octocat--pr-diff-number number
-          octocat-diff--hide-comments nil)
+          octocat-diff--hide-comments nil
+          octocat-diff--at at)
     (octocat-pr-diff-refresh)))
 
-(cl-defmethod octocat-open ((_kind (eql 'pr-diff)) repo number)
-  "Open the files changed by PR NUMBER of REPO, as `octocat-pr-diff-open'."
-  (octocat-pr-diff-open repo number))
+(cl-defmethod octocat-open ((_kind (eql 'pr-diff)) repo number &optional at)
+  "Open the files changed by PR NUMBER of REPO, AT the lines a link named.
+See `octocat-pr-diff-open'."
+  (apply #'octocat-pr-diff-open repo number (and at (list at))))
 
 
 ;;;; PR list page

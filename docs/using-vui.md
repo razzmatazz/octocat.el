@@ -10,6 +10,13 @@ Gotchas of vui.el as octocat uses it, and how the code works around them.
 - Rows use `vui-text` inside a `vui-region` (not `vui-button`) so per-segment
   faces are preserved; see "Rows of PRs, issues and commits" in `octocat-vui.el`.
 
+## Moving point from an effect
+
+`vui-mount` moves point to the top after the first render's effects
+have run, so an effect that places point, such as scrolling to the lines
+a link named, does it from a zero-delay timer (`octocat--goto-line-target`).
+`vui-render` does the same, so a test of it mounts the component.
+
 ## Editable fields
 
 A page with a `vui-field` must not set `buffer-read-only`: the field

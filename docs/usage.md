@@ -546,6 +546,15 @@ GitHub does, the longest leading part of the path that names a ref is the
 ref, which takes one request to find out.  Other links still open in the browser, and `C-c C-o` always
 does.
 
+A link to lines scrolls to them and highlights them, in the face
+`octocat-line-highlight`, as GitHub does: `/blob/REF/PATH#L12` or
+`#L12-L20` on the file page, and `#diff-…R12` or `#diff-…L10-R14` on a
+commit, comparison or PR's files, where the file it names is unfolded.
+A markdown or org file opens in its code view, as GitHub's `?plain=1`
+does.  The highlight stays until `g` refreshes the page.  The other
+way round, `C-c C-o` and `M-x octocat-copy-url` on these pages give the
+link to the line at point, or to the lines of the region.
+
 To open github.com links this way from anywhere in Emacs (`browse-url`,
 Org links, mail, other packages), turn on `octocat-github-links-mode`,
 e.g. with `(octocat-github-links-mode 1)` in your init file.  It is off

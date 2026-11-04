@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Links to lines (`#L12-L20`, `#diff-…R12`) scroll to and highlight them; copied URLs name them
 * On PR commits, PR files and compare pages, `#N` and SHAs link into that repo, not the clone's
 * The faces of a diff's file letters are `octocat-diff-file-*`; `octocat-commit-file-*` remain as aliases
 * Mermaid draws flowcharts of up to 60 nodes and 250 edges, up from 40 and 80

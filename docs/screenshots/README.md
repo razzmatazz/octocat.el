@@ -56,6 +56,15 @@ that last changed it, as GitHub's Blame.  `RET` on a commit opens it.
 [As text](file-blame.txt)
 <!-- /screenshot -->
 
+A file opened from a link to its lines, `/blob/main/src/cache.rs#L12-L16`:
+the lines are highlighted, as on GitHub, and point is on the first.
+
+<!-- screenshot: (tree--open-file-by-path "acme/rocket" "main" "src/cache.rs" (lines 12 16)) :name "file-lines" -->
+![file-lines](file-lines.png)
+
+[As text](file-lines.txt)
+<!-- /screenshot -->
+
 HTML as READMEs write it, rendered: a centred logo in a `<picture>`, a
 row of linked badges, `<kbd>`, `<sup>` and entities, a `<details>`, a
 table of screenshots shown side by side, and an HTML list.

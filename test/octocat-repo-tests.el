@@ -633,6 +633,129 @@ A refresh asks GitHub again, which never answers."
             (should (string-match-p "^# Guide$" (buffer-string))))
         (kill-buffer)))))
 
+(defun octocat-tree-tests--highlighted-p (pos)
+  "Return non-nil if the text at POS has `octocat-line-highlight'."
+  (memq 'octocat-line-highlight (ensure-list (get-text-property pos 'face))))
+
+(defun octocat-tree-tests--highlighted-lines ()
+  "Return the file lines of the current buffer in `octocat-line-highlight'."
+  (let (out)
+    (save-excursion
+      (goto-char (point-min))
+      (while (not (eobp))
+        (when-let* ((n (get-text-property (point) 'octocat-file-line)))
+          (when (octocat-tree-tests--highlighted-p (point)) (push n out)))
+        (forward-line 1)))
+    (nreverse out)))
+
+(defun octocat-tree-tests--settle ()
+  "Run the page's pending re-renders and timers, as the jump to a link's lines."
+  (dotimes (_ 3)
+    (vui-flush-sync)
+    (accept-process-output nil 0.01)))
+
+(defun octocat-tree-tests--goto-file-line (n)
+  "Move point to the start of line N of the file shown."
+  (goto-char (point-min))
+  (while (not (eql (get-text-property (point) 'octocat-file-line) n))
+    (forward-line 1)))
+
+(ert-deftest octocat-repo-test-mark-lines ()
+  "Each line has its number, and only lines START to END the highlight."
+  (let ((text (octocat-repo--mark-lines "a\nb\n\nd" '(2 . 3))))
+    (should (equal (mapcar (lambda (i) (get-text-property i 'octocat-file-line text))
+                           '(0 1 2 3 4 5))
+                   '(1 1 2 2 3 4)))
+    (should (equal (mapcar (lambda (i)
+                             (and (memq 'octocat-line-highlight
+                                        (ensure-list (get-text-property i 'face text)))
+                                  t))
+                           '(0 1 2 3 4 5))
+                   '(nil nil t t t nil)))
+    (should (equal (text-property-any 0 (length text) 'octocat-line-target t text) 2)))
+  ;; A range past the end highlights what there is; a start past it, nothing.
+  (let ((text (octocat-repo--mark-lines "a\nb" '(2 . 9))))
+    (should (memq 'octocat-line-highlight (ensure-list (get-text-property 2 'face text))))
+    (should (get-text-property 2 'octocat-line-target text)))
+  (let ((text (octocat-repo--mark-lines "a\nb" '(5 . 9))))
+    (should-not (text-property-not-all 0 (length text) 'face nil text))
+    (should-not (text-property-any 0 (length text) 'octocat-line-target t text)))
+  (should-not (get-text-property 0 'face (octocat-repo--mark-lines "a" nil))))
+
+(ert-deftest octocat-tree-test-file-page-lines ()
+  "A link's lines are highlighted and scrolled to, until the user's refresh.
+The page's URL names the line of point, or the region's."
+  (octocat-tree-tests--with-file-page
+    (octocat-tree-tests--store-file
+     "dev" "src/a.el"
+     (mapconcat (lambda (n) (format "(line %d)" n)) (number-sequence 1 30) "\n"))
+    (save-current-buffer
+      (octocat-tree--open-file-by-path "owner/repo" "dev" "src/a.el" '(lines 3 5))
+      (unwind-protect
+          (progn
+            (octocat-tree-tests--settle)
+            (should (equal (octocat-tree-tests--highlighted-lines) '(3 4 5)))
+            (should (looking-at-p "(line 3)"))
+            (should (equal (octocat-file--page-url)
+                           "https://github.com/owner/repo/blob/dev/src/a.el#L3"))
+            ;; A refresh after an action keeps them, and leaves point.
+            (octocat-tree-tests--goto-file-line 10)
+            (octocat-file-refresh)
+            (vui-flush-sync)
+            (should (equal (octocat-tree-tests--highlighted-lines) '(3 4 5)))
+            (should (eql (get-text-property (point) 'octocat-file-line) 10))
+            (should (equal (octocat-file--page-url)
+                           "https://github.com/owner/repo/blob/dev/src/a.el#L10"))
+            ;; The user's refresh drops them.
+            (octocat-vui-refresh)
+            (vui-flush-sync)
+            (should-not octocat-tree--file-lines)
+            (should-not (octocat-tree-tests--highlighted-lines))
+            ;; A region: from its first line to its last.
+            (let ((transient-mark-mode t))
+              (octocat-tree-tests--goto-file-line 4)
+              (push-mark (point) t t)
+              (octocat-tree-tests--goto-file-line 7)
+              (should (equal (octocat-file--page-url)
+                             "https://github.com/owner/repo/blob/dev/src/a.el#L4-L6"))
+              (end-of-line)
+              (should (equal (octocat-file--page-url)
+                             "https://github.com/owner/repo/blob/dev/src/a.el#L4-L7"))
+              (deactivate-mark))
+            ;; Above the content, the file's link.
+            (goto-char (point-min))
+            (should (equal (octocat-file--page-url)
+                           "https://github.com/owner/repo/blob/dev/src/a.el"))
+            ;; A new link to the open page moves the highlight.
+            (octocat-tree--open-file-by-path "owner/repo" "dev" "src/a.el" '(lines 20 20))
+            (octocat-tree-tests--settle)
+            (should (equal (octocat-tree-tests--highlighted-lines) '(20)))
+            (should (looking-at-p "(line 20)")))
+        (kill-buffer)))))
+
+(ert-deftest octocat-tree-test-file-page-lines-markdown ()
+  "A line link to markdown shows its code, whose links have ?plain=1."
+  (octocat-tree-tests--with-file-page
+    (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n\nText.\n")
+    (save-current-buffer
+      (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md" '(lines 3 3))
+      (unwind-protect
+          (progn
+            (octocat-tree-tests--settle)
+            (should (string-match-p "^# Guide$" (buffer-string)))
+            (should (equal (octocat-tree-tests--highlighted-lines) '(3)))
+            (should (looking-at-p "Text\\."))
+            (should (equal (octocat-file--page-url)
+                           "https://github.com/owner/repo/blob/dev/docs/GUIDE.md?plain=1#L3"))
+            ;; The preview has no lines: the bare link.
+            (octocat-file-show-view 'preview)
+            (vui-flush-sync)
+            (goto-char (point-min))
+            (search-forward "Text.")
+            (should (equal (octocat-file--page-url)
+                           "https://github.com/owner/repo/blob/dev/docs/GUIDE.md")))
+        (kill-buffer)))))
+
 (ert-deftest octocat-tree-test-file-cycle-view ()
   "C-c C-v takes markdown from rendered to raw to blame and back.
 The top line has a tab for each view, the one shown plain."

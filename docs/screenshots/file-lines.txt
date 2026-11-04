@@ -1,0 +1,35 @@
+acme/rocket  [main ▾]:/src/cache.rs   Code  Blame
+
+Bump toml from 0.8.12 to 0.8.19                                     a625406 · 1 day ago  [4 commits]
+//! A cache of rendered pages, keyed by their source's hash.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+/// What a page rendered to, and the hash of the source it came from.
+pub struct Entry {
+    pub hash: u64,
+    pub html: String,
+}
+
+pub struct Cache {
+    entries: HashMap<PathBuf, Entry>,
+}
+
+impl Cache {
+    pub fn new() -> Self {
+        Cache { entries: HashMap::new() }
+    }
+
+    /// The page at PATH, unless its source changed since.
+    pub fn get(&self, path: &PathBuf, hash: u64) -> Option<&str> {
+        self.entries
+            .get(path)
+            .filter(|e| e.hash == hash)
+            .map(|e| e.html.as_str())
+    }
+
+    pub fn put(&mut self, path: PathBuf, hash: u64, html: String) {
+        self.entries.insert(path, Entry { hash, html });
+    }
+}

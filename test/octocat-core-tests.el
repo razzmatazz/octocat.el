@@ -357,6 +357,92 @@
                      (commit-list "o/r" "feat/x" "src/a.el") (file "o/r" "feat/x" "src/a.el")
                      (file "o/r" "feat/x" "img.png"))))))
 
+(ert-deftest octocat-core-test-url-lines ()
+  "A link's fragment names a file's lines or a diff's, in order, or nothing."
+  (let ((h (secure-hash 'sha256 "src/a.el"))
+        (m (secure-hash 'md5 "src/a.el")))
+    (dolist (case `(("#L12"           (lines 12 12))
+                    ("#L12-L20"       (lines 12 20))
+                    ("#L20-L12"       (lines 12 20))
+                    ("#L12C5-L20C9"   (lines 12 20))
+                    (,(concat "#diff-" h)          (diff ,h))
+                    (,(concat "#diff-" h "R12")    (diff ,h ("RIGHT" . 12) ("RIGHT" . 12)))
+                    (,(concat "#diff-" h "L3")     (diff ,h ("LEFT" . 3) ("LEFT" . 3)))
+                    (,(concat "#diff-" h "L10-R14") (diff ,h ("LEFT" . 10) ("RIGHT" . 14)))
+                    (,(concat "#diff-" m "R1")     (diff ,m ("RIGHT" . 1) ("RIGHT" . 1)))
+                    ("#mit" nil) ("#L" nil) ("#Lx" nil) ("#L0" nil) ("#diff-zz" nil)
+                    ("#diff-1" nil) ("" nil)))
+      (should (equal (list (car case)
+                           (octocat--url-lines
+                            (concat "https://github.com/o/r/blob/main/src/a.el" (car case))))
+                     case)))
+    (should (octocat--diff-path-hash-p h "src/a.el"))
+    (should (octocat--diff-path-hash-p m "src/a.el"))
+    (should-not (octocat--diff-path-hash-p h "src/b.el"))))
+
+(ert-deftest octocat-core-test-url-lines-round-trip ()
+  "What the fragment builders write, `octocat--url-lines' reads back."
+  (dolist (span '((12 . 12) (12 . 20)))
+    (should (equal (octocat--url-lines
+                    (concat "u#" (octocat--lines-fragment (car span) (cdr span))))
+                   (list 'lines (car span) (cdr span)))))
+  (let ((h (secure-hash 'sha256 "a.el")))
+    (dolist (case `((nil                              (diff ,h))
+                    ((("RIGHT" . 4))                  (diff ,h ("RIGHT" . 4) ("RIGHT" . 4)))
+                    ((("LEFT" . 3) ("LEFT" . 3))      (diff ,h ("LEFT" . 3) ("LEFT" . 3)))
+                    ((("LEFT" . 3) ("RIGHT" . 9))     (diff ,h ("LEFT" . 3) ("RIGHT" . 9)))))
+      (should (equal (octocat--url-lines
+                      (concat "u#" (apply #'octocat--diff-fragment "a.el" (car case))))
+                     (cadr case))))
+    (should (equal (octocat--diff-fragment "a.el" '("LEFT" . 3) '("RIGHT" . 9))
+                   (concat "diff-" h "L3-R9")))))
+
+(ert-deftest octocat-core-test-browse-url-lines ()
+  "`octocat-browse-url' passes the lines a link names to the page's opener.
+A fragment of another page's form is left out."
+  (let ((h (secure-hash 'sha256 "a.el"))
+        opened)
+    (cl-letf (((symbol-function 'octocat-commit-open)  (lambda (&rest a) (push (cons 'commit a) opened)))
+              ((symbol-function 'octocat-compare-open) (lambda (&rest a) (push (cons 'compare a) opened)))
+              ((symbol-function 'octocat-pr-diff-open) (lambda (&rest a) (push (cons 'pr-diff a) opened)))
+              ((symbol-function 'octocat-pr-open)      (lambda (&rest a) (push (cons 'pr a) opened)))
+              ((symbol-function 'octocat-tree--open-file-by-path)
+               (lambda (&rest a) (push (cons 'file a) opened))))
+      (dolist (path (list "o/r/blob/main/a.el#L3-L5" "o/r/blob/main/a.el#mit"
+                          (concat "o/r/blob/main/a.el#diff-" h)
+                          (concat "o/r/commit/abc1234#diff-" h "R2")
+                          (concat "o/r/compare/a...b#diff-" h)
+                          (concat "o/r/pull/1/files#diff-" h "L1-R2")
+                          (concat "o/r/pull/1/commits/abc1234#diff-" h)
+                          "o/r/commit/abc1234#L3"
+                          (concat "o/r/pull/1#diff-" h)))
+        (octocat-browse-url (concat "https://github.com/" path))))
+    (should (equal (nreverse opened)
+                   `((file "o/r" "main" "a.el" (lines 3 5))
+                     (file "o/r" "main" "a.el")
+                     (file "o/r" "main" "a.el")
+                     (commit "o/r" "abc1234" (diff ,h ("RIGHT" . 2) ("RIGHT" . 2)))
+                     (compare "o/r" "a" "..." "b" (diff ,h))
+                     (pr-diff "o/r" 1 (diff ,h ("LEFT" . 1) ("RIGHT" . 2)))
+                     (commit "o/r" "abc1234" (diff ,h))
+                     (commit "o/r" "abc1234")
+                     (pr "o/r" 1))))))
+
+(ert-deftest octocat-core-test-point-or-region ()
+  "The region's first and last characters, short of a line's start, or point's."
+  (with-temp-buffer
+    (insert "one\ntwo\nthree\n")
+    (goto-char 2)
+    (should (equal (octocat--point-or-region) '(2 . 2)))
+    (setq-local transient-mark-mode t)
+    (set-mark 1)
+    (goto-char 9)
+    (activate-mark)
+    ;; The region ends at "three"'s start: it covers "one" and "two".
+    (should (equal (octocat--point-or-region) '(1 . 8)))
+    (goto-char 11)
+    (should (equal (octocat--point-or-region) '(1 . 11)))))
+
 (ert-deftest octocat-core-test-split-ref-path ()
   "The most leading segments naming a ref are the ref, else the first."
   (should (equal (octocat--split-ref-path '("feat" "x" "src") '(1 2)) '("feat/x" . "src")))

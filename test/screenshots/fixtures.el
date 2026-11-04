@@ -201,6 +201,42 @@ settings are in [the configuration](configuration.md).
 "
   "The docs/guide.md of acme/rocket.")
 
+(defconst octocat-screenshots--cache-rs
+  "//! A cache of rendered pages, keyed by their source's hash.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+/// What a page rendered to, and the hash of the source it came from.
+pub struct Entry {
+    pub hash: u64,
+    pub html: String,
+}
+
+pub struct Cache {
+    entries: HashMap<PathBuf, Entry>,
+}
+
+impl Cache {
+    pub fn new() -> Self {
+        Cache { entries: HashMap::new() }
+    }
+
+    /// The page at PATH, unless its source changed since.
+    pub fn get(&self, path: &PathBuf, hash: u64) -> Option<&str> {
+        self.entries
+            .get(path)
+            .filter(|e| e.hash == hash)
+            .map(|e| e.html.as_str())
+    }
+
+    pub fn put(&mut self, path: PathBuf, hash: u64, html: String) {
+        self.entries.insert(path, Entry { hash, html });
+    }
+}
+"
+  "The src/cache.rs of acme/rocket.")
+
 (defconst octocat-screenshots--html
   "<p align=\"center\">
   <a href=\"https://rocket.acme.dev\">
@@ -1116,6 +1152,12 @@ FIELDS, a plist, override the rest."
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/guide.md"))))))
       (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "docs/guide.md") 0 8)) ()
        ,(octocat-screenshots--base64 octocat-screenshots--guide))
+      ("repo-head" ("dir=main:src/cache.rs")
+       (:data (:repository (:object (:history (:totalCount 4 :nodes [,(octocat-screenshots--history-node
+                                                                       (nth 2 octocat-screenshots--commits))]))
+                            :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "src/cache.rs"))))))
+      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "src/cache.rs") 0 8)) ()
+       ,(octocat-screenshots--base64 octocat-screenshots--cache-rs))
       ("repo-head" ("dir=main:docs/html.md")
        (:data (:repository (:object (:history (:totalCount 3 :nodes [,(octocat-screenshots--history-node
                                                                        (nth 2 octocat-screenshots--commits))]))

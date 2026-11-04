@@ -133,6 +133,9 @@ Read by `octocat-repo--sync-checkout' on each refresh; a page with no
 (defvar-local octocat-tree--file-branch nil
   "Branch/ref name for the file being displayed, \"HEAD\" for the default.")
 
+(defvar-local octocat-tree--file-lines nil
+  "The lines a link named, (START . END), highlighted and scrolled to, or nil.")
+
 (defvar-local octocat-tree--file-blame nil
   "Non-nil when the file viewer shows the blame, see `octocat-file-cycle-view'.")
 
@@ -1636,17 +1639,35 @@ few lines instead."
        ranges))
     (string-join (nreverse out) "\n")))
 
+(defun octocat-repo--mark-lines (text lines)
+  "Return TEXT, a file's lines, each with its number in `octocat-file-line'.
+LINES, (START . END) or nil, are highlighted in `octocat-line-highlight',
+and START's line has `octocat-line-target', for the page to scroll to."
+  (let ((text (copy-sequence text))
+        (n 1) (beg 0))
+    (while (< beg (length text))
+      (let ((end (or (and (string-match "\n" text beg) (match-end 0)) (length text))))
+        (put-text-property beg end 'octocat-file-line n text)
+        (when (and lines (<= (car lines) n (cdr lines)))
+          (add-face-text-property beg end 'octocat-line-highlight t text)
+          (when (= n (car lines))
+            (put-text-property beg end 'octocat-line-target t text)))
+        (setq n (1+ n) beg end)))
+    text))
+
 (defun octocat-repo--source-text (path content)
   "Return file PATH's CONTENT highlighted, its long lines clipped."
   (string-remove-suffix
    "\n" (octocat--clip-lines (octocat-tree--fontify path (decode-coding-string content 'utf-8))
                              octocat--max-line-length)))
 
-(vui-defcomponent octocat-repo-vui--file-blame (repo path blob commit)
+(vui-defcomponent octocat-repo-vui--file-blame (repo path blob commit lines)
   "The blame of file PATH, BLOB, of REPO at COMMIT: its source, highlighted,
-each line beside the commit that last changed it, as GitHub's Blame."
+each line beside the commit that last changed it, as GitHub's Blame.
+LINES are as for `octocat-repo--mark-lines'."
   :render
-  (let* ((file  (octocat-vui-use-resource (list 'blob repo blob) nil))
+  (let* ((buf   (current-buffer))
+         (file  (octocat-vui-use-resource (list 'blob repo blob) nil))
          (snap  (octocat-vui-use-resource (list 'blame repo commit path) nil))
          (win   (get-buffer-window (current-buffer) t))
          (width (octocat-vui-window-width))
@@ -1654,12 +1675,18 @@ each line beside the commit that last changed it, as GitHub's Blame."
          ;; would mark the line cut.
          (edge  (if (and win (>= width (window-body-width win))) (1- width) width))
          ;; The source shows at once, grey bars beside it until the blame lands.
-         (text  (vui-use-memo ((plist-get file :data) (plist-get snap :data) edge)
+         (text  (vui-use-memo ((plist-get file :data) (plist-get snap :data) edge lines)
                   (and (plist-get file :data)
-                       (octocat-repo--blame-text
-                        repo (octocat-repo--source-text
-                              path (octocat-vui--blob-content (plist-get file :data)))
-                        (plist-get snap :data) edge)))))
+                       (octocat-repo--mark-lines
+                        (octocat-repo--blame-text
+                         repo (octocat-repo--source-text
+                               path (octocat-vui--blob-content (plist-get file :data)))
+                         (plist-get snap :data) edge)
+                        lines))))
+         (ready (and text t)))
+    (vui-use-effect (lines ready)
+      (when (and lines ready) (octocat--goto-line-target buf))
+      nil)
     (cond ((eq (octocat-vui-snapshot-status file) 'error)
            (vui-text (octocat-vui-error-text file) :face 'error))
           ((eq (octocat-vui-snapshot-status snap) 'error)
@@ -1667,18 +1694,26 @@ each line beside the commit that last changed it, as GitHub's Blame."
           (text (vui-text text))
           (t (vui-text (octocat-tree--skeleton))))))
 
-(vui-defcomponent octocat-repo-vui--file-content (repo ref path blob raw)
+(vui-defcomponent octocat-repo-vui--file-content (repo ref path blob raw lines)
   "The content of file PATH, BLOB, of REPO at REF.
-RAW shows markdown as is."
+RAW shows markdown as is.  In the code view, LINES are as for
+`octocat-repo--mark-lines'."
   :render
-  (let* ((snap  (octocat-vui-use-resource (list 'blob repo blob) nil))
+  (let* ((buf   (current-buffer))
+         (snap  (octocat-vui-use-resource (list 'blob repo blob) nil))
          (width (octocat--markdown-width))
-         (text  (vui-use-memo ((plist-get snap :data) raw width)
-                  (and (plist-get snap :data)
-                       (octocat-repo--file-text repo ref path
-                                                (octocat-vui--blob-content
-                                                 (plist-get snap :data))
-                                                raw width)))))
+         (code  (and (eq (octocat-file--view path raw nil) 'code)
+                     (not (octocat--image-file-p path))))
+         (text  (vui-use-memo ((plist-get snap :data) raw width lines)
+                  (when-let* ((data (plist-get snap :data)))
+                    (let ((text (octocat-repo--file-text repo ref path
+                                                         (octocat-vui--blob-content data)
+                                                         raw width)))
+                      (if code (octocat-repo--mark-lines text lines) text)))))
+         (ready (and text t)))
+    (vui-use-effect (lines ready)
+      (when (and lines ready code) (octocat--goto-line-target buf))
+      nil)
     (pcase (octocat-vui-snapshot-status snap)
       ('pending (vui-text (octocat-tree--skeleton)))
       ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
@@ -1702,7 +1737,7 @@ theirs, their hint naming the key that cycles them.  See
                          (lambda () (octocat-file-show-view view)))))
                views)))))
 
-(vui-defcomponent octocat-repo-vui--file-page (repo ref path raw blame tick)
+(vui-defcomponent octocat-repo-vui--file-page (repo ref path raw blame lines tick)
   "Root component of the file viewer: file PATH of REPO at REF.
 REF is a branch, tag or SHA, nil for the default branch.  Its top is
 the tree browser's, so one reads on from the other: the picker of REF
@@ -1712,10 +1747,18 @@ in its own buffer, see `octocat-file-switch-branch'.
 RAW shows markdown as is, and BLAME the source beside the commits that
 last changed it, see `octocat-file-cycle-view'.  A file too large to
 show unasked, see `octocat-repo--file-notice', has a button to show it
-ANYWAY."
+ANYWAY.  LINES, (START . END), a link named: they are highlighted and
+scrolled to, until the user's refresh, see `octocat-vui-refresh'."
   :state ((anyway nil))
   :render
-  (let* ((current-branch (plist-get (octocat--head-info) :branch))
+  (let* ((buf            (current-buffer))
+         (_              (octocat-vui-use-view-reset
+                          (vui-async-callback ()
+                            (when (buffer-live-p buf)
+                              (with-current-buffer buf
+                                (setq octocat-tree--file-lines nil)
+                                (octocat-vui-update-page :lines nil))))))
+         (current-branch (plist-get (octocat--head-info) :branch))
          (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
                                     :data))
          (default-branch (and summary (gethash "default-branch" summary)))
@@ -1742,11 +1785,12 @@ ANYWAY."
                              :on-click (lambda () (vui-set-state :anyway t)))))))
            ((and blob blame)
             (vui-component 'octocat-repo-vui--file-blame
-              :key blob :repo repo :path path :blob blob :commit (gethash "sha" head)))
+              :key blob :repo repo :path path :blob blob :commit (gethash "sha" head)
+              :lines lines))
            (blob
             (vui-component 'octocat-repo-vui--file-content
               :key blob :repo repo :ref (or ref default-branch "HEAD")
-              :path path :blob blob :raw raw))
+              :path path :blob blob :raw raw :lines lines))
            ;; The head line says why there is none.
            ((eq (octocat-vui-snapshot-status head-snap) 'pending)
             (vui-text (octocat-tree--skeleton)))))))
@@ -1937,9 +1981,11 @@ binding outranks the button's own."
         (or (and summary (gethash "default-branch" summary)) "HEAD"))
     branch))
 
-(defun octocat-tree--open-file-by-path (repo branch path)
+(defun octocat-tree--open-file-by-path (repo branch path &optional at)
   "Open the file viewer of PATH in REPO at BRANCH.
-Each ref of a file has a buffer of its own, named after both."
+Each ref of a file has a buffer of its own, named after both.  AT,
+\(lines START END) as `octocat--url-lines' reads a link, highlights
+those lines and scrolls to them; a rendered file shows its code."
   (let* ((branch (octocat-tree--file-ref repo branch))
          (buf    (get-buffer-create (format "*%s@%s:%s*" repo branch path))))
     (octocat-display-buffer buf)
@@ -1948,11 +1994,16 @@ Each ref of a file has a buffer of its own, named after both."
     (setq octocat-tree--file-repo   repo
           octocat-tree--file-path   path
           octocat-tree--file-branch branch)
+    (when at
+      (setq octocat-tree--file-lines (cons (nth 1 at) (nth 2 at)))
+      (when (octocat-repo--format path)
+        (setq octocat--markdown-raw t)))
     (octocat-file-refresh)))
 
-(cl-defmethod octocat-open ((_kind (eql 'file)) repo branch path)
-  "Open file PATH of REPO at BRANCH, as `octocat-tree--open-file-by-path'."
-  (octocat-tree--open-file-by-path repo branch path))
+(cl-defmethod octocat-open ((_kind (eql 'file)) repo branch path &optional at)
+  "Open file PATH of REPO at BRANCH, AT the lines a link named.
+See `octocat-tree--open-file-by-path'."
+  (apply #'octocat-tree--open-file-by-path repo branch path (and at (list at))))
 
 (defun octocat-file-switch-branch ()
   "Open this file at another branch, in a buffer of its own."
@@ -2028,7 +2079,8 @@ TYPE is `file' or `dir'."
          :ref (unless (equal octocat-tree--file-branch "HEAD") octocat-tree--file-branch)
          :path octocat-tree--file-path
          :raw octocat--markdown-raw
-         :blame octocat-tree--file-blame)))
+         :blame octocat-tree--file-blame
+         :lines octocat-tree--file-lines)))
 
 (defun octocat-file--views (path)
   "Return the views of file PATH, in the order `octocat-file-cycle-view' takes.
@@ -2084,12 +2136,22 @@ that last changed it."
     (octocat-file-show-view next)))
 
 (defun octocat-file--page-url ()
-  "Return the URL of the current file."
+  "Return the URL of the current file, at the line of point or the region.
+In the code view of a rendered format it has ?plain=1, or GitHub would
+show the preview, where a line has no place."
   (and octocat-tree--file-repo octocat-tree--file-branch octocat-tree--file-path
-       (octocat--web-url "%s/blob/%s/%s"
-                         octocat-tree--file-repo
-                         octocat-tree--file-branch
-                         octocat-tree--file-path)))
+       (let* ((span  (octocat--point-or-region))
+              (start (get-text-property (car span) 'octocat-file-line))
+              (end   (get-text-property (cdr span) 'octocat-file-line))
+              (start (or start end))
+              (end   (or end start)))
+         (concat (octocat--web-url "%s/blob/%s/%s"
+                                   octocat-tree--file-repo
+                                   octocat-tree--file-branch
+                                   octocat-tree--file-path)
+                 (when start
+                   (concat (and (octocat-repo--format octocat-tree--file-path) "?plain=1")
+                           "#" (octocat--lines-fragment start end)))))))
 
 ;;;; File history
 

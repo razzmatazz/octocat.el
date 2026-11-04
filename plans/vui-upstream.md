@@ -83,10 +83,12 @@ added.
 ## 7. Point cannot be put on a row after the first render
 
 The first mount leaves point at `point-min` after its effects run, so an
-effect cannot move point.  `vui-goto-key` finds only widgets, and rows
-are text (see 1).
+effect cannot move point; `vui-render` does the same.  `vui-goto-key`
+finds only widgets, and rows are text (see 1).
 
-- **Workaround:** `octocat-tree--use-focus` moves point with
-  `run-at-time 0`.
+- **Workaround:** `octocat-tree--use-focus` and
+  `octocat--goto-line-target` (the lines a link names) move point with
+  `run-at-time 0`; a test of the latter mounts the component rather
+  than `vui-render` it, and waits for the timer.
 - **Ask:** a hook run after a render's cursor restoration, or
   `vui-goto-key` also matching a keyed `vui-region`.

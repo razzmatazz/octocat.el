@@ -301,7 +301,33 @@ outdated one, is placed nowhere."
                           (dolist (thread placed) (cl-incf n (length thread)))))
     n))
 
-(defun octocat-diff--segments (patch path index)
+(defun octocat-diff--span (patch from to)
+  "Return (START . END), the positions in PATCH of its lines FROM and TO, or nil.
+FROM and TO are (SIDE . LINE), as `octocat--url-lines' reads them; a
+context line is on both sides.  When one is not in PATCH, the other is
+both ends."
+  (let ((left 0) (right 0) (pos 0) start end)
+    (dolist (raw (octocat-diff--split patch))
+      (cl-incf pos)
+      (let ((on (pcase (octocat-diff--line-kind raw)
+                  ('hunk
+                   (when (string-match "@@ -\\([0-9]+\\)\\(?:,[0-9]+\\)? \\+\\([0-9]+\\)" raw)
+                     (setq left  (string-to-number (match-string 1 raw))
+                           right (string-to-number (match-string 2 raw))))
+                   nil)
+                  ('note nil)
+                  ('removed (prog1 (list (cons "LEFT" left)) (cl-incf left)))
+                  ('added   (prog1 (list (cons "RIGHT" right)) (cl-incf right)))
+                  (_ (prog1 (list (cons "LEFT" left) (cons "RIGHT" right))
+                       (cl-incf left)
+                       (cl-incf right))))))
+        (when (and (not start) (member from on)) (setq start pos))
+        (when (member to on) (setq end pos))))
+    (let ((start (or start end))
+          (end   (or end start)))
+      (and start (cons (min start end) (max start end))))))
+
+(defun octocat-diff--segments (patch path index &optional span)
   "Return the unified diff PATCH as segments, see \"Patch text\" above.
 That is a list of strings, runs of lines without final newline, and
 threads (ROOT . REPLIES), each placed right after the diff line it is
@@ -309,21 +335,40 @@ on, see `octocat-diff--walk'; the threads on the whole file come
 first.  PATH is the file's, whose major mode highlights the code, see
 `octocat-diff--lines'.  INDEX is the comment index of the file, see
 `octocat-diff--index'.  A line is cut at `octocat--max-line-length',
-see `octocat--clip-line'."
+see `octocat--clip-line'.  The lines at the positions SPAN, (START .
+END) as `octocat-diff--span' gives them, are in `octocat-line-highlight',
+and the first has `octocat-line-target'."
   (let ((lines (octocat-diff--lines patch path))
         (out   (reverse (nth 2 index)))
         run)
     (cl-flet ((flush ()
                 (when run
-                  (push (mapconcat #'identity (nreverse run) "\n") out)
+                  ;; The newline after a highlighted line takes its face,
+                  ;; so the band reaches the window's edge.
+                  (push (cl-loop for (line . more) on (nreverse run)
+                                 concat (if (not more) line
+                                          (concat line
+                                                  (propertize
+                                                   "\n" 'face
+                                                   (and (get-text-property
+                                                         0 'octocat-line-highlight line)
+                                                        'octocat-line-highlight)))))
+                        out)
                   (setq run nil))))
       ;; Diff lines are not indented, so they copy out as a valid patch.
       (octocat-diff--walk
        patch index
        (lambda (_line placed anchor)
          (let ((line (octocat--clip-line (pop lines) octocat--max-line-length)))
-           (push (if anchor (propertize line 'octocat-diff-line (cons path anchor)) line)
-                 run))
+           (when anchor
+             (setq line (propertize line 'octocat-diff-line (cons path anchor)))
+             (when (and span (<= (car span) (nth 2 anchor) (cdr span)))
+               ;; Over the diff's own faces, as GitHub's band is.
+               (add-face-text-property 0 (length line) 'octocat-line-highlight nil line)
+               (put-text-property 0 (length line) 'octocat-line-highlight t line)
+               (when (= (nth 2 anchor) (car span))
+                 (put-text-property 0 (length line) 'octocat-line-target t line))))
+           (push line run))
          (when placed
            (flush)
            (setq out (append (reverse placed) out)))))
@@ -479,6 +524,21 @@ A line with none, as a hunk heading or a comment, is left out."
       (while (progn (when-let* ((a (octocat-diff--line-anchor (point)))) (push a out))
                     (and (zerop (forward-line 1)) (< (point) end) (not (eobp)))))
       (nreverse out))))
+
+(defun octocat-diff--url-fragment ()
+  "Return \"#diff-…\" naming the diff line at point or the region's, or \"\".
+On a file's heading it names the file; a region across files names
+its first file's lines.  See `octocat--diff-fragment'."
+  (let* ((span    (octocat--point-or-region))
+         (anchors (octocat-diff--anchors (car span) (1+ (cdr span))))
+         (path    (car (car anchors)))
+         (lines   (seq-filter (lambda (a) (and (equal (car a) path) (cdr a))) anchors))
+         (at      (lambda (a) (cons (nth 1 a) (nth 2 a)))))
+    (cond (lines (concat "#" (octocat--diff-fragment
+                              path (funcall at (car lines))
+                              (funcall at (car (last lines))))))
+          (path  (concat "#" (octocat--diff-fragment path)))
+          (t     ""))))
 
 (defun octocat-diff--range (anchors)
   "Return the range a comment on the lines of ANCHORS is on, a plist.
@@ -832,7 +892,7 @@ Unless LAST, a line across WIDTH follows it, see
       ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
       (_        (vui-text text)))))
 
-(defun octocat-diff--file (repo file comments bulk raw width last)
+(defun octocat-diff--file (repo file comments bulk raw width last &optional at)
   "Return one changed FILE (a files-endpoint hash-table) of REPO.
 Its inline COMMENTS are placed in its diff.  It is folded unless BULK,
 as for `octocat-vui-fold', says otherwise.  An image added or modified
@@ -843,12 +903,17 @@ a patch is just its heading, which says why, see
 `octocat-diff--no-diff-note'.  RAW and WIDTH
 are as for `octocat-diff--comment-lines'.  Unless LAST, the file being
 the last one, its diff ends underlined, see
-`octocat-diff--underline-last'."
+`octocat-diff--underline-last'.  AT, (diff HASH FROM TO) as
+`octocat--url-lines' reads a link to this file, unfolds it and
+highlights lines FROM to TO; without them, or with neither in the
+patch, the heading is the place scrolled to."
   (let* ((filename (or (gethash "filename" file) ""))
          (status   (or (gethash "status" file) "modified"))
          (patch    (let ((p (gethash "patch" file)))
                      (and (stringp p) (not (string-empty-p p)) p)))
          (changes  (or (gethash "changes" file) 0))
+         (span     (and at (nth 2 at) patch (octocat-diff--span patch (nth 2 at) (nth 3 at))))
+         (bulk     (or bulk (and at patch '(-1 . t))))
          (sha      (gethash "sha" file))
          (image    (and (null patch) (stringp sha)
                         (member status '("added" "modified"))
@@ -863,7 +928,8 @@ the last one, its diff ends underlined, see
                              (propertize (format "  +%d -%d"
                                                  (or (gethash "additions" file) 0)
                                                  (or (gethash "deletions" file) 0))
-                                         'face 'octocat-dimmed)))))
+                                         'face 'octocat-dimmed))))
+         (title    (if (and at (not span)) (propertize title 'octocat-line-target t) title)))
     (cond
      (image
       (vui-component 'octocat-vui-fold
@@ -887,10 +953,10 @@ the last one, its diff ends underlined, see
         :header (lambda (open toggle)
                   (octocat-vui-fold-header "" open toggle title
                                            '("RET: show diff" . "RET: hide diff")))
-        :deps (list patch comments raw width last)
+        :deps (list patch comments raw width last span)
         :prepare (lambda ()
                    (octocat-diff--body (octocat-diff--segments
-                                        patch filename (octocat-diff--index comments))
+                                        patch filename (octocat-diff--index comments) span)
                                        raw width (not last))))))))
 
 (defun octocat-diff--line-count (files)
@@ -906,6 +972,10 @@ the last one, its diff ends underlined, see
       (when-let* ((path (octocat--nonempty (gethash "path" c))))
         (push c (alist-get path table nil nil #'equal))))
     (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) table)))
+
+(defvar-local octocat-diff--at nil
+  "The lines a link to this page named, (diff HASH FROM TO), or nil.
+See `octocat--url-lines'.  The user's refresh drops them.")
 
 (defvar-local octocat-diff--hide-comments nil
   "Non-nil leaves the inline comments out of this page's diff.
@@ -939,7 +1009,7 @@ HIDE is whether they are hidden; the hint names the key that switches."
                  (help "hide the comments in the diff")
                  #'octocat-diff-toggle-comments)))))
 
-(vui-defcomponent octocat-diff--files (repo files by-path hide fits raw width underline)
+(vui-defcomponent octocat-diff--files (repo files by-path hide fits raw width underline at)
   "The Files section: FILES of REPO with the review comments BY-PATH, folded.
 They start unfolded when FITS, the whole diff fitting in the window.
 HIDE leaves the comments out.  RAW and WIDTH are as for
@@ -947,11 +1017,19 @@ HIDE leaves the comments out.  RAW and WIDTH are as for
 WIDTH, but for a page whose tab row heads the section.  The heading's
 \"Expand all\" button unfolds or folds every file, and its switch of the
 comments, there when the diff shows some, runs
-`octocat-diff-toggle-comments'."
+`octocat-diff-toggle-comments'.  AT, the lines a link named, is
+scrolled to, see `octocat-diff--file'; the user's refresh drops it."
   :state ((bulk (and fits (cons 0 t))))
   :render
-  (let* ((_ (octocat-vui-use-view-reset
-             (vui-async-callback () (vui-set-state :bulk (and fits (cons 0 t))))))
+  (let* ((buf (current-buffer))
+         (_ (octocat-vui-use-view-reset
+             (vui-async-callback ()
+               (vui-set-state :bulk (and fits (cons 0 t)))
+               (when (buffer-live-p buf)
+                 (with-current-buffer buf
+                   (when octocat-diff--at
+                     (setq octocat-diff--at nil)
+                     (octocat-vui-update-page :at nil)))))))
          (heading (format "Files (%d)" (length files)))
          ;; Only those the diff places: an outdated comment's line is gone.
          (placed  (vui-use-memo (files by-path)
@@ -960,6 +1038,9 @@ comments, there when the diff shows some, runs
                              for comments = (cdr (assoc (gethash "filename" f) by-path))
                              when (and comments (stringp patch))
                              sum (octocat-diff--placed-count patch comments)))))
+    (vui-use-effect (at)
+      (when at (octocat--goto-line-target buf))
+      nil)
     (vui-vstack
      (let ((after (and (cl-some (lambda (f) (stringp (gethash "patch" f))) files)
                        (cons (octocat-vui-expand-all-button
@@ -977,16 +1058,20 @@ comments, there when the diff shows some, runs
                    (octocat-diff--file repo f (and (not hide)
                                                    (cdr (assoc (gethash "filename" f) by-path)))
                                        bulk raw width
-                                       (eq f (aref files (1- (length files))))))
+                                       (eq f (aref files (1- (length files))))
+                                       (and at (octocat--diff-path-hash-p
+                                                (nth 1 at) (or (gethash "filename" f) ""))
+                                            at)))
                  (lambda (f) (gethash "filename" f)))))))
 
-(defun octocat-diff-files-section (repo files by-path hide raw width &optional underline)
+(defun octocat-diff-files-section (repo files by-path hide raw width &optional underline at)
   "Return the vnode of the Files section: the heading and one entry per file.
 FILES is REPO's files vector and BY-PATH the review comments by file path,
 left out when HIDE.
 Files start folded, unless the whole diff fits in the window.  The
 comments are markdown, rendered unless RAW, to fit WIDTH columns.
-UNDERLINE underlines the heading across WIDTH."
+UNDERLINE underlines the heading across WIDTH.  AT is the lines a
+link named, see `octocat-diff--file'."
   (vui-component 'octocat-diff--files
     :repo repo
     :files files
@@ -995,6 +1080,7 @@ UNDERLINE underlines the heading across WIDTH."
     :raw raw
     :width width
     :underline underline
+    :at at
     :fits (<= (octocat-diff--line-count files) (octocat-vui-window-height))))
 
 (defun octocat-diff-comments-section (label comments raw width)
@@ -1369,11 +1455,12 @@ patch `git am' applies."
 
 ;;;;; Page
 
-(vui-defcomponent octocat-commit--page (repo sha hide-comments raw patch tick)
+(vui-defcomponent octocat-commit--page (repo sha hide-comments raw patch at tick)
   "Commit SHA of REPO: top line, then as `git show': who and when, the
 message, then checks, files and comments.  HIDE-COMMENTS leaves the
 inline comments out of the diff.  RAW shows markdown verbatim.  PATCH
-shows the commit as a patch instead, see `octocat-commit--patch-text'.  The
+shows the commit as a patch instead, see `octocat-commit--patch-text'.
+AT is the lines a link named, see `octocat-diff--file'.  The
 commit, its checks, its comments and the branch holding it are fetched
 independently; each shows what the store holds until then.  A new TICK
 fetches them again."
@@ -1411,7 +1498,8 @@ fetches them again."
                         (when-let* ((section (octocat-commit--checks repo sha checks width)))
                           (vui-fragment section (vui-newline)))
                         (octocat-diff-files-section
-                         repo (or (gethash "files" data) []) by-path hide-comments raw md-width t)
+                         repo (or (gethash "files" data) []) by-path hide-comments raw md-width t
+                         at)
                         ;; Most commits have none, so the section is left
                         ;; out unless there are any, or they failed to load.
                         (when (or (not (seq-empty-p (plist-get comments :data)))
@@ -1425,9 +1513,10 @@ fetches them again."
 ;;;;; Major mode
 
 (defun octocat-commit--page-url ()
-  "Return the URL of this commit."
+  "Return the URL of this commit, at the diff line of point or the region."
   (and octocat--commit-repo octocat--commit-sha
-       (octocat--web-url "%s/commit/%s" octocat--commit-repo octocat--commit-sha)))
+       (concat (octocat--web-url "%s/commit/%s" octocat--commit-repo octocat--commit-sha)
+               (octocat-diff--url-fragment))))
 
 (defvar octocat-commit-mode-map
   (let ((map (make-sparse-keymap)))
@@ -1469,10 +1558,12 @@ only on `g'."
                                   :sha octocat--commit-sha
                                   :hide-comments octocat-diff--hide-comments
                                   :raw octocat--markdown-raw
-                                  :patch octocat-commit--patch)))
+                                  :patch octocat-commit--patch
+                                  :at octocat-diff--at)))
 
-(defun octocat-commit-open (repo sha)
-  "Show commit SHA of REPO in its own buffer."
+(defun octocat-commit-open (repo sha &optional at)
+  "Show commit SHA of REPO in its own buffer, AT the lines a link named.
+See `octocat-diff--file'."
   (let ((buf (get-buffer-create
               (format "*%s commit %s*" repo
                       (substring sha 0 (min 7 (length sha)))))))
@@ -1481,12 +1572,13 @@ only on `g'."
       (octocat-commit-mode))
     (setq octocat--commit-repo repo
           octocat--commit-sha  sha
-          octocat-diff--hide-comments nil)
+          octocat-diff--hide-comments nil
+          octocat-diff--at at)
     (octocat-commit-refresh)))
 
-(cl-defmethod octocat-open ((_kind (eql 'commit)) repo sha)
-  "Open commit SHA of REPO, as `octocat-commit-open'."
-  (octocat-commit-open repo sha))
+(cl-defmethod octocat-open ((_kind (eql 'commit)) repo sha &optional at)
+  "Open commit SHA of REPO, AT the lines a link named, as `octocat-commit-open'."
+  (apply #'octocat-commit-open repo sha (and at (list at))))
 
 
 ;;;; Compare page
@@ -1602,10 +1694,11 @@ then the counts of DATA, the comparison, once it is loaded."
 
 ;;;;; Page
 
-(vui-defcomponent octocat-compare--page (repo base dots head raw tick)
+(vui-defcomponent octocat-compare--page (repo base dots head raw at tick)
   "The comparison of BASE and HEAD of REPO: its commits, then its files.
-DOTS is as in `octocat--compare-refs'.  RAW shows markdown verbatim.  A
-new TICK fetches it again."
+DOTS is as in `octocat--compare-refs'.  RAW shows markdown verbatim.
+AT is the lines a link named, see `octocat-diff--file'.  A new TICK
+fetches it again."
   :render
   (let* ((width    (octocat--markdown-width))
          (snap     (octocat-vui-use-resource (list 'compare repo base head) tick)))
@@ -1627,7 +1720,7 @@ new TICK fetches it again."
                 (list (vui-newline))
                 (octocat-compare--commits repo (or (gethash "commits" data) []) width)
                 (list (octocat-diff-files-section
-                       repo (or (gethash "files" data) []) nil nil raw width t)))))))))
+                       repo (or (gethash "files" data) []) nil nil raw width t at)))))))))
 
 
 ;;;;; Major mode
@@ -1637,9 +1730,10 @@ new TICK fetches it again."
   (octocat--web-url "%s/compare/%s" repo (apply #'concat refs)))
 
 (defun octocat-compare--page-url ()
-  "Return the URL of this comparison."
+  "Return the URL of this comparison, at the diff line of point or the region."
   (and octocat--compare-repo octocat--compare-refs
-       (octocat-compare--url octocat--compare-repo octocat--compare-refs)))
+       (concat (octocat-compare--url octocat--compare-repo octocat--compare-refs)
+               (octocat-diff--url-fragment))))
 
 (defvar octocat-compare-mode-map
   (let ((map (make-sparse-keymap)))
@@ -1677,22 +1771,26 @@ new TICK fetches it again."
                               (list octocat--compare-repo base head)
                               (list :repo octocat--compare-repo
                                     :base base :dots dots :head head
-                                    :raw octocat--markdown-raw))))
+                                    :raw octocat--markdown-raw
+                                    :at octocat-diff--at))))
 
-(defun octocat-compare-open (repo base dots head)
+(defun octocat-compare-open (repo base dots head &optional at)
   "Show the comparison of BASE and HEAD of REPO in its own buffer.
-DOTS is \"...\", or \"..\" for a two-dot link (see the Commentary)."
+DOTS is \"...\", or \"..\" for a two-dot link (see the Commentary).
+AT is the lines a link named, see `octocat-diff--file'."
   (let ((buf (get-buffer-create (format "*%s compare %s%s%s*" repo base dots head))))
     (octocat-display-buffer buf)
     (unless (derived-mode-p 'octocat-compare-mode)
       (octocat-compare-mode))
     (setq octocat--compare-repo repo
-          octocat--compare-refs (list base dots head))
+          octocat--compare-refs (list base dots head)
+          octocat-diff--at at)
     (octocat-compare-refresh)))
 
-(cl-defmethod octocat-open ((_kind (eql 'compare)) repo base dots head)
-  "Open the comparison of BASE DOTS HEAD in REPO, as `octocat-compare-open'."
-  (octocat-compare-open repo base dots head))
+(cl-defmethod octocat-open ((_kind (eql 'compare)) repo base dots head &optional at)
+  "Open the comparison of BASE DOTS HEAD in REPO, AT the lines a link named.
+See `octocat-compare-open'."
+  (apply #'octocat-compare-open repo base dots head (and at (list at))))
 
 (provide 'octocat-diff)
 ;;; octocat-diff.el ends here

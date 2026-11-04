@@ -290,6 +290,11 @@ with a floor of 1."
   "Face for the grey bars standing in for content that is still loading."
   :group 'octocat)
 
+(defface octocat-line-highlight
+  '((t :inherit highlight :extend t))
+  "Face for the lines a link names, such as #L12-L20, as GitHub's yellow band."
+  :group 'octocat)
+
 (defface octocat-merge-ready
   '((((class color) (background dark)) :foreground "#3fb950")
     (((class color) (background light)) :foreground "#1a7f37")
@@ -1375,6 +1380,58 @@ are the ref takes asking GitHub, see `octocat--open-ref-path'.  A
              (`("actions" "runs" ,r . ,_) (and (funcall num r) (list 'run repo (funcall num r))))
              (`("actions" "workflows" ,file) (list 'workflow repo file)))))))))
 
+;; The lines a link names, after its "#": "L12-L20" of a file, and
+;; "diff-HASHL10-R14" of a diff, HASH being the SHA-256 of the file's
+;; path (the MD5 in older links) and L and R the old and new sides.
+
+(defun octocat--url-lines (url)
+  "Return the lines URL's fragment names, or nil.
+That is (lines START END) for a file's #L12 or #L12-L20, in order,
+columns (#L12C5) ignored; or (diff HASH) for a file of a diff, or
+\(diff HASH FROM TO) for lines of it, FROM and TO each (SIDE . LINE),
+SIDE \"LEFT\" or \"RIGHT\" as `octocat-diff-line' anchors name it."
+  (when (string-match "#\\(.*\\)\\'" url)
+    (let ((frag (match-string 1 url))
+          (side (lambda (s) (if (equal s "L") "LEFT" "RIGHT"))))
+      (cond
+       ((string-match "\\`L\\([0-9]+\\)\\(?:C[0-9]+\\)?\\(?:-L\\([0-9]+\\)\\(?:C[0-9]+\\)?\\)?\\'"
+                      frag)
+        (let ((a (string-to-number (match-string 1 frag)))
+              (b (string-to-number (or (match-string 2 frag) (match-string 1 frag)))))
+          (and (> a 0) (> b 0) (list 'lines (min a b) (max a b)))))
+       ((string-match (concat "\\`diff-\\([0-9a-f]\\{64\\}\\|[0-9a-f]\\{32\\}\\)"
+                              "\\(?:\\([LR]\\)\\([0-9]+\\)\\(?:-\\([LR]\\)\\([0-9]+\\)\\)?\\)?\\'")
+                      frag)
+        (let ((hash (match-string 1 frag)))
+          (if (not (match-string 2 frag))
+              (list 'diff hash)
+            (let ((from (cons (funcall side (match-string 2 frag))
+                              (string-to-number (match-string 3 frag)))))
+              (list 'diff hash from
+                    (if (match-string 4 frag)
+                        (cons (funcall side (match-string 4 frag))
+                              (string-to-number (match-string 5 frag)))
+                      from))))))))))
+
+(defun octocat--lines-fragment (start end)
+  "Return the fragment naming lines START to END of a file, as \"L12-L20\"."
+  (if (= start end) (format "L%d" start) (format "L%d-L%d" start end)))
+
+(defun octocat--diff-path-hash-p (hash path)
+  "Return non-nil if HASH, of a #diff- fragment, names the file at PATH."
+  (member hash (list (secure-hash 'sha256 path) (secure-hash 'md5 path))))
+
+(defun octocat--diff-fragment (path &optional from to)
+  "Return the fragment naming file PATH of a diff, or lines FROM to TO of it.
+FROM and TO are (SIDE . LINE), as `octocat--url-lines' reads them back;
+TO defaults to FROM."
+  (let ((end (lambda (at) (format "%s%d" (if (equal (car at) "LEFT") "L" "R") (cdr at)))))
+    (concat "diff-" (secure-hash 'sha256 path)
+            (when from
+              (concat (funcall end from)
+                      (when (and to (not (equal to from)))
+                        (concat "-" (funcall end to))))))))
+
 (defconst octocat--ref-prefixes-max 10
   "Most leading segments of a github.com path tried as a ref.")
 
@@ -1429,27 +1486,36 @@ and path are nil: the default branch."
 
 (defun octocat-browse-url (url &rest _)
   "Open github.com URL in the octocat view showing it.
-The handler `octocat-github-links-mode' adds to `browse-url-handlers'."
-  (pcase (octocat--github-url-target url)
-    ('nil (user-error "Octocat: no view for %s" url))
-    (`(repo ,repo)         (octocat-visit-repo repo))
-    ;; github.com redirects /issues/N of a PR to it, so ask which it is.
-    (`(issue ,repo ,n)     (octocat--markdown-open-ref 'issue repo n))
-    (`(workflow ,repo ,file)
-     (octocat-open 'workflow repo file file (concat ".github/workflows/" file)))
-    (`(tree ,repo . ,segs)
-     (octocat--open-ref-path repo segs
-                             (lambda (ref path)
-                               (if path
-                                   (octocat-open 'tree repo ref path)
-                                 (octocat-visit-repo repo ref)))))
-    (`(commit-list ,repo . ,segs)
-     (octocat--open-ref-path repo segs
-                             (lambda (ref path) (octocat-open 'commit-list repo ref path))))
-    (`(blob ,repo . ,segs)
-     (octocat--open-ref-path repo segs
-                             (lambda (ref path) (octocat-open 'file repo ref path))))
-    (target (apply #'octocat-open target))))
+The handler `octocat-github-links-mode' adds to `browse-url-handlers'.
+The lines URL names, see `octocat--url-lines', are scrolled to and
+highlighted on the file page and on the diff pages."
+  (let* ((at    (octocat--url-lines url))
+         (lines (and (eq (car at) 'lines) at))
+         (diff  (and (eq (car at) 'diff) at)))
+    (pcase (octocat--github-url-target url)
+      ('nil (user-error "Octocat: no view for %s" url))
+      (`(repo ,repo)         (octocat-visit-repo repo))
+      ;; github.com redirects /issues/N of a PR to it, so ask which it is.
+      (`(issue ,repo ,n)     (octocat--markdown-open-ref 'issue repo n))
+      (`(workflow ,repo ,file)
+       (octocat-open 'workflow repo file file (concat ".github/workflows/" file)))
+      (`(tree ,repo . ,segs)
+       (octocat--open-ref-path repo segs
+                               (lambda (ref path)
+                                 (if path
+                                     (octocat-open 'tree repo ref path)
+                                   (octocat-visit-repo repo ref)))))
+      (`(commit-list ,repo . ,segs)
+       (octocat--open-ref-path repo segs
+                               (lambda (ref path) (octocat-open 'commit-list repo ref path))))
+      (`(blob ,repo . ,segs)
+       (octocat--open-ref-path repo segs
+                               (lambda (ref path)
+                                 (apply #'octocat-open 'file repo ref path
+                                        (and lines (list lines))))))
+      ((and target `(,(or 'commit 'compare 'pr-diff) . ,_) (guard diff))
+       (apply #'octocat-open (append target (list diff))))
+      (target (apply #'octocat-open target)))))
 
 ;; So `browse-url-with-browser-kind' skips it when asked for a browser.
 (function-put 'octocat-browse-url 'browse-url-browser-kind 'internal)
@@ -1484,6 +1550,36 @@ A REPO of nil is the buffer's."
           ;; GitHub redirects a PR's /issues/N to its /pull/N.
           (octocat--web-url "%s/issues/%d" repo id)
         (octocat--web-url "%s/commit/%s" repo id)))))
+
+(defun octocat--goto-line-target (buf)
+  "Move point in BUF, and in each window showing it, to the line a link named.
+That is the text with the `octocat-line-target' property, if any.  It
+moves once the render is done: called from an effect, as it is, the
+effect of a first render would see `vui-mount' put point back at the
+top."
+  (run-at-time
+   0 nil
+   (lambda ()
+     (when (buffer-live-p buf)
+       (with-current-buffer buf
+         (when-let* ((pos (text-property-any (point-min) (point-max)
+                                             'octocat-line-target t)))
+           (goto-char pos)
+           (dolist (win (get-buffer-window-list buf nil t))
+             (set-window-point win pos)
+             (with-selected-window win (recenter 3)))))))))
+
+(defun octocat--point-or-region ()
+  "Return (BEG . END), the region's first and last characters, or point's.
+A region ending at a line's start stops on the line before, as a
+line-wise selection does."
+  (if (use-region-p)
+      (let ((beg (region-beginning))
+            (end (region-end)))
+        (cons beg (if (and (> end beg) (save-excursion (goto-char end) (bolp)))
+                      (1- end)
+                    end)))
+    (cons (point) (point))))
 
 (defun octocat--url-at-point ()
   "Return the URL of what point is on, or else of the page, or nil.

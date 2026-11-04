@@ -319,6 +319,120 @@ A thread that can be resolved ends in a button doing it, a row apart."
     (should (string-search "▸ A a.png" out))
     (should (string-search "+x" out))))
 
+(defconst octocat-diff-tests--patch "@@ -1,3 +1,3 @@\n a\n-b\n+c\n d"
+  "A patch whose positions are: 1 the hunk, 2 a, 3 -b, 4 +c, 5 d.")
+
+(ert-deftest octocat-diff-test-span ()
+  "A link's lines map to positions in the patch, a context line on both sides."
+  (let ((p octocat-diff-tests--patch))
+    (should (equal (octocat-diff--span p '("LEFT" . 2) '("RIGHT" . 2)) '(3 . 4)))
+    (should (equal (octocat-diff--span p '("RIGHT" . 3) '("LEFT" . 1)) '(2 . 5)))
+    (should (equal (octocat-diff--span p '("LEFT" . 3) '("LEFT" . 3)) '(5 . 5)))
+    (should (equal (octocat-diff--span p '("RIGHT" . 9) '("RIGHT" . 2)) '(4 . 4)))
+    (should-not (octocat-diff--span p '("RIGHT" . 9) '("LEFT" . 9)))))
+
+(ert-deftest octocat-diff-test-segments-span ()
+  "The lines of a span are highlighted, over the diff's faces; the first is the target."
+  (let* ((seg   (car (octocat-diff--segments octocat-diff-tests--patch "a.el"
+                                             (octocat-diff--index nil) '(3 . 4))))
+         (lit   (lambda (i) (and (memq 'octocat-line-highlight
+                                       (ensure-list (get-text-property i 'face seg)))
+                                 t)))
+         (start (lambda (s) (string-search s seg))))
+    (should (equal (substring-no-properties seg) octocat-diff-tests--patch))
+    (should-not (funcall lit (funcall start " a")))
+    (should (funcall lit (funcall start "-b")))
+    ;; The newline between them too, so the band reaches the edge.
+    (should (funcall lit (+ 2 (funcall start "-b"))))
+    (should (funcall lit (funcall start "+c")))
+    (should (funcall lit (+ 2 (funcall start "+c"))))
+    (should-not (funcall lit (funcall start " d")))
+    ;; Over, not under, the diff's own background.
+    (should (eq (car (ensure-list (get-text-property (funcall start "-b") 'face seg)))
+                'octocat-line-highlight))
+    (should (equal (text-property-any 0 (length seg) 'octocat-line-target t seg)
+                   (funcall start "-b")))))
+
+(defun octocat-diff-tests--files-with (at)
+  "Mount the Files section of a.el and b.el, folded, AT the lines a link named.
+Return the buffer, current, once point has moved there.  Mounted, as a
+page is: `vui-render' would put point back at the top."
+  (let ((buf (generate-new-buffer " *files*")))
+    (set-buffer buf)
+    (vui-mount (vui-component 'octocat-diff--files
+                  :repo "o/r"
+                  :files (vector (json-parse-string
+                                  "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}")
+                                 (let ((f (make-hash-table :test #'equal)))
+                                   (puthash "filename" "b.el" f)
+                                   (puthash "patch" octocat-diff-tests--patch f)
+                                   f))
+                  :fits nil :raw nil :width 80 :at at)
+               (buffer-name))
+    (dotimes (_ 3)
+      (vui-flush-sync)
+      (accept-process-output nil 0.01))
+    buf))
+
+(ert-deftest octocat-diff-test-files-at ()
+  "The file a link names is unfolded, its lines highlighted and scrolled to.
+Only that file; a hash naming none changes nothing."
+  (let ((h (secure-hash 'sha256 "b.el")))
+    (with-current-buffer (octocat-diff-tests--files-with
+                          (list 'diff h '("LEFT" . 2) '("RIGHT" . 2)))
+      (unwind-protect
+          (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+            (should (string-search "▾ M b.el" text))
+            (should (string-search "▸ M a.el" text))
+            (should-not (string-search "+x" text))
+            (should (looking-at-p "-b"))
+            (should (memq 'octocat-line-highlight (ensure-list (get-text-property (point) 'face))))
+            (should (equal (octocat-diff--url-fragment) (concat "#diff-" h "L2"))))
+        (kill-buffer)))
+    ;; The file alone: its heading.
+    (with-current-buffer (octocat-diff-tests--files-with (list 'diff h))
+      (unwind-protect
+          (progn
+            (should (string-search "▾ M b.el" (buffer-string)))
+            (should (looking-at-p "M b\\.el"))
+            (should-not (text-property-any (point-min) (point-max)
+                                           'octocat-line-highlight t)))
+        (kill-buffer)))
+    (with-current-buffer (octocat-diff-tests--files-with
+                          (list 'diff (secure-hash 'sha256 "c.el") '("RIGHT" . 1) '("RIGHT" . 1)))
+      (unwind-protect
+          (progn
+            (should (string-search "▸ M b.el" (buffer-string)))
+            (should (= (point) (point-min))))
+        (kill-buffer)))))
+
+(ert-deftest octocat-diff-test-url-fragment ()
+  "The diff line of point, or the region's, makes the link's fragment."
+  (let ((h (secure-hash 'sha256 "b.el")))
+    (with-current-buffer (octocat-diff-tests--files-with (list 'diff h))
+      (unwind-protect
+          (cl-flet ((at (s) (goto-char (point-min)) (search-forward s) (goto-char (match-beginning 0))))
+            (at "+c")
+            (should (equal (octocat-diff--url-fragment) (concat "#diff-" h "R2")))
+            (at " d")
+            (should (equal (octocat-diff--url-fragment) (concat "#diff-" h "R3")))
+            (at "b.el")
+            (should (equal (octocat-diff--url-fragment) (concat "#diff-" h)))
+            (let ((transient-mark-mode t))
+              (at "-b")
+              (push-mark (point) t t)
+              (at "+c")
+              (end-of-line)
+              (should (equal (octocat-diff--url-fragment) (concat "#diff-" h "L2-R2")))
+              ;; From a.el's heading on: the first file's.
+              (at "a.el")
+              (should (equal (octocat-diff--url-fragment)
+                             (concat "#diff-" (secure-hash 'sha256 "a.el"))))
+              (deactivate-mark))
+            (goto-char (point-min))
+            (should (equal (octocat-diff--url-fragment) "")))
+        (kill-buffer)))))
+
 (ert-deftest octocat-commit-test-skeleton ()
   "The commit skeleton keeps its grey bars within WIDTH."
   (let ((text (octocat-commit--skeleton 30)))
