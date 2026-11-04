@@ -39,12 +39,6 @@ the query).
 
 - **Cost.**  A remount rebuilds every component: memos recompute, every
   `vui-use-async` refetches, folds and "load more" are lost.
-- **vui.el bug.**  vui runs handlers (`:on-click`, `:on-submit`, ...)
-  inside `(let ((vui--root-instance captured-root)) ...)`, so a
-  `vui-mount` in a handler is undone as it returns.  The new page is
-  never unmounted and its effects keep running: its window-width hook
-  repainted a PR list's old filter over the current one on `C-x 3`.  See
-  the vui.el item in TODO.md.
 - **Focus.**  `vui-mount` ends with `switch-to-buffer`, so a remount
   from an async callback, such as a merge finishing, pulls the user back
   to the page (see "Never steal focus" in
@@ -56,8 +50,7 @@ that again, which re-renders in place with a new `:tick`.  Each
 resource the page reads takes the tick (`octocat-vui-use-resource`), so
 it refetches and keeps showing the old data until the new data arrives.
 Returning to an open page, as from its tab, is not a refresh: see
-`octocat-vui-revisit-page`.  A handler that must remount
-defers it, e.g. `(run-at-time 0 nil ...)`.
+`octocat-vui-revisit-page`.
 
 The user's refresh, `octocat-vui-refresh` (`g`, `gr`), also resets the
 page's view: the user asked to see the page afresh, so what they

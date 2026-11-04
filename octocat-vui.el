@@ -1246,9 +1246,9 @@ It is at most `octocat-max-width' on a capped page, see
 (defun octocat-vui-update-page (&rest props)
   "Re-render the current buffer's page with PROPS changed, in place.
 PROPS is a plist of the props to change.  Unlike a remount, the page
-keeps its state, and this is safe in a vui handler (see
-docs/using-vui.md); a part that must start afresh for the new props takes
-them as its :key.  Return nil when the buffer has no page."
+keeps its state (see docs/using-vui.md); a part that must start afresh
+for the new props takes them as its :key.  Return nil when the buffer
+has no page."
   (when-let* ((root (vui-get-instance)))
     (let ((new (copy-sequence (vui-instance-props root))))
       (while props
