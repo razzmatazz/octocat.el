@@ -46,72 +46,29 @@
 (declare-function evil-forward-char         "ext:evil-commands"
                   (&optional count crosslines noerror) t)
 
-(defvar octocat-mode-map)
-(defvar octocat-repo-mode-map)
-(defvar octocat-user-mode-map)
-(defvar octocat-doctor-mode-map)
-(declare-function octocat-search-repo "octocat-search" ())
-(defvar octocat-pr-list-mode-map)
-(defvar octocat-issue-list-mode-map)
-(defvar octocat-run-list-mode-map)
-(defvar octocat-vui-list-mark-map)
-(defvar octocat-pr-mode-map)
-(defvar octocat-commit-mode-map)
-(defvar octocat-compare-mode-map)
-(defvar octocat-checks-mode-map)
-(defvar octocat-pr-diff-mode-map)
-(defvar octocat-pr-commits-mode-map)
-(defvar octocat-issue-mode-map)
-(defvar octocat-workflow-mode-map)
-(defvar octocat-run-mode-map)
-(defvar octocat-job-mode-map)
-(defvar octocat-file-mode-map)
+;; octocat.el loads this file last, once it has required every other
+;; module, so requiring them here costs nothing.
+(require 'octocat-checks)
+(require 'octocat-commit)
+(require 'octocat-compare)
+(require 'octocat-core)
+(require 'octocat-diff)
+(require 'octocat-doctor)
+(require 'octocat-issue)
+(require 'octocat-job)
+(require 'octocat-pr)
+(require 'octocat-pr-diff)
+(require 'octocat-repo)
+(require 'octocat-run)
+(require 'octocat-search)
+(require 'octocat-tree)
+(require 'octocat-user)
+(require 'octocat-vui)
+(require 'octocat-workflow)
 
-(declare-function octocat-tree-find-file     "octocat-tree"      ())
-(declare-function octocat-repo-up            "octocat-repo"      ())
-(declare-function octocat-tree--entry-at-point-p "octocat-tree" ())
-(declare-function octocat-tree-visit         "octocat-tree"      ())
-(declare-function octocat-visit              "octocat-core"      ())
-(declare-function octocat-visit-other-window "octocat-core"      ())
-(declare-function octocat-file-refresh       "octocat-tree"
-                  (&optional _ignore-auto _noconfirm))
-(declare-function octocat-vui-refresh        "octocat-vui"       ())
-(declare-function octocat-file-log-open      "octocat-tree"      ())
-(declare-function octocat-file-switch-branch "octocat-tree"      ())
-(declare-function octocat-jump               "octocat-core"      (&optional other))
-(declare-function octocat-toggle-markdown    "octocat-core"      ())
-(declare-function octocat-pr-refresh         "octocat-pr"
-                  (&optional _ignore-auto _noconfirm))
-(declare-function octocat-pr-add-comment     "octocat-pr"        ())
-(declare-function octocat-pr-edit-body       "octocat-pr"        ())
-(declare-function octocat-pr-edit            "octocat-pr"        ())
-(declare-function octocat-pr-react           "octocat-pr"        ())
-(declare-function octocat-pr-merge           "octocat-pr"        ())
-(declare-function octocat-commit-refresh     "octocat-commit"
-                  (&optional _ignore-auto _noconfirm))
-(declare-function octocat-pr-diff-review    "octocat-pr-diff"   ())
-(declare-function octocat-diff-add-comment  "octocat-diff"      ())
-(declare-function octocat-diff-edit-comment "octocat-diff"      ())
-(declare-function octocat-diff-toggle-comments "octocat-diff"   ())
-(declare-function octocat-run-toggle-view     "octocat-run"    ())
-(declare-function octocat-compare-refresh   "octocat-compare"   (&optional _ignore-auto _noconfirm))
-(declare-function octocat-checks-refresh    "octocat-checks"    (&optional _ignore-auto _noconfirm))
-(declare-function octocat-issue-refresh      "octocat-issue"
-                  (&optional _ignore-auto _noconfirm))
-(declare-function octocat-issue-add-comment  "octocat-issue"     ())
-(declare-function octocat-issue-new          "octocat-issue"     ())
-(declare-function octocat-issue-edit-body    "octocat-issue"     ())
-(declare-function octocat-issue-edit         "octocat-issue"     ())
-(declare-function octocat-issue-react        "octocat-issue"     ())
-(declare-function octocat-feed-load-more     "octocat"           ())
-(declare-function octocat-repo-switch-branch "octocat-repo"      ())
-(declare-function octocat-vui-list-toggle-compact "octocat-vui"  ())
-(declare-function octocat-vui-list-filter    "octocat-vui"       ())
-(declare-function octocat-vui-list-edit-query "octocat-vui"      ())
-(defvar octocat-vui-list-query-submit-hook)
-(defvar octocat-vui-list-mode-hook)
+(defvar octocat-mode-map)
+(declare-function octocat-feed-load-more "octocat" ())
 (defvar evil-local-mode)
-(declare-function octocat-vui-list--query-widget "octocat-vui" ())
 
 (defun octocat-evil-list-edit-query ()
   "Move into the query field of the current list, in insert state."
@@ -174,13 +131,6 @@ would start recording a macro."
   "Leave insert state once the query field is submitted."
   (when evil-local-mode
     (evil-normal-state)))
-
-(declare-function octocat-workflow-refresh   "octocat-workflow"
-                  (&optional _ignore-auto _noconfirm))
-(declare-function octocat-run-refresh        "octocat-run"
-                  (&optional _ignore-auto _noconfirm))
-(declare-function octocat-job-refresh        "octocat-job"
-                  (&optional _ignore-auto _noconfirm))
 
 (defun octocat-evil-tree-l ()
   "Open the file or the directory at point, as in treemacs-evil.

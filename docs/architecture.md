@@ -23,7 +23,9 @@ From the bottom up:
   `octocat-timeline`, `octocat-search`.
 - **Pages**: one module per kind of page, such as `octocat-pr`,
   `octocat-issue` or `octocat-repo`, requiring the pages they link to.
-- **`octocat-evil`**: Evil bindings, loaded only once Evil is on.
+- **`octocat-evil`**: Evil bindings, loaded only once Evil is on.  It
+  requires the pages it binds keys in, which `octocat.el` has loaded
+  by then.
 
 Requires must not form a cycle.  Where a lower module calls into a
 higher one, it does so through a variable or hook whose default the
@@ -88,6 +90,23 @@ flowchart TD
   octocat_doctor --> octocat_vui
   octocat_edit --> octocat_core
   octocat_edit --> octocat_vui
+  octocat_evil --> octocat_checks
+  octocat_evil --> octocat_commit
+  octocat_evil --> octocat_compare
+  octocat_evil --> octocat_core
+  octocat_evil --> octocat_diff
+  octocat_evil --> octocat_doctor
+  octocat_evil --> octocat_issue
+  octocat_evil --> octocat_job
+  octocat_evil --> octocat_pr
+  octocat_evil --> octocat_pr_diff
+  octocat_evil --> octocat_repo
+  octocat_evil --> octocat_run
+  octocat_evil --> octocat_search
+  octocat_evil --> octocat_tree
+  octocat_evil --> octocat_user
+  octocat_evil --> octocat_vui
+  octocat_evil --> octocat_workflow
   octocat_image --> octocat_markdown
   octocat_issue --> octocat_core
   octocat_issue --> octocat_edit
@@ -188,7 +207,7 @@ flowchart TD
 | `octocat-diff` | Diff rendering for octocat | `octocat-core`, `octocat-tree`, `octocat-vui` |
 | `octocat-doctor` | Report on octocat's code, store and requests | `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-edit` | Edit buffer for octocat PRs and issues | `octocat-core`, `octocat-vui` |
-| `octocat-evil` | Evil keybindings for octocat |  |
+| `octocat-evil` | Evil keybindings for octocat | `octocat-checks`, `octocat-commit`, `octocat-compare`, `octocat-core`, `octocat-diff`, `octocat-doctor`, `octocat-issue`, `octocat-job`, `octocat-pr`, `octocat-pr-diff`, `octocat-repo`, `octocat-run`, `octocat-search`, `octocat-tree`, `octocat-user`, `octocat-vui`, `octocat-workflow` |
 | `octocat-image` | Show images uploaded to GitHub in markdown | `octocat-markdown` |
 | `octocat-issue` | Issue detail view for octocat | `octocat-core`, `octocat-edit`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
 | `octocat-job` | Job detail view for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |
