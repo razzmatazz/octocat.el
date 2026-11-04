@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A mermaid diagram too wide for the window is drawn past it, to scroll to, not as source
 * A branch's commits show a graph of its merges, as gitk does; a commit starts with ○, a merge ⊕
 * A run's jobs show which waits for which, and their steps; `C-c C-v` draws a graph
 * The inputs of a workflow's Run workflow form can be typed in again; with Evil, RET edits one

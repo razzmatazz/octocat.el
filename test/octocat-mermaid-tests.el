@@ -400,12 +400,18 @@ in its way are not drawn."
               (octocat-markdown-render
                "```mermaid\ngraph TD\nsubgraph a\nsubgraph b\nX\nend\nend\n```" ""))))
     (should (string-prefix-p "mermaid diagram (source)\n" out))
-    (should (string-match-p "subgraph b" out)))
-  ;; Too narrow for the diagram.
-  (should (string-match-p "mermaiddiagram(source)"
-                          (replace-regexp-in-string
-                           "[\n ]" ""
-                           (octocat-markdown-render "```mermaid\ngraph TD\nA[Start] --> B\n```" "" 5)))))
+    (should (string-match-p "subgraph b" out))))
+
+(ert-deftest octocat-mermaid-test-markdown-overflows-the-width ()
+  "A diagram too wide for the width is drawn past it, its lines unbroken."
+  (let* ((out (substring-no-properties
+               (octocat-markdown-render "```mermaid\ngraph TD\nA[Start] --> B\n```" "" 5)))
+         (lines (split-string out "\n" t)))
+    (should-not (string-match-p "source\\|↪" out))
+    (should (string-match-p "│ Start │" out))
+    ;; Padded to the diagram's width, not the width given.
+    (should (apply #'= (mapcar #'string-width lines)))
+    (should (> (string-width (car lines)) 5))))
 
 (provide 'octocat-mermaid-tests)
 ;;; octocat-mermaid-tests.el ends here

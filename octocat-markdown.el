@@ -1463,12 +1463,14 @@ with its hooks suppressed, and only the faces are kept."
   "Return the lines of fenced CODE (a list of strings) as a padded block.
 LANG is the fence's language, which picks the syntax highlighting.  A
 `math' fence is shown as Unicode text.  A `mermaid' one is drawn by
-`octocat-mermaid-render' to fit the width available; when that cannot
+`octocat-mermaid-render' to fit the width available, or past it when it
+cannot fit, to be scrolled to as a table too wide is; when that cannot
 draw it, the source is shown, labelled as such."
   (let* ((lang (and lang (car (split-string lang))))
+         (avail (and octocat-markdown--avail (- octocat-markdown--avail 2)))
          (diagram (and (equal lang "mermaid")
-                       (octocat-mermaid-render
-                        code (and octocat-markdown--avail (- octocat-markdown--avail 2)))))
+                       (or (octocat-mermaid-render code avail)
+                           (and avail (octocat-mermaid-render code)))))
          (code (cond (diagram diagram)
                      ((member lang '("math" "latex-math"))
                       (split-string (octocat-markdown--tex (string-join code "\n")) "\n"))
@@ -1477,7 +1479,7 @@ draw it, the source is shown, labelled as such."
          ;; Padding stops at the column, so one long line wraps alone
          ;; instead of padding every line to its width.
          (width (min (apply #'max 0 (mapcar #'string-width code))
-                     (if octocat-markdown--avail
+                     (if (and octocat-markdown--avail (not diagram))
                          (max 1 (- octocat-markdown--avail 2))
                        most-positive-fixnum))))
     (append
@@ -1492,6 +1494,8 @@ draw it, the source is shown, labelled as such."
                         ;; `end' on the last line tells `octocat-markdown--tidy'
                         ;; where the box stops, even when another follows.
                         (put-text-property 0 (length s) 'octocat-markdown-code (if more t 'end) s)
+                        (when diagram
+                          (put-text-property 0 (length s) 'octocat-markdown-diagram t s))
                         (cons s ""))))))
 
 (defun octocat-markdown--alert (label)
@@ -1953,10 +1957,10 @@ Emacs would wrap them at the window's edge, past a capped page's column.
 A heading drawn wider than the default fits fewer characters, see
 `octocat-markdown--scale'.
 Prose breaks at spaces, hung as a wrap would be; code breaks anywhere,
-each continuation marked with an arrow.  Tables were already fit where
-they can be.  A row of HTML that is centred is centred in WIDTH, but an
-image alone, whose width shown is not known here.  A nil WIDTH leaves
-ROWS as they are."
+each continuation marked with an arrow.  Tables and diagrams were
+already fit where they can be.  A row of HTML that is centred is
+centred in WIDTH, but an image alone, whose width shown is not known
+here.  A nil WIDTH leaves ROWS as they are."
   (if (null width)
       rows
     (cl-mapcan
@@ -1971,7 +1975,8 @@ ROWS as they are."
                (> (length s) 0) (get-text-property 0 'octocat-markdown-center s))
           width
           (cond
-           ((or (<= (string-width s) room) (funcall has 'octocat-markdown-table))
+           ((or (<= (string-width s) room) (funcall has 'octocat-markdown-table)
+                (funcall has 'octocat-markdown-diagram))
             (list row))
            ((funcall has 'octocat-markdown-image)
             (mapcar (lambda (l) (cons l hang))
@@ -2097,7 +2102,8 @@ or nil for no limit.  Longer lines are broken to fit, see
 `octocat-markdown--fill'.  A table that would be wider squeezes its
 columns and wraps its cells over several lines instead, since breaking
 a table's lines breaks its borders; one that cannot fit even squeezed
-is left at its natural width.
+is left at its natural width.  So is a mermaid diagram that cannot be
+drawn to fit.
 
 Markup is replaced by faces; see the Commentary for what is understood."
   (let* ((indent (or indent "  "))
