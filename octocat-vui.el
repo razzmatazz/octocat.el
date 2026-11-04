@@ -1434,7 +1434,8 @@ A filter other than the default goes along, so the page lists the same."
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup)
-  (setq-local octocat--url-function #'octocat-vui-list--page-url))
+  (setq-local octocat--url-function #'octocat-vui-list--page-url)
+  (setq-local octocat--repo-function (lambda () octocat-vui-list--repo)))
 
 (defun octocat-vui-repo-heading (repo &optional linked)
   "Return REPO, \"owner/name\", as the heading vnode at the top of a page.

@@ -38,23 +38,6 @@
 (require 'octocat-image)
 (require 'consult)
 
-;; Buffer-local variable stubs: defined as defvar-local in their respective
-;; files (loaded after octocat-core.el).  The plain defvar here lets the
-;; byte-compiler see the symbol and suppresses "reference to free variable"
-;; warnings without creating a new binding.
-(defvar octocat-repo--repo)
-(defvar octocat--pr-repo)
-(defvar octocat--pr-number)
-(defvar octocat--issue-repo)
-(defvar octocat--issue-number)
-(defvar octocat--commit-repo)
-(defvar octocat--workflow-repo)
-(defvar octocat--run-repo)
-(defvar octocat--job-repo)
-(defvar octocat--checks-repo)
-(defvar octocat-tree--file-repo)
-(defvar octocat-vui-list--repo)
-
 
 ;;;; Options
 
@@ -1392,6 +1375,10 @@ The handler `octocat-github-links-mode' adds to `browse-url-handlers'."
 Each page's mode sets it.  It may look at point too, as a PR's page
 does for the comment there.")
 
+(defvar-local octocat--repo-function nil
+  "Function of no arguments returning the page's \"owner/name\" repo, or nil.
+Each page under a repository sets it, as `octocat--url-function'.")
+
 (defun octocat--ref-url (ref)
   "Return the URL of the markdown reference REF, (KIND REPO ID), or nil.
 A REPO of nil is the buffer's."
@@ -1617,18 +1604,9 @@ is not inside a GitHub repository."
 
 (defun octocat--search-repo--current-repo ()
   "Return the \"owner/repo\" string for the current octocat buffer context.
-Tries each buffer-local repo variable in priority order, then falls
-back to parsing the git origin remote via `octocat-repo--current-repo'."
-  (or (bound-and-true-p octocat-repo--repo)
-      (bound-and-true-p octocat--pr-repo)
-      (bound-and-true-p octocat--issue-repo)
-      (bound-and-true-p octocat--commit-repo)
-      (bound-and-true-p octocat--workflow-repo)
-      (bound-and-true-p octocat--run-repo)
-      (bound-and-true-p octocat--job-repo)
-      (bound-and-true-p octocat--checks-repo)
-      (bound-and-true-p octocat-tree--file-repo)
-      (bound-and-true-p octocat-vui-list--repo)
+That is the page's, from `octocat--repo-function', or else the one of
+the git origin remote, via `octocat-repo--current-repo'."
+  (or (and octocat--repo-function (funcall octocat--repo-function))
       (condition-case nil (octocat-repo--current-repo) (user-error nil))))
 
 ;;;; List filters

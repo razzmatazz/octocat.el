@@ -53,10 +53,6 @@
 (require 'octocat-dashboard)
 (require 'octocat-doctor)
 
-;; Buffer-locals of other files, used below.
-(defvar octocat-repo--repo)           ; defined as buffer-local in octocat-repo.el
-(defvar octocat-repo--ref)            ; likewise
-
 ;; Evil integration is optional; declare its entry point to silence the
 ;; byte-compiler when `octocat-evil' has not been loaded yet.
 (declare-function octocat-evil-setup "octocat-evil" ())

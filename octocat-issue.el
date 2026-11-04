@@ -366,7 +366,8 @@ A new TICK fetches everything again."
   (setq-local octocat--refresh-fn #'octocat-issue-refresh)
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup)
-  (setq-local octocat--url-function #'octocat-issue--page-url))
+  (setq-local octocat--url-function #'octocat-issue--page-url)
+  (setq-local octocat--repo-function (lambda () octocat--issue-repo)))
 
 
 ;;;; Refresh

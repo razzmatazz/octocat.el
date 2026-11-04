@@ -1330,7 +1330,8 @@ A new TICK fetches them again."
   (setq-local octocat--refresh-fn #'octocat-pr-refresh)
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup)
-  (setq-local octocat--url-function #'octocat-pr--page-url))
+  (setq-local octocat--url-function #'octocat-pr--page-url)
+  (setq-local octocat--repo-function (lambda () octocat--pr-repo)))
 
 (defvar-local octocat--pr-number nil
   "The PR number this buffer is displaying.")
@@ -1402,7 +1403,8 @@ the background, in place: what is unfolded stays so."
   (setq-local octocat--refresh-fn #'octocat-pr-commits-refresh)
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup)
-  (setq-local octocat--url-function #'octocat-pr-commits--page-url))
+  (setq-local octocat--url-function #'octocat-pr-commits--page-url)
+  (setq-local octocat--repo-function (lambda () octocat--pr-commits-repo)))
 
 (defun octocat-pr-commits-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current PR commits buffer."
@@ -2316,7 +2318,8 @@ everything again."
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-pr-diff--page-url)
-  (setq-local octocat-diff--comment-backend octocat-pr-diff--comment-backend))
+  (setq-local octocat-diff--comment-backend octocat-pr-diff--comment-backend)
+  (setq-local octocat--repo-function (lambda () octocat--pr-diff-repo)))
 
 
 ;;;;; Refresh

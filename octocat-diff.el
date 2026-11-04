@@ -1454,7 +1454,8 @@ fetches them again."
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup)
-  (setq-local octocat--url-function #'octocat-commit--page-url))
+  (setq-local octocat--url-function #'octocat-commit--page-url)
+  (setq-local octocat--repo-function (lambda () octocat--commit-repo)))
 
 
 ;;;;; Refresh
@@ -1665,7 +1666,8 @@ new TICK fetches it again."
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup)
-  (setq-local octocat--url-function #'octocat-compare--page-url))
+  (setq-local octocat--url-function #'octocat-compare--page-url)
+  (setq-local octocat--repo-function (lambda () octocat--compare-repo)))
 
 
 ;;;;; Refresh

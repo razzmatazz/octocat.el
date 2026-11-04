@@ -1862,7 +1862,8 @@ The tree browser stays in its directory, as GitHub's does."
   (octocat--max-width-setup)
   (add-hook 'window-buffer-change-functions #'octocat-repo--follow-checkout nil t)
   (add-hook 'window-selection-change-functions #'octocat-repo--follow-checkout nil t)
-  (setq-local octocat--url-function #'octocat-repo--page-url))
+  (setq-local octocat--url-function #'octocat-repo--page-url)
+  (setq-local octocat--repo-function (lambda () octocat-repo--repo)))
 
 ;; The commits page and the tree browser derive from the repo page, for
 ;; its state: so `C-c C-b', `C-c C-f' and `C-c C-o' work on them alike.
@@ -1912,7 +1913,8 @@ The tree browser stays in its directory, as GitHub's does."
   (octocat-markdown--ensure-invisibility)
   (octocat--ts-eldoc-setup)
   (octocat--max-width-setup)
-  (setq-local octocat--url-function #'octocat-file--page-url))
+  (setq-local octocat--url-function #'octocat-file--page-url)
+  (setq-local octocat--repo-function (lambda () octocat-tree--file-repo)))
 
 ;;;; Interactive commands — tree
 
