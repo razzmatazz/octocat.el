@@ -50,6 +50,7 @@
 ;; module, so requiring them here costs nothing.
 (require 'octocat-actions)
 (require 'octocat-core)
+(require 'octocat-dashboard)
 (require 'octocat-diff)
 (require 'octocat-doctor)
 (require 'octocat-issue)
@@ -59,8 +60,6 @@
 (require 'octocat-user)
 (require 'octocat-vui)
 
-(defvar octocat-mode-map)
-(declare-function octocat-feed-load-more "octocat" ())
 (defvar evil-local-mode)
 
 (defun octocat-evil-list-edit-query ()

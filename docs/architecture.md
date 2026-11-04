@@ -27,7 +27,8 @@ From the bottom up:
   `octocat-actions` (GitHub Actions and a commit's checks) or
   `octocat-diff` (the changed files of a diff, and the commit and
   compare pages), requiring the pages they link to.
-  `octocat-search` sits above the pages its results open.
+  `octocat-search` and `octocat-dashboard` (the page `M-x octocat`
+  opens) sit above the pages their rows open.
 - **`octocat-evil`**: Evil bindings, loaded only once Evil is on.  It
   requires the pages it binds keys in, which `octocat.el` has loaded
   by then.
@@ -51,6 +52,7 @@ flowchart TD
   octocat_actions[octocat-actions]
   octocat_avatar[octocat-avatar]
   octocat_core[octocat-core]
+  octocat_dashboard[octocat-dashboard]
   octocat_diff[octocat-diff]
   octocat_doctor[octocat-doctor]
   octocat_edit[octocat-edit]
@@ -72,6 +74,12 @@ flowchart TD
   octocat_actions --> octocat_vui
   octocat_core --> octocat_image
   octocat_core --> octocat_markdown
+  octocat_dashboard --> octocat_core
+  octocat_dashboard --> octocat_diff
+  octocat_dashboard --> octocat_issue
+  octocat_dashboard --> octocat_pr
+  octocat_dashboard --> octocat_sync
+  octocat_dashboard --> octocat_vui
   octocat_diff --> octocat_actions
   octocat_diff --> octocat_core
   octocat_diff --> octocat_sync
@@ -121,6 +129,7 @@ flowchart TD
   octocat_vui --> octocat_sync
   octocat --> octocat_actions
   octocat --> octocat_core
+  octocat --> octocat_dashboard
   octocat --> octocat_doctor
   octocat --> octocat_image
   octocat --> octocat_issue
@@ -143,6 +152,7 @@ flowchart TD
 flowchart TD
   octocat_actions[octocat-actions]
   octocat_core[octocat-core]
+  octocat_dashboard[octocat-dashboard]
   octocat_diff[octocat-diff]
   octocat_doctor[octocat-doctor]
   octocat_evil[octocat-evil]
@@ -155,6 +165,7 @@ flowchart TD
   octocat[octocat]
   octocat_evil --> octocat_actions
   octocat_evil --> octocat_core
+  octocat_evil --> octocat_dashboard
   octocat_evil --> octocat_diff
   octocat_evil --> octocat_doctor
   octocat_evil --> octocat_issue
@@ -175,10 +186,11 @@ flowchart TD
 | `octocat-actions` | GitHub Actions and commit checks for octocat | `octocat-core`, `octocat-mermaid`, `octocat-sync`, `octocat-vui` |
 | `octocat-avatar` | Draw an avatar image as coloured ASCII art |  |
 | `octocat-core` | Shared infrastructure for octocat | `octocat-image`, `octocat-markdown` |
+| `octocat-dashboard` | GitHub account dashboard for octocat | `octocat-core`, `octocat-diff`, `octocat-issue`, `octocat-pr`, `octocat-sync`, `octocat-vui` |
 | `octocat-diff` | Diffs, commits and comparisons for octocat | `octocat-actions`, `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-doctor` | Report on octocat's code, store and requests | `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-edit` | Edit buffer for octocat PRs and issues | `octocat-core`, `octocat-vui` |
-| `octocat-evil` | Evil keybindings for octocat | `octocat-actions`, `octocat-core`, `octocat-diff`, `octocat-doctor`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-user`, `octocat-vui` |
+| `octocat-evil` | Evil keybindings for octocat | `octocat-actions`, `octocat-core`, `octocat-dashboard`, `octocat-diff`, `octocat-doctor`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-user`, `octocat-vui` |
 | `octocat-image` | Show images uploaded to GitHub in markdown | `octocat-markdown` |
 | `octocat-issue` | Issue detail view for octocat | `octocat-core`, `octocat-edit`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
 | `octocat-markdown` | GitHub markdown renderer | `octocat-mermaid` |
@@ -190,7 +202,7 @@ flowchart TD
 | `octocat-timeline` | GitHub-style timeline for issue and PR views | `octocat-core`, `octocat-edit`, `octocat-sync`, `octocat-vui` |
 | `octocat-user` | GitHub user / organization page for octocat | `octocat-avatar`, `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-vui` | vui.el helpers and components for octocat | `octocat-core`, `octocat-sync` |
-| `octocat` | GitHub Client powered by the gh CLI | `octocat-actions`, `octocat-core`, `octocat-doctor`, `octocat-image`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-sync`, `octocat-timeline`, `octocat-user`, `octocat-vui`, `octocat-evil` (lazily) |
+| `octocat` | GitHub Client powered by the gh CLI | `octocat-actions`, `octocat-core`, `octocat-dashboard`, `octocat-doctor`, `octocat-image`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-sync`, `octocat-timeline`, `octocat-user`, `octocat-vui`, `octocat-evil` (lazily) |
 <!-- /module-list -->
 
 ## Updating

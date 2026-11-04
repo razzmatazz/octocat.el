@@ -87,6 +87,7 @@ that; `octocat-core.el` requires both), then
 (`octocat-vui.el` requires it), then `octocat-vui.el`, then
 `octocat-actions.el` and `octocat-diff.el` (the diff and commit pages,
 which require actions) before `octocat-pr.el`, which requires both;
+`octocat-dashboard.el` after `octocat-pr.el` and `octocat-issue.el`;
 `octocat-evil.el` before `octocat.el` (the last lines of `octocat.el` call
 `octocat-evil-setup`, and `require` is a no-op on an already-provided
 feature, so a stale evil file silently wins).
@@ -137,7 +138,8 @@ string rather than `ok` is an error — fix it before proceeding):
                    "octocat-timeline.el" "octocat-pr.el" "octocat-issue.el"
                    "octocat-repo.el"
                    "octocat-search.el" "octocat-avatar.el"
-                   "octocat-user.el" "octocat-doctor.el" "octocat-evil.el" "octocat.el"))
+                   "octocat-user.el" "octocat-doctor.el" "octocat-dashboard.el"
+                   "octocat-evil.el" "octocat.el"))
     (condition-case err
         (with-temp-buffer
           (insert-file-contents (expand-file-name f "/path/to/octocat.el"))
