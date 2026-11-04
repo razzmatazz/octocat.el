@@ -39,6 +39,7 @@
 
 (require 'cl-lib)
 (require 'seq)
+(require 'diff) ; `diff-command', for a diff GitHub won't send.
 (require 'diff-mode) ; The diff faces.
 (require 'octocat-core)
 (require 'octocat-actions)
@@ -872,6 +873,79 @@ has no lines changed.  A rename alone has no diff to explain."
         ((eql changes 0) "binary or empty")
         (t "diff too large to show")))
 
+(defun octocat-diff--url-path (path)
+  "Return PATH URL-encoded part by part, keeping its slashes."
+  (mapconcat #'url-hexify-string (split-string path "/") "/"))
+
+(defun octocat-diff--merge-base (repo base head callback)
+  "Call CALLBACK with the merge base of BASE and HEAD in REPO, or (error . MSG)."
+  (octocat--run-gh
+   "merge-base"
+   (list "api" (format "repos/%s/compare/%s...%s?per_page=1" repo
+                       (octocat-diff--url-path base) (octocat-diff--url-path head))
+         "--jq" ".merge_base_commit.sha")
+   #'string-trim callback))
+
+(defun octocat-diff--fetch-text (repo ref path callback)
+  "Call CALLBACK with the content of PATH at REF in REPO, or (error . MSG).
+Without REF, the file is not on that side, and its content is empty."
+  (if (null ref)
+      (funcall callback "")
+    (octocat--run-gh
+     "file-at"
+     (list "api" "-H" "Accept: application/vnd.github.raw"
+           (format "repos/%s/contents/%s?ref=%s" repo
+                   (octocat-diff--url-path path) (url-hexify-string ref)))
+     #'identity callback)))
+
+(defun octocat-diff--show-large (old-path path old new)
+  "Show the diff of OLD, the text of OLD-PATH, and NEW, that of PATH."
+  (let ((a   (make-temp-file "octocat-a-" nil nil old))
+        (b   (make-temp-file "octocat-b-" nil nil new))
+        (buf (get-buffer-create (format "*octocat diff %s*" path))))
+    (unwind-protect
+        (with-current-buffer buf
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (call-process diff-command nil t nil "-u"
+                          "--label" (concat "a/" old-path) "--label" (concat "b/" path)
+                          a b))
+          (diff-mode)
+          (setq buffer-read-only t)
+          (goto-char (point-min)))
+      (delete-file a)
+      (delete-file b))
+    (pop-to-buffer buf)))
+
+(defun octocat-diff-open-large (repo file revs)
+  "Diff FILE of REPO, whose diff GitHub won't send, in a buffer of its own.
+Asks first, as both versions of the file are fetched whole.  REVS is
+\=(OLD . NEW), the commits compared; OLD may instead be a function
+that calls its callback with the commit, or with (error . MSG)."
+  (let* ((path     (gethash "filename" file))
+         (old-path (or (octocat--nonempty (gethash "previous_filename" file)) path))
+         (status   (gethash "status" file))
+         (fail     (lambda (r) (message "Octocat: %s" (cdr r)))))
+    (when (y-or-n-p (format "Fetch both versions of %s and diff them? " path))
+      (message "Octocat: Fetching %s..." path)
+      (funcall
+       (if (functionp (car revs)) (car revs) (lambda (k) (funcall k (car revs))))
+       (lambda (old)
+         (if (eq (car-safe old) 'error)
+             (funcall fail old)
+           (octocat-diff--fetch-text
+            repo (and (not (equal status "added")) old) old-path
+            (lambda (a)
+              (if (eq (car-safe a) 'error)
+                  (funcall fail a)
+                (octocat-diff--fetch-text
+                 repo (and (not (equal status "removed")) (cdr revs)) path
+                 (lambda (b)
+                   (if (eq (car-safe b) 'error)
+                       (funcall fail b)
+                     (message nil)
+                     (octocat-diff--show-large old-path path a b)))))))))))))
+
 (vui-defcomponent octocat-diff--image (repo sha width last)
   "The image of blob SHA of REPO, no wider than WIDTH columns.
 Unless LAST, a line across WIDTH follows it, see
@@ -892,7 +966,7 @@ Unless LAST, a line across WIDTH follows it, see
       ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
       (_        (vui-text text)))))
 
-(defun octocat-diff--file (repo file comments bulk raw width last &optional at)
+(defun octocat-diff--file (repo file comments bulk raw width last &optional at revs)
   "Return one changed FILE (a files-endpoint hash-table) of REPO.
 Its inline COMMENTS are placed in its diff.  It is folded unless BULK,
 as for `octocat-vui-fold', says otherwise.  An image added or modified
@@ -900,9 +974,10 @@ unfolds to the image, see `octocat-diff--image', but only by its own
 RET: \"Expand all\" leaves it folded, so no image is fetched unasked.
 Another file without
 a patch is just its heading, which says why, see
-`octocat-diff--no-diff-note'.  RAW and WIDTH
-are as for `octocat-diff--comment-lines'.  Unless LAST, the file being
-the last one, its diff ends underlined, see
+`octocat-diff--no-diff-note'; given REVS, as for
+`octocat-diff-open-large', RET on one too large diffs it in a buffer.
+RAW and WIDTH are as for `octocat-diff--comment-lines'.  Unless LAST,
+the file being the last one, its diff ends underlined, see
 `octocat-diff--underline-last'.  AT, (diff HASH FROM TO) as
 `octocat--url-lines' reads a link to this file, unfolds it and
 highlights lines FROM to TO; without them, or with neither in the
@@ -943,9 +1018,13 @@ patch, the heading is the place scrolled to."
                              (list (vui-component 'octocat-diff--image
                                      :repo repo :sha sha :width width :last last)))))))
      ((null patch)
-      (vui-text (concat "  " title
-                        (when-let* ((note (octocat-diff--no-diff-note status changes)))
-                          (propertize (concat "  " note) 'face 'octocat-dimmed)))))
+      (let ((line (concat "  " title
+                          (when-let* ((note (octocat-diff--no-diff-note status changes)))
+                            (propertize (concat "  " note) 'face 'octocat-dimmed)))))
+        (if (and revs (not (eql changes 0)))
+            (octocat-vui-row line (lambda () (octocat-diff-open-large repo file revs))
+                             "RET: diff it in a buffer")
+          (vui-text line))))
      (t
       (vui-component 'octocat-vui-fold
         :key (intern filename)
@@ -1009,7 +1088,8 @@ HIDE is whether they are hidden; the hint names the key that switches."
                  (help "hide the comments in the diff")
                  #'octocat-diff-toggle-comments)))))
 
-(vui-defcomponent octocat-diff--files (repo files by-path hide fits raw width underline at)
+(vui-defcomponent octocat-diff--files
+    (repo files by-path hide fits raw width underline at total revs)
   "The Files section: FILES of REPO with the review comments BY-PATH, folded.
 They start unfolded when FITS, the whole diff fitting in the window.
 HIDE leaves the comments out.  RAW and WIDTH are as for
@@ -1018,7 +1098,9 @@ WIDTH, but for a page whose tab row heads the section.  The heading's
 \"Expand all\" button unfolds or folds every file, and its switch of the
 comments, there when the diff shows some, runs
 `octocat-diff-toggle-comments'.  AT, the lines a link named, is
-scrolled to, see `octocat-diff--file'; the user's refresh drops it."
+scrolled to, see `octocat-diff--file'; the user's refresh drops it.
+TOTAL, how many files changed, says at the end how many GitHub left out.
+REVS is as for `octocat-diff-open-large', for the files too large to diff."
   :state ((bulk (and fits (cons 0 t))))
   :render
   (let* ((buf (current-buffer))
@@ -1061,17 +1143,25 @@ scrolled to, see `octocat-diff--file'; the user's refresh drops it."
                                        (eq f (aref files (1- (length files))))
                                        (and at (octocat--diff-path-hash-p
                                                 (nth 1 at) (or (gethash "filename" f) ""))
-                                            at)))
-                 (lambda (f) (gethash "filename" f)))))))
+                                            at)
+                                       revs))
+                 (lambda (f) (gethash "filename" f))))
+     (when (and total (> total (length files)))
+       (vui-text (format "  %d more files changed than GitHub's API lists"
+                         (- total (length files)))
+         :face 'octocat-dimmed)))))
 
-(defun octocat-diff-files-section (repo files by-path hide raw width &optional underline at)
+(defun octocat-diff-files-section (repo files by-path hide raw width
+                                        &optional underline at total revs)
   "Return the vnode of the Files section: the heading and one entry per file.
 FILES is REPO's files vector and BY-PATH the review comments by file path,
 left out when HIDE.
 Files start folded, unless the whole diff fits in the window.  The
 comments are markdown, rendered unless RAW, to fit WIDTH columns.
 UNDERLINE underlines the heading across WIDTH.  AT is the lines a
-link named, see `octocat-diff--file'."
+link named, see `octocat-diff--file'.  TOTAL is how many files changed,
+when FILES may be fewer.  REVS, the commits compared, is as for
+`octocat-diff-open-large'."
   (vui-component 'octocat-diff--files
     :repo repo
     :files files
@@ -1081,6 +1171,8 @@ link named, see `octocat-diff--file'."
     :width width
     :underline underline
     :at at
+    :total total
+    :revs revs
     :fits (<= (octocat-diff--line-count files) (octocat-vui-window-height))))
 
 (defun octocat-diff-comments-section (label comments raw width)
@@ -1499,7 +1591,10 @@ fetches them again."
                           (vui-fragment section (vui-newline)))
                         (octocat-diff-files-section
                          repo (or (gethash "files" data) []) by-path hide-comments raw md-width t
-                         at)
+                         at nil (cons (let ((parents (gethash "parents" data)))
+                                        (and (> (length parents) 0)
+                                             (gethash "sha" (aref parents 0))))
+                                      (gethash "sha" data)))
                         ;; Most commits have none, so the section is left
                         ;; out unless there are any, or they failed to load.
                         (when (or (not (seq-empty-p (plist-get comments :data)))
@@ -1720,7 +1815,8 @@ fetches it again."
                 (list (vui-newline))
                 (octocat-compare--commits repo (or (gethash "commits" data) []) width)
                 (list (octocat-diff-files-section
-                       repo (or (gethash "files" data) []) nil nil raw width t at)))))))))
+                       repo (or (gethash "files" data) []) nil nil raw width t at nil
+                       (cons (octocat--get data "merge_base_commit" "sha") head))))))))))
 
 
 ;;;;; Major mode

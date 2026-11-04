@@ -374,6 +374,40 @@ page is: `vui-render' would put point back at the top."
       (accept-process-output nil 0.01))
     buf))
 
+(ert-deftest octocat-diff-test-files-total ()
+  "Files GitHub left out are counted at the end of the list."
+  (with-temp-buffer
+    (vui-mount (vui-component 'octocat-diff--files
+                 :repo "o/r"
+                 :files (vector (json-parse-string
+                                 "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}"))
+                 :fits nil :raw nil :width 80 :total 31)
+               (buffer-name))
+    (should (string-search "30 more files changed than GitHub's API lists"
+                           (buffer-string)))))
+
+(ert-deftest octocat-diff-test-file-too-large ()
+  "RET on a file too large to diff diffs it in a buffer, given the commits."
+  (let ((file (json-parse-string
+               "{\"filename\":\"big.txt\",\"status\":\"modified\",\"changes\":9000}"))
+        opened)
+    (cl-letf (((symbol-function 'octocat-diff-open-large)
+               (lambda (&rest args) (setq opened args))))
+      (with-temp-buffer
+        (vui-render (octocat-diff--file "o/r" file nil nil nil 80 t nil '("a" . "b"))
+                    (current-buffer))
+        (goto-char (point-min))
+        (search-forward "big.txt")
+        (should (equal (get-text-property (point) 'help-echo) "RET: diff it in a buffer"))
+        (call-interactively (key-binding (kbd "RET")))
+        (should (equal opened (list "o/r" file '("a" . "b"))))))
+    ;; Without the commits, it is just a heading.
+    (with-temp-buffer
+      (vui-render (octocat-diff--file "o/r" file nil nil nil 80 t) (current-buffer))
+      (goto-char (point-min))
+      (search-forward "big.txt")
+      (should-not (get-text-property (point) 'help-echo)))))
+
 (ert-deftest octocat-diff-test-files-at ()
   "The file a link names is unfolded, its lines highlighted and scrolled to.
 Only that file; a hash naming none changes nothing."

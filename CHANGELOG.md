@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* RET on a file whose diff is too large for GitHub diffs it in a buffer of its own
+* PR Files lists every changed file, not just the first 30, and says if GitHub left any out
 * Links to lines (`#L12-L20`, `#diff-…R12`) scroll to and highlight them; copied URLs name them
 * On PR commits, PR files and compare pages, `#N` and SHAs link into that repo, not the clone's
 * The faces of a diff's file letters are `octocat-diff-file-*`; `octocat-commit-file-*` remain as aliases

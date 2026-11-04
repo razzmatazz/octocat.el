@@ -1463,11 +1463,12 @@ Calls CALLBACK with a vector of file hash-tables (same shape as the
 GitHub commits API \\='files\\=' array — each entry has \\='filename\\=',
 \\='status\\=', \\='additions\\=', \\='deletions\\=', and \\='patch\\='),
 or a cons \\=(error . MSG) on failure.
-Uses the GitHub REST API via `gh api'."
+Uses the GitHub REST API via `gh api', which joins the pages into one
+array; GitHub lists at most 3000 files."
   (octocat--run-gh
    "pr-diff"
-   (list "api"
-         (format "repos/%s/pulls/%d/files" repo number))
+   (list "api" "--paginate"
+         (format "repos/%s/pulls/%d/files?per_page=100" repo number))
    (lambda (output)
      (json-parse-string (string-trim output)))
    callback))
@@ -2236,6 +2237,14 @@ PENDING is (REVIEW-ID . COUNT), your pending review, or nil."
 
 ;;;;; Components
 
+(defun octocat-pr-diff--revs (repo base head)
+  "Return the commits a diff of REPO from branch BASE to HEAD compares.
+That is as `octocat-diff-open-large' takes them, or nil without both.
+The diff is from their merge base, looked up only when needed."
+  (and base head
+       (cons (lambda (k) (octocat-diff--merge-base repo base head k))
+             head)))
+
 (vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw at tick)
   "The diff of pull request NUMBER of REPO, under the PR page's header.
 HIDE-COMMENTS leaves the review comments out of the diff, and RAW shows
@@ -2253,6 +2262,9 @@ everything again."
          (comments (vui-use-memo (data)
                      (and data (octocat-pr-diff--thread-comments (gethash "threads" data)))))
          (by-path  (vui-use-memo (comments) (octocat-diff-by-path comments)))
+         (base     (octocat--get (plist-get pr :data) "baseRefName"))
+         (head     (and data (gethash "head" data)))
+         (revs     (vui-use-memo (base head) (octocat-pr-diff--revs repo base head)))
          (review   (and data (gethash "pending" data)))
          (pending  (and review (cons (gethash "id" review)
                                      (octocat-pr-diff--pending-count data)))))
@@ -2276,7 +2288,9 @@ everything again."
        ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
        ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
        (_ (octocat-diff-files-section repo (plist-get files :data) by-path
-                                      hide-comments raw (octocat--markdown-width) nil at)))
+                                      hide-comments raw (octocat--markdown-width) nil at
+                                      (octocat--get (plist-get pr :data) "changedFiles")
+                                      revs)))
      (vui-newline)
      (octocat-diff-comments-section "Review Comments" (plist-put (copy-sequence threads)
                                                                  :data comments)
