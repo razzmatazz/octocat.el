@@ -68,7 +68,6 @@
 (require 'subr-x)
 (require 'url-util)
 (require 'vui)
-(require 'vui-components)
 
 (defvar octocat-vui--state-width)  ; defconst under "Row builders"
 (defvar octocat-vui--mark-width)   ; likewise
@@ -1505,24 +1504,16 @@ nil LABEL shows VALUE alone.  Labels and separators are dimmed."
 Each tab is (LABEL HELP ON-CLICK); the current one has no ON-CLICK and is
 a heading, the others are buttons.  The underline sets the row apart from
 what is below it without a blank line."
-  (let* ((ul    (lambda (face) (list face 'underline)))
-         (nodes (mapcar (pcase-lambda (`(,label ,help ,on-click))
-                          (if on-click
-                              (vui-button label :face (funcall ul 'octocat-dimmed)
-                                          :help-echo (octocat--button-help help on-click)
-                                          :on-click on-click)
-                            (vui-text label :face (funcall ul 'octocat-section-heading))))
-                        tabs))
-         ;; Buttons are drawn in brackets.
-         (used  (+ (apply #'+ (mapcar (pcase-lambda (`(,label ,_ ,on-click))
-                                        (+ (string-width label) (if on-click 2 0)))
-                                      tabs))
-                   (* 2 (1- (length tabs))))))
-    (apply #'vui-hstack :spacing 0
-           (append (cdr (mapcan (lambda (n) (list (vui-text "  " :face 'underline) n))
-                                nodes))
-                   (list (vui-text (make-string (max 0 (- width used)) ?\s)
-                           :face 'underline))))))
+  (let ((ul (lambda (face) (list face 'underline))))
+    (apply #'octocat-vui-underlined width
+           (cdr (mapcan (pcase-lambda (`(,label ,help ,on-click))
+                          (list (vui-text "  ")
+                                (if on-click
+                                    (vui-button label :face (funcall ul 'octocat-dimmed)
+                                                :help-echo (octocat--button-help help on-click)
+                                                :on-click on-click)
+                                  (vui-text label :face (funcall ul 'octocat-section-heading)))))
+                        tabs)))))
 
 (defun octocat-vui-segmented (segments)
   "Return SEGMENTS as one segmented control, a pill of choices.
@@ -1966,8 +1957,7 @@ takes the input as typed."
 
 (defun octocat-vui-list--query-widget ()
   "Return the query field widget of the current buffer, or nil."
-  ;; `vui-field' keeps its :key as the widget's :vui-key.
-  (seq-find (lambda (widget) (eq (widget-get widget :vui-key) :query))
+  (seq-find (lambda (widget) (eq (vui-element-get widget :vui-key) :query))
             widget-field-list))
 
 (defun octocat-vui-list--qualifier-capf ()

@@ -41,7 +41,6 @@
 (require 'octocat-vui)
 (require 'subr-x)
 (require 'vui)
-(require 'vui-components)
 
 (defcustom octocat-section-limit 15
   "Default number of items to display per paged section.

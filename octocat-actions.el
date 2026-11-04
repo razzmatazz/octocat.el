@@ -50,7 +50,6 @@
 (require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)
-(require 'vui-components) ; vui-list
 
 
 ;;;; Jobs

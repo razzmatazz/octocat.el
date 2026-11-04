@@ -37,7 +37,6 @@
 (require 'octocat-timeline)
 (require 'octocat-vui)
 (require 'vui)
-(require 'vui-components) ; vui-list, vui-vstack, etc.
 
 (defvar octocat--issue-repo)
 (defvar octocat--issue-number)

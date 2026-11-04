@@ -66,7 +66,6 @@
 (require 'octocat-vui)
 (require 'time-date) ; date-to-time
 (require 'vui)
-(require 'vui-components) ; vui-vstack, etc.
 
 
 

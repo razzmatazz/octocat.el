@@ -58,7 +58,6 @@
 (require 'octocat-vui)
 
 (require 'vui)
-(require 'vui-components) ; vui-collapsible, vui-heading-*, etc.
 
 
 ;;;; User options
@@ -1926,8 +1925,7 @@ The tree browser stays in its directory, as GitHub's does."
 On a button, such as the header's branch picker, press it: Evil's RET
 binding outranks the button's own."
   (interactive)
-  (if (button-at (point))
-      (push-button)
+  (unless (vui-activate)
     (when-let* ((activate (octocat-tree--activate-at-point)))
       (funcall activate))))
 

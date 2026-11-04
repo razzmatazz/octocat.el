@@ -44,7 +44,6 @@
 (require 'octocat-timeline)
 (require 'octocat-vui)
 (require 'vui)
-(require 'vui-components) ; vui-list, vui-vstack, etc.
 
 ;; Forward declarations for buffer-locals defined later in this file.
 ;; Needed so the byte-compiler doesn't warn about free variables in

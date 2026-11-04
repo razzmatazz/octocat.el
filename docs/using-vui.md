@@ -4,9 +4,9 @@ Gotchas of vui.el as octocat uses it, and how the code works around them.
 
 ## Layout
 
-- `vui-collapsible` indents only the **first** body line (default `:indent
-  2`).  Rows here carry their own two-space prefix, so every collapsible
-  passes `:indent 0`; otherwise the first row is indented by four spaces.
+- Folds use `octocat-vui-fold`, not `vui-collapsible`: the latter's toggle
+  draws the whole title in the `link` face, losing the icons and status
+  faces in it.
 - Rows use `vui-text` inside a `vui-region` (not `vui-button`) so per-segment
   faces are preserved; see "Rows of PRs, issues and commits" in `octocat-vui.el`.
 
