@@ -39,7 +39,7 @@
 (require 'seq)
 (require 'octocat-commit)
 (require 'octocat-tree)
-(require 'octocat-org)
+(require 'octocat-markdown)
 (require 'octocat-vui)
 
 (require 'vui)
@@ -415,7 +415,7 @@ case, is STEM, a regexp, with or without an extension.")
 
 (defconst octocat-repo--formats
   '(("\\.\\(?:md\\|markdown\\|mdown\\|mkdn?\\)\\'" . identity)
-    ("\\.org\\'" . octocat-org-to-markdown))
+    ("\\.org\\'" . octocat-markdown-from-org))
   "The formats of files shown rendered, in order of preference.
 Each is (REGEXP . FUNCTION): a file whose name matches REGEXP, ignoring
 case, is turned into markdown by FUNCTION, then rendered.")

@@ -1012,5 +1012,85 @@ Text replaced by a `display' string shows as that string."
     (should (memq 'octocat-markdown-code-block
                   (ensure-list (get-text-property (- (length out) 2) 'face out))))))
 
+;;;; Org
+
+(defun octocat-markdown-tests--org-md (&rest lines)
+  "Return the org LINES, joined by newlines, as markdown."
+  (octocat-markdown-from-org (string-join lines "\n")))
+
+(defun octocat-markdown-tests--org-lines (&rest lines)
+  "Join LINES with newlines, to write markdown out line by line."
+  (string-join lines "\n"))
+
+(ert-deftest octocat-markdown-test-org-headings ()
+  "The title and headings become markdown headings, their tags dropped."
+  (should (equal (octocat-markdown-tests--org-md "#+TITLE: vui.el" "#+AUTHOR: me"
+                                        "* Features" "** TODO Later   :wip:docs:")
+                 (octocat-markdown-tests--org-lines "# vui.el" "# Features" "## TODO Later"))))
+
+(ert-deftest octocat-markdown-test-org-emphasis ()
+  "Emphasis and verbatim become markdown's, but not within words or paths."
+  (should (equal (octocat-markdown-tests--org-md
+                  "*bold*, /italic/, +gone+ and _under_; =code= and ~code~.")
+                 "**bold**, *italic*, ~~gone~~ and <u>under</u>; `code` and `code`."))
+  (should (equal (octocat-markdown-tests--org-md "*not /italic/ inside* bold")
+                 "**not *italic* inside** bold"))
+  (should (equal (octocat-markdown-tests--org-md "a*b*c, /usr/bin/emacs and 2 * 3 * 4")
+                 "a*b*c, /usr/bin/emacs and 2 * 3 * 4"))
+  (should (equal (octocat-markdown-tests--org-md "=*not bold*= and ~a`b~")
+                 "`*not bold*` and `` a`b ``")))
+
+(ert-deftest octocat-markdown-test-org-links ()
+  "Links become markdown's; file: links stay relative, images show."
+  (should (equal (octocat-markdown-tests--org-md
+                  "[[https://x.org][the /site/]], [[file:docs/a.org][guide]], [[#id][below]]")
+                 "[the *site*](https://x.org), [guide](docs/a.org), [below](#id)"))
+  (should (equal (octocat-markdown-tests--org-md "[[https://x.org]] and [[file:img/logo.png]]")
+                 "[https://x.org](https://x.org) and ![](img/logo.png)"))
+  (should (equal (octocat-markdown-tests--org-md "[[https://x.org][file:img/badge.svg]]")
+                 "[![](img/badge.svg)](https://x.org)")))
+
+(ert-deftest octocat-markdown-test-org-blocks ()
+  "Src and example blocks are fenced, a quote quoted, comments dropped."
+  (should (equal (octocat-markdown-tests--org-md
+                  "#+BEGIN_SRC elisp :tangle no" "(setq a 1)" ",* not a heading" "#+END_SRC"
+                  "#+begin_example" "plain" "#+end_example"
+                  "#+begin_quote" "Said *this*." "#+end_quote"
+                  "#+begin_comment" "hidden" "#+end_comment"
+                  "# a comment")
+                 (octocat-markdown-tests--org-lines
+                  "```elisp" "(setq a 1)" "* not a heading" "```"
+                  "```" "plain" "```"
+                  "> Said **this**."))))
+
+(ert-deftest octocat-markdown-test-org-html ()
+  "An HTML block passes through as is, set apart by blank lines."
+  (dolist (begin '(("#+begin_html" . "#+end_html")
+                   ("#+begin_export html" . "#+end_export")))
+    (should (equal (octocat-markdown-tests--org-md (car begin) "<p align=\"center\">*x*</p>" (cdr begin))
+                   (octocat-markdown-tests--org-lines "" "<p align=\"center\">*x*</p>" ""))))
+  (should (equal (octocat-markdown-tests--org-md "#+begin_export latex" "\\LaTeX" "#+end_export") "")))
+
+(ert-deftest octocat-markdown-test-org-table ()
+  "A table's first row is its header, its rules dropped."
+  (should (equal (octocat-markdown-tests--org-md "| Name | /What/ |" "|------+--------|"
+                                        "| a    | one    |" "|------+--------|"
+                                        "| b    | two    |" "#+TBLFM: $1=x")
+                 (octocat-markdown-tests--org-lines "| Name | *What* |" "|---|---|"
+                                           "| a | one |" "| b | two |"))))
+
+(ert-deftest octocat-markdown-test-org-lists ()
+  "Lists keep their nesting; checkboxes and descriptions become markdown's."
+  (should (equal (octocat-markdown-tests--org-md "- [X] done" "  + [ ] todo" "1) first"
+                                        "2. second" "- term :: what it /is/")
+                 (octocat-markdown-tests--org-lines "- [x] done" "  - [ ] todo" "1. first"
+                                           "2. second" "- **term**: what it *is*"))))
+
+(ert-deftest octocat-markdown-test-org-drawers-and-fixed-width ()
+  "Drawers are dropped; fixed-width lines are fenced; dashes make a rule."
+  (should (equal (octocat-markdown-tests--org-md "* A" ":PROPERTIES:" ":CUSTOM_ID: a" ":END:"
+                                        ": $ make" ":" ": done" "-----")
+                 (octocat-markdown-tests--org-lines "# A" "```" "$ make" "" "done" "```" "---"))))
+
 (provide 'octocat-markdown-tests)
 ;;; octocat-markdown-tests.el ends here

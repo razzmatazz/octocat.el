@@ -9,10 +9,10 @@ loaded (see "Entry points" in [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 From the bottom up:
 
-- **Standalone renderers**: `octocat-mermaid`, `octocat-org` and
-  `octocat-avatar` require no other module, so they can be loaded and
-  tested on their own.  `octocat-markdown` and `octocat-image` build on
-  them to draw GitHub's markdown.
+- **Standalone renderers**: `octocat-mermaid` and `octocat-avatar`
+  require no other module, so they can be loaded and tested on their
+  own.  `octocat-markdown`, which also turns org into markdown, and
+  `octocat-image` build on them to draw GitHub's markdown.
 - **`octocat-core`**: running `gh`, faces, and the helpers every page
   shares.
 - **`octocat-sync`**: the local SQLite store pages read from, and the
@@ -57,7 +57,6 @@ flowchart TD
   octocat_job[octocat-job]
   octocat_markdown[octocat-markdown]
   octocat_mermaid[octocat-mermaid]
-  octocat_org[octocat-org]
   octocat_pr_diff[octocat-pr-diff]
   octocat_pr[octocat-pr]
   octocat_repo[octocat-repo]
@@ -133,7 +132,7 @@ flowchart TD
   octocat_pr --> octocat_vui
   octocat_repo --> octocat_commit
   octocat_repo --> octocat_core
-  octocat_repo --> octocat_org
+  octocat_repo --> octocat_markdown
   octocat_repo --> octocat_tree
   octocat_repo --> octocat_vui
   octocat_run --> octocat_core
@@ -210,10 +209,9 @@ flowchart TD
 | `octocat-job` | Job detail view for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-markdown` | GitHub markdown renderer | `octocat-mermaid` |
 | `octocat-mermaid` | Draw mermaid diagrams as text |  |
-| `octocat-org` | Turn org text into GitHub markdown |  |
 | `octocat-pr-diff` | PR diff view for octocat | `octocat-core`, `octocat-diff`, `octocat-edit`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
 | `octocat-pr` | Pull Request detail view for octocat | `octocat-checks`, `octocat-commit`, `octocat-core`, `octocat-edit`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
-| `octocat-repo` | Per-repository view for octocat | `octocat-commit`, `octocat-core`, `octocat-org`, `octocat-tree`, `octocat-vui` |
+| `octocat-repo` | Per-repository view for octocat | `octocat-commit`, `octocat-core`, `octocat-markdown`, `octocat-tree`, `octocat-vui` |
 | `octocat-run` | Workflow run detail view for octocat | `octocat-core`, `octocat-job`, `octocat-mermaid`, `octocat-sync`, `octocat-vui` |
 | `octocat-search` | Repo-wide PR, issue and commit search for octocat | `octocat-commit`, `octocat-core`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-sync`, `octocat-tree`, `octocat-vui`, `octocat-workflow` |
 | `octocat-sync` | Sync GitHub data into a local SQLite store | `octocat-core` |
