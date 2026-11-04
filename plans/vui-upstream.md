@@ -2,9 +2,10 @@
 
 Places where octocat works around vui.el, and what upstream could
 offer instead.  Each was checked against vui master 43ebe18
-(2026-11-03).  File the rest at https://github.com/d12frosted/vui.el/issues
-one at a time, each with a repro run against vui master first: its code
-moves fast, and a fix can leave the code that looked at fault in place
+(2026-11-03), and all are filed.  File a new one at
+https://github.com/d12frosted/vui.el/issues, each with a repro run
+against vui master first: its code moves fast, and a fix can leave the
+code that looked at fault in place
 (a handler's remount was fixed that way, in vui 9ed056d).  Once one is
 fixed and the `vui` dependency bumped, remove the workaround and its
 item here.
@@ -26,6 +27,10 @@ carries, such as a row's state, number and title faces.
 - Removes the most code here of all the items.
 - **Filed:** https://github.com/d12frosted/vui.el/issues/290, with the
   fix tried as advice: it keeps the label's faces.
+- **Fixed** on vui master by #293: a button's face goes below the faces
+  its label has, in `vui-collapsible`'s title and `vui-select` too, so a
+  row can be a plain `vui-button`.  CI's vui (MELPA 20261024) predates
+  it: drop the workaround once it has it.
 
 ## 2. No public way to find the field at point
 
@@ -41,6 +46,10 @@ carries, such as a row's state, number and title faces.
   `vui-field-element` (the field with a key).
 - **Filed:** https://github.com/d12frosted/vui.el/issues/291, as a
   follow-up to #113.
+- **Fixed** on vui master by #294, as `vui-field-at`,
+  `vui-element-bounds` and `vui-element-by-key` (buttons too); the issue
+  has the three snippets rewritten on them.  As for 1, once CI's vui
+  has it.
 
 ## 3. No timer hook
 
@@ -49,7 +58,12 @@ carries, such as a row's state, number and title faces.
   when the callback returns nil, and when it signals, so a broken frame
   is reported once (see "Timers" in docs/using-vui.md).
 - **Ask:** a `vui-use-interval` with the same lifetime.
-- **Filed:** https://github.com/d12frosted/vui.el/issues/292.
+- **Filed:** https://github.com/d12frosted/vui.el/issues/292.  Upstream
+  proposes `(vui-use-interval DEPS SECONDS &rest BODY)`: nil SECONDS for
+  no timer, BODY from the latest render, `:stop` to stop it (nil being
+  what `vui-set-state` may return); agreed there.  Our four timers tick
+  every 0.025s, past `vui-render-delay`'s 0.01, so each tick sees the
+  last one's state and they port as they are.
 
 ## 4. No way to change some of a root's props
 
@@ -60,6 +74,8 @@ carries, such as a row's state, number and title faces.
   all back.
 - **Ask:** a variant, or a flag, that merges the props given into the
   current ones.
+- **Filed:** https://github.com/d12frosted/vui.el/issues/296, with a
+  repro on vui master e3f1795, as a question of how vui would have it.
 
 ## 5. A component's state is read from outside
 
@@ -68,6 +84,8 @@ carries, such as a row's state, number and title faces.
   that act on the marked items.
 - **Ask:** a public getter, or the way vui would rather such state be
   shared with commands.
+- **Filed:** https://github.com/d12frosted/vui.el/issues/297, as a
+  question.
 
 ## 6. A fold growing below point scrolls the window
 
@@ -79,6 +97,8 @@ added.
   restores it in an effect after each frame (`octocat-vui--fold-pin`).
 - **Ask:** keep `window-start` when nothing above point changed, or an
   option to.
+- **Filed:** https://github.com/d12frosted/vui.el/issues/298, asking
+  whether it is intended; no repro, as it needs a real window.
 
 ## 7. Point cannot be put on a row after the first render
 
@@ -92,3 +112,5 @@ finds only widgets, and rows are text (see 1).
   than `vui-render` it, and waits for the timer.
 - **Ask:** a hook run after a render's cursor restoration, or
   `vui-goto-key` also matching a keyed `vui-region`.
+- **Filed:** https://github.com/d12frosted/vui.el/issues/295, with a
+  repro on vui master e3f1795, leaving the shape of a fix to upstream.
