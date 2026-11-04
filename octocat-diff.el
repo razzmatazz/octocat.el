@@ -55,25 +55,31 @@
 
 ;;;;; Faces
 
-(defface octocat-commit-file-modified
+(defface octocat-diff-file-modified
   '((t :inherit default))
   "Face for the letter of a modified file in a diff."
   :group 'octocat)
 
-(defface octocat-commit-file-added
+(defface octocat-diff-file-added
   '((t :inherit success))
   "Face for the letter of an added file in a diff."
   :group 'octocat)
 
-(defface octocat-commit-file-removed
+(defface octocat-diff-file-removed
   '((t :inherit error))
   "Face for the letter of a removed file in a diff."
   :group 'octocat)
 
-(defface octocat-commit-file-renamed
+(defface octocat-diff-file-renamed
   '((t :inherit octocat-branch))
   "Face for the letter of a renamed file in a diff."
   :group 'octocat)
+
+;; They colour the PR diff too; 0.1.0 named them after the commit page.
+(define-obsolete-face-alias 'octocat-commit-file-modified 'octocat-diff-file-modified "0.2.0")
+(define-obsolete-face-alias 'octocat-commit-file-added 'octocat-diff-file-added "0.2.0")
+(define-obsolete-face-alias 'octocat-commit-file-removed 'octocat-diff-file-removed "0.2.0")
+(define-obsolete-face-alias 'octocat-commit-file-renamed 'octocat-diff-file-renamed "0.2.0")
 
 (defface octocat-diff-file-name
   '((t :inherit bold))
@@ -101,10 +107,10 @@
 
 (defun octocat-diff--file-icon (status)
   "Return a one-char icon string for STATUS."
-  (cond ((equal status "added")    (propertize "A" 'face 'octocat-commit-file-added))
-        ((equal status "removed")  (propertize "D" 'face 'octocat-commit-file-removed))
-        ((equal status "renamed")  (propertize "R" 'face 'octocat-commit-file-renamed))
-        (t                         (propertize "M" 'face 'octocat-commit-file-modified))))
+  (cond ((equal status "added")    (propertize "A" 'face 'octocat-diff-file-added))
+        ((equal status "removed")  (propertize "D" 'face 'octocat-diff-file-removed))
+        ((equal status "renamed")  (propertize "R" 'face 'octocat-diff-file-renamed))
+        (t                         (propertize "M" 'face 'octocat-diff-file-modified))))
 
 ;;;;; Patch text
 ;;
