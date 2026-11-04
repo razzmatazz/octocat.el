@@ -55,7 +55,6 @@
 (require 'octocat-vui)
 (require 'octocat-repo)
 (require 'octocat-user)
-(require 'octocat-tree)
 (require 'octocat-search)
 (require 'octocat-doctor)
 

@@ -61,7 +61,6 @@
 (require 'octocat-repo)
 (require 'octocat-run)
 (require 'octocat-search)
-(require 'octocat-tree)
 (require 'octocat-user)
 (require 'octocat-vui)
 (require 'octocat-workflow)

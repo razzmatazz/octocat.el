@@ -56,8 +56,8 @@
 
 ;; Only in builds that can show images, the only ones that call it.
 (declare-function image-size "ext:image.c" (spec &optional pixels frame))
-(declare-function octocat-tree--image-file "octocat-tree" (repo ref path callback))
-(declare-function octocat-tree--proxied-url "octocat-tree" (repo ref path url callback))
+(declare-function octocat-tree--image-file "octocat-repo" (repo ref path callback))
+(declare-function octocat-tree--proxied-url "octocat-repo" (repo ref path url callback))
 (declare-function octocat-vui--image-loading "octocat-vui" (buf loading))
 
 (defcustom octocat-image-max-lines 20

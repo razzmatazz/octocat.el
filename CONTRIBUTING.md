@@ -74,9 +74,9 @@ repo overview (`octocat-repo.el`, `octocat-repo-mode`), the user page
 run and job detail views (`octocat-pr-mode`, `octocat-issue-mode`,
 `octocat-pr-diff-mode`, `octocat-commit-mode`, `octocat-compare-mode`,
 `octocat-checks-mode`, `octocat-workflow-mode`, `octocat-run-mode`,
-`octocat-job-mode`; PR diff, commit and compare share `octocat-diff.el`), the tree browser and the commits page
-(`octocat-tree-mode`, `octocat-commits-mode`, in `octocat-repo.el`), the file viewer and file log (`octocat-tree.el`,
-`octocat-file-mode`, `octocat-file-log-mode`) and the PR and issue list
+`octocat-job-mode`; PR diff, commit and compare share `octocat-diff.el`), the tree browser, the commits page
+and the file viewer (`octocat-tree-mode`, `octocat-commit-list-mode`, `octocat-file-mode`, in
+`octocat-repo.el`) and the PR and issue list
 pages and the Actions pages (`octocat-pr-list-mode`,
 `octocat-issue-list-mode`, `octocat-run-list-mode` and
 `octocat-workflow-list-mode`, defined next to the matching detail

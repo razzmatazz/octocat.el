@@ -136,7 +136,7 @@ string rather than `ok` is an error — fix it before proceeding):
                    "octocat-commit.el" "octocat-compare.el" "octocat-job.el" "octocat-run.el"
                    "octocat-workflow.el" "octocat-pr-diff.el"
                    "octocat-timeline.el" "octocat-pr.el" "octocat-issue.el"
-                   "octocat-checks.el" "octocat-tree.el" "octocat-repo.el"
+                   "octocat-checks.el" "octocat-repo.el"
                    "octocat-search.el" "octocat-avatar.el"
                    "octocat-user.el" "octocat-doctor.el" "octocat-evil.el" "octocat.el"))
     (condition-case err

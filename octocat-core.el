@@ -1243,7 +1243,7 @@ PATH is relative to the repository root.  Mode hooks are delayed."
 (declare-function octocat-user-open     "octocat-user"     (login))
 (declare-function octocat-commit-list-open  "octocat-repo"     (repo &optional ref path))
 (declare-function octocat-tree-open     "octocat-repo"     (repo &optional ref path))
-(declare-function octocat-tree--open-file-by-path "octocat-tree" (repo branch path))
+(declare-function octocat-tree--open-file-by-path "octocat-repo" (repo branch path))
 (declare-function octocat-issue-list    "octocat"          (&optional repo))
 (declare-function octocat-pr-list       "octocat"          (&optional repo))
 (declare-function octocat-actions       "octocat"          (&optional repo))

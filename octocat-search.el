@@ -48,7 +48,6 @@
 (require 'octocat-issue)
 (require 'octocat-pr)
 (require 'octocat-repo)
-(require 'octocat-tree)
 (require 'octocat-workflow)
 
 
