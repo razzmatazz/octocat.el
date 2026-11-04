@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Mermaid draws flowcharts of up to 60 nodes and 250 edges, up from 40 and 80
 * Commit and job lanes turn on rounded corners too, and hop a line they cross: ─╴│╶─
 * Mermaid edges turn on rounded corners, and where two cross they hop, not join: ─╴│╶─
 * Mermaid diagrams turn each edge on a row of its own, so their lines no longer merge

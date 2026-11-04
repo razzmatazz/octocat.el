@@ -174,6 +174,19 @@
                   "---\ntitle: x\n---\n%% note\ngraph TD\nA --> B\nstyle A fill:#f9f\nclassDef c fill:#fff")
                  (octocat-mermaid-tests--draw "graph TD\nA --> B"))))
 
+(ert-deftest octocat-mermaid-test-flow-big ()
+  "A chart of 30 nodes and 110 edges, as dense as octocat's module graph, is drawn."
+  (let ((out (octocat-mermaid-tests--draw
+              (string-join
+               (cons "graph TD"
+                     (cl-loop for a below 30 nconc
+                              (cl-loop for b from (1+ a) below (min 30 (+ a 5))
+                                       collect (format "n%d --> n%d" a b))))
+               "\n"))))
+    (should out)
+    (should (string-match-p "n29" out))
+    (should (= 110 (cl-count ?▼ out)))))
+
 (ert-deftest octocat-mermaid-test-flow-unsupported ()
   "What cannot be drawn faithfully gives nil, so the source is shown."
   (should-not (octocat-mermaid-tests--draw "graph TD\nsubgraph a\nsubgraph b\nX\nend\nend"))

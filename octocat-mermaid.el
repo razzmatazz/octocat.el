@@ -1008,8 +1008,9 @@ the chart cannot be drawn."
 (defun octocat-mermaid--flowchart (spec width)
   "Draw the flowchart SPEC to fit WIDTH columns, or return nil.
 Labels are wrapped more and more tightly; a left-to-right chart that still
-does not fit is turned top-down."
-  (when (and (<= (length (nth 1 spec)) 40) (<= (length (nth 2 spec)) 80))
+does not fit is turned top-down.  A chart much past docs/architecture.md's
+module graph is refused, as its layout would take seconds."
+  (when (and (<= (length (nth 1 spec)) 60) (<= (length (nth 2 spec)) 250))
     (let* ((dir (nth 0 spec))
            (wraps (if width '(40 28 20 14 10) '(40)))
            (sideways (memq dir '(LR RL)))
