@@ -48,22 +48,19 @@
 
 ;; octocat.el loads this file last, once it has required every other
 ;; module, so requiring them here costs nothing.
-(require 'octocat-checks)
+(require 'octocat-actions)
 (require 'octocat-commit)
 (require 'octocat-compare)
 (require 'octocat-core)
 (require 'octocat-diff)
 (require 'octocat-doctor)
 (require 'octocat-issue)
-(require 'octocat-job)
 (require 'octocat-pr)
 (require 'octocat-pr-diff)
 (require 'octocat-repo)
-(require 'octocat-run)
 (require 'octocat-search)
 (require 'octocat-user)
 (require 'octocat-vui)
-(require 'octocat-workflow)
 
 (defvar octocat-mode-map)
 (declare-function octocat-feed-load-more "octocat" ())

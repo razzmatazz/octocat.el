@@ -37,7 +37,7 @@
 (require 'cl-lib)
 (require 'seq)
 (require 'octocat-core)
-(require 'octocat-checks)
+(require 'octocat-actions)
 (require 'octocat-diff)
 (require 'octocat-sync)
 (defvar octocat-timeline-body-lines) ; defcustom in octocat-timeline.el

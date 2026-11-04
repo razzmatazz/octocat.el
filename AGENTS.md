@@ -84,7 +84,8 @@ Load order: `octocat-mermaid.el` first (standalone), then
 that; `octocat-core.el` requires both), then
 `octocat-core.el` (everything else depends on it), then `octocat-sync.el`
 (`octocat-vui.el` requires it), then `octocat-vui.el`
-and `octocat-diff.el` (which the commit and PR diff pages require);
+and `octocat-diff.el` (which the commit and PR diff pages require), and
+`octocat-actions.el` before the commit and PR pages, which require it;
 `octocat-evil.el` before `octocat.el` (the last lines of `octocat.el` call
 `octocat-evil-setup`, and `require` is a no-op on an already-provided
 feature, so a stale evil file silently wins).
@@ -132,11 +133,10 @@ string rather than `ok` is an error — fix it before proceeding):
   (dolist (f (list "octocat-mermaid.el" "octocat-markdown.el"
                    "octocat-image.el" "octocat-core.el" "octocat-sync.el" "octocat-vui.el"
                    "octocat-diff.el"
-                   "octocat-edit.el"
-                   "octocat-commit.el" "octocat-compare.el" "octocat-job.el" "octocat-run.el"
-                   "octocat-workflow.el" "octocat-pr-diff.el"
+                   "octocat-edit.el" "octocat-actions.el"
+                   "octocat-commit.el" "octocat-compare.el" "octocat-pr-diff.el"
                    "octocat-timeline.el" "octocat-pr.el" "octocat-issue.el"
-                   "octocat-checks.el" "octocat-repo.el"
+                   "octocat-repo.el"
                    "octocat-search.el" "octocat-avatar.el"
                    "octocat-user.el" "octocat-doctor.el" "octocat-evil.el" "octocat.el"))
     (condition-case err

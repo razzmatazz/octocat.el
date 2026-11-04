@@ -34,7 +34,7 @@
 (require 'cl-lib)
 (require 'seq)
 (require 'octocat-core)
-(require 'octocat-checks)
+(require 'octocat-actions)
 (require 'octocat-commit)
 (require 'octocat-edit)
 (require 'octocat-sync)

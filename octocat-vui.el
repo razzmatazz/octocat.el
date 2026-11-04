@@ -1888,7 +1888,7 @@ dropped, so that only items shown are marked."
 ;;
 ;; The default query, the buttons and the completions are buffer-local,
 ;; so a page with a query of its own, such as the run list
-;; (octocat-run.el), sets its own.
+;; (octocat-actions.el), sets its own.
 
 (defvar-local octocat-vui-list--query nil
   "Current search query of this list buffer; nil means the default query.")
