@@ -3,6 +3,7 @@
 See [README.md](README.md) for full project documentation.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for code conventions.
 See [docs/user-interface-conventions.md](docs/user-interface-conventions.md) for UI conventions: how to signal interactivity, `mouse-face`/`help-echo` patterns, and the decision table for RET-able sections vs inline buttons.
+See [docs/architecture.md](docs/architecture.md) for the modules and their dependency graph; run `make update-architecture-md` after adding or removing a `require` between them.
 See [docs/using-vui.md](docs/using-vui.md) for vui.el gotchas, e.g. updating a page in place instead of remounting it.
 See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as functional as possible, with context (e.g. width) passed in as arguments and side effects confined to commands and effects.
 

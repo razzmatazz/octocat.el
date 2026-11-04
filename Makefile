@@ -32,7 +32,7 @@ RUN = $(DOCKER) run $(ISOLATED) --network=none \
   -v "$(CURDIR)":/src:ro -v "$(CURDIR)/.eldev":/src/.eldev -w /src $(IMAGE)
 
 .PHONY: ci ci-all image deps clean compile lint test melpazoid melpazoid-prepare \
-  melpazoid-image melpazoid-check screenshots
+  melpazoid-image melpazoid-check screenshots update-architecture-md
 
 # What ci runs at once.  ci-all runs melpazoid, which is the same on every
 # release, with 31.1's only.
@@ -87,9 +87,10 @@ compile:
 	  && cd /tmp/build && eldev compile --warnings-as-errors --set all"
 
 # checkdoc, package-lint and elisp-lint, as the Eldev file says, then
-# check-declare.
+# check-declare, then that docs/architecture.md's module graph is current.
 lint:
-	$(RUN) sh -c 'eldev lint && eldev exec -R --file tools/check-declare.el'
+	$(RUN) sh -c 'eldev lint && eldev exec -R --file tools/check-declare.el \
+	  && emacs -Q --batch -l tools/module-graph.el check'
 
 # The tests share one process, but for the evil one, which must load
 # octocat itself (see its Commentary).
@@ -164,3 +165,9 @@ screenshots: compile
 	$(DOCKER) run $(ISOLATED) --init --network=none -v "$(CURDIR)":/src:ro \
 	  -v "$(CURDIR)/docs/screenshots":/src/docs/screenshots -w /src $(SCREENSHOTS_IMAGE) \
 	  test/screenshots/run.sh
+
+# Rewrite docs/architecture.md's module graph and table from the sources.
+update-architecture-md:
+	$(DOCKER) run $(ISOLATED) --network=none -v "$(CURDIR)":/src:ro \
+	  -v "$(CURDIR)/docs":/src/docs -w /src $(IMAGE) \
+	  emacs -Q --batch -l tools/module-graph.el

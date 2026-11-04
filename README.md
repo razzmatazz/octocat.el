@@ -26,6 +26,7 @@ wherever you follow them in Emacs.
 - [Using octocat.el](docs/usage.md) — every page, in detail
 - [Screenshots](docs/screenshots/README.md) — every page, pictured from made-up data
 - [CHANGELOG.md](CHANGELOG.md) — what changed in each release
+- [Architecture](docs/architecture.md) — the modules and how they depend on each other
 - [CONTRIBUTING.md](CONTRIBUTING.md) — code conventions, building, testing, CI
 
 ## Getting started
