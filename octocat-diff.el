@@ -48,8 +48,6 @@
 
 (defvar octocat-timeline-body-lines) ; defcustom in octocat-timeline.el
 
-(declare-function octocat-tree-open "octocat-repo" (repo &optional ref path))
-
 
 ;;;; Changed files
 
@@ -1173,7 +1171,7 @@ columns, ElDoc showing it whole."
                   :no-decoration t
                   :face 'octocat-dimmed
                   :help-echo "RET: browse the repository's files at this commit"
-                  :on-click (lambda () (octocat-tree-open repo sha)))
+                  :on-click (lambda () (octocat-open 'tree repo sha)))
                 (vui-text "  ")
                 (octocat-commit--view-tabs patch))))
 
@@ -1250,7 +1248,7 @@ the commit.  Each parent and the branch open their page."
                     "Branch"
                     (list (octocat-vui--link
                            holder 'octocat-branch
-                           (lambda () (octocat-tree-open repo holder))
+                           (lambda () (octocat-open 'tree repo holder))
                            (format "RET: browse %s, which holds this commit" holder)))))))))))
 
 (defun octocat-commit--skeleton (width)
@@ -1490,6 +1488,10 @@ only on `g'."
           octocat-diff--hide-comments nil)
     (octocat-commit-refresh)))
 
+(cl-defmethod octocat-open ((_kind (eql 'commit)) repo sha)
+  "Open commit SHA of REPO, as `octocat-commit-open'."
+  (octocat-commit-open repo sha))
+
 
 ;;;; Compare page
 ;;
@@ -1690,6 +1692,10 @@ DOTS is \"...\", or \"..\" for a two-dot link (see the Commentary)."
     (setq octocat--compare-repo repo
           octocat--compare-refs (list base dots head))
     (octocat-compare-refresh)))
+
+(cl-defmethod octocat-open ((_kind (eql 'compare)) repo base dots head)
+  "Open the comparison of BASE DOTS HEAD in REPO, as `octocat-compare-open'."
+  (octocat-compare-open repo base dots head))
 
 (provide 'octocat-diff)
 ;;; octocat-diff.el ends here

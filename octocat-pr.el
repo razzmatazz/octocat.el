@@ -46,9 +46,6 @@
 (require 'vui)
 (require 'vui-components) ; vui-list, vui-vstack, etc.
 
-(declare-function octocat-issue-open "octocat-issue" (repo number))
-(declare-function octocat-issue-new "octocat-issue" ())
-
 ;; Forward declarations for buffer-locals defined later in this file.
 ;; Needed so the byte-compiler doesn't warn about free variables in
 ;; rendering functions that run in `octocat-pr-mode' buffers.
@@ -1148,7 +1145,7 @@ TAB is the page showing it, `conversation' (the default), `commits' or
       (list (cons "Milestone" (octocat-vui--milestone pr))
             (cons "Closes"    (octocat-vui--numbers
                                repo (gethash "closingIssuesReferences" pr)
-                               #'octocat-issue-open)))
+                               (apply-partially #'octocat-open 'issue))))
       ;; The list leaves the branch out; the page shows it and its base,
       ;; once known: a header painted from a list's copy lacks them.
       (unless (string-empty-p head)
@@ -1315,7 +1312,7 @@ A new TICK fetches them again."
     (define-key map (kbd "C-c C-a") #'octocat-pr-add-comment)
     (define-key map (kbd "C-c C-e") #'octocat-pr-edit)
     (define-key map (kbd "C-c C-l") #'octocat-pr-react)
-    (define-key map (kbd "C-c C-n") #'octocat-issue-new)
+    (define-key map (kbd "C-c C-n") 'octocat-issue-new) ; in octocat-issue
     (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
     (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
     (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
@@ -1365,6 +1362,10 @@ the background, in place: what is unfolded stays so."
     (setq octocat--pr-repo   repo
           octocat--pr-number number)
     (octocat-pr-refresh)))
+
+(cl-defmethod octocat-open ((_kind (eql 'pr)) repo number)
+  "Open PR NUMBER of REPO, as `octocat-pr-open'."
+  (octocat-pr-open repo number))
 
 
 ;;;; Commits page
@@ -1422,6 +1423,10 @@ the background, in place: what is unfolded stays so."
     (setq octocat--pr-commits-repo   repo
           octocat--pr-commits-number number)
     (octocat-pr-commits-refresh)))
+
+(cl-defmethod octocat-open ((_kind (eql 'pr-commits)) repo number)
+  "Open the commits of PR NUMBER of REPO, as `octocat-pr-commits-open'."
+  (octocat-pr-commits-open repo number))
 
 
 ;;;; Files changed page
@@ -2341,6 +2346,10 @@ in place."
           octocat-diff--hide-comments nil)
     (octocat-pr-diff-refresh)))
 
+(cl-defmethod octocat-open ((_kind (eql 'pr-diff)) repo number)
+  "Open the files changed by PR NUMBER of REPO, as `octocat-pr-diff-open'."
+  (octocat-pr-diff-open repo number))
+
 
 ;;;; PR list page
 ;;
@@ -2377,7 +2386,7 @@ in place."
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map (make-composed-keymap octocat-vui-list-mark-map
                                                  octocat-vui-list-mode-map))
-    (define-key map (kbd "C-c C-n") #'octocat-issue-new)
+    (define-key map (kbd "C-c C-n") 'octocat-issue-new) ; in octocat-issue
     map)
   "Keymap for `octocat-pr-list-mode'.")
 

@@ -33,9 +33,14 @@ From the bottom up:
   requires the pages it binds keys in, which `octocat.el` has loaded
   by then.
 
-Requires must not form a cycle.  Where a lower module calls into a
-higher one, it does so through a variable or hook whose default the
-higher module sets, or through a `declare-function` (see AGENTS.md).
+Requires must not form a cycle.  Where a lower module opens a page of
+a higher one, or a page opens a peer it cannot require, it calls
+`octocat-open` with the page's kind, such as `(octocat-open 'pr repo
+number)`: a generic function in `octocat-core` that each page module
+adds a `cl-defmethod` to for its kinds.  A key bound to a higher
+module's command names it quoted, as `'octocat-jump`, not `#'`.  Other
+calls up go through a variable or hook whose default the higher module
+sets, or through a `declare-function` (see AGENTS.md).
 
 ## Module graph
 
@@ -115,6 +120,7 @@ flowchart TD
   octocat_search --> octocat_pr
   octocat_search --> octocat_repo
   octocat_search --> octocat_sync
+  octocat_search --> octocat_user
   octocat_search --> octocat_vui
   octocat_sync --> octocat_core
   octocat_timeline --> octocat_core
@@ -197,7 +203,7 @@ flowchart TD
 | `octocat-mermaid` | Draw mermaid diagrams as text |  |
 | `octocat-pr` | Pull Request detail view for octocat | `octocat-actions`, `octocat-core`, `octocat-diff`, `octocat-edit`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
 | `octocat-repo` | Repository overview, tree, files and history for octocat | `octocat-core`, `octocat-diff`, `octocat-markdown`, `octocat-sync`, `octocat-vui` |
-| `octocat-search` | Repo-wide PR, issue and commit search for octocat | `octocat-actions`, `octocat-core`, `octocat-diff`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-sync`, `octocat-vui` |
+| `octocat-search` | Repo-wide PR, issue and commit search for octocat | `octocat-actions`, `octocat-core`, `octocat-diff`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-sync`, `octocat-user`, `octocat-vui` |
 | `octocat-sync` | Sync GitHub data into a local SQLite store | `octocat-core` |
 | `octocat-timeline` | GitHub-style timeline for issue and PR views | `octocat-core`, `octocat-edit`, `octocat-sync`, `octocat-vui` |
 | `octocat-user` | GitHub user / organization page for octocat | `octocat-avatar`, `octocat-core`, `octocat-sync`, `octocat-vui` |

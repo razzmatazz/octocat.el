@@ -191,7 +191,10 @@ before it has compiled file B (which defines `foo`).  This warning is
 non-deterministic — it may appear in some runs and not others depending on
 scheduling.
 
-**Fix: add `declare-function` in the calling file.**  When file A calls a
+**To open a page, call `octocat-open` instead** (see "Layers" in
+docs/architecture.md): it needs no `declare-function`.
+
+**Otherwise, add `declare-function` in the calling file.**  When file A calls a
 function defined in file B (which A cannot `require` due to circular-load
 constraints), suppress the warning by adding a `declare-function` near the
 top of A, alongside the other declarations:

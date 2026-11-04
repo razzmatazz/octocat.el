@@ -1367,11 +1367,6 @@ would pull the user back to it (see docs/using-vui.md)."
 ;; `revert-buffer-function', and is opened via `octocat--open-list'
 ;; (octocat.el).
 
-(declare-function octocat-user-open "octocat-user" (login))
-(declare-function octocat-issue-list "octocat" (&optional repo))
-(declare-function octocat-pr-list "octocat" (&optional repo))
-(declare-function octocat-actions "octocat" (&optional repo))
-
 (defvar-local octocat-vui-list--repo nil
   "The \"owner/repo\" string this list buffer is tracking.")
 
@@ -1451,7 +1446,7 @@ that has no tabs."
     (vui-fragment
      (vui-button owner :no-decoration t :face '(link octocat-repo)
                  :help-echo "RET: open owner page"
-                 :on-click (lambda () (octocat-user-open owner)))
+                 :on-click (lambda () (octocat-open 'user owner)))
      (if linked
          (vui-fragment
           (vui-text "/" :face 'octocat-repo)
@@ -2562,10 +2557,6 @@ such as \"Labelled\", how it went once the last is answered."
 ;; The rows and detail headers the repo, list, PR, issue, commit and
 ;; compare pages draw.
 
-(declare-function octocat-pr-open     "octocat-pr"     (repo number))
-(declare-function octocat-issue-open  "octocat-issue"  (repo number))
-(declare-function octocat-commit-open "octocat-diff"   (repo sha))
-
 ;;;;; Navigation
 ;;
 ;; Each of these opens (or switches to) the corresponding detail buffer,
@@ -2573,15 +2564,15 @@ such as \"Labelled\", how it went once the last is answered."
 
 (defun octocat-vui--open-pr (repo pr)
   "Open the PR detail buffer for PR (a hash-table) in REPO."
-  (octocat-pr-open repo (gethash "number" pr)))
+  (octocat-open 'pr repo (gethash "number" pr)))
 
 (defun octocat-vui--open-issue (repo issue)
   "Open the issue detail buffer for ISSUE (a hash-table) in REPO."
-  (octocat-issue-open repo (gethash "number" issue)))
+  (octocat-open 'issue repo (gethash "number" issue)))
 
 (defun octocat-vui--open-commit (repo commit)
   "Open the commit detail buffer for COMMIT (a hash-table) in REPO."
-  (octocat-commit-open repo (or (gethash "sha" commit) (gethash "oid" commit) "")))
+  (octocat-open 'commit repo (or (gethash "sha" commit) (gethash "oid" commit) "")))
 
 ;;;;; Row builders
 
@@ -3050,7 +3041,7 @@ ACTION is called on RET or a click; HELP is its hover text, by default
 (defun octocat-vui--login-link (login)
   "Return \"@LOGIN\" as a link to the page of the user LOGIN."
   (octocat-vui--link (concat "@" login) 'octocat-pr-author
-                     (lambda () (octocat-user-open login))))
+                     (lambda () (octocat-open 'user login))))
 
 (defun octocat-vui--login-items (users)
   "Return the \"@login\" names of USERS (a vector of user objects), or nil.

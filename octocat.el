@@ -189,6 +189,28 @@ With REPO, an \"owner/name\" string, open it for that repository."
   (interactive)
   (octocat-run-list repo))
 
+;; The list pages, for code below them (see `octocat-open').
+
+(cl-defmethod octocat-open ((_kind (eql 'pr-list)) &optional repo)
+  "Open the pull request list of REPO, as `octocat-pr-list'."
+  (octocat-pr-list repo))
+
+(cl-defmethod octocat-open ((_kind (eql 'issue-list)) &optional repo)
+  "Open the issue list of REPO, as `octocat-issue-list'."
+  (octocat-issue-list repo))
+
+(cl-defmethod octocat-open ((_kind (eql 'actions)) &optional repo)
+  "Open the Actions tab of REPO, as `octocat-actions'."
+  (octocat-actions repo))
+
+(cl-defmethod octocat-open ((_kind (eql 'run-list)) &optional repo)
+  "Open the run list of REPO, as `octocat-run-list'."
+  (octocat-run-list repo))
+
+(cl-defmethod octocat-open ((_kind (eql 'workflow-list)) &optional repo)
+  "Open the workflow list of REPO, as `octocat-workflow-list'."
+  (octocat-workflow-list repo))
+
 ;;;###autoload
 (define-minor-mode octocat-github-links-mode
   "Open github.com links in octocat views, wherever Emacs follows them.

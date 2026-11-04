@@ -61,11 +61,6 @@
 (require 'vui)
 (require 'vui-components) ; vui-collapsible, vui-heading-*, etc.
 
-(declare-function octocat-issue-list               "octocat"          (&optional repo))
-(declare-function octocat-pr-list                  "octocat"          (&optional repo))
-(declare-function octocat-actions                  "octocat"          (&optional repo))
-(declare-function octocat-user-open                "octocat-user"     (login))
-
 
 ;;;; User options
 
@@ -145,28 +140,6 @@ Read by `octocat-repo--sync-checkout' on each refresh; a page with no
 
 
 ;;;; Repo detection
-
-(defun octocat-repo--current-repo ()
-  "Return the \"owner/repo\" string for the current Git repository.
-Reads the \\='origin\\=' remote URL and parses both SSH and HTTPS
-GitHub remote forms.  Signals an error when the working directory
-is not inside a GitHub repository."
-  (let ((url (string-trim
-              (shell-command-to-string
-               "git remote get-url origin 2>/dev/null"))))
-    (when (string-empty-p url)
-      (user-error "Octocat: Could not find a Git remote named `origin'"))
-    (or
-     ;; SSH:  git@github.com:owner/repo.git
-     (and (string-match
-           "git@github\\.com:\\([^/]+/[^/]+?\\)\\(\\.git\\)?$" url)
-          (match-string 1 url))
-     ;; HTTPS: https://github.com/owner/repo[.git]
-     (and (string-match
-           "https://github\\.com/\\([^/]+/[^/]+?\\)\\(\\.git\\)?$" url)
-          (match-string 1 url))
-     (user-error "Octocat: `%s' does not look like a GitHub remote" url))))
-
 
 (defun octocat-repo--local-dir-for (repo)
   "Return the local clone directory for REPO, or nil.
@@ -1974,6 +1947,10 @@ Each ref of a file has a buffer of its own, named after both."
           octocat-tree--file-branch branch)
     (octocat-file-refresh)))
 
+(cl-defmethod octocat-open ((_kind (eql 'file)) repo branch path)
+  "Open file PATH of REPO at BRANCH, as `octocat-tree--open-file-by-path'."
+  (octocat-tree--open-file-by-path repo branch path))
+
 (defun octocat-file-switch-branch ()
   "Open this file at another branch, in a buffer of its own."
   (interactive)
@@ -2146,6 +2123,18 @@ the top of this file)."
                                                  (octocat-repo--unpushed
                                                   octocat-repo--local-dir)))))
 
+(cl-defmethod octocat-open ((_kind (eql 'repo)) repo &optional ref)
+  "Open (or switch to) the *REPO* buffer, at REF; see `octocat-visit-repo'."
+  (let* ((buf-name (format "*%s*" repo))
+         (buf      (get-buffer-create buf-name)))
+    (octocat-display-buffer buf)
+    (unless (derived-mode-p 'octocat-repo-mode)
+      (octocat-repo-mode))
+    (setq octocat-repo--repo      repo
+          octocat-repo--local-dir (octocat-repo--local-dir-for repo)
+          octocat-repo--ref       ref)
+    (octocat-repo-refresh)))
+
 (defun octocat-tree-open (repo &optional ref path)
   "Open (or switch to) the tree browser of REPO at REF.
 REF is a branch, tag or SHA, nil to follow the local clone's branch.
@@ -2160,6 +2149,10 @@ PATH, a directory or file, is the one the tree opens down to, with point on it."
           octocat-repo--reveal    path
           octocat-repo--focus     path)
     (octocat-tree-refresh)))
+
+(cl-defmethod octocat-open ((_kind (eql 'tree)) repo &optional ref path)
+  "Open the tree of REPO at REF and PATH, as `octocat-tree-open'."
+  (octocat-tree-open repo ref path))
 
 (defun octocat-tree-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current tree browser, in place."
@@ -2185,6 +2178,10 @@ PATH, a file or directory, keeps the commits that touched it."
           octocat-repo--ref       ref
           octocat-repo--path      path)
     (octocat-commit-list-refresh)))
+
+(cl-defmethod octocat-open ((_kind (eql 'commit-list)) repo &optional ref path)
+  "Open the commits of REPO at REF and PATH, as `octocat-commit-list-open'."
+  (octocat-commit-list-open repo ref path))
 
 (defun octocat-commit-list-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current commits page, in place."

@@ -52,9 +52,6 @@
 (require 'vui)
 (require 'vui-components) ; vui-list
 
-(declare-function octocat-run-list      "octocat" (&optional repo))
-(declare-function octocat-workflow-list "octocat" (&optional repo))
-
 
 ;;;; Jobs
 ;;
@@ -845,6 +842,10 @@ content up until the fresh data arrives, for following a running job."
           octocat--job-name   name)
     (octocat-job-refresh)))
 
+(cl-defmethod octocat-open ((_kind (eql 'job)) repo run-id job-id &optional name)
+  "Open job JOB-ID of run RUN-ID in REPO, as `octocat-job-open' with NAME."
+  (octocat-job-open repo run-id job-id name))
+
 
 ;;;; Runs
 
@@ -1388,6 +1389,10 @@ content up until the fresh data arrives, for following a running job."
           octocat--run-id   run-id)
     (octocat-run-refresh)))
 
+(cl-defmethod octocat-open ((_kind (eql 'run)) repo run-id)
+  "Open run RUN-ID of REPO, as `octocat-run-open'."
+  (octocat-run-open repo run-id))
+
 ;;;;; Run list
 ;;
 ;; `octocat-run-list-mode': a repository's recent runs across all its
@@ -1645,10 +1650,10 @@ its page.  WORKFLOWS, their sync snapshot, gives their count."
   (let ((count (and (plist-get workflows :data) (length (plist-get workflows :data)))))
     (octocat-vui-tab-row
      (list (list "Runs" "RET: list the recent runs"
-                 (unless (eq current 'runs) (lambda () (octocat-run-list repo))))
+                 (unless (eq current 'runs) (lambda () (octocat-open 'run-list repo))))
            (list (if count (format "Workflows (%d)" count) "Workflows")
                  "RET: list the workflows"
-                 (unless (eq current 'workflows) (lambda () (octocat-workflow-list repo)))))
+                 (unless (eq current 'workflows) (lambda () (octocat-open 'workflow-list repo)))))
      (octocat-vui-window-width))))
 
 (vui-defcomponent octocat-run-list--page (repo current-branch tick query)
@@ -2355,6 +2360,10 @@ NAME is its display name and PATH its file, or nil."
           octocat--workflow-name name
           octocat--workflow-path path)
     (octocat-workflow-refresh)))
+
+(cl-defmethod octocat-open ((_kind (eql 'workflow)) repo id name path)
+  "Open workflow ID, NAME at PATH, of REPO, as `octocat-workflow-open'."
+  (octocat-workflow-open repo id name path))
 
 ;;;;; Workflow list
 ;;

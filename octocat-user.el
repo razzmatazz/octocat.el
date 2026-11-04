@@ -403,6 +403,10 @@ A leading \"@\" is accepted."
     (setq octocat-user--login login)
     (octocat-user-refresh)))
 
+(cl-defmethod octocat-open ((_kind (eql 'user)) login)
+  "Open the page of LOGIN, as `octocat-user-open'."
+  (octocat-user-open login))
+
 ;; NOTE: the `M-x octocat-user' entry point is defined in `octocat.el' --
 ;; see CONTRIBUTING.md, "Entry points".
 

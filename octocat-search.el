@@ -48,6 +48,7 @@
 (require 'octocat-issue)
 (require 'octocat-pr)
 (require 'octocat-repo)
+(require 'octocat-user)
 (require 'octocat-actions)
 
 
@@ -665,6 +666,47 @@ lists that type first."
                       (get-text-property 0 'octocat-search-item chosen))))
       (when item
         (octocat--search-open-item item)))))
+
+;;;; Jumping elsewhere
+
+(defun octocat-switch-repo ()
+  "Search GitHub repositories or users interactively with live API queries.
+Input starting with \"@\" searches users and organizations instead.
+The repos and users octocat has stored that match the input show at
+once, newest first.  GitHub's results, debounced by
+`consult-async-input-debounce', then lead the list in GitHub's order,
+the stored matches it did not return after them.
+
+Uses `consult--read' with a custom async pipeline so Vertico, Embark,
+Marginalia, and other consult-aware packages integrate seamlessly.
+
+The selected repository is opened via `octocat-visit-repo', a selected
+\"@login\" via `octocat-user-open'."
+  (interactive)
+  (let ((repo
+         (consult--read
+          (consult--async-pipeline
+           (consult--async-min-input 2)
+           (octocat--async-search-repos))
+          :prompt   "Search GitHub repos (@ for users): "
+          :category 'octocat-repo
+          :sort     nil)))          ; preserve server-side ranking
+    (when (and repo (not (string-empty-p (string-trim repo))))
+      (let ((choice (string-trim repo)))
+        (if (string-prefix-p "@" choice)
+            (octocat-user-open choice)
+          (octocat-visit-repo choice))))))
+
+(defun octocat-jump (&optional other)
+  "Find something to open: in the current repository, or elsewhere.
+Without a prefix argument OTHER, search the current repository's PRs,
+issues, commits and files, as `octocat-search-repo' does.  With one, or
+where there is no current repository, search other repositories and
+users, as `octocat-switch-repo' does."
+  (interactive "P")
+  (if (or other (not (octocat--search-repo--current-repo)))
+      (octocat-switch-repo)
+    (octocat-search-repo)))
 
 (provide 'octocat-search)
 ;;; octocat-search.el ends here

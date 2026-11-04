@@ -39,8 +39,6 @@
 (require 'vui)
 (require 'vui-components) ; vui-list, vui-vstack, etc.
 
-(declare-function octocat-pr-open "octocat-pr" (repo number))
-
 (defvar octocat--issue-repo)
 (defvar octocat--issue-number)
 
@@ -299,7 +297,7 @@ BG is as for `octocat--label-face'; the title is cut to fit WIDTH."
       (list (cons "Milestone" (octocat-vui--milestone issue))
             (cons "Fixed by"  (octocat-vui--numbers
                                repo (gethash "closedByPullRequestsReferences" issue)
-                               #'octocat-pr-open)))
+                               (apply-partially #'octocat-open 'pr))))
       nil '(:comments))
      (list (vui-newline)))))
 
@@ -395,6 +393,10 @@ the background, in place: what is unfolded stays so."
     (setq octocat--issue-repo   repo
           octocat--issue-number number)
     (octocat-issue-refresh)))
+
+(cl-defmethod octocat-open ((_kind (eql 'issue)) repo number)
+  "Open issue NUMBER of REPO, as `octocat-issue-open'."
+  (octocat-issue-open repo number))
 
 
 ;;;; Issue list page

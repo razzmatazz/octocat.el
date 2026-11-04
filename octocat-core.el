@@ -38,16 +38,6 @@
 (require 'octocat-image)
 (require 'consult)
 
-;; Forward declarations for octocat-repo.el functions called from this file.
-;; octocat-repo.el is loaded after octocat-core.el, so we cannot require it.
-(declare-function octocat-repo-mode            "octocat-repo" ())
-(declare-function octocat-repo--local-dir-for  "octocat-repo" (repo))
-(declare-function octocat-repo-refresh         "octocat-repo" (&optional _ignore-auto _noconfirm))
-(declare-function octocat-repo--current-repo   "octocat-repo" ())
-(declare-function octocat-pr-open              "octocat-pr"   (repo number))
-(declare-function octocat-issue-open           "octocat-issue" (repo number))
-(declare-function octocat-commit-open          "octocat-diff" (repo sha))
-
 ;; Buffer-local variable stubs: defined as defvar-local in their respective
 ;; files (loaded after octocat-core.el).  The plain defvar here lets the
 ;; byte-compiler see the symbol and suppresses "reference to free variable"
@@ -1198,7 +1188,7 @@ is asked first and the matching view opened."
   (let ((repo (or repo (octocat--search-repo--current-repo)
                   (user-error "Octocat: no repository to look %s up in" id))))
     (pcase kind
-      ('commit (octocat-commit-open repo id))
+      ('commit (octocat-open 'commit repo id))
       ('issue
        (message "Octocat: opening %s#%d…" repo id)
        (let ((buf (current-buffer)))
@@ -1212,8 +1202,19 @@ is asked first and the matching view opened."
                     (message "Octocat: cannot open %s#%d: %s" repo id (cdr result)))
                    ((not (octocat--still-selected-p buf))
                     (message "Octocat: not opening %s#%d, as you moved on" repo id))
-                   ((equal result "true") (octocat-pr-open repo id))
-                   (t (octocat-issue-open repo id)))))))))))
+                   ((equal result "true") (octocat-open 'pr repo id))
+                   (t (octocat-open 'issue repo id)))))))))))
+
+;;;; Opening pages
+;;
+;; Code below a page's module, such as the link following here, or a
+;; page linking to a peer, cannot require it, so it opens the page with
+;; `octocat-open' and the page's module adds the method for its KIND.
+
+(cl-defgeneric octocat-open (kind &rest args)
+  "Open the octocat page of KIND, such as `pr', for ARGS.
+ARGS are those of the page's own opener, such as REPO and NUMBER for
+`octocat-pr-open'.  KIND is as `octocat--github-url-target' returns.")
 
 ;;;; Syntax highlighting
 
@@ -1233,20 +1234,6 @@ PATH is relative to the repository root.  Mode hooks are delayed."
 ;; `browse-url-handlers', while `octocat-github-links-mode' is on.
 ;; Other links go to `browse-url', which lets any package's handler claim
 ;; them; "open in browser" commands use `octocat-browse-external'.
-
-(declare-function octocat-pr-diff-open  "octocat-pr" (repo number))
-(declare-function octocat-pr-commits-open "octocat-pr"    (repo number))
-(declare-function octocat-compare-open  "octocat-diff" (repo base dots head))
-(declare-function octocat-run-open      "octocat-actions"  (repo run-id))
-(declare-function octocat-job-open      "octocat-actions"  (repo run-id job-id name))
-(declare-function octocat-workflow-open "octocat-actions"  (repo id name path))
-(declare-function octocat-user-open     "octocat-user"     (login))
-(declare-function octocat-commit-list-open  "octocat-repo"     (repo &optional ref path))
-(declare-function octocat-tree-open     "octocat-repo"     (repo &optional ref path))
-(declare-function octocat-tree--open-file-by-path "octocat-repo" (repo branch path))
-(declare-function octocat-issue-list    "octocat"          (&optional repo))
-(declare-function octocat-pr-list       "octocat"          (&optional repo))
-(declare-function octocat-actions       "octocat"          (&optional repo))
 
 (defconst octocat--github-reserved-paths
   '("about" "account" "apps" "codespaces" "collections" "contact" "copilot"
@@ -1365,36 +1352,25 @@ and path are nil: the default branch."
   "Open github.com URL in the octocat view showing it.
 The handler `octocat-github-links-mode' adds to `browse-url-handlers'."
   (pcase (octocat--github-url-target url)
-    (`(user ,login)        (octocat-user-open login))
+    ('nil (user-error "Octocat: no view for %s" url))
     (`(repo ,repo)         (octocat-visit-repo repo))
-    (`(pr ,repo ,n)        (octocat-pr-open repo n))
-    (`(pr-diff ,repo ,n)   (octocat-pr-diff-open repo n))
-    (`(pr-commits ,repo ,n) (octocat-pr-commits-open repo n))
     ;; github.com redirects /issues/N of a PR to it, so ask which it is.
     (`(issue ,repo ,n)     (octocat--markdown-open-ref 'issue repo n))
-    (`(commit ,repo ,sha)  (octocat-commit-open repo sha))
-    (`(compare ,repo ,base ,dots ,head) (octocat-compare-open repo base dots head))
-    (`(run ,repo ,id)      (octocat-run-open repo id))
-    (`(job ,repo ,run ,id) (octocat-job-open repo run id nil))
     (`(workflow ,repo ,file)
-     (octocat-workflow-open repo file file (concat ".github/workflows/" file)))
-    (`(pr-list ,repo)      (octocat-pr-list repo))
-    (`(issue-list ,repo)   (octocat-issue-list repo))
-    (`(actions ,repo)      (octocat-actions repo))
+     (octocat-open 'workflow repo file file (concat ".github/workflows/" file)))
     (`(tree ,repo . ,segs)
      (octocat--open-ref-path repo segs
                              (lambda (ref path)
                                (if path
-                                   (octocat-tree-open repo ref path)
+                                   (octocat-open 'tree repo ref path)
                                  (octocat-visit-repo repo ref)))))
     (`(commit-list ,repo . ,segs)
      (octocat--open-ref-path repo segs
-                             (lambda (ref path) (octocat-commit-list-open repo ref path))))
+                             (lambda (ref path) (octocat-open 'commit-list repo ref path))))
     (`(blob ,repo . ,segs)
      (octocat--open-ref-path repo segs
-                             (lambda (ref path)
-                               (octocat-tree--open-file-by-path repo ref path))))
-    (_ (user-error "Octocat: no view for %s" url))))
+                             (lambda (ref path) (octocat-open 'file repo ref path))))
+    (target (apply #'octocat-open target))))
 
 ;; So `browse-url-with-browser-kind' skips it when asked for a browser.
 (function-put 'octocat-browse-url 'browse-url-browser-kind 'internal)
@@ -1492,58 +1468,11 @@ After toggling, the buffer is refreshed via `octocat--refresh-fn'."
   (when octocat--refresh-fn
     (funcall octocat--refresh-fn)))
 
-;;;; Repo navigation
-
-(defvar octocat-repo--repo)
-(defvar octocat-repo--local-dir)
-(defvar octocat-repo--ref)
-
-(declare-function octocat--async-search-repos "octocat-vui" (&optional gate))
-
-(defun octocat-switch-repo ()
-  "Search GitHub repositories or users interactively with live API queries.
-Input starting with \"@\" searches users and organizations instead.
-The repos and users octocat has stored that match the input show at
-once, newest first.  GitHub's results, debounced by
-`consult-async-input-debounce', then lead the list in GitHub's order,
-the stored matches it did not return after them.
-
-Uses `consult--read' with a custom async pipeline so Vertico, Embark,
-Marginalia, and other consult-aware packages integrate seamlessly.
-
-The selected repository is opened via `octocat-visit-repo', a selected
-\"@login\" via `octocat-user-open'."
-  (interactive)
-  (let ((repo
-         (consult--read
-          (consult--async-pipeline
-           (consult--async-min-input 2)
-           (octocat--async-search-repos))
-          :prompt   "Search GitHub repos (@ for users): "
-          :category 'octocat-repo
-          :sort     nil)))          ; preserve server-side ranking
-    (when (and repo (not (string-empty-p (string-trim repo))))
-      (let ((choice (string-trim repo)))
-        (if (string-prefix-p "@" choice)
-            (octocat-user-open choice)
-          (octocat-visit-repo choice))))))
-
-(declare-function octocat-search-repo "octocat-search" ())
-
-(defun octocat-jump (&optional other)
-  "Find something to open: in the current repository, or elsewhere.
-Without a prefix argument OTHER, search the current repository's PRs,
-issues, commits and files, as `octocat-search-repo' does.  With one, or
-where there is no current repository, search other repositories and
-users, as `octocat-switch-repo' does."
-  (interactive "P")
-  (if (or other (not (octocat--search-repo--current-repo)))
-      (octocat-switch-repo)
-    (octocat-search-repo)))
+;;;; Common keys
 
 (defvar octocat-common-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c C-j")    #'octocat-jump)
+    (define-key map (kbd "C-c C-j")    'octocat-jump) ; in octocat-search
     (define-key map (kbd "S-<return>") #'octocat-visit-other-window)
     map)
   "Keys every octocat page shares, whatever its major mode.
@@ -1656,23 +1585,35 @@ left."
 
 (defun octocat-visit-repo (repo &optional ref)
   "Open (or switch to) the *REPO* buffer.
-REPO is an \"owner/name\" string.  This is the shared implementation used
-by the repo-nav section in every detail view.  REF, a branch, tag or
-SHA, is the one to show instead of the default branch."
-  (let* ((buf-name (format "*%s*" repo))
-         (buf      (get-buffer-create buf-name)))
-    (octocat-display-buffer buf)
-    (unless (derived-mode-p 'octocat-repo-mode)
-      (octocat-repo-mode))
-    (setq octocat-repo--repo      repo
-          octocat-repo--local-dir (octocat-repo--local-dir-for repo)
-          octocat-repo--ref       ref)
-    (octocat-repo-refresh)))
+REPO is an \"owner/name\" string.  REF, a branch, tag or SHA, is the
+one to show instead of the default branch."
+  (octocat-open 'repo repo ref))
 
 ;;;; Current repo detection
 ;;
 ;; Used by the repo-wide search in octocat-search.el and by markdown
 ;; reference opening.
+
+(defun octocat-repo--current-repo ()
+  "Return the \"owner/repo\" string for the current Git repository.
+Reads the \\='origin\\=' remote URL and parses both SSH and HTTPS
+GitHub remote forms.  Signals an error when the working directory
+is not inside a GitHub repository."
+  (let ((url (string-trim
+              (shell-command-to-string
+               "git remote get-url origin 2>/dev/null"))))
+    (when (string-empty-p url)
+      (user-error "Octocat: Could not find a Git remote named `origin'"))
+    (or
+     ;; SSH:  git@github.com:owner/repo.git
+     (and (string-match
+           "git@github\\.com:\\([^/]+/[^/]+?\\)\\(\\.git\\)?$" url)
+          (match-string 1 url))
+     ;; HTTPS: https://github.com/owner/repo[.git]
+     (and (string-match
+           "https://github\\.com/\\([^/]+/[^/]+?\\)\\(\\.git\\)?$" url)
+          (match-string 1 url))
+     (user-error "Octocat: `%s' does not look like a GitHub remote" url))))
 
 (defun octocat--search-repo--current-repo ()
   "Return the \"owner/repo\" string for the current octocat buffer context.
