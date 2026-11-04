@@ -47,7 +47,6 @@
 (require 'octocat-checks)
 (require 'octocat-tree)
 (require 'octocat-org)
-(require 'octocat-search) ; `octocat--read-branch'
 (require 'octocat-vui)
 
 (require 'vui)

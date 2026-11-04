@@ -36,7 +36,6 @@
 
 (require 'octocat-core)
 (require 'octocat-run)
-(require 'octocat-search) ; `octocat--read-branch'
 (require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)

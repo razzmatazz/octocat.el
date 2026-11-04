@@ -18,11 +18,13 @@ From the bottom up:
 - **`octocat-sync`**: the local SQLite store pages read from, and the
   syncing that fills it (see "Refresh and the sync store" in
   CONTRIBUTING.md).
-- **`octocat-vui`**: components and helpers on top of vui.el.
+- **`octocat-vui`**: components and helpers on top of vui.el, and the
+  branch and repo pickers.
 - **Shared parts of pages**: `octocat-diff`, `octocat-edit`,
-  `octocat-timeline`, `octocat-search`.
+  `octocat-timeline`.
 - **Pages**: one module per kind of page, such as `octocat-pr`,
   `octocat-issue` or `octocat-repo`, requiring the pages they link to.
+  `octocat-search` sits above the pages its results open.
 - **`octocat-evil`**: Evil bindings, loaded only once Evil is on.  It
   requires the pages it binds keys in, which `octocat.el` has loaded
   by then.
@@ -139,7 +141,6 @@ flowchart TD
   octocat_repo --> octocat_pr
   octocat_repo --> octocat_pr_diff
   octocat_repo --> octocat_run
-  octocat_repo --> octocat_search
   octocat_repo --> octocat_tree
   octocat_repo --> octocat_vui
   octocat_repo --> octocat_workflow
@@ -148,15 +149,21 @@ flowchart TD
   octocat_run --> octocat_mermaid
   octocat_run --> octocat_sync
   octocat_run --> octocat_vui
+  octocat_search --> octocat_commit
   octocat_search --> octocat_core
+  octocat_search --> octocat_issue
+  octocat_search --> octocat_pr
+  octocat_search --> octocat_repo
   octocat_search --> octocat_sync
+  octocat_search --> octocat_tree
+  octocat_search --> octocat_vui
+  octocat_search --> octocat_workflow
   octocat_sync --> octocat_core
   octocat_timeline --> octocat_core
   octocat_timeline --> octocat_edit
   octocat_timeline --> octocat_sync
   octocat_timeline --> octocat_vui
   octocat_tree --> octocat_core
-  octocat_tree --> octocat_search
   octocat_tree --> octocat_sync
   octocat_tree --> octocat_vui
   octocat_user --> octocat_avatar
@@ -168,7 +175,6 @@ flowchart TD
   octocat_vui --> octocat_sync
   octocat_workflow --> octocat_core
   octocat_workflow --> octocat_run
-  octocat_workflow --> octocat_search
   octocat_workflow --> octocat_sync
   octocat_workflow --> octocat_vui
   octocat --> octocat_checks
@@ -216,15 +222,15 @@ flowchart TD
 | `octocat-org` | Turn org text into GitHub markdown |  |
 | `octocat-pr-diff` | PR diff view for octocat | `octocat-core`, `octocat-diff`, `octocat-edit`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
 | `octocat-pr` | Pull Request detail view for octocat | `octocat-checks`, `octocat-commit`, `octocat-core`, `octocat-edit`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
-| `octocat-repo` | Per-repository view for octocat | `octocat-checks`, `octocat-commit`, `octocat-core`, `octocat-issue`, `octocat-job`, `octocat-org`, `octocat-pr`, `octocat-pr-diff`, `octocat-run`, `octocat-search`, `octocat-tree`, `octocat-vui`, `octocat-workflow` |
+| `octocat-repo` | Per-repository view for octocat | `octocat-checks`, `octocat-commit`, `octocat-core`, `octocat-issue`, `octocat-job`, `octocat-org`, `octocat-pr`, `octocat-pr-diff`, `octocat-run`, `octocat-tree`, `octocat-vui`, `octocat-workflow` |
 | `octocat-run` | Workflow run detail view for octocat | `octocat-core`, `octocat-job`, `octocat-mermaid`, `octocat-sync`, `octocat-vui` |
-| `octocat-search` | Repo-wide PR, issue and commit search for octocat | `octocat-core`, `octocat-sync` |
+| `octocat-search` | Repo-wide PR, issue and commit search for octocat | `octocat-commit`, `octocat-core`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-sync`, `octocat-tree`, `octocat-vui`, `octocat-workflow` |
 | `octocat-sync` | Sync GitHub data into a local SQLite store | `octocat-core` |
 | `octocat-timeline` | GitHub-style timeline for issue and PR views | `octocat-core`, `octocat-edit`, `octocat-sync`, `octocat-vui` |
-| `octocat-tree` | File tree and file log browser for octocat | `octocat-core`, `octocat-search`, `octocat-sync`, `octocat-vui` |
+| `octocat-tree` | File tree and file log browser for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-user` | GitHub user / organization page for octocat | `octocat-avatar`, `octocat-core`, `octocat-repo`, `octocat-sync`, `octocat-vui` |
 | `octocat-vui` | vui.el helpers and components for octocat | `octocat-core`, `octocat-sync` |
-| `octocat-workflow` | Workflow detail view for octocat | `octocat-core`, `octocat-run`, `octocat-search`, `octocat-sync`, `octocat-vui` |
+| `octocat-workflow` | Workflow detail view for octocat | `octocat-core`, `octocat-run`, `octocat-sync`, `octocat-vui` |
 | `octocat` | GitHub Client powered by the gh CLI | `octocat-checks`, `octocat-commit`, `octocat-compare`, `octocat-core`, `octocat-doctor`, `octocat-image`, `octocat-issue`, `octocat-job`, `octocat-pr`, `octocat-pr-diff`, `octocat-repo`, `octocat-run`, `octocat-search`, `octocat-sync`, `octocat-timeline`, `octocat-tree`, `octocat-user`, `octocat-vui`, `octocat-workflow`, `octocat-evil` (lazily) |
 <!-- /module-list -->
 

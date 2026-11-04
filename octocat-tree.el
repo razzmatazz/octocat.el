@@ -57,7 +57,6 @@
 (require 'octocat-core)
 (require 'octocat-sync)
 (require 'octocat-vui)
-(require 'octocat-search) ; `octocat--read-branch'
 (require 'vui)
 (require 'vui-components)
 
