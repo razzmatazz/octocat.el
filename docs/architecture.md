@@ -38,7 +38,9 @@ higher module sets, or through a `declare-function` (see AGENTS.md).
 An arrow points from a module to one it requires.  A dashed one is a
 `require` inside a function, run only when it is called.  Every
 `require` is drawn, even one a longer path already implies, so the
-graph shows each module's real dependencies.
+graph shows each module's real dependencies.  `octocat-evil` is left
+out: it requires every page it binds keys in, so it has a graph of its
+own, below.
 
 <!-- module-graph -->
 ```mermaid
@@ -51,7 +53,6 @@ flowchart TD
   octocat_diff[octocat-diff]
   octocat_doctor[octocat-doctor]
   octocat_edit[octocat-edit]
-  octocat_evil[octocat-evil]
   octocat_image[octocat-image]
   octocat_issue[octocat-issue]
   octocat_job[octocat-job]
@@ -90,23 +91,6 @@ flowchart TD
   octocat_doctor --> octocat_vui
   octocat_edit --> octocat_core
   octocat_edit --> octocat_vui
-  octocat_evil --> octocat_checks
-  octocat_evil --> octocat_commit
-  octocat_evil --> octocat_compare
-  octocat_evil --> octocat_core
-  octocat_evil --> octocat_diff
-  octocat_evil --> octocat_doctor
-  octocat_evil --> octocat_issue
-  octocat_evil --> octocat_job
-  octocat_evil --> octocat_pr
-  octocat_evil --> octocat_pr_diff
-  octocat_evil --> octocat_repo
-  octocat_evil --> octocat_run
-  octocat_evil --> octocat_search
-  octocat_evil --> octocat_tree
-  octocat_evil --> octocat_user
-  octocat_evil --> octocat_vui
-  octocat_evil --> octocat_workflow
   octocat_image --> octocat_markdown
   octocat_issue --> octocat_core
   octocat_issue --> octocat_edit
@@ -186,9 +170,55 @@ flowchart TD
   octocat --> octocat_user
   octocat --> octocat_vui
   octocat --> octocat_workflow
-  octocat -.-> octocat_evil
 ```
 <!-- /module-graph -->
+
+### Evil bindings
+
+`octocat.el` loads `octocat-evil` only once Evil is on.
+
+<!-- evil-graph -->
+```mermaid
+flowchart TD
+  octocat_checks[octocat-checks]
+  octocat_commit[octocat-commit]
+  octocat_compare[octocat-compare]
+  octocat_core[octocat-core]
+  octocat_diff[octocat-diff]
+  octocat_doctor[octocat-doctor]
+  octocat_evil[octocat-evil]
+  octocat_issue[octocat-issue]
+  octocat_job[octocat-job]
+  octocat_pr_diff[octocat-pr-diff]
+  octocat_pr[octocat-pr]
+  octocat_repo[octocat-repo]
+  octocat_run[octocat-run]
+  octocat_search[octocat-search]
+  octocat_tree[octocat-tree]
+  octocat_user[octocat-user]
+  octocat_vui[octocat-vui]
+  octocat_workflow[octocat-workflow]
+  octocat[octocat]
+  octocat_evil --> octocat_checks
+  octocat_evil --> octocat_commit
+  octocat_evil --> octocat_compare
+  octocat_evil --> octocat_core
+  octocat_evil --> octocat_diff
+  octocat_evil --> octocat_doctor
+  octocat_evil --> octocat_issue
+  octocat_evil --> octocat_job
+  octocat_evil --> octocat_pr
+  octocat_evil --> octocat_pr_diff
+  octocat_evil --> octocat_repo
+  octocat_evil --> octocat_run
+  octocat_evil --> octocat_search
+  octocat_evil --> octocat_tree
+  octocat_evil --> octocat_user
+  octocat_evil --> octocat_vui
+  octocat_evil --> octocat_workflow
+  octocat -.-> octocat_evil
+```
+<!-- /evil-graph -->
 
 ## Modules
 

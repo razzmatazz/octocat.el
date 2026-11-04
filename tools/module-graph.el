@@ -13,6 +13,10 @@
 ;; when inside a function, so loaded only when it runs.  Every require
 ;; is drawn, even one a longer path implies, so the graph shows how
 ;; tangled the modules are.
+;;
+;; `octocat-evil' requires every page it binds keys in, which would
+;; double the main graph's arrows to say nothing new, so it has a graph
+;; of its own, between `<!-- evil-graph -->' and `<!-- /evil-graph -->'.
 
 ;;; Code:
 
@@ -20,6 +24,8 @@
 (require 'subr-x)
 
 (defconst module-graph-doc "docs/architecture.md")
+
+(defconst module-graph-evil "octocat-evil")
 
 (defun module-graph--requires (form top)
   "Return the octocat features FORM requires, as (FEATURE . TOP) pairs.
@@ -79,6 +85,34 @@ functions."
     modules "")
    "```\n"))
 
+(defun module-graph--without-evil (modules)
+  "Return MODULES without `module-graph-evil', nor any arrow to it."
+  (delq nil
+        (mapcar (pcase-lambda (`(,name ,summary ,hard ,lazy))
+                  (unless (equal name module-graph-evil)
+                    (list name summary
+                          (remove module-graph-evil hard)
+                          (remove module-graph-evil lazy))))
+                modules)))
+
+(defun module-graph--evil (modules)
+  "Return the part of MODULES `module-graph-evil''s graph draws.
+That is the modules requiring it, it, and the modules it requires, the
+arrows of the first two kept and of the last left out."
+  (let* ((evil (assoc module-graph-evil modules))
+         (deps (append (nth 2 evil) (nth 3 evil))))
+    (delq nil
+          (mapcar
+           (pcase-lambda (`(,name ,summary ,hard ,lazy))
+             (cond
+              ((equal name module-graph-evil) (list name summary hard lazy))
+              ((or (member module-graph-evil hard) (member module-graph-evil lazy))
+               (list name summary
+                     (and (member module-graph-evil hard) (list module-graph-evil))
+                     (and (member module-graph-evil lazy) (list module-graph-evil))))
+              ((member name deps) (list name summary nil nil))))
+           modules))))
+
 (defun module-graph--list (modules)
   "Return the markdown table of MODULES, as `module-graph--read' gives."
   (concat "| Module | What it is | Requires |\n|---|---|---|\n"
@@ -109,8 +143,11 @@ functions."
               (insert-file-contents module-graph-doc)
               (buffer-string)))
        (new (module-graph--replace
-             (module-graph--replace old "module-graph"
-                                    (module-graph--mermaid modules))
+             (module-graph--replace
+              (module-graph--replace
+               old "module-graph"
+               (module-graph--mermaid (module-graph--without-evil modules)))
+              "evil-graph" (module-graph--mermaid (module-graph--evil modules)))
              "module-list" (module-graph--list modules))))
   (cond
    ((equal old new))
