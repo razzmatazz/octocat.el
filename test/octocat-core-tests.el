@@ -669,6 +669,16 @@ browser, skip it."
     (should (equal answer "hello\n"))
     (should (= (aref (car octocat--gh-log) 5) 6))))
 
+(ert-deftest octocat-core-test-gh-graphql-args ()
+  "Owner and name come from the repo; a number is typed, a nil left out."
+  (let (args)
+    (cl-letf (((symbol-function 'octocat--run-gh)
+               (lambda (_name a _parse _callback) (setq args a))))
+      (octocat--gh-graphql "q" "o/123" "QUERY" '(("n" . 7) ("after" . nil)) #'identity #'ignore
+                           '("--paginate")))
+    (should (equal args '("api" "graphql" "--paginate" "-f" "query=QUERY"
+                          "-f" "owner=o" "-f" "name=123" "-F" "n=7")))))
+
 (ert-deftest octocat-core-test-clip-line ()
   "A long line keeps its text, its tail drawn as a button that shows it."
   (should (equal (octocat--clip-line "short" 10) "short"))

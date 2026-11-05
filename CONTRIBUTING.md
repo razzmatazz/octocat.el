@@ -60,6 +60,13 @@ fetched just now; `g` always does.  A failed fetch keeps the stored
 data.  See "Reading the sync store" in
 [docs/using-vui.md](docs/using-vui.md).
 
+A resource's `gh` call goes in its `:fetch`, and a mutation's in its
+`:send`, not in a function of their own; a GraphQL one goes through
+`octocat--gh-graphql`.  Give its parser or a transform of its data a
+name of its own (a pure function) when the parser is long, tested or
+shared.  A query used once goes next to it, inline or as a `defconst`
+beside a named parser.
+
 Completion candidates and search results are resources too, read with
 `octocat-sync-get`; the only other file octocat writes is
 `octocat-settings-file`.  Do **not** hardcode

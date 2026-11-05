@@ -49,6 +49,69 @@
              42))
   (should-error (octocat-model--issue-parse-created "oops")))
 
+;;;; Comments
+
+(defun octocat-model-tests--page (&rest comments)
+  "Return a page resource's body holding COMMENTS, JSON strings."
+  (let ((data (make-hash-table :test #'equal)))
+    (puthash "comments" (vconcat (mapcar #'json-parse-string comments)) data)
+    data))
+
+(ert-deftest octocat-model-test-put-comment ()
+  "A comment is added at the end, or takes the place of one of its id."
+  (let ((data (octocat-model-tests--page "{\"id\":\"C1\",\"body\":\"a\"}")))
+    (octocat-model--put-comment data (json-parse-string "{\"id\":\"C2\",\"body\":\"b\"}"))
+    (octocat-model--put-comment data (json-parse-string "{\"id\":\"C1\",\"body\":\"a2\"}"))
+    (should (equal (mapcar (lambda (c) (gethash "body" c)) (gethash "comments" data))
+                   '("a2" "b")))))
+
+(ert-deftest octocat-model-test-set-comment-body ()
+  "Only the comment of that REST id changes, and as a copy."
+  (let* ((data (octocat-model-tests--page
+                "{\"url\":\"https://x/1#issuecomment-11\",\"body\":\"a\"}"
+                "{\"url\":\"https://x/1#issuecomment-22\",\"body\":\"b\"}"))
+         (old  (aref (gethash "comments" data) 0))
+         (new  (gethash "comments"
+                        (octocat-model--set-comment-body data "11" "a2" "saving…"))))
+    (should (equal (gethash "body" (aref new 0)) "a2"))
+    (should (equal (gethash octocat-model-pending (aref new 0)) "saving…"))
+    (should (equal (gethash "body" (aref new 1)) "b"))
+    (should (equal (gethash "body" old) "a"))))
+
+(ert-deftest octocat-model-test-react-comment ()
+  "A reaction is counted on the comment of that node id only."
+  (let* ((data (octocat-model-tests--page
+                "{\"id\":\"C1\",\"reactionGroups\":[]}"
+                "{\"id\":\"C2\",\"reactionGroups\":[]}"))
+         (new  (gethash "comments" (octocat-model--react-comment data "C2" "HEART" t))))
+    (should (seq-empty-p (gethash "reactionGroups" (aref new 0))))
+    (should (= (octocat--get (aref (gethash "reactionGroups" (aref new 1)) 0)
+                             "users" "totalCount")
+               1))))
+
+;;;; Actions
+
+(ert-deftest octocat-model-test-job-tree ()
+  "A job's log, annotations and artifacts may fail; the job itself may not."
+  (let ((tree (octocat-model--job-tree (json-parse-string "{\"id\":1}") '(error . "gone")
+                                       '(error . "no") [])))
+    (should (equal (octocat--get tree "job" "id") 1))
+    (should (equal (gethash "log_error" tree) "gone"))
+    (should-not (gethash "log" tree))
+    (should (equal (gethash "annotations" tree) []))
+    (should (equal (gethash "artifacts" tree) [])))
+  (should (equal (octocat-model--job-tree '(error . "no job") "log" [] [])
+                 '(error . "no job"))))
+
+(ert-deftest octocat-model-test-parse-annotations-artifacts ()
+  "Annotations and artifacts read as vectors, [] when unreadable."
+  (should (= (length (octocat-model--parse-annotations "[{\"message\":\"m\"}]")) 1))
+  (should (equal (octocat-model--parse-annotations "{}") []))
+  (should (equal (octocat-model--parse-annotations "oops") []))
+  (should (= (length (octocat-model--parse-artifacts "{\"artifacts\":[{\"id\":1}]}")) 1))
+  (should (equal (octocat-model--parse-artifacts "[]") []))
+  (should (equal (octocat-model--parse-artifacts "oops") [])))
+
 ;;;; Pull requests and reviews
 
 (ert-deftest octocat-model-test-pr-merge-args ()

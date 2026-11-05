@@ -386,21 +386,15 @@ Not RET-able: the commit page reads from GitHub, which lacks it."
 (defun octocat-tree--fetch-blob-sha (repo ref path callback)
   "Fetch the blob SHA of file PATH of REPO at REF.
 Calls CALLBACK with the SHA, or a cons (error . MSG)."
-  (let ((parts (split-string repo "/")))
-    (octocat--run-gh
-     "blob-sha"
-     (list "api" "graphql"
-           "-f" (concat "query=" octocat-tree--blob-query)
-           "-f" (concat "owner=" (car parts))
-           "-f" (concat "name=" (cadr parts))
-           "-f" (concat "expr=" ref ":" path))
-     (lambda (json)
-       (let* ((r   (gethash "repository"
-                            (gethash "data" (json-parse-string json :null-object nil))))
-              (obj (and r (gethash "object" r))))
-         (or (and obj (gethash "oid" obj))
-             (error "No file %s at %s" path ref))))
-     callback)))
+  (octocat--gh-graphql
+   "blob-sha" repo octocat-tree--blob-query `(("expr" . ,(concat ref ":" path)))
+   (lambda (json)
+     (let* ((r   (gethash "repository"
+                          (gethash "data" (json-parse-string json :null-object nil))))
+            (obj (and r (gethash "object" r))))
+       (or (and obj (gethash "oid" obj))
+           (error "No file %s at %s" path ref))))
+   callback))
 
 
 ;;;; Sync resources

@@ -517,7 +517,7 @@ optional, is the seconds between refetches while a page on screen
 shows the resource, nil for none, or a function of its data returning
 that; by default `octocat-sync-poll-interval'.  Either way it is at
 least :max-age."
-  (declare (indent 2))
+  (declare (indent 2) (debug (&define name lambda-list &rest [keywordp form])))
   `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--resources))
 
 (defun octocat-sync--props (spec)
@@ -1015,7 +1015,7 @@ PROPS are evaluated with ARGS bound:
               GitHub's answer, or with (error . MESSAGE);
 :invalidates  optional, a function returning the specs, `_' matching
               anything, of resources it makes outdated."
-  (declare (indent 2))
+  (declare (indent 2) (debug (&define name lambda-list &rest [keywordp form])))
   `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--mutations))
 
 (defun octocat-sync--overlays ()

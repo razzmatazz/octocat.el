@@ -325,22 +325,18 @@ there."
 
 ;;;; Issues and PRs
 
-(defun octocat--fetch-issue-events (repo number callback)
-  "Fetch the timeline events of issue or PR NUMBER in REPO asynchronously.
-Calls CALLBACK with a hash-table whose \"events\" key holds the vector of
-timeline events of all pages, or a cons \\=(error . MSG)."
-  (octocat--run-gh "timeline-events"
-                   (list "api" "--paginate" "--slurp"
-                         (format "repos/%s/issues/%d/timeline" repo number))
-                   (lambda (output)
-                     (let ((pages (json-parse-string (string-trim output)))
-                           (result (make-hash-table :test 'equal)))
-                       (puthash "events" (apply #'vconcat (append pages nil)) result)
-                       result))
-                   callback))
-
+;; Its "events" are those of all pages.
 (octocat-sync-define-resource timeline-events (repo number)
-  :fetch (lambda (done) (octocat--fetch-issue-events repo number done)))
+  :fetch (lambda (done)
+           (octocat--run-gh "timeline-events"
+                            (list "api" "--paginate" "--slurp"
+                                  (format "repos/%s/issues/%d/timeline" repo number))
+                            (lambda (output)
+                              (let ((pages (json-parse-string (string-trim output)))
+                                    (result (make-hash-table :test 'equal)))
+                                (puthash "events" (apply #'vconcat (append pages nil)) result)
+                                result))
+                            done)))
 
 (defconst octocat-model-pending "octocatPending"
   "Key of what is being done to a comment, or to an item's opening post.
@@ -526,20 +522,16 @@ what is being done to it, such as \"saving…\"."
                    (timeline-events ,repo ,number)
                    (list-items ,(if (equal kind "pr") 'pulls 'issues) ,repo _ _))))
 
-(defconst octocat-model--reaction-query
-  (concat "query($id:ID!){node(id:$id){"
-          "...on Reactable{reactionGroups{content viewerHasReacted}}}}")
-  "GraphQL query for the reactions you gave to a post or comment.
-`gh ... view' leaves out whose they are.")
-
 ;; Kept long: only you change them, and `react' keeps them up to date.
 (octocat-sync-define-resource viewer-reactions (subject)
   :max-age 3600
   :fetch (lambda (done)
-           (octocat--run-gh
-            "viewer-reactions"
-            (list "api" "graphql" "-f" (concat "query=" octocat-model--reaction-query)
-                  "-f" (concat "id=" subject))
+           ;; Not `gh ... view': it leaves out whose they are.
+           (octocat--gh-graphql
+            "viewer-reactions" nil
+            (concat "query($id:ID!){node(id:$id){"
+                    "...on Reactable{reactionGroups{content viewerHasReacted}}}}")
+            `(("id" . ,subject))
             (lambda (output)
               (let ((groups (octocat--get (json-parse-string output) "data" "node"
                                           "reactionGroups"))
@@ -593,15 +585,12 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
                            (puthash "given" (vconcat (if add (cons content given) given)) data)
                            data)))))
   :send (lambda (done)
-          (octocat--run-gh
-           "react"
-           (list "api" "graphql"
-                 "-f" (format (concat "query=mutation($id:ID!,$content:ReactionContent!){"
-                                      "%s(input:{subjectId:$id,content:$content}){"
-                                      "clientMutationId}}")
-                              (if add "addReaction" "removeReaction"))
-                 "-f" (concat "id=" subject)
-                 "-f" (concat "content=" content))
+          (octocat--gh-graphql
+           "react" nil
+           (format (concat "mutation($id:ID!,$content:ReactionContent!){"
+                           "%s(input:{subjectId:$id,content:$content}){clientMutationId}}")
+                   (if add "addReaction" "removeReaction"))
+           `(("id" . ,subject) ("content" . ,content))
            #'ignore done)))
 
 ;;;; Issues
@@ -622,33 +611,22 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
   :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
                             (repo-summary ,repo))))
 
-(defun octocat--fetch-issue (repo number callback)
-  "Fetch detail for issue NUMBER in REPO asynchronously.
-Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG)."
-  (octocat--run-gh "issue"
-                   (list "issue" "view"
-                         (number-to-string number)
-                         "--repo" repo
-                         "--json" (concat "id,number,title,author,state,body,"
-                                          "createdAt,closedAt,"
-                                          "labels,comments,url,assignees,milestone,reactionGroups,"
-                                          "closedByPullRequestsReferences"))
-                   (lambda (output) (json-parse-string (string-trim output)))
-                   callback))
-
 (octocat-sync-define-resource issue (repo number)
   :entity (octocat-model-item-key 'issue repo number)
   :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
                             (repo-summary ,repo)))
   :fetch (lambda (done)
-           (octocat--fetch-issue
-            repo number
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (octocat-model-detail
-                               r '("comments")
-                               (lambda (f) (octocat-model-item 'issue repo f)))))))))
+           (octocat--run-gh
+            "issue"
+            (list "issue" "view" (number-to-string number) "--repo" repo
+                  "--json" (concat "id,number,title,author,state,body,"
+                                   "createdAt,closedAt,"
+                                   "labels,comments,url,assignees,milestone,reactionGroups,"
+                                   "closedByPullRequestsReferences"))
+            (lambda (output)
+              (octocat-model-detail (json-parse-string (string-trim output)) '("comments")
+                                    (lambda (f) (octocat-model-item 'issue repo f))))
+            done)))
 
 ;;;; Pull requests
 
@@ -717,24 +695,6 @@ none.  DELETE non-nil deletes the head branch as well."
   ;; It adds an event, and may change what the merge box allows.
   :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number))))
 
-(defun octocat--fetch-pr (repo number callback)
-  "Fetch detail for pull request NUMBER in REPO asynchronously.
-Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
-  (octocat--run-gh "pr"
-                   (list "pr" "view"
-                         (number-to-string number)
-                         "--repo" repo
-                         "--json" (concat "id,number,title,author,state,body,"
-                                          "createdAt,mergedAt,closedAt,"
-                                          "baseRefName,headRefName,headRepositoryOwner,"
-                                          "isDraft,mergeable,mergeStateStatus,"
-                                          "changedFiles,"
-                                          "labels,reviewDecision,reviews,"
-                                          "comments,statusCheckRollup,url,commits,"
-                                          "assignees,milestone,latestReviews,reactionGroups,"
-                                          "reviewRequests,closingIssuesReferences"))
-                   (lambda (output) (json-parse-string (string-trim output)))
-                   callback))
 
 (defconst octocat-model--pr-parts
   '("comments" "reviews" "latestReviews" "reviewRequests" "commits" "statusCheckRollup")
@@ -747,35 +707,38 @@ lists do not share.")
   :invalidates (lambda () `((list-items pulls ,repo _ _) (counts pulls ,repo)
                             (repo-summary ,repo)))
   :fetch (lambda (done)
-           (octocat--fetch-pr
-            repo number
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (octocat-model-detail
-                               r octocat-model--pr-parts
-                               (lambda (f) (octocat-model-item 'pr repo f)))))))))
+           (octocat--run-gh
+            "pr"
+            (list "pr" "view" (number-to-string number) "--repo" repo
+                  "--json" (concat "id,number,title,author,state,body,"
+                                   "createdAt,mergedAt,closedAt,"
+                                   "baseRefName,headRefName,headRepositoryOwner,"
+                                   "isDraft,mergeable,mergeStateStatus,"
+                                   "changedFiles,"
+                                   "labels,reviewDecision,reviews,"
+                                   "comments,statusCheckRollup,url,commits,"
+                                   "assignees,milestone,latestReviews,reactionGroups,"
+                                   "reviewRequests,closingIssuesReferences"))
+            (lambda (output)
+              (octocat-model-detail (json-parse-string (string-trim output))
+                                    octocat-model--pr-parts
+                                    (lambda (f) (octocat-model-item 'pr repo f))))
+            done)))
 
-(defun octocat-model--pr-fetch-awaiting-runs (repo sha callback)
-  "Fetch each workflow run of commit SHA in REPO awaiting approval.
-Calls CALLBACK with a list of run hash-tables, or \=(error . MSG)."
-  (octocat--run-gh "awaiting-runs"
-                   (list "api" (format (concat "repos/%s/actions/runs?head_sha=%s"
-                                               "&status=action_required&per_page=100")
-                                       repo sha))
-                   (lambda (output)
-                     (append (gethash "workflow_runs"
-                                      (json-parse-string (string-trim output)))
-                             nil))
-                   callback))
-
+;; The runs of commit SHA awaiting approval.
 (octocat-sync-define-resource awaiting-runs (repo sha)
   :fetch (lambda (done)
            (if (not sha)
                (funcall done [])
-             (octocat-model--pr-fetch-awaiting-runs
-              repo sha
-              (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r))))))))
+             (octocat--run-gh "awaiting-runs"
+                              (list "api" (format (concat "repos/%s/actions/runs?head_sha=%s"
+                                                          "&status=action_required&per_page=100")
+                                                  repo sha))
+                              (lambda (output)
+                                (or (gethash "workflow_runs"
+                                             (json-parse-string (string-trim output)))
+                                    []))
+                              done))))
 
 (defconst octocat-model--pr-stack-query
   (concat "query($owner:String!,$name:String!,$number:Int!){"
@@ -798,83 +761,53 @@ is in none."
 
 (octocat-sync-define-resource pr-stack (repo number)
   :fetch (lambda (done)
-           (let ((parts (split-string repo "/")))
-             (octocat--run-gh
-              "pr-stack"
-              (list "api" "graphql"
-                    "-f" (concat "query=" octocat-model--pr-stack-query)
-                    "-f" (concat "owner=" (car parts))
-                    "-f" (concat "name=" (cadr parts))
-                    "-F" (format "number=%d" number))
-              #'octocat-model--pr-parse-stack
-              done))))
-
-(defconst octocat-model--pr-merges-query
-  (concat "query($owner:String!,$name:String!,$number:Int!){"
-          "repository(owner:$owner,name:$name){pullRequest(number:$number){"
-          ;; The last 100: a longer PR's first commits show as plain ones.
-          "commits(last:100){nodes{commit{oid parents{totalCount}}}}}}}")
-  "GraphQL query for which commits of a pull request are merges.
-`gh pr view' gives no commit's parents.")
-
-(defun octocat-model--pr-parse-merges (output)
-  "Return the SHAs of the merge commits in OUTPUT.
-OUTPUT is the answer to `octocat-model--pr-merges-query'."
-  (vconcat
-   (cl-loop for node across (or (octocat--get (json-parse-string output)
-                                              "data" "repository" "pullRequest" "commits" "nodes")
-                                [])
-            for commit = (gethash "commit" node)
-            when (> (or (octocat--get commit "parents" "totalCount") 0) 1)
-            collect (gethash "oid" commit))))
+           (octocat--gh-graphql "pr-stack" repo octocat-model--pr-stack-query
+                                `(("number" . ,number))
+                                #'octocat-model--pr-parse-stack done)))
 
 (octocat-sync-define-resource pr-merges (repo number)
   :fetch (lambda (done)
-           (let ((parts (split-string repo "/")))
-             (octocat--run-gh
-              "pr-merges"
-              (list "api" "graphql"
-                    "-f" (concat "query=" octocat-model--pr-merges-query)
-                    "-f" (concat "owner=" (car parts))
-                    "-f" (concat "name=" (cadr parts))
-                    "-F" (format "number=%d" number))
-              #'octocat-model--pr-parse-merges
-              done))))
+           ;; Not `gh pr view': it gives no commit's parents.
+           (octocat--gh-graphql
+            "pr-merges" repo
+            (concat "query($owner:String!,$name:String!,$number:Int!){"
+                    "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+                    ;; The last 100: a longer PR's first commits show as plain ones.
+                    "commits(last:100){nodes{commit{oid parents{totalCount}}}}}}}")
+            `(("number" . ,number))
+            (lambda (output)
+              (vconcat
+               (cl-loop for node across (or (octocat--get (json-parse-string output)
+                                                          "data" "repository" "pullRequest"
+                                                          "commits" "nodes")
+                                            [])
+                        for commit = (gethash "commit" node)
+                        when (> (or (octocat--get commit "parents" "totalCount") 0) 1)
+                        collect (gethash "oid" commit))))
+            done)))
 
-(defun octocat-model--pr-fetch-repo-stacks (repo callback)
-  "Fetch the stacks of REPO, newest first; call CALLBACK with them.
-They are a hash-table whose \"stacks\" is a vector, or \=(error . MSG)."
-  (octocat--run-gh "repo-stacks"
-                   (list "api" (format "repos/%s/stacks?per_page=100" repo))
-                   (lambda (output)
-                     (let ((out (make-hash-table :test #'equal)))
-                       (puthash "stacks" (json-parse-string (string-trim output)) out)
-                       out))
-                   callback))
-
+;; Newest first.
 (octocat-sync-define-resource repo-stacks (repo)
-  :fetch (lambda (done) (octocat-model--pr-fetch-repo-stacks repo done)))
+  :fetch (lambda (done)
+           (octocat--run-gh "repo-stacks"
+                            (list "api" (format "repos/%s/stacks?per_page=100" repo))
+                            (lambda (output)
+                              (let ((out (make-hash-table :test #'equal)))
+                                (puthash "stacks" (json-parse-string (string-trim output)) out)
+                                out))
+                            done)))
 
 ;;;; Reviews
 
-(defun octocat--fetch-pr-diff (repo number callback)
-  "Fetch the per-file diff for pull request NUMBER in REPO asynchronously.
-Calls CALLBACK with a vector of file hash-tables (same shape as the
-GitHub commits API \\='files\\=' array — each entry has \\='filename\\=',
-\\='status\\=', \\='additions\\=', \\='deletions\\=', and \\='patch\\='),
-or a cons \\=(error . MSG) on failure.
-Uses the GitHub REST API via `gh api', which joins the pages into one
-array; GitHub lists at most 3000 files."
-  (octocat--run-gh
-   "pr-diff"
-   (list "api" "--paginate"
-         (format "repos/%s/pulls/%d/files?per_page=100" repo number))
-   (lambda (output)
-     (json-parse-string (string-trim output)))
-   callback))
-
+;; A vector of files as the commits API has them: `gh api' joins the
+;; pages into one array.  GitHub lists at most 3000.
 (octocat-sync-define-resource pr-files (repo number)
-  :fetch (lambda (done) (octocat--fetch-pr-diff repo number done)))
+  :fetch (lambda (done)
+           (octocat--run-gh "pr-diff"
+                            (list "api" "--paginate"
+                                  (format "repos/%s/pulls/%d/files?per_page=100" repo number))
+                            (lambda (output) (json-parse-string (string-trim output)))
+                            done)))
 
 (defconst octocat-model--review-comment-fields
   (concat "id databaseId body createdAt state viewerDidAuthor viewerCanUpdate "
@@ -928,15 +861,10 @@ of its \"id\" and \"commit\", or nil."
 
 (octocat-sync-define-resource pr-review-threads (repo number)
   :fetch (lambda (done)
-           (pcase-let ((`(,owner ,name) (split-string repo "/")))
-             (octocat--run-gh
-              "pr-review-threads"
-              (list "api" "graphql" "--paginate" "--slurp"
-                    "-f" (concat "query=" octocat-model--review-threads-query)
-                    "-f" (concat "owner=" owner) "-f" (concat "name=" name)
-                    "-F" (format "number=%d" number))
-              #'octocat-model--review-parse-threads
-              done))))
+           (octocat--gh-graphql "pr-review-threads" repo octocat-model--review-threads-query
+                                `(("number" . ,number))
+                                #'octocat-model--review-parse-threads done
+                                '("--paginate" "--slurp"))))
 
 ;; Each change to a comment is a mutation whose edits of the
 ;; `pr-review-threads' show it at once, and write GitHub's answer.  The
@@ -947,16 +875,9 @@ of its \"id\" and \"commit\", or nil."
   "Run GraphQL QUERY as `gh' call NAME with VARS, an alist; call DONE.
 A string value is passed as a string, a number as a number, and a nil
 one not at all.  PARSE gets the answer's \"data\"."
-  (octocat--run-gh
-   name
-   (append (list "api" "graphql" "-f" (concat "query=" query))
-           (mapcan (pcase-lambda (`(,k . ,v))
-                     (cond ((null v) nil)
-                           ((numberp v) (list "-F" (format "%s=%d" k v)))
-                           (t (list "-f" (format "%s=%s" k v)))))
-                   vars))
-   (lambda (output) (funcall parse (gethash "data" (json-parse-string output))))
-   done))
+  (octocat--gh-graphql name nil query vars
+                       (lambda (output) (funcall parse (gethash "data" (json-parse-string output))))
+                       done))
 
 (defun octocat-model--with-review (pr-id review-id commit k)
   "Call K with REVIEW-ID, or the id of a pending review started at COMMIT.
@@ -1280,41 +1201,22 @@ An empty BODY is left out, as `gh' rejects an empty --body."
 
 ;;;; Commits and compares
 
-(defun octocat--fetch-commit (repo sha callback)
-  "Fetch commit detail for SHA in REPO asynchronously.
-Calls CALLBACK with a single hash-table of commit data, or the
-symbol `error'.  Uses the GitHub REST API via `gh api'."
-  (octocat--run-gh
-   "commit"
-   (list "api"
-         (format "repos/%s/commits/%s" repo sha))
-   (lambda (output)
-     (json-parse-string (string-trim output)))
-   callback))
-
-(defun octocat--fetch-commit-comments (repo sha callback)
-  "Fetch all comments on commit SHA in REPO asynchronously.
-Calls CALLBACK with a list of comment hash-tables (snake_case REST API
-keys), or a cons \\=(error . MSG) on failure.  The list includes both
-general comments (\\='path\\=' is :null or nil) and inline comments
-\(\\='path\\=' is a file path string, \\='line\\=' is the target line number)."
-  (octocat--run-gh
-   "commit-comments"
-   (list "api"
-         (format "repos/%s/commits/%s/comments" repo sha))
-   #'octocat--parse-json-list
-   callback))
-
 (octocat-sync-define-resource commit (repo sha)
   ;; What a SHA names never changes.
   :max-age (* 30 24 60 60)
-  :fetch (lambda (done) (octocat--fetch-commit repo sha done)))
+  :fetch (lambda (done)
+           (octocat--run-gh "commit" (list "api" (format "repos/%s/commits/%s" repo sha))
+                            (lambda (output) (json-parse-string (string-trim output)))
+                            done)))
 
+;; General comments, whose "path" is :null, and inline ones, on a
+;; "path" and "line".
 (octocat-sync-define-resource commit-comments (repo sha)
   :fetch (lambda (done)
-           (octocat--fetch-commit-comments
-            repo sha
-            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
+           (octocat--run-gh "commit-comments"
+                            (list "api" (format "repos/%s/commits/%s/comments" repo sha))
+                            (lambda (output) (vconcat (octocat--parse-json-list output)))
+                            done)))
 
 ;; Not REST: it has no way to ask whether a branch holds a commit.
 (defconst octocat-model--commit-branch-query
@@ -1341,16 +1243,9 @@ the commit, the commit being behind it or at its head, else :null."
 (octocat-sync-define-resource commit-branch (repo sha)
   :poll octocat-sync-poll-slow
   :fetch (lambda (done)
-           (let ((parts (split-string repo "/")))
-             (octocat--run-gh
-              "commit-branch"
-              (list "api" "graphql"
-                    "-f" (concat "query=" octocat-model--commit-branch-query)
-                    "-f" (concat "owner=" (car parts))
-                    "-f" (concat "name=" (cadr parts))
-                    "-f" (concat "sha=" sha))
-              #'octocat-model--commit-parse-branch
-              done))))
+           (octocat--gh-graphql "commit-branch" repo octocat-model--commit-branch-query
+                                `(("sha" . ,sha))
+                                #'octocat-model--commit-parse-branch done)))
 
 (defun octocat-model-compare-sha-p (ref)
   "Return non-nil when REF is a commit SHA, as a commit link's is.
@@ -1393,19 +1288,12 @@ AFTER, a commit's \"cursor\", fetches the page after that commit.  A
 page holds `octocat-repo-commits-page-size' commits.  Calls CALLBACK with
 a list of commits from `octocat-model--repo-parse-history', or a cons
 \\=(error . MSG)."
-  (let ((parts (split-string repo "/")))
-    (octocat--run-gh
-     "commits"
-     (append (list "api" "graphql"
-                   "-f" (concat "query=" octocat-model--repo-history-query)
-                   "-f" (concat "owner=" (car parts))
-                   "-f" (concat "name=" (cadr parts))
-                   "-f" (concat "ref=" (or ref "HEAD"))
-                   "-F" (format "limit=%d" octocat-repo-commits-page-size))
-             (and after (list "-f" (concat "after=" after)))
-             (and path (list "-f" (concat "path=" path))))
-     #'octocat-model--repo-parse-history
-     callback)))
+  (octocat--gh-graphql "commits" repo octocat-model--repo-history-query
+                       `(("ref" . ,(or ref "HEAD"))
+                         ("limit" . ,octocat-repo-commits-page-size)
+                         ("after" . ,after)
+                         ("path" . ,path))
+                       #'octocat-model--repo-parse-history callback))
 
 (defun octocat-model--repo-history-commit (node)
   "Return the commit NODE of a GraphQL history shaped as REST has it.
@@ -1458,7 +1346,7 @@ for the page after it, and \"total\", the commits of the whole history."
           "history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate "
           "committedDate author{name email user{login}}}}}} dir:object(expression:$dir){"
           "__typename oid ...on Blob{byteSize isBinary}}}}")
-  "GraphQL query behind `octocat-model--repo-fetch-head'.")
+  "GraphQL query behind the `repo-head' resource.")
 
 (defun octocat-model--repo-parse-head (json-string ref path)
   "Parse the response JSON-STRING of `octocat-model--repo-head-query'.
@@ -1485,35 +1373,25 @@ touched PATH, as `octocat-model--repo-history-commit' shapes it, with
       (puthash "binary" (eq (gethash "isBinary" dir) t) commit)
       commit)))
 
-(defun octocat-model--repo-fetch-head (repo ref path callback)
-  "Fetch the last commit and the tree of PATH of REPO at REF.
-REF is a branch, tag or SHA, as on github.com, nil for the default
-branch; PATH nil is the root.  Calls CALLBACK with the commit from
-`octocat-model--repo-parse-head', or a cons \\=(error . MSG)."
-  (let ((parts (split-string repo "/"))
-        (rev   (or ref "HEAD")))
-    (octocat--run-gh
-     "repo-head"
-     (append (list "api" "graphql"
-                   "-f" (concat "query=" octocat-model--repo-head-query)
-                   "-f" (concat "owner=" (car parts))
-                   "-f" (concat "name=" (cadr parts))
-                   ;; Peels an annotated tag to its commit.
-                   "-f" (concat "expr=" rev "^{commit}")
-                   "-f" (concat "dir=" rev ":" path))
-             (and path (list "-f" (concat "path=" path))))
-     (lambda (json) (octocat-model--repo-parse-head json ref path))
-     callback)))
-
+;; The last commit and the tree of PATH at REF: a branch, tag or SHA, as
+;; on github.com, nil for the default branch.  PATH nil is the root.
 (octocat-sync-define-resource repo-head (repo ref path)
-  :fetch (lambda (done) (octocat-model--repo-fetch-head repo ref path done)))
+  :fetch (lambda (done)
+           (let ((rev (or ref "HEAD")))
+             (octocat--gh-graphql "repo-head" repo octocat-model--repo-head-query
+                                  ;; Peels an annotated tag to its commit.
+                                  `(("expr" . ,(concat rev "^{commit}"))
+                                    ("dir" . ,(concat rev ":" path))
+                                    ("path" . ,path))
+                                  (lambda (json) (octocat-model--repo-parse-head json ref path))
+                                  done))))
 
 (defconst octocat-model--repo-blame-query
   (concat "query($owner:String!,$name:String!,$expr:String!,$path:String!){"
           "repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
           "blame(path:$path){ranges{startingLine endingLine commit{oid messageHeadline "
           "authoredDate committedDate author{name email user{login}}}}}}}}}")
-  "GraphQL query behind `octocat-model--repo-fetch-blame'.")
+  "GraphQL query behind the `blame' resource.")
 
 (defun octocat-model--repo-parse-blame (json-string)
   "Parse the response JSON-STRING of `octocat-model--repo-blame-query'.
@@ -1534,26 +1412,13 @@ them, as `octocat-model--repo-history-commit' shapes it."
                  h))
              (gethash "ranges" blame)))))
 
-(defun octocat-model--repo-fetch-blame (repo commit path callback)
-  "Fetch the blame of file PATH of REPO at COMMIT.
-Calls CALLBACK with the ranges of `octocat-model--repo-parse-blame', or a
-cons \\=(error . MSG)."
-  (let ((parts (split-string repo "/")))
-    (octocat--run-gh
-     "blame"
-     (list "api" "graphql"
-           "-f" (concat "query=" octocat-model--repo-blame-query)
-           "-f" (concat "owner=" (car parts))
-           "-f" (concat "name=" (cadr parts))
-           "-f" (concat "expr=" commit)
-           "-f" (concat "path=" path))
-     #'octocat-model--repo-parse-blame
-     callback)))
-
 (octocat-sync-define-resource blame (repo commit path)
   ;; COMMIT names the history, so what it says never changes.
   :max-age octocat-model--fixed-max-age
-  :fetch (lambda (done) (octocat-model--repo-fetch-blame repo commit path done)))
+  :fetch (lambda (done)
+           (octocat--gh-graphql "blame" repo octocat-model--repo-blame-query
+                                `(("expr" . ,commit) ("path" . ,path))
+                                #'octocat-model--repo-parse-blame done)))
 
 ;; Directory listings and file contents are named by tree and blob SHA,
 ;; which name fixed contents, so they are kept for
@@ -1635,24 +1500,17 @@ shaped by `octocat-model--repo-history-commit'; a path with none is left out."
   "Fetch the last commit of each of PATHS of REPO, from COMMIT back.
 Calls CALLBACK once with a hash-table of path to commit, see
 `octocat-model--tree-parse-last-commits', or a cons (error . MSG)."
-  (let* ((parts  (split-string repo "/"))
-         (chunks (seq-partition paths octocat-model--tree-last-commits-chunk))
+  (let* ((chunks (seq-partition paths octocat-model--tree-last-commits-chunk))
          (left   (length chunks))
          (out    (make-hash-table :test #'equal))
          failed)
     (if (null chunks)
         (funcall callback out)
       (dolist (chunk chunks)
-        (octocat--run-gh
-         "tree-commits"
-         (append (list "api" "graphql"
-                       "-f" (concat "query="
-                                    (octocat-model--tree-last-commits-query (length chunk)))
-                       "-f" (concat "owner=" (car parts))
-                       "-f" (concat "name=" (cadr parts))
-                       "-f" (concat "expr=" commit))
-                 (seq-mapcat (lambda (i) (list "-f" (format "p%d=%s" i (nth i chunk))))
-                             (number-sequence 0 (1- (length chunk)))))
+        (octocat--gh-graphql
+         "tree-commits" repo (octocat-model--tree-last-commits-query (length chunk))
+         (cons (cons "expr" commit)
+               (seq-map-indexed (lambda (p i) (cons (format "p%d" i) p)) chunk))
          (lambda (json) (octocat-model--tree-parse-last-commits json chunk))
          (lambda (r)
            (if (eq (car-safe r) 'error)
@@ -1720,89 +1578,74 @@ or (error . MSG)."
 
 ;;;; Actions
 
-(defun octocat--fetch-job (repo run-id job-id callback)
-  "Fetch job detail, log, annotations, and artifacts for JOB-ID in REPO.
-RUN-ID is the numeric workflow run ID (used for the artifacts request).
-Calls CALLBACK asynchronously with a hash-table, which the sync store
-can store as JSON, of:
-- \"job\", a hash-table from the GitHub REST API.
-- \"log\", the raw `gh run view --log' text (see `octocat--job-parse-log'),
-  or \"log_error\", the message when the log is unavailable.
-- \"annotations\", a vector of annotation hash-tables from the Checks API
-  (GET /check-runs/JOB-ID/annotations), \\=[] when unavailable.
-- \"artifacts\", a vector of artifact hash-tables from the Actions API
-  (GET /actions/runs/RUN-ID/artifacts), \\=[] when unavailable.
-A job-metadata failure is fatal and CALLBACK receives \\=(error . MSG)."
-  (let ((job-result 'pending)
-        (log-result 'pending)
-        (ann-result 'pending)
-        (art-result 'pending))
-    (cl-labels
-        ((maybe-done ()
-           (unless (or (eq job-result 'pending)
-                       (eq log-result 'pending)
-                       (eq ann-result 'pending)
-                       (eq art-result 'pending))
-             ;; Metadata failure aborts the whole view; log/annotation/
-             ;; artifact failures are passed through and rendered gracefully.
-             (if (eq (car-safe job-result) 'error)
-                 (funcall callback job-result)
-               (let ((h (make-hash-table :test #'equal)))
-                 (puthash "job" job-result h)
-                 (if (eq (car-safe log-result) 'error)
-                     (puthash "log_error" (cdr log-result) h)
-                   (puthash "log" log-result h))
-                 (puthash "annotations" ann-result h)
-                 (puthash "artifacts" art-result h)
-                 (funcall callback h))))))
-      (octocat--run-gh
-       "job-detail"
-       (list "api" (format "repos/%s/actions/jobs/%s" repo
-                           (number-to-string job-id)))
-       (lambda (output) (json-parse-string (string-trim output)))
-       (lambda (result) (setq job-result result) (maybe-done)))
-      (octocat--run-gh
-       "job-log"
-       (list "run" "view"
-             "--log"
-             "--job" (number-to-string job-id)
-             "--repo" repo)
-       #'identity
-       (lambda (result) (setq log-result result) (maybe-done)))
-      (octocat--run-gh
-       "job-annotations"
-       (list "api"
-             (format "repos/%s/check-runs/%s/annotations?per_page=100"
-                     repo (number-to-string job-id)))
-       (lambda (output)
-         (condition-case nil
-             (let ((parsed (json-parse-string (string-trim output))))
-               (if (vectorp parsed) parsed []))
-           (error [])))
-       (lambda (result)
-         (setq ann-result (if (eq (car-safe result) 'error) [] result))
-         (maybe-done)))
-      (if (not run-id)
-          (progn (setq art-result []) (maybe-done))
-        (octocat--run-gh
-         "job-artifacts"
-         (list "api"
-               (format "repos/%s/actions/runs/%s/artifacts?per_page=100"
-                       repo (number-to-string run-id)))
-         (lambda (output)
-           (condition-case nil
-               (let ((parsed (json-parse-string (string-trim output))))
-                 (or (and (hash-table-p parsed)
-                          (gethash "artifacts" parsed))
-                     []))
-             (error [])))
-         (lambda (result)
-           (setq art-result (if (eq (car-safe result) 'error) [] result))
-           (maybe-done)))))))
+(defun octocat-model--parse-annotations (output)
+  "Return the check-run annotations in OUTPUT, a vector, \\=[] when unreadable."
+  (condition-case nil
+      (let ((parsed (json-parse-string (string-trim output))))
+        (if (vectorp parsed) parsed []))
+    (error [])))
+
+(defun octocat-model--parse-artifacts (output)
+  "Return the run artifacts in OUTPUT, a vector, \\=[] when unreadable."
+  (condition-case nil
+      (let ((parsed (json-parse-string (string-trim output))))
+        (or (and (hash-table-p parsed) (gethash "artifacts" parsed))
+            []))
+    (error [])))
+
+(defun octocat-model--job-tree (job log annotations artifacts)
+  "Return the tree of the `job' resource from what GitHub answered.
+JOB is the job, as the REST API has it, and LOG the raw log text, see
+`octocat--job-parse-log'; ANNOTATIONS and ARTIFACTS are vectors.  Any
+may be (error . MESSAGE) instead.  The tree holds them as \"job\",
+\"log\" or, unavailable, its \"log_error\", \"annotations\" and
+\"artifacts\", those two \\=[] when unavailable.  Without JOB there is
+no page to show, so its error is returned."
+  (if (eq (car-safe job) 'error)
+      job
+    (let ((h (make-hash-table :test #'equal)))
+      (puthash "job" job h)
+      (if (eq (car-safe log) 'error)
+          (puthash "log_error" (cdr log) h)
+        (puthash "log" log h))
+      (puthash "annotations" (if (eq (car-safe annotations) 'error) [] annotations) h)
+      (puthash "artifacts" (if (eq (car-safe artifacts) 'error) [] artifacts) h)
+      h)))
 
 (octocat-sync-define-resource job (repo run-id job-id)
   :poll (lambda (data) (octocat-sync-poll-status (octocat--get data "job" "status")))
-  :fetch (lambda (done) (octocat--fetch-job repo run-id job-id done)))
+  :fetch (lambda (done)
+           ;; Four calls at once, answered in RESULTS as they come.
+           (let* ((results (make-vector 4 'pending))
+                  (answer  (lambda (i)
+                             (lambda (r)
+                               (aset results i r)
+                               (unless (memq 'pending (append results nil))
+                                 (funcall done (apply #'octocat-model--job-tree
+                                                      (append results nil))))))))
+             (octocat--run-gh "job-detail"
+                              (list "api" (format "repos/%s/actions/jobs/%s" repo
+                                                  (number-to-string job-id)))
+                              (lambda (output) (json-parse-string (string-trim output)))
+                              (funcall answer 0))
+             (octocat--run-gh "job-log"
+                              (list "run" "view" "--log" "--job" (number-to-string job-id)
+                                    "--repo" repo)
+                              #'identity
+                              (funcall answer 1))
+             (octocat--run-gh "job-annotations"
+                              (list "api" (format "repos/%s/check-runs/%s/annotations?per_page=100"
+                                                  repo (number-to-string job-id)))
+                              #'octocat-model--parse-annotations
+                              (funcall answer 2))
+             (if (not run-id)
+                 (funcall (funcall answer 3) [])
+               (octocat--run-gh "job-artifacts"
+                                (list "api"
+                                      (format "repos/%s/actions/runs/%s/artifacts?per_page=100"
+                                              repo (number-to-string run-id)))
+                                #'octocat-model--parse-artifacts
+                                (funcall answer 3))))))
 
 (defun octocat--fetch-run (repo run-id callback)
   "Fetch detail for run RUN-ID in REPO asynchronously.
@@ -1838,11 +1681,7 @@ Individual job annotation failures are silently treated as empty vectors."
            (list "api"
                  (format "repos/%s/check-runs/%s/annotations?per_page=100"
                          repo (number-to-string job-id)))
-           (lambda (output)
-             (condition-case nil
-                 (let ((parsed (json-parse-string (string-trim output))))
-                   (if (vectorp parsed) parsed []))
-               (error [])))
+           #'octocat-model--parse-annotations
            (lambda (ann-result)
              (let ((anns (if (eq (car-safe ann-result) 'error) [] ann-result)))
                (push (list job-id job-name anns) results))
@@ -1853,23 +1692,6 @@ Individual job annotation failures are silently treated as empty vectors."
                         (mapcar (lambda (job) (assq (gethash "databaseId" job) results))
                                 job-list))))))))))
 
-(defun octocat--fetch-run-artifacts (repo run-id callback)
-  "Fetch artifacts for run RUN-ID in REPO asynchronously.
-Calls CALLBACK with a vector of artifact hash-tables, or \\=[] on failure."
-  (octocat--run-gh
-   "run-artifacts"
-   (list "api"
-         (format "repos/%s/actions/runs/%s/artifacts?per_page=100"
-                 repo (number-to-string run-id)))
-   (lambda (output)
-     (condition-case nil
-         (let ((parsed (json-parse-string (string-trim output))))
-           (or (and (hash-table-p parsed)
-                    (gethash "artifacts" parsed))
-               []))
-       (error [])))
-   (lambda (result)
-     (funcall callback (if (eq (car-safe result) 'error) [] result)))))
 
 (defun octocat-model--run-annotation-entries (results)
   "Return the RESULTS of `octocat--fetch-run-annotations' as a vector.
@@ -1911,52 +1733,35 @@ vector: a shape the store can hold as JSON."
                  repo (gethash "jobs" run)
                  (lambda (r) (funcall done (octocat-model--run-annotation-entries r)))))))))
 
+;; Failing, it is [], as the page shows no error for it.
 (octocat-sync-define-resource run-artifacts (repo run-id)
-  :fetch (lambda (done) (octocat--fetch-run-artifacts repo run-id done)))
-
-(defun octocat-model--run-list-runs (repo limit callback &optional args)
-  "Fetch the LIMIT most recent workflow run entries across all workflows in REPO.
-ARGS are more `gh run list' options, filtering the runs, such as
-\\=(\"--branch\" \"main\").  Call CALLBACK with a list of run hash-tables
-\(each including a \\='workflowName\\=' key), or a cons \\=(error . MSG) on
-failure."
-  (octocat--run-gh
-   "recent-runs"
-   (append
-    (list "run" "list"
-          "--repo"  repo
-          "--limit" (number-to-string limit)
-          "--json"  (concat "databaseId,number,displayTitle,status,conclusion,createdAt,"
-                            "headBranch,workflowName,workflowDatabaseId"))
-    args)
-   #'octocat--parse-json-list
-   callback))
-
-(octocat-sync-define-resource runs (repo limit args)
-  ;; ARGS are `gh run list' options filtering the runs.
   :fetch (lambda (done)
-           (octocat-model--run-list-runs
-            repo limit
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (let ((tree (make-hash-table :test #'equal)))
-                                (puthash "nodes"
-                                         (vconcat (mapcar (lambda (run)
-                                                            (octocat-model-run repo run))
-                                                          r))
-                                         tree)
-                                tree))))
-            args)))
+           (octocat--run-gh "run-artifacts"
+                            (list "api" (format "repos/%s/actions/runs/%s/artifacts?per_page=100"
+                                                repo (number-to-string run-id)))
+                            #'octocat-model--parse-artifacts
+                            (lambda (r) (funcall done (if (eq (car-safe r) 'error) [] r))))))
 
-(defun octocat--fetch-workflow (repo id callback)
-  "Fetch workflow ID of REPO asynchronously.
-Calls CALLBACK with a hash-table of it, or a cons \\=(error . MSG)."
-  (octocat--run-gh
-   "workflow-detail"
-   (list "api" (format "repos/%s/actions/workflows/%s" repo id))
-   (lambda (output) (json-parse-string (string-trim output)))
-   callback))
+;; The LIMIT most recent runs of all workflows.
+(octocat-sync-define-resource runs (repo limit args)
+  ;; ARGS are `gh run list' options filtering the runs, such as
+  ;; ("--branch" "main").
+  :fetch (lambda (done)
+           (octocat--run-gh
+            "recent-runs"
+            (append (list "run" "list" "--repo" repo "--limit" (number-to-string limit)
+                          "--json" (concat "databaseId,number,displayTitle,status,conclusion,"
+                                           "createdAt,headBranch,workflowName,workflowDatabaseId"))
+                    args)
+            (lambda (output)
+              (let ((tree (make-hash-table :test #'equal)))
+                (puthash "nodes"
+                         (vconcat (mapcar (lambda (run) (octocat-model-run repo run))
+                                          (octocat--parse-json-list output)))
+                         tree)
+                tree))
+            done)))
+
 
 ;; GitHub's API doesn't say what a `workflow_dispatch' trigger asks:
 ;; it is read from the workflow's file, at the branch it is to run on.
@@ -2264,7 +2069,11 @@ nothing."
   :invalidates (lambda () `((runs ,repo _ _))))
 
 (octocat-sync-define-resource workflow (repo id)
-  :fetch (lambda (done) (octocat--fetch-workflow repo id done)))
+  :fetch (lambda (done)
+           (octocat--run-gh "workflow-detail"
+                            (list "api" (format "repos/%s/actions/workflows/%s" repo id))
+                            (lambda (output) (json-parse-string (string-trim output)))
+                            done)))
 
 (defun octocat-model--workflow-list (repo callback)
   "Fetch workflows for REPO asynchronously and call CALLBACK with results.
@@ -2281,25 +2090,7 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
            (octocat-model--workflow-list
             repo (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
-(defun octocat--fetch-checks (repo sha callback)
-  "Fetch all check-runs for SHA in REPO asynchronously.
-Calls CALLBACK with a list of check-run hash-tables (snake_case keys from
-the GitHub Checks REST API), or a cons \\=(error . MSG) on failure.
-Requests up to 100 check-runs; pagination is not yet supported."
-  (octocat--run-gh
-   "checks"
-   (list "api"
-         (format "repos/%s/commits/%s/check-runs?per_page=100" repo sha))
-   (lambda (output)
-     (let* ((parsed (json-parse-string (string-trim output)))
-            (runs   (and (hash-table-p parsed)
-                         (gethash "check_runs" parsed))))
-       (cond
-        ((null runs)    '())
-        ((vectorp runs) (cl-coerce runs 'list))
-        (t              '()))))
-   callback))
-
+;; The first 100 check runs of SHA.
 (octocat-sync-define-resource checks (repo sha)
   ;; None yet: they may still start.
   :poll (lambda (data)
@@ -2308,21 +2099,18 @@ Requests up to 100 check-runs; pagination is not yet supported."
             (apply #'octocat-sync-poll-status
                    (mapcar (lambda (c) (gethash "status" c)) data))))
   :fetch (lambda (done)
-           (octocat--fetch-checks
-            repo sha
-            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
+           (octocat--run-gh "checks"
+                            (list "api" (format "repos/%s/commits/%s/check-runs?per_page=100"
+                                                repo sha))
+                            (lambda (output)
+                              (let* ((parsed (json-parse-string (string-trim output)))
+                                     (runs   (and (hash-table-p parsed)
+                                                  (gethash "check_runs" parsed))))
+                                (if (vectorp runs) runs [])))
+                            done)))
 
 ;;;; Dashboard
 
-(defun octocat--fetch-recent-repos (callback)
-  "Fetch the authenticated user's recently-pushed repos via gh.
-Calls CALLBACK with a list of hash-tables (GitHub REST user/repos
-response), or an (error . MSG) cons on failure."
-  (octocat--run-gh
-   "dashboard-repos"
-   (list "api" "user/repos?sort=pushed&per_page=10")
-   #'octocat--parse-json-list
-   callback))
 
 (defun octocat--fetch-viewer-login (callback)
   "Fetch the authenticated user's GitHub login via gh.
@@ -2352,18 +2140,6 @@ KIND is `issues' or `pulls'."
                   "endCursor}}}")
           (alist-get kind octocat--list-item-fields)))
 
-(defun octocat--fetch-dashboard-items (kind limit callback)
-  "Fetch the first LIMIT of the dashboard's KIND items via gh.
-KIND is `issues' or `pulls'.  CALLBACK is called with the plist from
-`octocat--parse-list-items', or an (error . MSG) cons."
-  (octocat--run-gh
-   (format "dashboard-%s" kind)
-   (list "api" "graphql"
-         "-f" (concat "query=" (octocat--dashboard-items-query kind))
-         "-f" (concat "q=" (octocat--dashboard-search-query kind))
-         "-F" (format "limit=%d" limit))
-   #'octocat--parse-list-items
-   callback))
 
 (defun octocat--dashboard-items-tree (kind page)
   "Return PAGE, the dashboard's KIND items, as its resource's tree.
@@ -2380,42 +2156,36 @@ table of its \"repo\" and its entity, \"item\", shared with the lists."
                  node))
              (plist-get page :items)))))
 
-(defun octocat--fetch-received-events (login limit callback)
-  "Fetch the received events feed for the user with LOGIN via gh.
-LIMIT is the maximum number of events to request (per_page).
-Calls CALLBACK with a list of hash-tables, or an (error . MSG) cons."
-  (octocat--run-gh
-   "dashboard-feed"
-   (list "api" (format "users/%s/received_events?per_page=%d" login limit))
-   #'octocat--parse-json-list
-   callback))
-
+;; The repositories you pushed to last.
 (octocat-sync-define-resource dashboard-repos ()
   :fetch (lambda (done)
-           (octocat--fetch-recent-repos
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (cl-map 'vector #'octocat-model-repo-rest r)))))))
+           (octocat--run-gh "dashboard-repos" (list "api" "user/repos?sort=pushed&per_page=10")
+                            (lambda (output)
+                              (cl-map 'vector #'octocat-model-repo-rest
+                                      (octocat--parse-json-list output)))
+                            done)))
 
 (octocat-sync-define-resource dashboard-items (kind limit)
   :fetch (lambda (done)
-           (octocat--fetch-dashboard-items
-            kind limit
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (octocat--dashboard-items-tree kind r)))))))
+           (octocat--gh-graphql
+            (format "dashboard-%s" kind) nil (octocat--dashboard-items-query kind)
+            `(("q" . ,(octocat--dashboard-search-query kind)) ("limit" . ,limit))
+            (lambda (output)
+              (octocat--dashboard-items-tree kind (octocat--parse-list-items output)))
+            done)))
 
+;; The events of the people you follow and the repositories you watch.
 (octocat-sync-define-resource dashboard-feed (limit)
   :fetch (lambda (done)
            (octocat--fetch-viewer-login
             (lambda (login)
               (if (eq (car-safe login) 'error)
                   (funcall done login)
-                (octocat--fetch-received-events
-                 login limit
-                 (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r))))))))))
+                (octocat--run-gh "dashboard-feed"
+                                 (list "api" (format "users/%s/received_events?per_page=%d"
+                                                     login limit))
+                                 (lambda (output) (vconcat (octocat--parse-json-list output)))
+                                 done))))))
 
 ;;;; Users
 
@@ -2490,11 +2260,9 @@ Pinned gists, which come back as empty nodes, are left out."
 (octocat-sync-define-resource user-pinned (login)
   :poll octocat-sync-poll-slow
   :fetch (lambda (done)
-           (octocat--run-gh "user-pinned"
-                            (list "api" "graphql"
-                                  "-f" (concat "query=" octocat-model--user-pinned-query)
-                                  "-F" (concat "login=" login))
-                            #'octocat-model--user-parse-pinned done)))
+           (octocat--gh-graphql "user-pinned" nil octocat-model--user-pinned-query
+                                `(("login" . ,login))
+                                #'octocat-model--user-parse-pinned done)))
 
 ;;;; Search
 

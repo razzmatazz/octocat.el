@@ -627,6 +627,26 @@ propagate normally so they appear in the *Backtrace* buffer."
                         (octocat--gh-reason reason))
                     (funcall callback result))))))))))))
 
+(defun octocat--gh-graphql (name repo query vars parse-fn callback &optional args)
+  "Run the GraphQL QUERY as `gh' call NAME, with the variables VARS.
+REPO, \"owner/name\", when non-nil, passes $owner and $name.  VARS is
+an alist: a string value is passed as a string, a number as a number,
+and a nil one not at all.  ARGS are more `gh api' options, such as
+\"--paginate\".  PARSE-FN and CALLBACK are as for `octocat--run-gh'."
+  (let ((parts (and repo (split-string repo "/"))))
+    (octocat--run-gh
+     name
+     (append (list "api" "graphql") args
+             (list "-f" (concat "query=" query))
+             ;; -F would read a name such as \"123\" as a number.
+             (mapcan (pcase-lambda (`(,k . ,v))
+                       (cond ((null v) nil)
+                             ((numberp v) (list "-F" (format "%s=%d" k v)))
+                             (t (list "-f" (format "%s=%s" k v)))))
+                     (append (and parts `(("owner" . ,(car parts)) ("name" . ,(cadr parts))))
+                             vars)))
+     parse-fn callback)))
+
 (defun octocat--gh-track (owner proc)
   "Mark PROC, a `gh' call, as OWNER's, and stop it after `octocat-gh-timeout'."
   (process-put proc 'octocat-owner owner)
@@ -1451,18 +1471,13 @@ is asked which leading ones name one, in one query.  With none, the ref
 and path are nil: the default branch."
   (if (null (cdr segments))
       (funcall open (car segments) nil)
-    (let* ((n     (min (length segments) octocat--ref-prefixes-max))
-           (parts (split-string repo "/")))
-      (octocat--run-gh
-       "ref-prefixes"
-       (append (list "api" "graphql"
-                     "-f" (concat "query=" (octocat--ref-prefixes-query n))
-                     "-f" (concat "owner=" (car parts))
-                     "-f" (concat "name=" (cadr parts)))
-               (mapcan (lambda (i)
-                         (list "-f" (format "e%d=%s^{commit}" i
-                                            (string-join (seq-take segments i) "/"))))
-                       (number-sequence 1 n)))
+    (let ((n (min (length segments) octocat--ref-prefixes-max)))
+      (octocat--gh-graphql
+       "ref-prefixes" repo (octocat--ref-prefixes-query n)
+       (mapcar (lambda (i)
+                 (cons (format "e%d" i)
+                       (concat (string-join (seq-take segments i) "/") "^{commit}")))
+               (number-sequence 1 n))
        (lambda (json)
          (let ((r (gethash "repository"
                            (gethash "data" (json-parse-string json :null-object nil)))))
@@ -1900,13 +1915,11 @@ fetches the page after it; a page is LIMIT items, by default
 `octocat-list-page-size'.
 CALLBACK is called with the plist from `octocat--parse-list-items', or a
 cons \\=(error . MSG).  One API call."
-  (octocat--run-gh
-   (symbol-name kind)
-   (append (list "api" "graphql"
-                 "-f" (concat "query=" (octocat--list-items-query kind))
-                 "-f" (concat "q=" (octocat--search-query repo kind query))
-                 "-F" (format "limit=%d" (or limit octocat-list-page-size)))
-           (and after (list "-f" (concat "after=" after))))
+  (octocat--gh-graphql
+   (symbol-name kind) nil (octocat--list-items-query kind)
+   `(("q" . ,(octocat--search-query repo kind query))
+     ("limit" . ,(or limit octocat-list-page-size))
+     ("after" . ,after))
    #'octocat--parse-list-items
    callback))
 
@@ -1936,15 +1949,8 @@ Keys: :open, :closed and, for pull requests, :merged."
   "Fetch the open/closed(/merged) counts of KIND in REPO asynchronously.
 KIND is `issues' or `pulls'.  CALLBACK is called with the plist described
 in `octocat--parse-counts', or a cons \\=(error . MSG).  One API call."
-  (let ((parts (split-string repo "/")))
-    (octocat--run-gh
-     "counts"
-     (list "api" "graphql"
-           "-f" (concat "query=" (octocat--counts-query kind))
-           "-F" (concat "owner=" (car parts))
-           "-F" (concat "name=" (cadr parts)))
-     #'octocat--parse-counts
-     callback)))
+  (octocat--gh-graphql "counts" repo (octocat--counts-query kind) nil
+                       #'octocat--parse-counts callback))
 
 (defconst octocat--repo-summary-query
   (concat "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){"
@@ -1971,15 +1977,8 @@ Calls CALLBACK with the plist described in `octocat--parse-repo-summary',
 or a cons \\=(error . MSG) on failure.  One GraphQL request replaces what
 would otherwise be separate default-branch, fork-parent and
 issue/PR-count lookups."
-  (let ((parts (split-string repo "/")))
-    (octocat--run-gh
-     "repo-summary"
-     (list "api" "graphql"
-           "-f" (concat "query=" octocat--repo-summary-query)
-           "-F" (concat "owner=" (car parts))
-           "-F" (concat "name=" (cadr parts)))
-     #'octocat--parse-repo-summary
-     callback)))
+  (octocat--gh-graphql "repo-summary" repo octocat--repo-summary-query nil
+                       #'octocat--parse-repo-summary callback))
 
 (defun octocat--list-labels (repo callback)
   "Fetch the labels of REPO asynchronously and call CALLBACK.
