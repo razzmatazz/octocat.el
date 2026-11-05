@@ -194,10 +194,11 @@ not one, then closes the form, shows the run starting in the button's
 place and opens the new run's page once GitHub has started it.  If
 GitHub refuses, the form comes back with what was typed.
 
-A run's page shows its jobs as a table, one per row: its steps done
-(`3/5`), how long it took, and the step it is on or failed at.  Down
-its left runs a graph of which job waits for which, as gitk draws one:
-a line runs down to a job from the jobs it waits for.  `RET` on a job
+A run's page shows its jobs as a table, one per row: its status, its
+steps done (`3/5`), how long it took, and the step it is on or failed
+at.  Down its left runs a graph of which job waits for which, flowing
+left to right: a job sits one column right of the latest of the jobs it
+waits for, and a line runs from each of those over and down to it.  `RET` on a job
 opens it.  GitHub's API doesn't give a job's `needs`, so octocat reads
 them from the workflow's file at the run's commit; a job it can't match
 to one in the file, by its name, waits for nothing.  `C-c C-v`, or
@@ -206,12 +207,12 @@ GitHub does: each job's icon, name, and how long it took, or, while it
 runs, its steps done; `TAB` steps from job to job.  The choice is
 remembered for every run.  A graph too wide for the window, or of more
 than 40 jobs, shows as the table, and the table leaves out its graph
-when more than 8 lines would run side by side.
+when it would take more than 8 columns (`octocat-vui-max-lanes`).
 
 The runs are filtered as the pull request list is: a query in the field
 above them, such as `branch:main status:failure`, edited by hand (with
-completion) or through the **[Branch]**, **[Status]**, **[Workflow]**
-and **[Actor]** buttons (or `F`).  The qualifiers are `branch:`,
+completion) or through the **[Branch]**, **[Status]**, **[Workflow]**,
+**[Event]** and **[Actor]** buttons (or `F`).  The qualifiers are `branch:`,
 `status:`, `workflow:`, `actor:` (who triggered the run), `event:` and
 `commit:`; GitHub has no search for runs, so each becomes the matching
 `gh run list` option, and anything else in the query is ignored, with a

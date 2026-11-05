@@ -1239,6 +1239,15 @@ content up until the fresh data arrives, for following a running job."
     "requested" "neutral" "stale" "startup_failure")
   "Values `gh run list --status' takes, the common ones first.")
 
+(defconst octocat-run-list--events
+  '("push" "pull_request" "schedule" "workflow_dispatch" "pull_request_target"
+    "merge_group" "release" "workflow_run" "workflow_call" "repository_dispatch"
+    "dynamic" "issues" "issue_comment" "create" "delete" "deployment"
+    "deployment_status" "page_build" "check_run" "check_suite" "discussion"
+    "fork" "gollum" "label" "milestone" "public" "registry_package"
+    "status" "watch")
+  "Events that trigger a run, for `gh run list --event', the common ones first.")
+
 (defun octocat-run-list--args (query)
   "Return the `gh run list' options of QUERY, and its other tokens.
 That is (ARGS . IGNORED): ARGS a list of options and values, IGNORED the
@@ -1278,6 +1287,13 @@ tokens of QUERY that are no qualifier of `octocat-run-list--qualifiers'."
                                  'workflows (lambda (wf) (gethash "name" wf)))
                                 nil))
 
+(defun octocat-run-list-filter-event ()
+  "Filter by the event that triggered a run."
+  (interactive)
+  (octocat-vui-list--edit-facet
+   "event:" "Event" nil
+   (octocat-run-list--static-candidates octocat-run-list--events) nil))
+
 (defun octocat-run-list-filter-actor ()
   "Filter by who triggered a run."
   (interactive)
@@ -1291,12 +1307,12 @@ tokens of QUERY that are no qualifier of `octocat-run-list--qualifiers'."
               (append (mapcar #'car octocat-run-list--qualifiers)
                       (mapcar (lambda (s) (concat "status:" s))
                               octocat-run-list--statuses)
-                      '("event:push" "event:pull_request" "event:schedule"
-                        "event:workflow_dispatch"))
+                      (mapcar (lambda (e) (concat "event:" e)) octocat-run-list--events))
               octocat-vui-list--facets
               '(("Branch"   . octocat-run-list-filter-branch)
                 ("Status"   . octocat-run-list-filter-status)
                 ("Workflow" . octocat-run-list-filter-workflow)
+                ("Event"    . octocat-run-list-filter-event)
                 ("Actor"    . octocat-run-list-filter-actor))))
 
 ;;;;; Run list page
