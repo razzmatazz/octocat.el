@@ -99,7 +99,7 @@
   (let ((db (octocat-sync-tests--db))
         (octocat-sync-keep-for 100))
     (octocat-sync--write db "old" (octocat-sync-tests--table
-                                   "user" (octocat-sync-user
+                                   "user" (octocat-model-user
                                            (octocat-sync-tests--table "login" "carol")))
                          1.0)
     (octocat-sync--write db "new" (octocat-sync-tests--table
@@ -136,10 +136,10 @@
          (octocat-sync--resources (make-hash-table :test #'eq))
          (octocat-sync--loading (make-hash-table :test #'equal)))
     (octocat-sync-define-resource issue (repo number)
-      :entity (octocat-sync-item-key 'issue repo number))
+      :entity (octocat-model-item-key 'issue repo number))
     (octocat-sync--write octocat-sync--db "list"
                          (octocat-sync-tests--table
-                          "nodes" (vector (octocat-sync-item
+                          "nodes" (vector (octocat-model-item
                                            'issue "O/R"
                                            (json-parse-string
                                             "{\"number\":12,\"title\":\"Crash\",\"author\":{\"login\":\"Alice\"},\"labels\":[{\"name\":\"bug\",\"color\":\"f00\"}]}"))))

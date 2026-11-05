@@ -23,7 +23,7 @@
 (ert-deftest octocat-user-test-profile-lines ()
   "The header shows the handle, name, bio, details and counts."
   (let ((db (octocat-sync--create (sqlite-open nil))))
-    (octocat-sync--write db "p" (octocat-user--parse-profile
+    (octocat-sync--write db "p" (octocat-model--user-parse-profile
                                  "{\"login\":\"octocat\",\"name\":\"The Octocat\",\"type\":\"User\",\"bio\":\"Hi\",\"company\":\"@github\",\"location\":null,\"blog\":\"\",\"followers\":3,\"following\":1,\"public_repos\":8}")
                          1.0)
     (let ((lines (mapcar #'substring-no-properties
@@ -35,7 +35,7 @@
 
 (ert-deftest octocat-user-test-parse-pinned ()
   "Pinned repositories become repo entities; gists and unknown owners drop out."
-  (let* ((tree (octocat-user--parse-pinned
+  (let* ((tree (octocat-model--user-parse-pinned
                 (concat "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":["
                         "{\"nameWithOwner\":\"bob/App\",\"description\":null,"
                         "\"stargazerCount\":7,\"primaryLanguage\":{\"name\":\"Go\"},"
@@ -45,7 +45,7 @@
     (should (= (length nodes) 1))
     (should (equal (octocat-sync--entity-key (aref nodes 0)) "repo:bob/app"))
     (should (eq (gethash "isArchived" (octocat-sync--entity-fields (aref nodes 0))) t))
-    (should (equal (gethash "nodes" (octocat-user--parse-pinned
+    (should (equal (gethash "nodes" (octocat-model--user-parse-pinned
                                      "{\"data\":{\"repositoryOwner\":null}}"))
                    []))))
 
@@ -54,12 +54,12 @@
   (let ((db (octocat-sync--create (sqlite-open nil))))
     (octocat-sync--write
      db "pinned"
-     (octocat-user--parse-pinned
+     (octocat-model--user-parse-pinned
       "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":[{\"nameWithOwner\":\"bob/app\",\"description\":\"old\",\"isFork\":false}]}}}}")
      1.0)
     (should (equal (sort (octocat-sync--write
                           db "repos"
-                    (octocat-user--parse-repos
+                    (octocat-model--user-parse-repos
                      "[{\"full_name\":\"bob/app\",\"description\":\"new\",\"language\":\"Go\",\"fork\":false}]")
                           2.0)
                          #'string<)

@@ -82,7 +82,7 @@ Each `gh' call is pushed to `calls' as (ARGS . CALLBACK), not run."
   "Return the `repo' entity of NAME."
   (let ((h (make-hash-table :test #'equal)))
     (puthash "nameWithOwner" name h)
-    (octocat-sync-repo h)))
+    (octocat-model-repo h)))
 
 (ert-deftest octocat-search-test-repo-search-stored ()
   "Stored repos and users matching the input show at once, newest first;
@@ -99,7 +99,7 @@ GitHub's results lead once in, the stored ones it lacks after them."
       (octocat-sync--write octocat-sync--db "(repo-search \"o\")"
                            ["e/octo-old"] (- now octocat-search-reuse-for 1))
       (octocat-sync--write octocat-sync--db "(user-profile \"octavia\")"
-                           (octocat-sync-user (let ((h (make-hash-table :test #'equal)))
+                           (octocat-model-user (let ((h (make-hash-table :test #'equal)))
                                                 (puthash "login" "octavia" h)
                                                 h))
                            (- now 1))
@@ -118,9 +118,9 @@ GitHub's results lead once in, the stored ones it lacks after them."
 (ert-deftest octocat-search-test-repo-objects ()
   "Each type's stored result shows at once; its fetched one replaces it."
   (octocat-search-tests--with-store
-    (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
+    (cl-letf (((symbol-function 'octocat-model--tree-fetch-all-files)
                (lambda (_repo _sha callback) (funcall callback '(error . "no files"))))
-              ((symbol-function 'octocat-workflow--list)
+              ((symbol-function 'octocat-model--workflow-list)
                (lambda (_repo callback) (funcall callback '(error . "no workflows")))))
       (octocat-sync--write octocat-sync--db
                            (octocat-sync-spec-key '(object-search "o/r" "issues" "crash"))
@@ -168,7 +168,7 @@ item once."
     (let ((now (float-time))
           (git-calls nil))
       (octocat-sync--write octocat-sync--db "(pr \"o/r\" 7)"
-                           (octocat-sync-item 'pr "O/R"
+                           (octocat-model-item 'pr "O/R"
                                               (let ((h (make-hash-table :test #'equal)))
                                                 (puthash "number" 7 h)
                                                 (puthash "title" "Fix the crash" h)
@@ -176,7 +176,7 @@ item once."
                                                 h))
                            (- now 1))
       (octocat-sync--write octocat-sync--db "(pr \"x/y\" 8)"
-                           (octocat-sync-item 'pr "x/y"
+                           (octocat-model-item 'pr "x/y"
                                               (let ((h (make-hash-table :test #'equal)))
                                                 (puthash "number" 8 h)
                                                 (puthash "title" "Another crash" h)
@@ -186,9 +186,9 @@ item once."
                            (vector (octocat-search-tests--commit "aaa111" "Crash on start")
                                    (octocat-search-tests--commit "bbb222" "Unrelated"))
                            (- now 2))
-      (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
+      (cl-letf (((symbol-function 'octocat-model--tree-fetch-all-files)
                  (lambda (_repo _sha callback) (funcall callback '(error . "no files"))))
-                ((symbol-function 'octocat-workflow--list)
+                ((symbol-function 'octocat-model--workflow-list)
                  (lambda (_repo callback) (funcall callback '(error . "no workflows"))))
                 ((symbol-function 'octocat--search-git)
                  (lambda (_dir args callback) (push (cons args callback) git-calls) #'ignore)))
@@ -234,7 +234,7 @@ at once; selecting one opens it."
                                  (octocat-search-tests--workflow 2 "Deploy docs"
                                                                  ".github/workflows/docs.yml"))
                          (float-time))
-    (cl-letf (((symbol-function 'octocat-tree--fetch-all-files)
+    (cl-letf (((symbol-function 'octocat-model--tree-fetch-all-files)
                (lambda (_repo _sha callback) (funcall callback '(error . "no files")))))
       (let* ((log (list nil))
              (stage (funcall (octocat--async-search-repo-objects "o/r" nil #'identity)
@@ -269,13 +269,13 @@ the file before the commit mentioning it, which it would follow."
       (octocat-sync--write octocat-sync--db "(commits \"o/r\" nil nil)"
                            (vector (octocat-search-tests--commit "aaa111" "Fix xz.c"))
                            (float-time))
-      (cl-letf (((symbol-function 'octocat-tree--load-files)
+      (cl-letf (((symbol-function 'octocat-model-tree-load-files)
                  (lambda (_repo ref callback)
                    (setq loaded ref)
                    (let ((h (make-hash-table :test #'equal)))
                      (puthash "src/xz.c" "blob1" h)
                      (funcall callback h))))
-                ((symbol-function 'octocat-workflow--list)
+                ((symbol-function 'octocat-model--workflow-list)
                  (lambda (_repo callback) (funcall callback '(error . "no workflows")))))
         (let* ((log (list nil))
                (stage (funcall (octocat--async-search-repo-objects

@@ -259,7 +259,7 @@ It has five steps, STEPS-DONE of them done and the next running."
 
 (ert-deftest octocat-run-test-yaml-jobs ()
   "A job's needs are read in each form, and nothing else of the file."
-  (let ((jobs (octocat-workflow--yaml-jobs "name: CI
+  (let ((jobs (octocat-model--workflow-yaml-jobs "name: CI
 on: push
 jobs:
   lint:   # first
@@ -284,7 +284,7 @@ env:
                            jobs)
                    '(("lint" nil []) ("test" "Test ${{ matrix.rust }}" ["lint"])
                      ("build" nil ["lint"]) ("docs" nil ["test" "build"]))))
-    (should (equal (octocat-workflow--yaml-jobs "on: push\n") []))))
+    (should (equal (octocat-model--workflow-yaml-jobs "on: push\n") []))))
 
 (ert-deftest octocat-run-test-job-edges ()
   "Run jobs are matched to the file's by name, matrix and reusable ones too."
@@ -368,19 +368,19 @@ env:
 
 (ert-deftest octocat-workflow-test-yaml-on ()
   "The triggers are read in each way a workflow may write them."
-  (should (equal (octocat-workflow--yaml-on "on: workflow_dispatch\n") "workflow_dispatch"))
-  (should (equal (octocat-workflow--yaml-on "on: [push, workflow_dispatch]\n")
+  (should (equal (octocat-model--workflow-yaml-on "on: workflow_dispatch\n") "workflow_dispatch"))
+  (should (equal (octocat-model--workflow-yaml-on "on: [push, workflow_dispatch]\n")
                  ["push" "workflow_dispatch"]))
-  (should (equal (octocat-workflow--yaml-on "\"on\":\n  - push\n  - workflow_dispatch\n")
+  (should (equal (octocat-model--workflow-yaml-on "\"on\":\n  - push\n  - workflow_dispatch\n")
                  ["push" "workflow_dispatch"]))
-  (should (equal (octocat-workflow--yaml-on
+  (should (equal (octocat-model--workflow-yaml-on
                   "name: CI\non:\n  workflow_dispatch:  # by hand\n  push: {branches: [main]}\njobs:\n  a:\n")
                  '(("workflow_dispatch") ("push" ("branches" . ["main"])))))
-  (should-not (octocat-workflow--yaml-on "name: CI\njobs:\n")))
+  (should-not (octocat-model--workflow-yaml-on "name: CI\njobs:\n")))
 
 (ert-deftest octocat-workflow-test-dispatch-spec ()
   "Inputs keep their order, options and description, a block scalar too."
-  (let* ((spec (octocat-workflow--dispatch-spec
+  (let* ((spec (octocat-model--workflow-dispatch-spec
                 "on:
   workflow_dispatch:
     inputs:
@@ -413,11 +413,11 @@ jobs:
     (should (equal (octocat-workflow--input-label (aref inputs 1)) "Version to tag *"))
     ;; Cut to fit, the mark stays.
     (should (equal (octocat-workflow--input-label (aref inputs 1) 12) "Version t… *")))
-  (should (eq (gethash "dispatch" (octocat-workflow--dispatch-spec "on: push\n")) :false)))
+  (should (eq (gethash "dispatch" (octocat-model--workflow-dispatch-spec "on: push\n")) :false)))
 
 (ert-deftest octocat-workflow-test-input-values-and-errors ()
   "Unset inputs take their default; required, number and choice are checked."
-  (let* ((inputs (append (gethash "inputs" (octocat-workflow--dispatch-spec
+  (let* ((inputs (append (gethash "inputs" (octocat-model--workflow-dispatch-spec
                                             "on:
   workflow_dispatch:
     inputs:
@@ -436,10 +436,10 @@ jobs:
 
 (ert-deftest octocat-workflow-test-parse-dispatched ()
   "The run's ID is read from the answer; an empty answer gives none."
-  (should (= (octocat-workflow--parse-dispatched
+  (should (= (octocat-model--workflow-parse-dispatched
               "{\"workflow_run_id\":42,\"run_url\":\"u\",\"html_url\":\"h\"}")
              42))
-  (should-not (octocat-workflow--parse-dispatched "\n")))
+  (should-not (octocat-model--workflow-parse-dispatched "\n")))
 
 (ert-deftest octocat-checks-test-from-rest ()
   "A REST check-run takes the shape of a statusCheckRollup entry."

@@ -490,10 +490,10 @@ Only that file; a hash naming none changes nothing."
 
 (ert-deftest octocat-commit-test-date-committed ()
   "Rows show when a commit was committed; its author date when it has no other."
-  (let ((both (octocat-repo--history-commit
+  (let ((both (octocat-model--repo-history-commit
                (json-parse-string
                 "{\"oid\":\"a\",\"messageHeadline\":\"s\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"committedDate\":\"2026-10-02T10:00:00Z\",\"author\":null}")))
-        (old  (octocat-repo--history-commit
+        (old  (octocat-model--repo-history-commit
                (json-parse-string
                 "{\"oid\":\"a\",\"messageHeadline\":\"s\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":null}"))))
     (should (equal (octocat--commit-date both) "2026-10-02T10:00:00Z"))
@@ -505,7 +505,7 @@ Only that file; a hash naming none changes nothing."
   "The default branch holds a commit behind its head or at it, not one ahead."
   (dolist (case '(("BEHIND" . "main") ("IDENTICAL" . "main") ("AHEAD" . :null) ("DIVERGED" . :null)))
     (should (equal (gethash "name"
-                            (octocat-commit--parse-branch
+                            (octocat-model--commit-parse-branch
                              (format "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\",\"compare\":{\"status\":\"%s\"}}}}}"
                                      (car case))))
                    (cdr case)))))

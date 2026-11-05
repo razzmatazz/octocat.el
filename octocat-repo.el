@@ -54,6 +54,7 @@
 (require 'url-util)
 (require 'octocat-core)
 (require 'octocat-sync)
+(require 'octocat-model)
 (require 'octocat-markdown)
 (require 'octocat-vui)
 
@@ -61,11 +62,6 @@
 
 
 ;;;; User options
-
-(defcustom octocat-repo-commits-page-size 25
-  "Number of commits the commits page shows, and loads, at a time."
-  :type 'integer
-  :group 'octocat)
 
 (defcustom octocat-repo-doc-lines 20
   "Lines of the repo buffer's README shown before the rest is folded away.
@@ -236,185 +232,6 @@ elsewhere is followed; a page on a picked ref stays on it."
 
 ;;;; gh integration
 
-(defconst octocat-repo--history-query
-  (concat "query($owner:String!,$name:String!,$ref:String!,$limit:Int!,$after:String,"
-          "$path:String){repository(owner:$owner,name:$name){object(expression:$ref){...on "
-          "Commit{history(first:$limit,after:$after,path:$path){totalCount edges{cursor "
-          "node{oid messageHeadline authoredDate committedDate author{name email user{"
-          "login}} parents(first:2){nodes{oid}}}}}}}}}")
-  "GraphQL query behind `octocat-repo--list-commits'.
-Only what a row shows: the REST commits endpoint sends ~15 times as much.")
-
-(defun octocat-repo--list-commits (repo ref path callback &optional after)
-  "Fetch a page of the commits of REPO, from REF back.
-REF is a branch or SHA; nil means the head of the default branch.  PATH,
-when non-nil, keeps only the commits that touched it.
-AFTER, a commit's \"cursor\", fetches the page after that commit.  A
-page holds `octocat-repo-commits-page-size' commits.  Calls CALLBACK with
-a list of commits from `octocat-repo--parse-history', or a cons
-\\=(error . MSG)."
-  (let ((parts (split-string repo "/")))
-    (octocat--run-gh
-     "commits"
-     (append (list "api" "graphql"
-                   "-f" (concat "query=" octocat-repo--history-query)
-                   "-f" (concat "owner=" (car parts))
-                   "-f" (concat "name=" (cadr parts))
-                   "-f" (concat "ref=" (or ref "HEAD"))
-                   "-F" (format "limit=%d" octocat-repo-commits-page-size))
-             (and after (list "-f" (concat "after=" after)))
-             (and path (list "-f" (concat "path=" path))))
-     #'octocat-repo--parse-history
-     callback)))
-
-(defun octocat-repo--history-commit (node)
-  "Return the commit NODE of a GraphQL history shaped as REST has it.
-That is what the rows read: \"sha\"; \"commit\", with the \"message\"
-\(its headline only), the git \"author\" (name, email, date) and the
-\"committer\" (date); \"author\", the GitHub user or :null; and, when
-NODE has them, the SHAs of its \"parents\", for the graph beside it."
-  (let* ((a      (gethash "author" node))
-         (user   (and (hash-table-p a) (gethash "user" a)))
-         (git    (make-hash-table :test #'equal))
-         (by     (make-hash-table :test #'equal))
-         (c      (make-hash-table :test #'equal))
-         (commit (make-hash-table :test #'equal)))
-    (when (hash-table-p a)
-      (puthash "name" (gethash "name" a) git)
-      (puthash "email" (gethash "email" a) git))
-    (puthash "date" (gethash "authoredDate" node) git)
-    (puthash "date" (gethash "committedDate" node) by)
-    (puthash "message" (gethash "messageHeadline" node) c)
-    (puthash "author" git c)
-    (puthash "committer" by c)
-    (puthash "sha" (gethash "oid" node) commit)
-    (puthash "commit" c commit)
-    (puthash "author" (if (hash-table-p user) user :null) commit)
-    (when-let* ((parents (gethash "parents" node)))
-      (puthash "parents" (vconcat (mapcar (lambda (p) (gethash "oid" p))
-                                          (gethash "nodes" parents)))
-               commit))
-    commit))
-
-(defun octocat-repo--parse-history (json-string)
-  "Parse the commit history response JSON-STRING into a list of commits.
-Each is shaped by `octocat-repo--history-commit', with its \"cursor\",
-for the page after it, and \"total\", the commits of the whole history."
-  (let* ((repo (gethash "repository" (gethash "data" (json-parse-string json-string))))
-         (obj  (and (hash-table-p repo) (gethash "object" repo))))
-    (unless (hash-table-p obj)
-      (error "No such branch or commit"))
-    (let ((history (gethash "history" obj)))
-      (mapcar (lambda (edge)
-                (let ((commit (octocat-repo--history-commit (gethash "node" edge))))
-                  (puthash "cursor" (gethash "cursor" edge) commit)
-                  (puthash "total" (gethash "totalCount" history) commit)
-                  commit))
-              (gethash "edges" history)))))
-
-(defconst octocat-repo--head-query
-  (concat "query($owner:String!,$name:String!,$expr:String!,$dir:String!,$path:String){"
-          "repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
-          "history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate "
-          "committedDate author{name email user{login}}}}}} dir:object(expression:$dir){"
-          "__typename oid ...on Blob{byteSize isBinary}}}}")
-  "GraphQL query behind `octocat-repo--fetch-head'.")
-
-(defun octocat-repo--parse-head (json-string ref path)
-  "Parse the response JSON-STRING of `octocat-repo--head-query'.
-It is for PATH, nil for the root, at REF.  Return the last commit that
-touched PATH, as `octocat-repo--history-commit' shapes it, with
-\"tree\", the SHA of PATH's tree, or its blob's when \"kind\" is
-\"blob\", and \"total\", the commits that touched PATH.  Of a blob,
-\"size\" is its bytes and \"binary\" t when it is not text."
-  (let* ((repo   (gethash "repository" (gethash "data" (json-parse-string json-string))))
-         (obj    (and (hash-table-p repo) (gethash "object" repo)))
-         (dir    (and (hash-table-p repo) (gethash "dir" repo)))
-         (hist   (and (hash-table-p obj) (gethash "history" obj)))
-         (nodes  (and hist (gethash "nodes" hist)))
-         (node   (and (> (length nodes) 0) (aref nodes 0))))
-    (unless (hash-table-p obj)
-      (error "No branch, tag or commit %s" (or ref "HEAD")))
-    (unless (and (hash-table-p dir) (hash-table-p node))
-      (error "No %s at %s" path (or ref "HEAD")))
-    (let ((commit (octocat-repo--history-commit node)))
-      (puthash "tree" (gethash "oid" dir) commit)
-      (puthash "kind" (if (equal (gethash "__typename" dir) "Blob") "blob" "tree") commit)
-      (puthash "total" (gethash "totalCount" hist) commit)
-      (puthash "size" (gethash "byteSize" dir) commit)
-      (puthash "binary" (eq (gethash "isBinary" dir) t) commit)
-      commit)))
-
-(defun octocat-repo--fetch-head (repo ref path callback)
-  "Fetch the last commit and the tree of PATH of REPO at REF.
-REF is a branch, tag or SHA, as on github.com, nil for the default
-branch; PATH nil is the root.  Calls CALLBACK with the commit from
-`octocat-repo--parse-head', or a cons \\=(error . MSG)."
-  (let ((parts (split-string repo "/"))
-        (rev   (or ref "HEAD")))
-    (octocat--run-gh
-     "repo-head"
-     (append (list "api" "graphql"
-                   "-f" (concat "query=" octocat-repo--head-query)
-                   "-f" (concat "owner=" (car parts))
-                   "-f" (concat "name=" (cadr parts))
-                   ;; Peels an annotated tag to its commit.
-                   "-f" (concat "expr=" rev "^{commit}")
-                   "-f" (concat "dir=" rev ":" path))
-             (and path (list "-f" (concat "path=" path))))
-     (lambda (json) (octocat-repo--parse-head json ref path))
-     callback)))
-
-(octocat-sync-define-resource repo-head (repo ref path)
-  :fetch (lambda (done) (octocat-repo--fetch-head repo ref path done)))
-
-(defconst octocat-repo--blame-query
-  (concat "query($owner:String!,$name:String!,$expr:String!,$path:String!){"
-          "repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
-          "blame(path:$path){ranges{startingLine endingLine commit{oid messageHeadline "
-          "authoredDate committedDate author{name email user{login}}}}}}}}}")
-  "GraphQL query behind `octocat-repo--fetch-blame'.")
-
-(defun octocat-repo--parse-blame (json-string)
-  "Parse the response JSON-STRING of `octocat-repo--blame-query'.
-Return its ranges, a vector of hash-tables of \"start\" and \"end\",
-the first and last line, and \"commit\", the commit that last changed
-them, as `octocat-repo--history-commit' shapes it."
-  (let* ((repo  (gethash "repository" (gethash "data" (json-parse-string json-string))))
-         (obj   (and (hash-table-p repo) (gethash "object" repo)))
-         (blame (and (hash-table-p obj) (gethash "blame" obj))))
-    (unless (hash-table-p blame)
-      (error "No such commit"))
-    (vconcat
-     (mapcar (lambda (r)
-               (let ((h (make-hash-table :test #'equal)))
-                 (puthash "start" (gethash "startingLine" r) h)
-                 (puthash "end" (gethash "endingLine" r) h)
-                 (puthash "commit" (octocat-repo--history-commit (gethash "commit" r)) h)
-                 h))
-             (gethash "ranges" blame)))))
-
-(defun octocat-repo--fetch-blame (repo commit path callback)
-  "Fetch the blame of file PATH of REPO at COMMIT.
-Calls CALLBACK with the ranges of `octocat-repo--parse-blame', or a
-cons \\=(error . MSG)."
-  (let ((parts (split-string repo "/")))
-    (octocat--run-gh
-     "blame"
-     (list "api" "graphql"
-           "-f" (concat "query=" octocat-repo--blame-query)
-           "-f" (concat "owner=" (car parts))
-           "-f" (concat "name=" (cadr parts))
-           "-f" (concat "expr=" commit)
-           "-f" (concat "path=" path))
-     #'octocat-repo--parse-blame
-     callback)))
-
-(octocat-sync-define-resource blame (repo commit path)
-  ;; COMMIT names the history, so what it says never changes.
-  :max-age octocat-vui--fixed-max-age
-  :fetch (lambda (done) (octocat-repo--fetch-blame repo commit path done)))
-
 (defconst octocat-repo--doc-kinds
   '((readme   "README"          "readme")
     (coc      "Code of conduct" "code[-_]of[-_]conduct")
@@ -490,45 +307,6 @@ Not RET-able: the commit page reads from GitHub, which lacks it."
 
 ;;;; API fetch helpers
 
-(defun octocat-tree--fetch-dir (repo sha callback)
-  "Fetch the children of directory with SHA in REPO asynchronously.
-Calls CALLBACK with a vector of entry hash-tables, or a cons (error . MSG)."
-  (octocat--run-gh
-   (format "tree-dir-%s" (substring sha 0 (min 8 (length sha))))
-   (list "api"
-         (format "repos/%s/git/trees/%s" repo sha))
-   (lambda (output)
-     (let* ((data  (json-parse-string output))
-            (tree  (gethash "tree" data)))
-       (if (vectorp tree)
-           tree
-         (error "Unexpected tree response format"))))
-   callback))
-
-(defun octocat-tree--fetch-all-files (repo sha callback)
-  "Fetch the full recursive file list for REPO rooted at tree SHA.
-Calls CALLBACK with an alist of (PATH . BLOB-SHA) pairs for every blob
-in the tree, or a cons (error . MSG) on failure."
-  (octocat--run-gh
-   "tree-all-files"
-   (list "api"
-         (format "repos/%s/git/trees/%s?recursive=1" repo sha))
-   (lambda (output)
-     (let* ((data  (json-parse-string output))
-            (tree  (gethash "tree" data)))
-       (if (vectorp tree)
-           (let (result)
-             (seq-doseq (entry tree)
-               (when (equal (gethash "type" entry) "blob")
-                 (push (cons (gethash "path" entry)
-                             (gethash "sha"  entry))
-                       result)))
-             (nreverse result))
-         (error "Unexpected tree response format"))))
-   callback))
-
-
-
 
 (defconst octocat-tree--blob-query
   (concat "query($owner:String!,$name:String!,$expr:String!){repository(owner:$owner,"
@@ -555,118 +333,7 @@ Calls CALLBACK with the SHA, or a cons (error . MSG)."
      callback)))
 
 
-;;;; Last commits
-
-(defconst octocat-tree--last-commits-chunk 50
-  "Entries whose last commit one query asks for.
-Each walks the history on GitHub's side, so a large directory is split.")
-
-(defun octocat-tree--last-commits-query (n)
-  "Return the GraphQL query of the last commits of N paths, $p0 to $pN-1.
-Each is history alias eI, one commit long."
-  (concat "query($owner:String!,$name:String!,$expr:String!"
-          (mapconcat (lambda (i) (format ",$p%d:String!" i)) (number-sequence 0 (1- n)) "")
-          "){repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
-          (mapconcat (lambda (i)
-                       (format "e%d:history(first:1,path:$p%d){nodes{oid messageHeadline \
-authoredDate committedDate author{name email user{login}}}}" i i))
-                     (number-sequence 0 (1- n)) " ")
-          "}}}}"))
-
-(defun octocat-tree--parse-last-commits (json paths)
-  "Return a hash-table of each of PATHS to its last commit, from JSON.
-JSON answers `octocat-tree--last-commits-query' for PATHS.  A commit is
-shaped by `octocat-repo--history-commit'; a path with none is left out."
-  (let* ((repo (gethash "repository" (gethash "data" (json-parse-string json))))
-         (obj  (and (hash-table-p repo) (gethash "object" repo)))
-         (out  (make-hash-table :test #'equal)))
-    (unless (hash-table-p obj)
-      (error "No such commit"))
-    (seq-do-indexed
-     (lambda (path i)
-       (let* ((hist  (gethash (format "e%d" i) obj))
-              (nodes (and (hash-table-p hist) (gethash "nodes" hist))))
-         (when (> (length nodes) 0)
-           (puthash path (octocat-repo--history-commit (aref nodes 0)) out))))
-     paths)
-    out))
-
-(defun octocat-tree--fetch-last-commits (repo commit paths callback)
-  "Fetch the last commit of each of PATHS of REPO, from COMMIT back.
-Calls CALLBACK once with a hash-table of path to commit, see
-`octocat-tree--parse-last-commits', or a cons (error . MSG)."
-  (let* ((parts  (split-string repo "/"))
-         (chunks (seq-partition paths octocat-tree--last-commits-chunk))
-         (left   (length chunks))
-         (out    (make-hash-table :test #'equal))
-         failed)
-    (if (null chunks)
-        (funcall callback out)
-      (dolist (chunk chunks)
-        (octocat--run-gh
-         "tree-commits"
-         (append (list "api" "graphql"
-                       "-f" (concat "query=" (octocat-tree--last-commits-query (length chunk)))
-                       "-f" (concat "owner=" (car parts))
-                       "-f" (concat "name=" (cadr parts))
-                       "-f" (concat "expr=" commit))
-                 (seq-mapcat (lambda (i) (list "-f" (format "p%d=%s" i (nth i chunk))))
-                             (number-sequence 0 (1- (length chunk)))))
-         (lambda (json) (octocat-tree--parse-last-commits json chunk))
-         (lambda (r)
-           (if (eq (car-safe r) 'error)
-               (setq failed r)
-             (maphash (lambda (k v) (puthash k v out)) r))
-           (when (zerop (cl-decf left))
-             (funcall callback (or failed out)))))))))
-
-
 ;;;; Sync resources
-;;
-;; Directory listings and file contents are named by tree and blob SHA,
-;; which name fixed contents, so they are kept for
-;; `octocat-vui--fixed-max-age'.  The tree of a directory at a ref comes
-;; with its last commit, the repo page's `repo-head' resource.
-
-(octocat-sync-define-resource tree-dir (repo sha)
-  :max-age octocat-vui--fixed-max-age
-  :fetch (lambda (done) (octocat-tree--fetch-dir repo sha done)))
-
-
-
-(octocat-sync-define-resource tree-commits (repo commit dir sha)
-  ;; COMMIT names the history, so what it says never changes.
-  :max-age octocat-vui--fixed-max-age
-  :fetch (lambda (done)
-           ;; No COMMIT yet: the page asks before it knows it.
-           (if (null commit)
-               (funcall done (make-hash-table :test #'equal))
-             (octocat-sync-get
-              (list 'tree-dir repo sha)
-              (lambda (entries)
-                (if (eq (car-safe entries) 'error)
-                    (funcall done entries)
-                  (octocat-tree--fetch-last-commits
-                   repo commit
-                   (mapcar (lambda (e) (octocat-tree--join dir (gethash "path" e)))
-                           entries)
-                   done)))))))
-
-(octocat-sync-define-resource tree-files (repo sha)
-  :max-age octocat-vui--fixed-max-age
-  :fetch (lambda (done)
-           (octocat-tree--fetch-all-files
-            repo sha
-            (lambda (r)
-              (funcall done
-                       (if (eq (car-safe r) 'error)
-                           r
-                         (let ((h (make-hash-table :test #'equal :size (length r))))
-                           (pcase-dolist (`(,path . ,blob) r)
-                             (puthash path blob h))
-                           h)))))))
-
-
 
 (defun octocat-tree--load-blob (repo sha callback)
   "Call CALLBACK with the content of blob SHA in REPO, or (error . MSG).
@@ -837,10 +504,6 @@ keymaps."
                 (t (string< (gethash "path" a "")
                             (gethash "path" b ""))))))))
 
-(defun octocat-tree--join (dir name)
-  "Return the path of NAME inside directory path DIR (\"\" for the root)."
-  (if (string-empty-p dir) name (concat dir "/" name)))
-
 (defun octocat-tree--parent (path)
   "Return the path of the directory containing PATH, \"\" for the root."
   (let ((dir (file-name-directory path)))
@@ -961,7 +624,7 @@ it is for browsing."
          (entries (octocat-tree--sorted-entries (plist-get result :data)))
          (last    (octocat-tree--use-last-commits repo (and entries commit) path sha)))
     (octocat-tree--use-focus
-     focus (mapcar (lambda (e) (octocat-tree--join path (gethash "path" e))) entries))
+     focus (mapcar (lambda (e) (octocat-model-tree-join path (gethash "path" e))) entries))
     (pcase (octocat-vui-snapshot-status result)
       ('pending (vui-text (octocat-tree--skeleton indent)))
       ('error   (vui-text (propertize (concat indent (octocat-vui-error-text result))
@@ -973,7 +636,7 @@ it is for browsing."
                        (vui-component 'octocat-tree--node
                          :repo repo :branch branch :entry entry :commit commit
                          :last (octocat-tree--last-of
-                                last (octocat-tree--join path (gethash "path" entry)))
+                                last (octocat-model-tree-join path (gethash "path" entry)))
                          :depth depth :parent path :reveal reveal :focus focus))
                      (lambda (entry) (gethash "path" entry))))))))
 
@@ -983,16 +646,17 @@ it is for browsing."
 LAST is the last commit that touched it, `loading' while it loads.  The other
 arguments are as for `octocat-tree--subtree'."
   :state ((expanded (octocat-tree--reveals-p
-                     (octocat-tree--join parent (or (gethash "path" entry) ""))
+                     (octocat-model-tree-join parent (or (gethash "path" entry) ""))
                      reveal)))
   :render
   (let* ((_ (octocat-vui-use-view-reset
              (vui-async-callback ()
                (vui-set-state :expanded (octocat-tree--reveals-p
-                                         (octocat-tree--join parent (or (gethash "path" entry) ""))
+                                         (octocat-model-tree-join
+                                          parent (or (gethash "path" entry) ""))
                                          reveal)))))
          (name   (or (gethash "path" entry) ""))
-         (path   (octocat-tree--join parent name))
+         (path   (octocat-model-tree-join parent name))
          (sha    (or (gethash "sha" entry) ""))
          (indent (make-string (* depth 2) ?\s))
          (width  (octocat-vui-window-width)))
@@ -1148,12 +812,6 @@ is unknown."
           (vui-hstack :spacing 1 pick (octocat-repo-vui--reset-button default))
         pick))))
 
-(octocat-sync-define-resource commits (repo ref path)
-  :fetch (lambda (done)
-           (octocat-repo--list-commits
-            repo ref path
-            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
-
 (vui-defcomponent octocat-repo-vui--commits-section
     (repo ref path default-branch current-branch head-info tick)
   "Commits section for REPO, under the top line the tree browser has.
@@ -1239,8 +897,8 @@ the history it pages through cannot shift under it."
                 :more (list :items (append commits r)
                             :done (< (length r) octocat-repo-commits-page-size)))))))
       (vui-set-state :fetching t)
-      (octocat-repo--list-commits repo (gethash "sha" (car commits)) path on-page
-                                  (gethash "cursor" (car (last commits)))))))
+      (octocat-model-repo-list-commits repo (gethash "sha" (car commits)) path on-page
+                                       (gethash "cursor" (car (last commits)))))))
 
 (defun octocat-repo-vui--head-row (repo ref path commit width)
   "Return the line atop the files: COMMIT, of PATH at REF.
@@ -1579,7 +1237,7 @@ the blame.")
 
 (defun octocat-repo--blame-text (repo text ranges edge)
   "Return TEXT, a file of REPO, with the blame RANGES in a margin.
-RANGES are as `octocat-repo--parse-blame' gives them.  The first line
+RANGES are as `octocat-model--repo-parse-blame' gives them.  The first line
 of each range is headed by its commit, see `octocat-repo--blame-margin',
 in `octocat-repo--blame-width' columns; every line is numbered, and the
 last of a range is underlined to column EDGE, parting it from the next.
@@ -1996,17 +1654,6 @@ See `octocat-tree--open-file-by-path'."
                                         octocat-tree--file-branch)))
     (octocat-tree--open-file-by-path repo picked octocat-tree--file-path)))
 
-(defun octocat-tree--load-files (repo ref callback)
-  "Call CALLBACK with every file of REPO at REF, nil for the default branch.
-They are a hash-table of path to blob SHA, from the store when there,
-or (error . MSG)."
-  (octocat-sync-get
-   (list 'repo-head repo ref nil)
-   (lambda (head)
-     (if (eq (car-safe head) 'error)
-         (funcall callback head)
-       (octocat-sync-get (list 'tree-files repo (gethash "tree" head)) callback)))))
-
 (defun octocat-tree-find-file ()
   "Interactively find and open a file in this repository by path.
 Offers every file of the ref shown, through `completing-read', and opens
@@ -2026,7 +1673,7 @@ commit.  Works from the repo page and from a file viewer."
     (unless repo
       (user-error "Octocat: Buffer is not associated with a repository"))
     (setq mode-line-process (octocat-mode-line-busy ":loading"))
-    (octocat-tree--load-files
+    (octocat-model-tree-load-files
      repo ref
      (lambda (files)
        (when (buffer-live-p buf)
@@ -2147,7 +1794,6 @@ It is the page `[N commits]' opens, see `octocat-commit-list-open'."
                             octocat-tree--file-path))
 
 
-
 ;;;; Async refresh
 
 (defun octocat-repo-refresh (&optional _ignore-auto _noconfirm)
@@ -2248,3 +1894,4 @@ PATH, a file or directory, keeps the commits that touched it."
 
 (provide 'octocat-repo)
 ;;; octocat-repo.el ends here
+

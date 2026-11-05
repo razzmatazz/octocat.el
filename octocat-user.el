@@ -37,7 +37,6 @@
 
 (require 'octocat-avatar)
 (require 'octocat-core)
-(require 'octocat-sync)
 (require 'octocat-vui)
 (require 'subr-x)
 (require 'vui)
@@ -96,83 +95,6 @@ Surrounding whitespace and a leading \"@\" are dropped."
   (let ((login (string-trim-left (string-trim (or input "")) "@")))
     (and (string-match-p "\\`[A-Za-z0-9][A-Za-z0-9-]*\\'" login)
          login)))
-
-(defun octocat-user--table (&rest pairs)
-  "Return a hash table of PAIRS, alternating keys and values."
-  (let ((h (make-hash-table :test #'equal)))
-    (while pairs (puthash (pop pairs) (pop pairs) h))
-    h))
-
-(defun octocat-user--parse-profile (json-string)
-  "Parse the `users/LOGIN' response JSON-STRING into the profile resource.
-The user is an entity; the counts belong to this resource."
-  (let ((p (json-parse-string json-string :null-object nil)))
-    (octocat-user--table
-     "user" (octocat-sync-entity
-             'user (concat "user:" (downcase (gethash "login" p)))
-             (octocat-user--table
-              "login" (gethash "login" p)
-              "__typename" (gethash "type" p)
-              "name" (gethash "name" p)
-              "bio" (gethash "bio" p)
-              "company" (gethash "company" p)
-              "location" (gethash "location" p)
-              "websiteUrl" (gethash "blog" p)
-              "avatarUrl" (gethash "avatar_url" p)))
-     "followers" (gethash "followers" p)
-     "following" (gethash "following" p)
-     "publicRepos" (gethash "public_repos" p))))
-
-(defun octocat-user--parse-repos (json-string)
-  "Parse the `users/LOGIN/repos' response JSON-STRING into a list resource."
-  (octocat-user--table
-   "nodes" (cl-map 'vector #'octocat-sync-repo-rest
-                   (json-parse-string json-string :null-object nil))))
-
-(defconst octocat-user--pinned-query
-  (concat "query($login:String!){repositoryOwner(login:$login){... on ProfileOwner{"
-          "pinnedItems(first:6,types:REPOSITORY){nodes{... on Repository{nameWithOwner "
-          "description stargazerCount primaryLanguage{name} pushedAt isFork "
-          "isArchived}}}}}}")
-  "GraphQL query behind the `user-pinned' resource.
-The REST API does not expose pinned repositories.")
-
-(defun octocat-user--parse-pinned (json-string)
-  "Parse the GraphQL response JSON-STRING into a list resource.
-Pinned gists, which come back as empty nodes, are left out."
-  (let* ((data  (gethash "data" (json-parse-string json-string :null-object nil)))
-         (owner (and data (gethash "repositoryOwner" data)))
-         (items (and owner (gethash "pinnedItems" owner)))
-         (nodes (and items (gethash "nodes" items))))
-    (octocat-user--table
-     "nodes" (vconcat (delq nil (mapcar (lambda (node)
-                                          (and node (gethash "nameWithOwner" node)
-                                               (octocat-sync-repo node)))
-                                        nodes))))))
-
-(octocat-sync-define-resource user-profile (login)
-  :poll octocat-sync-poll-slow
-  :fetch (lambda (done)
-           (octocat--run-gh "user-profile" (list "api" (format "users/%s" login))
-                            #'octocat-user--parse-profile done)))
-
-(octocat-sync-define-resource user-repos (login limit)
-  :poll octocat-sync-poll-slow
-  ;; The limit is in the URL so that `gh api' issues a GET.
-  :fetch (lambda (done)
-           (octocat--run-gh "user-repos"
-                            (list "api" (format "users/%s/repos?sort=pushed&per_page=%d"
-                                                login limit))
-                            #'octocat-user--parse-repos done)))
-
-(octocat-sync-define-resource user-pinned (login)
-  :poll octocat-sync-poll-slow
-  :fetch (lambda (done)
-           (octocat--run-gh "user-pinned"
-                            (list "api" "graphql"
-                                  "-f" (concat "query=" octocat-user--pinned-query)
-                                  "-F" (concat "login=" login))
-                            #'octocat-user--parse-pinned done)))
 
 
 ;;;; Rendering

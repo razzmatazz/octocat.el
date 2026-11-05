@@ -63,6 +63,7 @@
 (require 'octocat-core)
 (require 'octocat-edit)
 (require 'octocat-sync)
+(require 'octocat-model)
 (require 'octocat-vui)
 (require 'time-date) ; date-to-time
 (require 'vui)
@@ -70,23 +71,6 @@
 
 
 ;;;; Data
-
-(defun octocat--fetch-issue-events (repo number callback)
-  "Fetch the timeline events of issue or PR NUMBER in REPO asynchronously.
-Calls CALLBACK with a hash-table whose \"events\" key holds the vector of
-timeline events of all pages, or a cons \\=(error . MSG)."
-  (octocat--run-gh "timeline-events"
-                   (list "api" "--paginate" "--slurp"
-                         (format "repos/%s/issues/%d/timeline" repo number))
-                   (lambda (output)
-                     (let ((pages (json-parse-string (string-trim output)))
-                           (result (make-hash-table :test 'equal)))
-                       (puthash "events" (apply #'vconcat (append pages nil)) result)
-                       result))
-                   callback))
-
-(octocat-sync-define-resource timeline-events (repo number)
-  :fetch (lambda (done) (octocat--fetch-issue-events repo number done)))
 
 (defun octocat-timeline-use-events (repo number tick)
   "Return the timeline events of issue or PR NUMBER in REPO, and the snapshot.
@@ -99,10 +83,6 @@ not known; SNAPSHOT is the `timeline-events' resource's, as from
 
 
 ;;;; Model
-
-(defconst octocat-timeline--pending "octocatPending"
-  "Key of what is being done to a comment, or to an item's opening post.
-Only the edits of a pending mutation set it, so it is never stored.")
 
 (defun octocat-timeline--actor (event)
   "Return \"@LOGIN\" for the actor of timeline EVENT, or \"\"."
@@ -202,7 +182,7 @@ PR's reviews and commits."
                        :body (or (octocat--get obj "body") "")
                        :empty "(no description)"
                        :target 'body
-                       :pending (octocat--get obj octocat-timeline--pending)
+                       :pending (octocat--get obj octocat-model-pending)
                        :reactions (octocat--reactions-string obj)))
            (mapcar (lambda (comment)
                      (list :time (or (gethash "createdAt" comment) "")
@@ -212,7 +192,7 @@ PR's reviews and commits."
                            :body (or (gethash "body" comment) "")
                            :empty "(empty)"
                            :target comment
-                           :pending (octocat--get comment octocat-timeline--pending)
+                           :pending (octocat--get comment octocat-model-pending)
                            :reactions (octocat--reactions-string comment)))
                    (octocat--get obj "comments"))
            extra
@@ -661,269 +641,11 @@ lost."
            (octocat-edit-open title submit-fn #'ignore body data)))))
     (funcall on-success)))
 
-(defun octocat-timeline--detail-spec (kind repo number)
-  "Return the spec of the page resource of issue or PR (KIND) NUMBER of REPO."
-  (list (if (equal kind "pr") 'pr 'issue) repo number))
-
-;; The login a comment being posted shows as its author.
-(octocat-sync-define-resource viewer ()
-  :max-age 86400
-  :fetch (lambda (done)
-           (octocat--run-gh "viewer" (list "api" "user")
-                            (lambda (output)
-                              (let ((user (json-parse-string (string-trim output)))
-                                    (tree (make-hash-table :test #'equal)))
-                                (puthash "login" (gethash "login" user) tree)
-                                tree))
-                            done)))
-
 (defun octocat-timeline-prepare-comment ()
   "Fetch your login, for a comment being posted, unless the store has it."
   (octocat-sync-request '(viewer)))
 
-(defun octocat-timeline--pending-comment (body login now)
-  "Return the comment of BODY being posted by LOGIN (or nil) at NOW.
-NOW is an ISO 8601 time.  It has no id or URL until GitHub answers."
-  (let ((comment (make-hash-table :test #'equal))
-        (author  (make-hash-table :test #'equal)))
-    (puthash "login" login author)
-    (puthash "author" (and login author) comment)
-    (puthash "body" body comment)
-    (puthash "createdAt" now comment)
-    (puthash "viewerDidAuthor" t comment)
-    (puthash octocat-timeline--pending "posting…" comment)
-    comment))
-
-(defun octocat-timeline--rest-comment (comment)
-  "Return COMMENT, from GitHub's REST API, in the fields `gh ... view' gives."
-  (let ((h      (make-hash-table :test #'equal))
-        (author (make-hash-table :test #'equal)))
-    (puthash "login" (octocat--get comment "user" "login") author)
-    (puthash "id" (octocat--get comment "node_id") h)
-    (puthash "author" author h)
-    (puthash "authorAssociation" (octocat--get comment "author_association") h)
-    (puthash "body" (or (octocat--get comment "body") "") h)
-    (puthash "createdAt" (octocat--get comment "created_at") h)
-    (puthash "url" (octocat--get comment "html_url") h)
-    (puthash "viewerDidAuthor" t h)
-    h))
-
-(defun octocat-timeline--put-comment (data comment)
-  "Return DATA, a page resource's body, with COMMENT added to its comments.
-A comment of the same id, as a refetch may already have, is replaced."
-  (let* ((id       (gethash "id" comment))
-         (comments (append (gethash "comments" data) nil))
-         (old      (and id (seq-find (lambda (c) (equal (gethash "id" c) id)) comments))))
-    (puthash "comments"
-             (vconcat (if old
-                          (mapcar (lambda (c) (if (eq c old) comment c)) comments)
-                        (append comments (list comment))))
-             data)
-    data))
-
-(defun octocat-timeline--set-comment-body (data comment-id body pending)
-  "Return DATA, a page resource's body, with comment COMMENT-ID's BODY set.
-COMMENT-ID is the numeric REST id.  PENDING, if non-nil, is shown as
-what is being done to it, such as \"saving…\"."
-  (puthash "comments"
-           (cl-map 'vector
-                   (lambda (c)
-                     (if (not (equal (octocat--comment-numeric-id c) comment-id))
-                         c
-                       (let ((c (copy-hash-table c)))
-                         (puthash "body" body c)
-                         (when pending (puthash octocat-timeline--pending pending c))
-                         c)))
-                   (gethash "comments" data))
-           data)
-  data)
-
-(octocat-sync-define-mutation set-state (kind verb repo number)
-  :label (format "%s %s…" (if (equal verb "close") "Closing" "Reopening")
-                 (if (equal kind "pr") "pull request" "issue"))
-  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
-  :optimistic (lambda ()
-                `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
-                   ("state" . ,(if (equal verb "close") "CLOSED" "OPEN")))))
-  :send (lambda (done)
-          (octocat--run-gh verb (list kind verb (number-to-string number) "--repo" repo)
-                           #'ignore done))
-  ;; The lists it moves in or out of, their counts, and the new event.
-  :invalidates (lambda ()
-                 (let ((kind (if (equal kind "pr") 'pulls 'issues)))
-                   `((timeline-events ,repo ,number)
-                     (list-items ,kind ,repo _ _)
-                     (counts ,kind ,repo)
-                     (repo-summary ,repo)))))
-
-(octocat-sync-define-mutation set-title (kind repo number title)
-  :label "Renaming…"
-  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
-  :optimistic (lambda ()
-                `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
-                   ("title" . ,title))))
-  :send (lambda (done)
-          (octocat--run-gh "edit-title"
-                           (list kind "edit" (number-to-string number) "--repo" repo
-                                 "--title" title)
-                           #'ignore done))
-  ;; It adds a "changed the title" event.
-  :invalidates (lambda () `((timeline-events ,repo ,number))))
-
-(octocat-sync-define-mutation comment (kind repo number body)
-  :label "Posting comment…"
-  :slot 'inline
-  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
-  ;; GitHub answers with the comment, which takes the place of the one
-  ;; shown, so it is never gone in between.
-  :edits (lambda (answered answer)
-           (let ((comment
-                  (if answered
-                      (octocat-timeline--rest-comment answer)
-                    (octocat-timeline--pending-comment
-                     body
-                     (octocat--get (plist-get (octocat-sync-read '(viewer)) :data) "login")
-                     (format-time-string "%Y-%m-%dT%H:%M:%SZ" nil t)))))
-             (list (cons (octocat-timeline--detail-spec kind repo number)
-                         (lambda (data) (octocat-timeline--put-comment data comment))))))
-  :send (lambda (done)
-          (octocat--run-gh "comment"
-                           (list "api" (format "repos/%s/issues/%d/comments" repo number)
-                                 "-f" (concat "body=" body))
-                           (lambda (output) (json-parse-string (string-trim output)))
-                           done))
-  ;; The comment count, on the entity.
-  :invalidates (lambda () (list (octocat-timeline--detail-spec kind repo number))))
-
-(octocat-sync-define-mutation edit-body (kind repo number body)
-  :label "Saving description…"
-  :slot 'inline
-  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
-  :optimistic (lambda ()
-                `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
-                   ("body" . ,body))))
-  ;; Only the spinner: the body is the entity's.
-  :edits (lambda (answered _)
-           (unless answered
-             (list (cons (octocat-timeline--detail-spec kind repo number)
-                         (lambda (data)
-                           (puthash octocat-timeline--pending "saving…" data)
-                           data)))))
-  :send (lambda (done)
-          (octocat--run-gh "edit-body"
-                           (list kind "edit" (number-to-string number) "--repo" repo
-                                 "--body" body)
-                           #'ignore done)))
-
-(octocat-sync-define-mutation edit-comment (kind repo number comment-id body)
-  :label "Saving comment…"
-  :slot 'inline
-  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
-  :edits (lambda (answered _)
-           (list (cons (octocat-timeline--detail-spec kind repo number)
-                       (lambda (data)
-                         (octocat-timeline--set-comment-body
-                          data comment-id body (unless answered "saving…"))))))
-  :send (lambda (done)
-          (octocat--run-gh "edit-comment"
-                           (list "api" (format "repos/%s/issues/comments/%s" repo comment-id)
-                                 "--method" "PATCH" "-f" (format "body=%s" body))
-                           #'ignore done)))
-
-(octocat-sync-define-mutation edit-values (kind repo number flag add remove)
-  :label (format "Saving %ss…" flag)
-  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)))
-  :send (lambda (done)
-          (octocat--run-gh (concat "edit-" flag)
-                           (append (list kind "edit" (number-to-string number) "--repo" repo)
-                                   (and add (list (concat "--add-" flag) (string-join add ",")))
-                                   (and remove (list (concat "--remove-" flag)
-                                                     (string-join remove ","))))
-                           #'ignore done))
-  :invalidates (lambda ()
-                 `(,(octocat-timeline--detail-spec kind repo number)
-                   (timeline-events ,repo ,number)
-                   (list-items ,(if (equal kind "pr") 'pulls 'issues) ,repo _ _))))
-
 ;;;; Reactions
-
-(defconst octocat-timeline--reaction-query
-  (concat "query($id:ID!){node(id:$id){"
-          "...on Reactable{reactionGroups{content viewerHasReacted}}}}")
-  "GraphQL query for the reactions you gave to a post or comment.
-`gh ... view' leaves out whose they are.")
-
-;; Kept long: only you change them, and `react' keeps them up to date.
-(octocat-sync-define-resource viewer-reactions (subject)
-  :max-age 3600
-  :fetch (lambda (done)
-           (octocat--run-gh
-            "viewer-reactions"
-            (list "api" "graphql" "-f" (concat "query=" octocat-timeline--reaction-query)
-                  "-f" (concat "id=" subject))
-            (lambda (output)
-              (let ((groups (octocat--get (json-parse-string output) "data" "node"
-                                          "reactionGroups"))
-                    (tree   (make-hash-table :test #'equal)))
-                (puthash "given"
-                         (vconcat (delq nil (mapcar (lambda (g)
-                                                      (and (eq (gethash "viewerHasReacted" g) t)
-                                                           (gethash "content" g)))
-                                                    groups)))
-                         tree)
-                tree))
-            done)))
-
-(defun octocat-timeline--react-comment (data subject content add)
-  "Return DATA, a page resource's body, with one CONTENT more on comment SUBJECT.
-SUBJECT is the comment's node id; ADD nil takes one away instead."
-  (puthash "comments"
-           (cl-map 'vector
-                   (lambda (c)
-                     (if (not (equal (gethash "id" c) subject))
-                         c
-                       (let ((c (copy-hash-table c)))
-                         (puthash "reactionGroups"
-                                  (octocat--toggle-reaction (gethash "reactionGroups" c)
-                                                            content add)
-                                  c)
-                         c)))
-                   (gethash "comments" data))
-           data)
-  data)
-
-(octocat-sync-define-mutation react (kind repo number subject content add)
-  :label (if add "Reacting…" "Taking reaction back…")
-  ;; The changed count is all a page shows of it.
-  :slot 'reaction
-  :resources (lambda () (list (octocat-timeline--detail-spec kind repo number)
-                              `(viewer-reactions ,subject)))
-  :optimistic (lambda ()
-                (let ((item (octocat-sync-detail-read
-                             (octocat-timeline--detail-spec kind repo number))))
-                  (when (equal (octocat--get item "id") subject)
-                    `((,(octocat-sync-item-key (if (equal kind "pr") 'pr 'issue) repo number)
-                       ("reactionGroups" . ,(octocat--toggle-reaction
-                                             (gethash "reactionGroups" item) content add)))))))
-  :edits (lambda (_answered _)
-           (list (cons (octocat-timeline--detail-spec kind repo number)
-                       (lambda (data) (octocat-timeline--react-comment data subject content add)))
-                 (cons `(viewer-reactions ,subject)
-                       (lambda (data)
-                         (let ((given (remove content (append (gethash "given" data) nil))))
-                           (puthash "given" (vconcat (if add (cons content given) given)) data)
-                           data)))))
-  :send (lambda (done)
-          (octocat--run-gh
-           "react"
-           (list "api" "graphql"
-                 "-f" (format (concat "query=mutation($id:ID!,$content:ReactionContent!){"
-                                      "%s(input:{subjectId:$id,content:$content}){"
-                                      "clientMutationId}}")
-                              (if add "addReaction" "removeReaction"))
-                 "-f" (concat "id=" subject)
-                 "-f" (concat "content=" content))
-           #'ignore done)))
 
 (defconst octocat-timeline--reaction-keys
   '(("THUMBS_UP" ?+ "+1") ("THUMBS_DOWN" ?- "-1") ("LAUGH" ?l "laugh")
@@ -946,8 +668,8 @@ ticked; picking one of them takes it back."
   (let* ((target  (octocat-timeline-target))
          (subject (cond
                    ((memq target '(title body))
-                    (or (octocat--get (octocat-sync-detail-read
-                                       (octocat-timeline--detail-spec kind repo number))
+                    (or (octocat--get (octocat-model-detail-read
+                                       (octocat-model-detail-spec kind repo number))
                                       "id")
                         ;; Stored before the page fetched ids.
                         (user-error "Octocat: Refresh the page first")))
@@ -986,7 +708,7 @@ ticked; picking one of them takes it back."
 KIND is \"issue\" or \"pr\" (the `gh' subcommand) and VERB is \"close\" or
 \"reopen\".  Every page showing it changes at once; the page shows it
 under way until GitHub answers."
-  (octocat-timeline-ensure-idle (octocat-timeline--detail-spec kind repo number))
+  (octocat-timeline-ensure-idle (octocat-model-detail-spec kind repo number))
   (let ((noun (if (equal kind "pr") "pull request" "issue")))
     (when (y-or-n-p (format "%s %s #%d? " (capitalize verb) noun number))
       (octocat-sync-submit `(set-state ,kind ,verb ,repo ,number)))))
@@ -994,7 +716,7 @@ under way until GitHub answers."
 (defun octocat-timeline-rename (kind repo number)
   "Prompt for a new title of issue or PR (KIND) NUMBER of REPO and apply it.
 Every page showing it changes at once; the mode line shows it under way."
-  (let* ((item    (octocat-sync-detail-read (octocat-timeline--detail-spec kind repo number)))
+  (let* ((item    (octocat-model-detail-read (octocat-model-detail-spec kind repo number)))
          (current (or (and item (octocat--nonempty (gethash "title" item))) ""))
          (new     (string-trim (read-string (if (equal kind "pr") "PR title: " "Issue title: ")
                                             current))))
@@ -1026,7 +748,7 @@ FLAG is in `octocat-timeline--value-fields'.  The candidates are the
 stored ones, refetched behind the prompt (see `octocat-vui-list--stored')."
   (pcase-let* ((`(,_ ,prompt ,field ,key) (assoc flag octocat-timeline--value-fields))
                (labels  (equal flag "label"))
-               (item    (octocat-sync-detail-read (octocat-timeline--detail-spec kind repo number)))
+               (item    (octocat-model-detail-read (octocat-model-detail-spec kind repo number)))
                (current (delq nil (mapcar (lambda (x) (gethash key x))
                                           (and item (gethash field item)))))
                (at      (lambda (s) (if labels s (concat "@" s))))

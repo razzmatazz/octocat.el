@@ -34,6 +34,7 @@
 (require 'octocat-core)
 (require 'octocat-edit)
 (require 'octocat-sync)
+(require 'octocat-model)
 (require 'octocat-timeline)
 (require 'octocat-vui)
 (require 'vui)
@@ -92,7 +93,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (octocat-timeline-ensure-idle (list 'issue octocat--issue-repo octocat--issue-number))
   ;; Pre-populate with the current body so the user can edit in place
   ;; rather than retyping everything.
-  (let* ((issue (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))
+  (let* ((issue (octocat-model-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))
          (body  (and issue (octocat--nonempty (gethash "body" issue)))))
     (octocat-edit-open
      (format "Edit body of issue #%d" octocat--issue-number)
@@ -152,22 +153,6 @@ message."
     (cons (string-trim (car lines))
           (string-trim (string-join (cdr lines) "\n")))))
 
-(defun octocat-issue--parse-created (output)
-  "Return the number of the issue whose URL `gh issue create' printed in OUTPUT."
-  (if (string-match "/issues/\\([0-9]+\\)" output)
-      (string-to-number (match-string 1 output))
-    (error "No issue URL in: %s" (string-trim output))))
-
-(octocat-sync-define-mutation create-issue (repo title body)
-  :label "Creating issue…"
-  :send (lambda (done)
-          (octocat--run-gh "issue-create"
-                           (list "issue" "create" "--repo" repo
-                                 "--title" title "--body" body)
-                           #'octocat-issue--parse-created done))
-  :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
-                            (repo-summary ,repo))))
-
 (defun octocat-issue--submit-new (text source on-success on-error)
   "Create an issue from TEXT in the repo of `octocat-edit-user-data'.
 Open it from SOURCE once GitHub answers; the editor stays open until
@@ -218,7 +203,7 @@ The first line is the title, the rest the body."
           ((and octocat--issue-repo octocat--issue-number)
            (octocat--item-url
             'issue octocat--issue-repo octocat--issue-number
-            (octocat-sync-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))))))
+            (octocat-model-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))))))
 
 (defun octocat-issue--change-state (verb)
   "Close or reopen (VERB) the current issue, after asking."
@@ -246,36 +231,6 @@ The first line is the title, the rest the body."
 (defvar-local octocat--issue-number nil
   "The issue number this buffer is displaying.")
 
-
-;;;; Data fetching
-
-(defun octocat--fetch-issue (repo number callback)
-  "Fetch detail for issue NUMBER in REPO asynchronously.
-Calls CALLBACK with a single hash-table of issue data, or a cons \\=(error . MSG)."
-  (octocat--run-gh "issue"
-                   (list "issue" "view"
-                         (number-to-string number)
-                         "--repo" repo
-                         "--json" (concat "id,number,title,author,state,body,"
-                                          "createdAt,closedAt,"
-                                          "labels,comments,url,assignees,milestone,reactionGroups,"
-                                          "closedByPullRequestsReferences"))
-                   (lambda (output) (json-parse-string (string-trim output)))
-                   callback))
-
-(octocat-sync-define-resource issue (repo number)
-  :entity (octocat-sync-item-key 'issue repo number)
-  :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
-                            (repo-summary ,repo)))
-  :fetch (lambda (done)
-           (octocat--fetch-issue
-            repo number
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (octocat-sync-detail
-                               r '("comments")
-                               (lambda (f) (octocat-sync-item 'issue repo f)))))))))
 
 ;;;; Rendering
 ;;

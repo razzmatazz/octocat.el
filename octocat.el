@@ -42,6 +42,7 @@
 (require 'octocat-core)
 (require 'octocat-image)
 (require 'octocat-sync)
+(require 'octocat-model)
 (require 'octocat-pr)
 (require 'octocat-issue)
 (require 'octocat-timeline)

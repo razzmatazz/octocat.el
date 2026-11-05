@@ -73,85 +73,6 @@ Starts at `octocat-feed-limit' and grows with `octocat-feed-load-more'.")
   (setq-local octocat--url-function #'octocat-dashboard--page-url))
 
 
-;;;; Dashboard fetch helpers
-
-(defun octocat--fetch-recent-repos (callback)
-  "Fetch the authenticated user's recently-pushed repos via gh.
-Calls CALLBACK with a list of hash-tables (GitHub REST user/repos
-response), or an (error . MSG) cons on failure."
-  (octocat--run-gh
-   "dashboard-repos"
-   (list "api" "user/repos?sort=pushed&per_page=10")
-   #'octocat--parse-json-list
-   callback))
-
-(defun octocat--fetch-viewer-login (callback)
-  "Fetch the authenticated user's GitHub login via gh.
-Calls CALLBACK with the login string, or an (error . MSG) cons."
-  (octocat--run-gh
-   "dashboard-login"
-   (list "api" "user" "--jq" ".login")
-   (lambda (output) (string-trim output))
-   callback))
-
-;; As github.com's dashboard: the open items the user opened, is assigned
-;; to, was asked to review, is mentioned in or commented on, across
-;; every repository.  The rows are the list pages', so the fields are
-;; theirs, with the repository each item is in.
-
-(defun octocat--dashboard-search-query (kind)
-  "Return the GitHub search string for the dashboard's KIND items.
-KIND is `issues' or `pulls'."
-  (format "is:open archived:false involves:@me sort:updated-desc type:%s"
-          (if (eq kind 'pulls) "pr" "issue")))
-
-(defun octocat--dashboard-items-query (kind)
-  "Return the GraphQL search query for the dashboard's KIND items."
-  (format (concat "query($q:String!,$limit:Int!){search(query:$q,type:ISSUE_ADVANCED,"
-                  "first:$limit){nodes{...on Issue{repository{nameWithOwner}} ...on "
-                  "PullRequest{repository{nameWithOwner}} %s}pageInfo{hasNextPage "
-                  "endCursor}}}")
-          (alist-get kind octocat--list-item-fields)))
-
-(defun octocat--fetch-dashboard-items (kind limit callback)
-  "Fetch the first LIMIT of the dashboard's KIND items via gh.
-KIND is `issues' or `pulls'.  CALLBACK is called with the plist from
-`octocat--parse-list-items', or an (error . MSG) cons."
-  (octocat--run-gh
-   (format "dashboard-%s" kind)
-   (list "api" "graphql"
-         "-f" (concat "query=" (octocat--dashboard-items-query kind))
-         "-f" (concat "q=" (octocat--dashboard-search-query kind))
-         "-F" (format "limit=%d" limit))
-   #'octocat--parse-list-items
-   callback))
-
-(defun octocat--dashboard-items-tree (kind page)
-  "Return PAGE, the dashboard's KIND items, as its resource's tree.
-PAGE is as `octocat--parse-list-items' returns.  Each item becomes a
-table of its \"repo\" and its entity, \"item\", shared with the lists."
-  (let ((type (if (eq kind 'pulls) 'pr 'issue)))
-    (vconcat
-     (mapcar (lambda (item)
-               (let ((node (make-hash-table :test #'equal))
-                     (repo (gethash "nameWithOwner" (gethash "repository" item))))
-                 (remhash "repository" item)
-                 (puthash "repo" repo node)
-                 (puthash "item" (octocat-sync-item type repo item) node)
-                 node))
-             (plist-get page :items)))))
-
-(defun octocat--fetch-received-events (login limit callback)
-  "Fetch the received events feed for the user with LOGIN via gh.
-LIMIT is the maximum number of events to request (per_page).
-Calls CALLBACK with a list of hash-tables, or an (error . MSG) cons."
-  (octocat--run-gh
-   "dashboard-feed"
-   (list "api" (format "users/%s/received_events?per_page=%d" login limit))
-   #'octocat--parse-json-list
-   callback))
-
-
 ;;;; Dashboard rendering helpers
 
 (defun octocat--dashboard-event-icon (type)
@@ -392,33 +313,6 @@ into the vnode of their rows."
     ((null items) (vui-text (concat "  " empty) :face 'octocat-dimmed))
     (t (funcall rows items)))))
 
-(octocat-sync-define-resource dashboard-repos ()
-  :fetch (lambda (done)
-           (octocat--fetch-recent-repos
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (cl-map 'vector #'octocat-sync-repo-rest r)))))))
-
-(octocat-sync-define-resource dashboard-items (kind limit)
-  :fetch (lambda (done)
-           (octocat--fetch-dashboard-items
-            kind limit
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (octocat--dashboard-items-tree kind r)))))))
-
-(octocat-sync-define-resource dashboard-feed (limit)
-  :fetch (lambda (done)
-           (octocat--fetch-viewer-login
-            (lambda (login)
-              (if (eq (car-safe login) 'error)
-                  (funcall done login)
-                (octocat--fetch-received-events
-                 login limit
-                 (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r))))))))))
-
 (defun octocat--dashboard-items-section (title kind snap width bg)
   "Return the section vnode TITLE listing the dashboard's KIND items.
 SNAP is the snapshot of their resource; the rows are cut to WIDTH, and
@@ -504,7 +398,6 @@ section in the background, in place."
                                                   octocat-feed-limit))))
 
 
-
 ;;;; Feed load-more command
 
 (defun octocat-feed-load-more ()
@@ -522,3 +415,4 @@ re-runs `octocat-refresh'."
 
 (provide 'octocat-dashboard)
 ;;; octocat-dashboard.el ends here
+

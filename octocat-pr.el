@@ -41,6 +41,7 @@
 (require 'octocat-diff)
 (require 'octocat-edit)
 (require 'octocat-sync)
+(require 'octocat-model)
 (require 'octocat-timeline)
 (require 'octocat-vui)
 (require 'vui)
@@ -119,7 +120,7 @@ See `octocat-timeline-submit' for ON-SUCCESS."
   (octocat-timeline-ensure-idle (list 'pr octocat--pr-repo octocat--pr-number))
   ;; Pre-populate with the current body so the user can edit in place
   ;; rather than retyping everything.
-  (let* ((pr   (octocat-sync-detail-read (list 'pr octocat--pr-repo octocat--pr-number)))
+  (let* ((pr   (octocat-model-detail-read (list 'pr octocat--pr-repo octocat--pr-number)))
          (body (and pr (octocat--nonempty (gethash "body" pr)))))
     (octocat-edit-open
      (format "Edit body of PR #%d" octocat--pr-number)
@@ -184,7 +185,7 @@ On a field such as Labels: pick its values."
           ((and octocat--pr-repo octocat--pr-number)
            (octocat--item-url
             'pr octocat--pr-repo octocat--pr-number
-            (octocat-sync-detail-read (list 'pr octocat--pr-repo octocat--pr-number)))))))
+            (octocat-model-detail-read (list 'pr octocat--pr-repo octocat--pr-number)))))))
 
 (defun octocat-pr--change-state (verb)
   "Close or reopen (VERB) the current PR, after asking."
@@ -206,16 +207,10 @@ On a field such as Labels: pick its values."
 
 ;;;; Merge
 
-(defconst octocat-pr--merge-methods
-  '(("Merge"  "--merge"  "mergeCommitAllowed")
-    ("Squash" "--squash" "squashMergeAllowed")
-    ("Rebase" "--rebase" "rebaseMergeAllowed"))
-  "Merge methods: name, `gh pr merge' flag, and the repo field allowing it.")
-
 (defun octocat-pr--merge-allowed (repo-info)
   "Return the names of the merge methods allowed by REPO-INFO, a hash-table."
   (delq nil (mapcar (lambda (m) (and (eq (gethash (nth 2 m) repo-info) t) (car m)))
-                    octocat-pr--merge-methods)))
+                    octocat-model-pr-merge-methods)))
 
 (defun octocat-pr--merge-initial-method (methods last)
   "Return the merge dialog's initial method, one of METHODS or nil.
@@ -245,18 +240,6 @@ The first line is the subject; a rebase keeps the commits, so has none."
                                            (concat "* " (or (gethash "messageHeadline" c) "")))
                                          commits "\n"))))))
       (_ ""))))
-
-(defun octocat-pr--merge-args (repo number method text delete)
-  "Return the `gh' arguments merging PR NUMBER of REPO by METHOD.
-TEXT is the commit message, its first line the subject; a rebase has
-none.  DELETE non-nil deletes the head branch as well."
-  (let ((lines (split-string text "\n")))
-    (append (list "pr" "merge" (number-to-string number) "--repo" repo
-                  (nth 1 (assoc method octocat-pr--merge-methods)))
-            (unless (equal method "Rebase")
-              (list "--subject" (car lines)
-                    "--body" (string-trim (mapconcat #'identity (cdr lines) "\n"))))
-            (and delete (list "--delete-branch")))))
 
 (defun octocat-pr--check-counts (rollup)
   "Return the outcome tally of ROLLUP: (FAILING PENDING SKIPPED SUCCESSFUL).
@@ -463,17 +446,6 @@ a narrow window."
           header-line-format (cadr lines)))
   (force-mode-line-update))
 
-(octocat-sync-define-mutation merge-pr (repo number method text delete)
-  :label "Merging pull request…"
-  :slot 'merge
-  :resources (lambda () `((pr ,repo ,number)))
-  :send (lambda (done)
-          (octocat--run-gh "merge" (octocat-pr--merge-args repo number method text delete)
-                           #'ignore done))
-  :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number)
-                            (list-items pulls ,repo _ _) (counts pulls ,repo)
-                            (repo-summary ,repo))))
-
 (defun octocat-pr--submit-merge (text source on-success on-error)
   "Merge the PR in SOURCE buffer with commit message TEXT.
 The method and branch deletion are read from the edit buffer's user
@@ -561,7 +533,7 @@ is the confirmation."
   (pcase-let* ((`(,repo . ,number)
                 (or (octocat-pr--current)
                     (user-error "Octocat: Buffer is not associated with a pull request")))
-               (pr      (octocat-sync-detail-read (list 'pr repo number)))
+               (pr      (octocat-model-detail-read (list 'pr repo number)))
                (refusal (and pr (octocat-pr--merge-refusal pr)))
                (source  (current-buffer)))
     (cond
@@ -577,7 +549,7 @@ is the confirmation."
                            (mapconcat #'identity
                                       (cons "deleteBranchOnMerge"
                                             (mapcar (lambda (m) (nth 2 m))
-                                                    octocat-pr--merge-methods))
+                                                    octocat-model-pr-merge-methods))
                                       ","))
                      (lambda (out) (json-parse-string (string-trim out)))
                      (lambda (result)
@@ -593,28 +565,6 @@ is the confirmation."
                              (octocat-pr--open-merge-dialog
                               repo pr methods (eq (gethash "deleteBranchOnMerge" result) t))))))))))
 
-(octocat-sync-define-mutation approve-runs (repo number ids)
-  :label "Approving workflows…"
-  :slot 'approve
-  :resources (lambda () `((pr ,repo ,number)))
-  ;; One request per run; a failure is reported once all were tried.
-  :send (lambda (done)
-          (let (failed)
-            (cl-labels ((next (ids)
-                          (if (null ids)
-                              (funcall done (and failed (cons 'error failed)))
-                            (octocat--run-gh "approve-run"
-                                             (list "api" "--method" "POST"
-                                                   (format "repos/%s/actions/runs/%s/approve"
-                                                           repo (car ids)))
-                                             #'ignore
-                                             (lambda (result)
-                                               (when (eq (car-safe result) 'error)
-                                                 (setq failed (cdr result)))
-                                               (next (cdr ids)))))))
-              (next ids))))
-  :invalidates (lambda () `((pr ,repo ,number) (awaiting-runs ,repo _))))
-
 (defun octocat-pr-approve-workflows (ids)
   "Approve the current PR's workflow run of each of IDS to let it start.
 GitHub holds the runs of a PR from an outside contributor until a
@@ -627,20 +577,6 @@ maintainer approves them."
                        (lambda (result)
                          (unless (eq (car-safe result) 'error)
                            (message "Octocat: Workflows approved")))))
-
-(octocat-sync-define-mutation set-draft (repo number draft)
-  :label (if draft "Converting to draft…" "Marking ready for review…")
-  :slot 'merge
-  :resources (lambda () `((pr ,repo ,number)))
-  :optimistic (lambda ()
-                `((,(octocat-sync-item-key 'pr repo number) ("isDraft" . ,(if draft t :false)))))
-  :send (lambda (done)
-          (octocat--run-gh "ready"
-                           (append (list "pr" "ready" (number-to-string number) "--repo" repo)
-                                   (and draft (list "--undo")))
-                           #'ignore done))
-  ;; It adds an event, and may change what the merge box allows.
-  :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number))))
 
 (defun octocat-pr--set-draft (draft)
   "Mark the current PR a draft if DRAFT, else ready for review."
@@ -662,71 +598,7 @@ maintainer approves them."
     (octocat-pr--set-draft t)))
 
 
-;;;; Data fetching
-
-(defun octocat--fetch-pr (repo number callback)
-  "Fetch detail for pull request NUMBER in REPO asynchronously.
-Calls CALLBACK with a single hash-table of PR data, or a cons \\=(error . MSG)."
-  (octocat--run-gh "pr"
-                   (list "pr" "view"
-                         (number-to-string number)
-                         "--repo" repo
-                         "--json" (concat "id,number,title,author,state,body,"
-                                          "createdAt,mergedAt,closedAt,"
-                                          "baseRefName,headRefName,headRepositoryOwner,"
-                                          "isDraft,mergeable,mergeStateStatus,"
-                                          "changedFiles,"
-                                          "labels,reviewDecision,reviews,"
-                                          "comments,statusCheckRollup,url,commits,"
-                                          "assignees,milestone,latestReviews,reactionGroups,"
-                                          "reviewRequests,closingIssuesReferences"))
-                   (lambda (output) (json-parse-string (string-trim output)))
-                   callback))
-
-
-(defconst octocat-pr--parts
-  '("comments" "reviews" "latestReviews" "reviewRequests" "commits" "statusCheckRollup")
-  "The fields of a PR page's data kept with its resource, not its entity.
-Pages of connections, and what belongs to the head commit, which the
-lists do not share.")
-
-(octocat-sync-define-resource pr (repo number)
-  :entity (octocat-sync-item-key 'pr repo number)
-  :invalidates (lambda () `((list-items pulls ,repo _ _) (counts pulls ,repo)
-                            (repo-summary ,repo)))
-  :fetch (lambda (done)
-           (octocat--fetch-pr
-            repo number
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (octocat-sync-detail
-                               r octocat-pr--parts
-                               (lambda (f) (octocat-sync-item 'pr repo f)))))))))
-
-
 ;;;; Rendering
-
-(defun octocat-pr--fetch-awaiting-runs (repo sha callback)
-  "Fetch each workflow run of commit SHA in REPO awaiting approval.
-Calls CALLBACK with a list of run hash-tables, or \=(error . MSG)."
-  (octocat--run-gh "awaiting-runs"
-                   (list "api" (format (concat "repos/%s/actions/runs?head_sha=%s"
-                                               "&status=action_required&per_page=100")
-                                       repo sha))
-                   (lambda (output)
-                     (append (gethash "workflow_runs"
-                                      (json-parse-string (string-trim output)))
-                             nil))
-                   callback))
-
-(octocat-sync-define-resource awaiting-runs (repo sha)
-  :fetch (lambda (done)
-           (if (not sha)
-               (funcall done [])
-             (octocat-pr--fetch-awaiting-runs
-              repo sha
-              (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r))))))))
 
 (defun octocat-pr--use-awaiting-runs (repo sha tick)
   "Return each workflow run of commit SHA in REPO awaiting approval.
@@ -740,69 +612,6 @@ called during render, like any hook."
 ;; based on the one below it.  `gh pr view' does not give it, so it is
 ;; fetched on its own; a GitHub without stacks answers with an error,
 ;; and the page shows none.
-
-(defconst octocat-pr--stack-query
-  (concat "query($owner:String!,$name:String!,$number:Int!){"
-          "repository(owner:$owner,name:$name){pullRequest(number:$number){"
-          ;; A stack holds at most 100 pull requests.
-          "stack{number baseRefName entries(first:100){nodes{position "
-          "pullRequest{number title state isDraft mergeable}}}}}}}")
-  "GraphQL query for the stack a pull request is in.")
-
-(defun octocat-pr--parse-stack (output)
-  "Return the stack in OUTPUT of `octocat-pr--stack-query'.
-A hash-table whose \"stack\" is the stack, or :null when the pull request
-is in none."
-  (let ((out (make-hash-table :test #'equal)))
-    (puthash "stack" (or (octocat--get (json-parse-string (string-trim output))
-                                       "data" "repository" "pullRequest" "stack")
-                         :null)
-             out)
-    out))
-
-(octocat-sync-define-resource pr-stack (repo number)
-  :fetch (lambda (done)
-           (let ((parts (split-string repo "/")))
-             (octocat--run-gh
-              "pr-stack"
-              (list "api" "graphql"
-                    "-f" (concat "query=" octocat-pr--stack-query)
-                    "-f" (concat "owner=" (car parts))
-                    "-f" (concat "name=" (cadr parts))
-                    "-F" (format "number=%d" number))
-              #'octocat-pr--parse-stack
-              done))))
-
-(defconst octocat-pr--merges-query
-  (concat "query($owner:String!,$name:String!,$number:Int!){"
-          "repository(owner:$owner,name:$name){pullRequest(number:$number){"
-          ;; The last 100: a longer PR's first commits show as plain ones.
-          "commits(last:100){nodes{commit{oid parents{totalCount}}}}}}}")
-  "GraphQL query for which commits of a pull request are merges.
-`gh pr view' gives no commit's parents.")
-
-(defun octocat-pr--parse-merges (output)
-  "Return the SHAs of the merge commits in OUTPUT, of `octocat-pr--merges-query'."
-  (vconcat
-   (cl-loop for node across (or (octocat--get (json-parse-string output)
-                                              "data" "repository" "pullRequest" "commits" "nodes")
-                                [])
-            for commit = (gethash "commit" node)
-            when (> (or (octocat--get commit "parents" "totalCount") 0) 1)
-            collect (gethash "oid" commit))))
-
-(octocat-sync-define-resource pr-merges (repo number)
-  :fetch (lambda (done)
-           (let ((parts (split-string repo "/")))
-             (octocat--run-gh
-              "pr-merges"
-              (list "api" "graphql"
-                    "-f" (concat "query=" octocat-pr--merges-query)
-                    "-f" (concat "owner=" (car parts))
-                    "-f" (concat "name=" (cadr parts))
-                    "-F" (format "number=%d" number))
-              #'octocat-pr--parse-merges
-              done))))
 
 (defun octocat-pr--use-stack (repo number tick)
   "Return the stack pull request NUMBER of REPO is in, a hash-table, or nil.
@@ -865,20 +674,6 @@ it."
 ;; The PR list marks each PR's place in its stack.  One call gets the
 ;; stacks of a repo; its search query is left without them, so a GitHub
 ;; without stacks still lists its PRs.
-
-(defun octocat-pr--fetch-repo-stacks (repo callback)
-  "Fetch the stacks of REPO, newest first; call CALLBACK with them.
-They are a hash-table whose \"stacks\" is a vector, or \=(error . MSG)."
-  (octocat--run-gh "repo-stacks"
-                   (list "api" (format "repos/%s/stacks?per_page=100" repo))
-                   (lambda (output)
-                     (let ((out (make-hash-table :test #'equal)))
-                       (puthash "stacks" (json-parse-string (string-trim output)) out)
-                       out))
-                   callback))
-
-(octocat-sync-define-resource repo-stacks (repo)
-  :fetch (lambda (done) (octocat-pr--fetch-repo-stacks repo done)))
 
 (defun octocat-pr--stacks-index (stacks)
   "Return a hash-table from each PR number in STACKS to its \"≡ 2/3\".
@@ -1447,91 +1242,10 @@ the background, in place: what is unfolded stays so."
 
 ;;;;; Data fetching
 
-(defun octocat--fetch-pr-diff (repo number callback)
-  "Fetch the per-file diff for pull request NUMBER in REPO asynchronously.
-Calls CALLBACK with a vector of file hash-tables (same shape as the
-GitHub commits API \\='files\\=' array — each entry has \\='filename\\=',
-\\='status\\=', \\='additions\\=', \\='deletions\\=', and \\='patch\\='),
-or a cons \\=(error . MSG) on failure.
-Uses the GitHub REST API via `gh api', which joins the pages into one
-array; GitHub lists at most 3000 files."
-  (octocat--run-gh
-   "pr-diff"
-   (list "api" "--paginate"
-         (format "repos/%s/pulls/%d/files?per_page=100" repo number))
-   (lambda (output)
-     (json-parse-string (string-trim output)))
-   callback))
-
-(octocat-sync-define-resource pr-files (repo number)
-  :fetch (lambda (done) (octocat--fetch-pr-diff repo number done)))
-
 ;; The review comments are read as GitHub's threads, from GraphQL: REST
 ;; has no thread, whose id replying and resolving need, and no drafts.
 ;; Your drafts are the comments of your pending review, which only you
 ;; see; they come with the threads.
-
-(defconst octocat-pr-diff--comment-fields
-  (concat "id databaseId body createdAt state viewerDidAuthor viewerCanUpdate "
-          "viewerCanDelete author{login} replyTo{databaseId} "
-          "reactionGroups{content users{totalCount}}")
-  "The fields of a review comment read from GraphQL.")
-
-(defconst octocat-pr-diff--thread-fields
-  (concat "id isResolved isOutdated path line startLine diffSide startDiffSide "
-          "subjectType viewerCanReply viewerCanResolve viewerCanUnresolve "
-          "resolvedBy{login} comments(first:100){nodes{"
-          octocat-pr-diff--comment-fields "}}")
-  "The fields of a review thread read from GraphQL.")
-
-(defconst octocat-pr-diff--threads-query
-  (concat "query($owner:String!,$name:String!,$number:Int!,$endCursor:String){"
-          "repository(owner:$owner,name:$name){pullRequest(number:$number){"
-          "id headRefOid reviews(states:PENDING,first:1){nodes{id commit{oid}}} "
-          "reviewThreads(first:50,after:$endCursor){nodes{"
-          octocat-pr-diff--thread-fields
-          "} pageInfo{hasNextPage endCursor}}}}}")
-  "GraphQL query for a PR's review threads and your pending review.")
-
-(defun octocat-pr-diff--parse-threads (output)
-  "Return the review threads of OUTPUT, `gh api --paginate --slurp's pages.
-That is a table of the PR's \"id\", its \"head\" commit, the
-\"threads\" of all pages, and \"pending\", your pending review, a table
-of its \"id\" and \"commit\", or nil."
-  (let* ((pages (append (json-parse-string output) nil))
-         (pr    (octocat--get (car pages) "data" "repository" "pullRequest"))
-         (review (car (append (octocat--get pr "reviews" "nodes") nil)))
-         (tree  (make-hash-table :test #'equal)))
-    (puthash "id" (gethash "id" pr) tree)
-    (puthash "head" (gethash "headRefOid" pr) tree)
-    (puthash "pending" (and review (octocat-pr-diff--review review)) tree)
-    (puthash "threads"
-             (apply #'vconcat
-                    (mapcar (lambda (p)
-                              (octocat--get p "data" "repository" "pullRequest"
-                                            "reviewThreads" "nodes"))
-                            pages))
-             tree)
-    tree))
-
-(defun octocat-pr-diff--review (node)
-  "Return the pending review NODE, from GraphQL, as a table of id and commit."
-  (let ((h (make-hash-table :test #'equal)))
-    (puthash "id" (gethash "id" node) h)
-    (puthash "commit" (octocat--get node "commit" "oid") h)
-    h))
-
-(octocat-sync-define-resource pr-review-threads (repo number)
-  :fetch (lambda (done)
-           (pcase-let ((`(,owner ,name) (split-string repo "/")))
-             (octocat--run-gh
-              "pr-review-threads"
-              (list "api" "graphql" "--paginate" "--slurp"
-                    "-f" (concat "query=" octocat-pr-diff--threads-query)
-                    "-f" (concat "owner=" owner) "-f" (concat "name=" name)
-                    "-F" (format "number=%d" number))
-              #'octocat-pr-diff--parse-threads
-              done))))
 
 (defun octocat-pr-diff--null (v)
   "Return V, or nil for JSON's null."
@@ -1594,298 +1308,6 @@ thread also has its \"resolved\", \"resolved_by\", \"can_resolve\" and
     n))
 
 
-;;;;; Changing the threads
-;;
-;; Each change to a comment is a mutation whose edits of the
-;; `pr-review-threads' show it at once, and write GitHub's answer.  The
-;; threads are not refetched after a deletion: GitHub may still return
-;; what was deleted for a moment.
-
-(defun octocat-pr-diff--graphql (name query vars parse done)
-  "Run GraphQL QUERY as `gh' call NAME with VARS, an alist; call DONE.
-A string value is passed as a string, a number as a number, and a nil
-one not at all.  PARSE gets the answer's \"data\"."
-  (octocat--run-gh
-   name
-   (append (list "api" "graphql" "-f" (concat "query=" query))
-           (mapcan (pcase-lambda (`(,k . ,v))
-                     (cond ((null v) nil)
-                           ((numberp v) (list "-F" (format "%s=%d" k v)))
-                           (t (list "-f" (format "%s=%s" k v)))))
-                   vars))
-   (lambda (output) (funcall parse (gethash "data" (json-parse-string output))))
-   done))
-
-(defun octocat-pr-diff--with-review (pr-id review-id commit k)
-  "Call K with REVIEW-ID, or the id of a pending review started at COMMIT.
-PR-ID is the PR's node id.  K is called with (error . MESSAGE) instead
-when the review cannot be started."
-  (if review-id
-      (funcall k review-id)
-    (octocat-pr-diff--graphql
-     "review-start"
-     (concat "mutation($pr:ID!,$commit:GitObjectID){addPullRequestReview("
-             "input:{pullRequestId:$pr,commitOID:$commit}){pullRequestReview{id commit{oid}}}}")
-     `(("pr" . ,pr-id) ("commit" . ,commit))
-     (lambda (data) (octocat--get data "addPullRequestReview" "pullRequestReview"))
-     (lambda (review)
-       (funcall k (if (eq (car-safe review) 'error) review (gethash "id" review)))))))
-
-(defun octocat-pr-diff--draft (body login)
-  "Return a draft comment of BODY by LOGIN, shown until GitHub answers."
-  (let ((c (make-hash-table :test #'equal))
-        (author (make-hash-table :test #'equal)))
-    (puthash "login" login author)
-    (puthash "author" author c)
-    (puthash "body" body c)
-    (puthash "createdAt" (format-time-string "%Y-%m-%dT%H:%M:%SZ" nil t) c)
-    (puthash "state" "PENDING" c)
-    (puthash "viewerCanUpdate" t c)
-    c))
-
-(defun octocat-pr-diff--map-threads (data fn)
-  "Return DATA, the `pr-review-threads', its threads replaced by FN's.
-FN gets each thread and returns it, changed, or nil to drop it."
-  (when data
-    (puthash "threads" (vconcat (delq nil (mapcar fn (append (gethash "threads" data) nil))))
-             data))
-  data)
-
-(defun octocat-pr-diff--map-comments (data fn)
-  "Return DATA, the `pr-review-threads', each comment replaced by FN's.
-FN gets each comment and returns it, changed, or nil to drop it; a
-thread left with no comment is dropped."
-  (octocat-pr-diff--map-threads
-   data
-   (lambda (thread)
-     (let* ((thread (copy-hash-table thread))
-            (conn   (copy-hash-table (gethash "comments" thread)))
-            (nodes  (delq nil (mapcar fn (append (gethash "nodes" conn) nil)))))
-       (puthash "nodes" (vconcat nodes) conn)
-       (puthash "comments" conn thread)
-       (and nodes thread)))))
-
-(defun octocat-pr-diff--set-pending (data review)
-  "Return DATA, the `pr-review-threads', with REVIEW as the pending one."
-  (when data (puthash "pending" review data))
-  data)
-
-(defun octocat-pr-diff--new-thread (range comment)
-  "Return a thread on RANGE, see `octocat-diff--range', holding COMMENT."
-  (let ((thread (make-hash-table :test #'equal))
-        (conn   (make-hash-table :test #'equal)))
-    (puthash "nodes" (vector comment) conn)
-    (puthash "comments" conn thread)
-    (puthash "path" (plist-get range :path) thread)
-    (puthash "line" (plist-get range :line) thread)
-    (puthash "diffSide" (plist-get range :side) thread)
-    (puthash "startLine" (plist-get range :start-line) thread)
-    (puthash "startDiffSide" (plist-get range :start-side) thread)
-    (puthash "subjectType" (if (plist-get range :file) "FILE" "LINE") thread)
-    thread))
-
-(defun octocat-pr-diff--threads-spec (repo number)
-  "Return the spec of the review threads of PR NUMBER of REPO."
-  `(pr-review-threads ,repo ,number))
-
-(octocat-sync-define-mutation review-draft-add (repo number pr-id review-id commit range body login)
-  :label "Saving draft…"
-  :slot 'inline
-  :resources (lambda () (list (octocat-pr-diff--threads-spec repo number)))
-  ;; GitHub answers with the pending review's id and the new thread.
-  :edits (lambda (answered answer)
-           (list (cons (octocat-pr-diff--threads-spec repo number)
-                       (lambda (data)
-                         (when answered
-                           (unless review-id
-                             (let ((r (make-hash-table :test #'equal)))
-                               (puthash "id" (car answer) r)
-                               (puthash "commit" commit r)
-                               (octocat-pr-diff--set-pending data r))))
-                         (let ((thread (if answered
-                                           (cdr answer)
-                                         (octocat-pr-diff--new-thread
-                                          range (octocat-pr-diff--draft body login)))))
-                           (when data
-                             (puthash "threads"
-                                      (vconcat (gethash "threads" data) (vector thread))
-                                      data)))
-                         data))))
-  :send (lambda (done)
-          (octocat-pr-diff--with-review
-           pr-id review-id commit
-           (lambda (review)
-             (if (eq (car-safe review) 'error)
-                 (funcall done review)
-               (octocat-pr-diff--graphql
-                "review-draft-add"
-                (concat "mutation($review:ID!,$path:String!,$body:String!,$line:Int,"
-                        "$side:DiffSide,$startLine:Int,$startSide:DiffSide,"
-                        "$subject:PullRequestReviewThreadSubjectType){"
-                        "addPullRequestReviewThread(input:{pullRequestReviewId:$review,"
-                        "path:$path,body:$body,line:$line,side:$side,startLine:$startLine,"
-                        "startSide:$startSide,subjectType:$subject}){thread{"
-                        octocat-pr-diff--thread-fields "}}}")
-                `(("review" . ,review) ("path" . ,(plist-get range :path)) ("body" . ,body)
-                  ("line" . ,(plist-get range :line)) ("side" . ,(plist-get range :side))
-                  ("startLine" . ,(plist-get range :start-line))
-                  ("startSide" . ,(plist-get range :start-side))
-                  ("subject" . ,(if (plist-get range :file) "FILE" "LINE")))
-                (lambda (data)
-                  (cons review (octocat--get data "addPullRequestReviewThread" "thread")))
-                done))))))
-
-(defun octocat-pr-diff--add-reply (data thread-id comment)
-  "Return DATA, the `pr-review-threads', with COMMENT ending thread THREAD-ID."
-  (octocat-pr-diff--map-threads
-   data
-   (lambda (thread)
-     (if (not (equal (gethash "id" thread) thread-id))
-         thread
-       (let ((thread (copy-hash-table thread))
-             (conn   (copy-hash-table (gethash "comments" thread))))
-         (puthash "nodes" (vconcat (gethash "nodes" conn) (vector comment)) conn)
-         (puthash "comments" conn thread)
-         thread)))))
-
-(octocat-sync-define-mutation review-draft-reply
-    (repo number pr-id review-id commit thread-id body login)
-  :label "Saving draft…"
-  :slot 'inline
-  :resources (lambda () (list (octocat-pr-diff--threads-spec repo number)))
-  :edits (lambda (answered answer)
-           (list (cons (octocat-pr-diff--threads-spec repo number)
-                       (lambda (data)
-                         (when (and answered (not review-id))
-                           (let ((r (make-hash-table :test #'equal)))
-                             (puthash "id" (car answer) r)
-                             (puthash "commit" commit r)
-                             (octocat-pr-diff--set-pending data r)))
-                         (octocat-pr-diff--add-reply
-                          data thread-id
-                          (if answered (cdr answer) (octocat-pr-diff--draft body login)))))))
-  :send (lambda (done)
-          (octocat-pr-diff--with-review
-           pr-id review-id commit
-           (lambda (review)
-             (if (eq (car-safe review) 'error)
-                 (funcall done review)
-               (octocat-pr-diff--graphql
-                "review-draft-reply"
-                (concat "mutation($review:ID!,$thread:ID!,$body:String!){"
-                        "addPullRequestReviewThreadReply(input:{pullRequestReviewId:$review,"
-                        "pullRequestReviewThreadId:$thread,body:$body}){comment{"
-                        octocat-pr-diff--comment-fields "}}}")
-                `(("review" . ,review) ("thread" . ,thread-id) ("body" . ,body))
-                (lambda (data)
-                  (cons review (octocat--get data "addPullRequestReviewThreadReply" "comment")))
-                done))))))
-
-(octocat-sync-define-mutation review-reply-now (repo number thread-id comment-id body login)
-  :label "Posting reply…"
-  :slot 'inline
-  :resources (lambda () (list (octocat-pr-diff--threads-spec repo number)))
-  :edits (lambda (answered _)
-           (unless answered
-             (let ((c (octocat-pr-diff--draft body login)))
-               (puthash "state" "SUBMITTED" c)
-               (list (cons (octocat-pr-diff--threads-spec repo number)
-                           (lambda (data) (octocat-pr-diff--add-reply data thread-id c)))))))
-  :send (lambda (done)
-          (octocat--run-gh "review-reply"
-                           (list "api" (format "repos/%s/pulls/%d/comments/%d/replies"
-                                               repo number comment-id)
-                                 "-f" (concat "body=" body))
-                           #'ignore done))
-  :invalidates (lambda () (list (octocat-pr-diff--threads-spec repo number))))
-
-(octocat-sync-define-mutation review-comment-edit (repo number node-id body)
-  :label "Saving comment…"
-  :slot 'inline
-  :resources (lambda () (list (octocat-pr-diff--threads-spec repo number)))
-  :edits (lambda (_answered _)
-           (list (cons (octocat-pr-diff--threads-spec repo number)
-                       (lambda (data)
-                         (octocat-pr-diff--map-comments
-                          data (lambda (c)
-                                 (if (not (equal (gethash "id" c) node-id))
-                                     c
-                                   (let ((c (copy-hash-table c)))
-                                     (puthash "body" body c)
-                                     c))))))))
-  :send (lambda (done)
-          (octocat-pr-diff--graphql
-           "review-comment-edit"
-           (concat "mutation($id:ID!,$body:String!){updatePullRequestReviewComment("
-                   "input:{pullRequestReviewCommentId:$id,body:$body}){"
-                   "pullRequestReviewComment{id}}}")
-           `(("id" . ,node-id) ("body" . ,body))
-           #'ignore done)))
-
-(octocat-sync-define-mutation review-comment-delete (repo number node-id)
-  :label "Deleting comment…"
-  :slot 'inline
-  :resources (lambda () (list (octocat-pr-diff--threads-spec repo number)))
-  :edits (lambda (_answered _)
-           (list (cons (octocat-pr-diff--threads-spec repo number)
-                       (lambda (data)
-                         (octocat-pr-diff--map-comments
-                          data (lambda (c) (unless (equal (gethash "id" c) node-id) c)))))))
-  :send (lambda (done)
-          (octocat-pr-diff--graphql
-           "review-comment-delete"
-           (concat "mutation($id:ID!){deletePullRequestReviewComment(input:{id:$id}){"
-                   "clientMutationId}}")
-           `(("id" . ,node-id))
-           #'ignore done)))
-
-(octocat-sync-define-mutation review-thread-resolve (repo number thread-id resolve)
-  :label (if resolve "Resolving…" "Unresolving…")
-  :slot 'inline
-  :resources (lambda () (list (octocat-pr-diff--threads-spec repo number)))
-  :edits (lambda (answered answer)
-           (list (cons (octocat-pr-diff--threads-spec repo number)
-                       (lambda (data)
-                         (octocat-pr-diff--map-threads
-                          data (lambda (thread)
-                                 (cond ((not (equal (gethash "id" thread) thread-id)) thread)
-                                       (answered answer)
-                                       (t (let ((thread (copy-hash-table thread)))
-                                            (puthash "isResolved" (and resolve t) thread)
-                                            thread)))))))))
-  :send (lambda (done)
-          (let ((field (if resolve "resolveReviewThread" "unresolveReviewThread")))
-            (octocat-pr-diff--graphql
-             "review-thread-resolve"
-             (format "mutation($id:ID!){%s(input:{threadId:$id}){thread{%s}}}"
-                     field octocat-pr-diff--thread-fields)
-             `(("id" . ,thread-id))
-             (lambda (data) (octocat--get data field "thread"))
-             done))))
-
-(defun octocat-pr-diff--drop-drafts (data)
-  "Return DATA, the `pr-review-threads', without drafts or a pending review."
-  (octocat-pr-diff--set-pending
-   (octocat-pr-diff--map-comments
-    data (lambda (c) (unless (equal (gethash "state" c) "PENDING") c)))
-   nil))
-
-(octocat-sync-define-mutation review-discard (repo number review-id)
-  :label "Discarding review…"
-  :slot 'inline
-  :resources (lambda () (list (octocat-pr-diff--threads-spec repo number)))
-  :edits (lambda (_answered _)
-           (list (cons (octocat-pr-diff--threads-spec repo number)
-                       #'octocat-pr-diff--drop-drafts)))
-  :send (lambda (done)
-          (octocat-pr-diff--graphql
-           "review-discard"
-           (concat "mutation($id:ID!){deletePullRequestReview(input:{pullRequestReviewId:$id}){"
-                   "clientMutationId}}")
-           `(("id" . ,review-id))
-           #'ignore done)))
-
-
 ;;;;; The page's comment backend
 ;;
 ;; The diff's commands (`octocat-diff-add-comment' and the others) call
@@ -1894,7 +1316,7 @@ thread left with no comment is dropped."
 (defun octocat-pr-diff--threads ()
   "Return the stored `pr-review-threads' of this page's PR, or signal."
   (pcase-let ((`(,repo . ,number) (octocat-pr--current)))
-    (or (plist-get (octocat-sync-read (octocat-pr-diff--threads-spec repo number)) :data)
+    (or (plist-get (octocat-sync-read (octocat-model-review-threads-spec repo number)) :data)
         (user-error "Octocat: The review comments are still loading"))))
 
 (defun octocat-pr-diff--login ()
@@ -2025,23 +1447,11 @@ pick between replying now and starting a review."
 
 ;;;;; Review submission
 
-(defconst octocat-pr-diff--review-events
-  '(("Comment"         "--comment"         "COMMENT")
-    ("Approve"         "--approve"         "APPROVE")
-    ("Request changes" "--request-changes" "REQUEST_CHANGES"))
-  "Review events offered on submit: their `gh pr review' flag and GraphQL event.")
-
-(defun octocat-pr-diff--review-args (repo number flag body)
-  "Return the `gh' arguments submitting a FLAG review of PR NUMBER of REPO.
-An empty BODY is left out, as `gh' rejects an empty --body."
-  (append (list "pr" "review" (number-to-string number) "--repo" repo flag)
-          (unless (string-empty-p body) (list "--body" body))))
-
 (defun octocat-pr-diff--review-data (event &optional review-id pending)
   "Return the edit buffer's user data for an EVENT review.
 REVIEW-ID is your pending review's, holding PENDING drafts.  Only an
 approval may be submitted without text, or a comment with drafts."
-  (let ((flag (cadr (assoc event octocat-pr-diff--review-events))))
+  (let ((flag (cadr (assoc event octocat-model-review-events))))
     (list :event event :flag flag :review-id review-id :pending pending
           :allow-empty (or (equal flag "--approve")
                            (and (equal flag "--comment") (natnump pending) (> pending 0))))))
@@ -2059,7 +1469,7 @@ PENDING is how many drafts the review holds."
                        (if (equal (car e) event)
                            (propertize (format "(•) %s" (car e)) 'face 'bold)
                          (propertize (format "( ) %s" (car e)) 'face 'octocat-dimmed)))
-                     octocat-pr-diff--review-events "  ")
+                     octocat-model-review-events "  ")
           "    "
           (propertize "C-c C-t" 'face 'help-key-binding) " decision   "
           (propertize "C-c C-c" 'face 'help-key-binding) " submit   "
@@ -2067,45 +1477,6 @@ PENDING is how many drafts the review holds."
           (if pending
               (concat "   " (propertize "C-c C-d" 'face 'help-key-binding) " discard review")
             "")))
-
-(octocat-sync-define-mutation review-pr (repo number flag body &optional review-id)
-  :label "Submitting review…"
-  :slot 'review
-  :resources (lambda () `((pr ,repo ,number) ,(octocat-pr-diff--threads-spec repo number)))
-  ;; The drafts are no longer drafts.
-  :edits (lambda (_answered _)
-           (when review-id
-             (list (cons (octocat-pr-diff--threads-spec repo number)
-                         (lambda (data)
-                           (octocat-pr-diff--set-pending
-                            (octocat-pr-diff--map-comments
-                             data (lambda (c)
-                                    (if (not (equal (gethash "state" c) "PENDING"))
-                                        c
-                                      (let ((c (copy-hash-table c)))
-                                        (puthash "state" "SUBMITTED" c)
-                                        c))))
-                            nil))))))
-  ;; `gh pr review' fails while you have a pending review: it is
-  ;; submitted through GraphQL instead.
-  :send (lambda (done)
-          (if review-id
-              (octocat-pr-diff--graphql
-               "review"
-               (concat "mutation($id:ID!,$event:PullRequestReviewEvent!,$body:String){"
-                       "submitPullRequestReview(input:{pullRequestReviewId:$id,event:$event,"
-                       "body:$body}){clientMutationId}}")
-               `(("id" . ,review-id)
-                 ("event" . ,(nth 2 (seq-find (lambda (e) (equal (cadr e) flag))
-                                              octocat-pr-diff--review-events)))
-                 ("body" . ,(and (not (string-empty-p body)) body)))
-               #'ignore done)
-            (octocat--run-gh "review" (octocat-pr-diff--review-args repo number flag body)
-                             #'ignore done)))
-  ;; The review joins the timeline, may add review comments and may
-  ;; change the merge box.
-  :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number)
-                            ,(octocat-pr-diff--threads-spec repo number))))
 
 (defun octocat-pr-diff--submit-review (body source on-success on-error)
   "Submit BODY as a review of the PR in SOURCE buffer.
@@ -2132,7 +1503,7 @@ for a missing decision."
 (defun octocat-pr-diff-review-cycle ()
   "Switch the review dialog to the next decision."
   (interactive)
-  (let* ((events  (mapcar #'car octocat-pr-diff--review-events))
+  (let* ((events  (mapcar #'car octocat-model-review-events))
          (next    (or (cadr (member (plist-get octocat-edit-user-data :event) events))
                       (car events)))
          (pending (plist-get octocat-edit-user-data :pending)))
@@ -2178,7 +1549,7 @@ PENDING is how many drafts it holds.  Return non-nil when discarded."
 (defun octocat-pr-diff--pending-review (repo number)
   "Return your pending review of PR NUMBER of REPO and its drafts, or nil.
 That is (ID . COUNT), from the store."
-  (let* ((data   (plist-get (octocat-sync-read (octocat-pr-diff--threads-spec repo number))
+  (let* ((data   (plist-get (octocat-sync-read (octocat-model-review-threads-spec repo number))
                             :data))
          (review (and data (gethash "pending" data))))
     (and review (cons (gethash "id" review) (octocat-pr-diff--pending-count data)))))
@@ -2247,7 +1618,7 @@ everything again."
          (stack    (octocat-pr--use-stack repo number tick))
          (tab-w    (octocat--markdown-width))
          (files    (octocat-vui-use-resource (list 'pr-files repo number) tick))
-         (threads  (octocat-vui-use-resource (octocat-pr-diff--threads-spec repo number) tick))
+         (threads  (octocat-vui-use-resource (octocat-model-review-threads-spec repo number) tick))
          (data     (plist-get threads :data))
          (comments (vui-use-memo (data)
                      (and data (octocat-pr-diff--thread-comments (gethash "threads" data)))))

@@ -82,7 +82,8 @@ and `<details>` in markdown, is reset by `octocat-vui-refresh` itself.
 ## Reading the sync store
 
 Pages don't fetch their data: they read it from the sync layer
-(`octocat-sync.el`).  Only avatars and completion candidates are fetched
+(`octocat-sync.el`), which fetches the resources `octocat-model.el`
+defines.  Only avatars and completion candidates are fetched
 directly.  A page names a resource, such as `(user-profile "octocat")`,
 and reads it with `octocat-vui-use-resource`.  It returns a snapshot:
 `:data` from the SQLite store, `:loading` while a fetch runs, and
@@ -100,7 +101,7 @@ Issues, PRs and workflow runs are entities, and so are authors,
 assignees and labels.  A list row and the issue's page store the same entity, so the
 list shows what the page last fetched.  The page's resource keeps what
 the list doesn't share, such as comments, beside the entity
-(`octocat-sync-detail`), and `octocat-vui-use-detail` reads both back
+(`octocat-model-detail`), and `octocat-vui-use-detail` reads both back
 as one table, as `gh issue view` gives it.  Before the page's first
 fetch lands, `:partial` holds the list's copy, so the page paints its
 real header with grey bars below.
@@ -128,8 +129,11 @@ once.  A change to how a resource's body is shaped bumps
 `octocat-sync--schema`, which recreates the store rather than read the
 old shape.
 
-To add a resource, define it beside its page with
-`octocat-sync-define-resource`.  Its `:fetch` calls `DONE` with the
-parsed tree, each shared record wrapped in `octocat-sync-entity` with
-GraphQL's field names, or with `(error . MESSAGE)`.  The design, and
+To add a resource or mutation, define it in `octocat-model.el`, in the
+section of its page, with `octocat-sync-define-resource` or
+`octocat-sync-define-mutation`, along with the queries and parsers it
+fetches through.  Its `:fetch` calls `DONE` with the parsed tree, each
+shared record wrapped in `octocat-sync-entity` with GraphQL's field
+names (the builders in "Entities" there do it), or with
+`(error . MESSAGE)`.  The design, and
 what is still to come, is in `plans/github-sync-mechanism.md`.

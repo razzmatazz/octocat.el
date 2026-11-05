@@ -63,6 +63,7 @@
 (require 'consult)
 (require 'octocat-core) ; `octocat-dimmed' face
 (require 'octocat-sync)
+(require 'octocat-model)
 (require 'cl-lib)
 (require 'seq)
 (require 'subr-x)
@@ -514,13 +515,13 @@ part to come, unless the fetch failed: then the error shows, as
 (defun octocat-vui-use-detail (spec tick)
   "Return the snapshot of SPEC, an issue's or PR's page resource.
 As `octocat-vui-use-resource', for TICK too, but :data is the item, its
-parts put back (see `octocat-sync-detail-item').  Must be called during
+parts put back (see `octocat-model-detail-item').  Must be called during
 render, like any hook."
   (let ((snap (octocat-vui-use-resource spec tick)))
     (vui-use-memo (snap)
       (let ((data (plist-get snap :data)))
         (if data
-            (plist-put (copy-sequence snap) :data (octocat-sync-detail-item data))
+            (plist-put (copy-sequence snap) :data (octocat-model-detail-item data))
           snap)))))
 
 (defun octocat-vui-skeleton-bar (n)
@@ -1550,27 +1551,6 @@ A full-width underline heads what is below it, as a tab row does."
          (vui-text label :face 'octocat-section-heading)
          (mapcan (lambda (node) (list (vui-text "  ") node)) (delq nil after))))
 
-(defcustom octocat-repo-summary-ttl 300
-  "Seconds a repo's summary, with its open issue and PR counts, is reused.
-Within this, opening a page with the repo tabs doesn't refetch it; `g',
-or closing, reopening or merging an item of the repo, does.  It is at
-least `octocat-sync-fresh-for'."
-  :type 'integer
-  :group 'octocat)
-
-(octocat-sync-define-resource repo-summary (repo)
-  :max-age octocat-repo-summary-ttl
-  :fetch (lambda (done)
-           (octocat--fetch-repo-summary
-            repo
-            (lambda (r)
-              (funcall done (if (eq (car-safe r) 'error)
-                                r
-                              (let ((h (make-hash-table :test #'equal)))
-                                (while r
-                                  (puthash (substring (symbol-name (pop r)) 1) (pop r) h))
-                                h)))))))
-
 (defun octocat-vui-repo-tabs (repo current tick)
   "Return a list of vnodes: the tab strip of REPO's pages, as on GitHub.
 The tabs are those of `octocat--repo-tabs'.  CURRENT is the symbol of
@@ -1604,21 +1584,6 @@ render, like any hook."
     (list (apply #'vui-hstack :spacing 0
                  (cdr (mapcan (lambda (n) (list (vui-text "  " :face 'underline) n))
                               nodes))))))
-
-(octocat-sync-define-resource counts (kind repo)
-  :poll octocat-sync-poll-slow
-  :fetch (lambda (done)
-           (let ((tree (make-hash-table :test #'equal)))
-             (if (null kind)
-                 (funcall done tree)
-               (octocat--fetch-counts
-                repo kind
-                (lambda (r)
-                  (if (eq (car-safe r) 'error)
-                      (funcall done r)
-                    (while r
-                      (puthash (substring (symbol-name (pop r)) 1) (pop r) tree))
-                    (funcall done tree))))))))
 
 (vui-defcomponent octocat-vui-list-header (repo tab kind tick)
   "Header for a list page: REPO, the page and, for KIND, item counts.
@@ -1691,36 +1656,11 @@ starts the results afresh."
        :repo repo :kind kind :query query :row-fn row-fn
        :line-fn line-fn :compact compact :tick tick :extra-fn extra-fn :marks marks))))
 
-(defun octocat-vui--list-tree (kind repo page)
-  "Return PAGE, a page of KIND items of REPO, as a list resource's tree.
-PAGE is as `octocat--parse-list-items' returns; each item is an entity."
-  (let ((tree (make-hash-table :test #'equal))
-        (type (if (eq kind 'pulls) 'pr 'issue)))
-    (puthash "nodes" (vconcat (mapcar (lambda (item) (octocat-sync-item type repo item))
-                                      (plist-get page :items)))
-             tree)
-    (puthash "cursor" (plist-get page :cursor) tree)
-    tree))
-
 (defun octocat-vui--search-spec (kind repo query compact)
   "Return the spec of the KIND items of REPO matching QUERY, a page of them.
 COMPACT pages are longer."
   (list 'list-items kind repo query
         (if compact octocat-list-compact-page-size octocat-list-page-size)))
-
-(octocat-sync-define-resource list-items (kind repo query limit)
-  :fetch (lambda (done)
-           ;; As many as "load more" stored, so a refetch keeps them.
-           (let ((data (plist-get (octocat-sync-read
-                                   (list 'list-items kind repo query limit))
-                                  :data)))
-             (octocat--list-items
-              kind repo
-              (lambda (r)
-                (funcall done (if (eq (car-safe r) 'error)
-                                  r
-                                (octocat-vui--list-tree kind repo r))))
-              query nil (min 100 (max limit (length (and data (gethash "nodes" data)))))))))
 
 (vui-defcomponent octocat-vui--search-results (repo kind query row-fn line-fn compact tick
                                                     extra-fn marks)
@@ -1790,7 +1730,7 @@ dropped, so that only items shown are marked."
                    (lambda (r)
                      (funcall done (if (eq (car-safe r) 'error)
                                        r
-                                     (octocat-vui--list-tree kind repo r))))
+                                     (octocat-model-list-tree kind repo r))))
                    query after limit))
                 (vui-async-callback (r)
                   (vui-set-state :fetching nil)
@@ -2004,22 +1944,6 @@ For a form's field, whose RET should not send the form."
   "Run QUERY, submitted by RET in the query field."
   (run-hooks 'octocat-vui-list-query-submit-hook)
   (octocat-vui-list--apply query))
-
-(octocat-sync-define-resource labels (repo)
-  :poll octocat-sync-poll-slow
-  :fetch (lambda (done)
-           (octocat--list-labels
-            repo (lambda (r)
-                   (funcall done (if (eq (car-safe r) 'error)
-                                     r
-                                   (cl-map 'vector (lambda (l) (octocat-sync-label repo l))
-                                           r)))))))
-
-(octocat-sync-define-resource assignees (repo)
-  :poll octocat-sync-poll-slow
-  :fetch (lambda (done)
-           (octocat--list-people
-            repo (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
 (defun octocat-vui-list--stored (resource &optional name)
   "Return a fetch function of `octocat-vui-list--edit-facet' reading RESOURCE.
@@ -3139,38 +3063,6 @@ as for `octocat-vui--commit-line'."
 ;; The `blob' resource: a file's contents, named by blob SHA, which the
 ;; file, diff and repo pages read.
 
-(defconst octocat-vui--fixed-max-age (* 30 24 60 60)
-  "Seconds to keep what a SHA names, which never changes.")
-
-(defun octocat-vui--fetch-file (repo sha callback)
-  "Fetch the content of blob SHA in REPO asynchronously.
-CALLBACK is called with the content, base64-encoded as GitHub sends it,
-or a cons (error . MSG).  Encoded, it can be stored as JSON: a file need
-not be text."
-  (octocat--run-gh
-   (format "tree-blob-%s" (substring sha 0 (min 8 (length sha))))
-   (list "api"
-         (format "repos/%s/git/blobs/%s" repo sha)
-         "--jq" ".content")
-   (lambda (output)
-     ;; GitHub wraps lines at 60 chars.
-     (replace-regexp-in-string "\n" "" (string-trim output)))
-   callback))
-
-(octocat-sync-define-resource blob (repo sha)
-  :max-age octocat-vui--fixed-max-age
-  :fetch (lambda (done)
-           (let ((h (make-hash-table :test #'equal)))
-             ;; No SHA, no file: a page asks for one before it knows it.
-             (if (null sha)
-                 (funcall done (progn (puthash "base64" "" h) h))
-               (octocat-vui--fetch-file
-                repo sha
-                (lambda (r)
-                  (funcall done (if (eq (car-safe r) 'error)
-                                    r
-                                  (progn (puthash "base64" r h) h)))))))))
-
 (defun octocat-vui--blob-content (data)
   "Return the content of a file from DATA, the `blob' resource's."
   (base64-decode-string (gethash "base64" data)))
@@ -3189,51 +3081,6 @@ what is typed; older results are left out.  Items stored otherwise are
 always matched: octocat showed them."
   :type 'integer
   :group 'octocat)
-
-(defcustom octocat-repo-search-cache-ttl 3600
-  "Seconds a repo search result is reused by `octocat-switch-repo'.
-Within it a query seen before shows its stored result with no `gh
-search repos' call; older, the result shows while it is refetched.
-It is at least `octocat-sync-fresh-for'."
-  :type 'integer
-  :group 'octocat)
-
-(defun octocat--repo-search-args (query)
-  "Return the `gh' arguments searching for the repos or users of QUERY.
-Forks are included: GitHub leaves them out by default, so one's own fork
-could not be found even by its full name.  \"owner/name\" searches the
-repos of owner, as GitHub's global search does not match a partial name
-there."
-  (cond
-   ((string-prefix-p "@" query)
-    ;; `gh search' has no users subcommand; -X GET keeps -f fields in the
-    ;; query string.
-    (list "api" "-X" "GET" "search/users"
-          "-f" (concat "q=" (substring query 1))
-          "-f" "per_page=15"
-          "--jq" "[.items[] | {login}]"))
-   ((string-match "\\`\\([^/ \t]+\\)/\\(.*\\)\\'" query)
-    (append (list "search" "repos" "--limit" "30" "--json" "fullName"
-                  "--include-forks=true" (concat "--owner=" (match-string 1 query)))
-            (let ((name (string-trim (match-string 2 query))))
-              (unless (string-empty-p name) (list name)))))
-   (t
-    (list "search" "repos" "--limit" "30" "--json" "fullName"
-          "--include-forks=true" query))))
-
-(octocat-sync-define-resource repo-search (query)
-  :max-age octocat-repo-search-cache-ttl
-  :fetch (lambda (done)
-           (octocat--run-gh
-            "search-repos"
-            (octocat--repo-search-args query)
-            (lambda (output)
-              (vconcat (mapcar (lambda (r)
-                                 (if-let* ((login (gethash "login" r)))
-                                     (concat "@" login)
-                                   (gethash "fullName" r)))
-                               (octocat--parse-json-list output))))
-            done)))
 
 ;; Repos and users octocat has stored, matched as you type, show before
 ;; GitHub's answer: most of the time the one wanted was opened before.
@@ -3360,11 +3207,6 @@ Fetches go through GATE, a consult async stage, by default
             (_
              (funcall fetch-gate action)
              (funcall sink action))))))))
-
-(octocat-sync-define-resource branches (repo)
-  :fetch (lambda (done)
-           (octocat--list-branches
-            repo (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
 
 (defun octocat--async-branches (repo default local)
   "Return a consult async stage listing the branches of REPO.

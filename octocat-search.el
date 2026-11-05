@@ -183,33 +183,12 @@ FILE is a (PATH . BLOB-SHA) cons; REF nil is the default branch."
 
 ;;;; Stored results
 
-(defcustom octocat-search-cache-ttl 60
-  "Seconds an object-search result is reused by `octocat-search-repo'.
-A stored result for a query always shows at once.  Within this it is
-not refetched; older, it is, and the list is updated when the response
-arrives.  It is at least `octocat-sync-fresh-for'."
-  :type 'integer
-  :group 'octocat)
-
 (defconst octocat--search-types
-  '(("prs"     "number,title,state,author" octocat--search-make-pr-candidate     pr)
-    ("issues"  "number,title,state,author" octocat--search-make-issue-candidate  issue)
-    ("commits" "sha,commit,author"         octocat--search-make-commit-candidate commit))
-  "The `gh search' types searched: (TYPE JSON-FIELDS MAKE-CANDIDATE LABEL).
+  '(("prs"     octocat--search-make-pr-candidate     pr)
+    ("issues"  octocat--search-make-issue-candidate  issue)
+    ("commits" octocat--search-make-commit-candidate commit))
+  "The `gh search' types searched: (TYPE MAKE-CANDIDATE LABEL).
 LABEL is the key of the candidates' label in `octocat--search-labels'.")
-
-;; Plain results, not entities: `gh search' gives fewer fields than the
-;; pages' issues and PRs, and their state in lower case.
-(octocat-sync-define-resource object-search (repo type query)
-  :max-age octocat-search-cache-ttl
-  :fetch (lambda (done)
-           (octocat--run-gh
-            "search-objects"
-            (list "search" type (format "--repo=%s" repo)
-                  "--json" (nth 1 (assoc type octocat--search-types))
-                  "--limit" "30" query)
-            (lambda (output) (vconcat (octocat--parse-json-list output)))
-            done)))
 
 
 ;;;; Stored and local matches
@@ -391,29 +370,8 @@ never called."
 
 ;;;; Repository file list
 
-(defconst octocat--search-files-ttl 600
-  "Seconds a stored repository file list is reused without a refetch.")
-
 (defconst octocat--search-files-limit 30
   "Maximum number of file candidates shown for one query.")
-
-;; As `tree-files', by ref rather than a tree SHA: REF nil is the default
-;; branch, which `octocat-tree--load-files' would ask GitHub for first.
-(octocat-sync-define-resource search-files (repo ref)
-  :max-age octocat--search-files-ttl
-  :fetch (lambda (done)
-           (if ref
-               (octocat-tree--load-files repo ref done)
-             (octocat-tree--fetch-all-files
-              repo "HEAD"
-              (lambda (r)
-                (funcall done
-                         (if (eq (car-safe r) 'error)
-                             r
-                           (let ((h (make-hash-table :test #'equal :size (length r))))
-                             (pcase-dolist (`(,path . ,blob) r)
-                               (puthash path blob h))
-                             h))))))))
 
 (defun octocat--search-current-ref (repo)
   "Return the branch, tag or commit of REPO on screen in this buffer.
@@ -493,7 +451,7 @@ with `consult--async-min-input'."
       (cl-labels
           ((spec (type query) (list 'object-search repo type query))
            (candidates (type items)
-             (let ((make (nth 2 (assoc type octocat--search-types))))
+             (let ((make (nth 1 (assoc type octocat--search-types))))
                (mapcar (lambda (item) (funcall make item repo)) items)))
            (publish ()
              (funcall sink 'flush)
@@ -501,7 +459,7 @@ with `consult--async-min-input'."
                           (octocat--search-hinted-first
                            (append
                             (mapcar (lambda (type)
-                                      (cons (nth 3 (assoc type octocat--search-types))
+                                      (cons (nth 2 (assoc type octocat--search-types))
                                             (candidates
                                              type
                                              (octocat--search-merge

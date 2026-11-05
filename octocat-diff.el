@@ -43,14 +43,12 @@
 (require 'diff-mode) ; The diff faces.
 (require 'octocat-core)
 (require 'octocat-actions)
-(require 'octocat-sync)
+(require 'octocat-model)
 (require 'octocat-vui)
 (require 'vui)
 
 (defvar octocat-timeline-body-lines) ; defcustom in octocat-timeline.el
 
-
-;;;; Changed files
 
 ;;;;; Faces
 
@@ -1210,8 +1208,6 @@ across WIDTH."
 ;; comments are three sync resources, each painted from the store and
 ;; refetched behind it; the commit itself never changes, so it is kept.
 
-;;;;; Custom faces
-
 ;;;;; Buffer-local declarations
 
 (defvar-local octocat--commit-repo nil
@@ -1223,85 +1219,6 @@ across WIDTH."
 (defvar-local octocat-commit--patch nil
   "Non-nil when the commit shows as a patch, see `octocat-commit-toggle-patch'.")
 
-
-;;;;; Data fetching
-
-(defun octocat--fetch-commit (repo sha callback)
-  "Fetch commit detail for SHA in REPO asynchronously.
-Calls CALLBACK with a single hash-table of commit data, or the
-symbol `error'.  Uses the GitHub REST API via `gh api'."
-  (octocat--run-gh
-   "commit"
-   (list "api"
-         (format "repos/%s/commits/%s" repo sha))
-   (lambda (output)
-     (json-parse-string (string-trim output)))
-   callback))
-
-(defun octocat--fetch-commit-comments (repo sha callback)
-  "Fetch all comments on commit SHA in REPO asynchronously.
-Calls CALLBACK with a list of comment hash-tables (snake_case REST API
-keys), or a cons \\=(error . MSG) on failure.  The list includes both
-general comments (\\='path\\=' is :null or nil) and inline comments
-\(\\='path\\=' is a file path string, \\='line\\=' is the target line number)."
-  (octocat--run-gh
-   "commit-comments"
-   (list "api"
-         (format "repos/%s/commits/%s/comments" repo sha))
-   #'octocat--parse-json-list
-   callback))
-
-
-(octocat-sync-define-resource commit (repo sha)
-  ;; What a SHA names never changes.
-  :max-age (* 30 24 60 60)
-  :fetch (lambda (done) (octocat--fetch-commit repo sha done)))
-
-(octocat-sync-define-resource commit-comments (repo sha)
-  :fetch (lambda (done)
-           (octocat--fetch-commit-comments
-            repo sha
-            (lambda (r) (funcall done (if (eq (car-safe r) 'error) r (vconcat r)))))))
-
-
-;; Not REST: it has no way to ask whether a branch holds a commit.
-(defconst octocat-commit--branch-query
-  (concat "query($owner:String!,$name:String!,$sha:String!){repository(owner:$owner,"
-          "name:$name){defaultBranchRef{name compare(headRef:$sha){status}}}}")
-  "GraphQL query behind the `commit-branch' resource.")
-
-(defun octocat-commit--parse-branch (json-string)
-  "Parse JSON-STRING, the response to `octocat-commit--branch-query'.
-Return a hash-table whose \"name\" is the default branch when it holds
-the commit, the commit being behind it or at its head, else :null."
-  (let* ((repo (gethash "repository" (gethash "data" (json-parse-string json-string))))
-         (ref  (and (hash-table-p repo) (gethash "defaultBranchRef" repo)))
-         (cmp  (and (hash-table-p ref) (gethash "compare" ref)))
-         (out  (make-hash-table :test #'equal)))
-    (puthash "name"
-             (if (and (hash-table-p cmp)
-                      (member (gethash "status" cmp) '("BEHIND" "IDENTICAL")))
-                 (gethash "name" ref)
-               :null)
-             out)
-    out))
-
-(octocat-sync-define-resource commit-branch (repo sha)
-  :poll octocat-sync-poll-slow
-  :fetch (lambda (done)
-           (let ((parts (split-string repo "/")))
-             (octocat--run-gh
-              "commit-branch"
-              (list "api" "graphql"
-                    "-f" (concat "query=" octocat-commit--branch-query)
-                    "-f" (concat "owner=" (car parts))
-                    "-f" (concat "name=" (cadr parts))
-                    "-f" (concat "sha=" sha))
-              #'octocat-commit--parse-branch
-              done))))
-
-
-;;;;; Internal helpers
 
 ;;;;; Sections
 ;;
@@ -1688,26 +1605,6 @@ See `octocat-diff--file'."
   "The (BASE DOTS HEAD) this buffer compares; DOTS is \"..\" or \"...\".")
 
 
-;;;;; Data fetching
-
-(defun octocat-compare--sha-p (ref)
-  "Return non-nil when REF is a commit SHA, as a commit link's is.
-Unlike a branch or tag, it names the same commit for good."
-  (string-match-p "\\`[0-9a-f]\\{7,40\\}\\'" ref))
-
-(octocat-sync-define-resource compare (repo base head)
-  ;; Comparing two commits never changes, as a commit doesn't; refs move.
-  :max-age (and (octocat-compare--sha-p base)
-                (octocat-compare--sha-p head)
-                (* 30 24 60 60))
-  :fetch (lambda (done)
-           (octocat--run-gh
-            "compare"
-            (list "api" (format "repos/%s/compare/%s...%s" repo base head))
-            (lambda (output) (json-parse-string (string-trim output)))
-            done)))
-
-
 ;;;;; Sections
 
 (defun octocat-compare--counts (data)
@@ -1760,7 +1657,7 @@ COMMITS is a REST commits vector of REPO."
 (defun octocat-compare--ref-label (ref)
   "Return REF for the top row: a SHA cut to 7 chars, whole on hover.
 Two full SHAs would push the counts onto another line."
-  (if (and (octocat-compare--sha-p ref) (> (length ref) 7))
+  (if (and (octocat-model-compare-sha-p ref) (> (length ref) 7))
       (propertize (substring ref 0 7) 'face 'octocat-branch 'help-echo ref)
     (propertize ref 'face 'octocat-branch)))
 

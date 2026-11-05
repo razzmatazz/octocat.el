@@ -346,7 +346,7 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
              (vector (let ((u (make-hash-table :test #'equal))) (puthash "login" "ann" u) u)
                      (let ((u (make-hash-table :test #'equal))) (puthash "login" "bob" u) u))
              item)
-    (cl-letf (((symbol-function 'octocat-sync-detail-read) (lambda (_) item))
+    (cl-letf (((symbol-function 'octocat-model-detail-read) (lambda (_) item))
               ((symbol-function 'octocat-vui-list--stored)
                (lambda (&rest _) (lambda (_repo cb) (funcall cb '("ann" "bob" "cy")))))
               ((symbol-function 'run-at-time) (lambda (_ _ f) (funcall f)))
@@ -381,16 +381,16 @@ as (ARGS PARSE CALLBACK).  `issue' reads the issue as its page does."
          (octocat-sync-invalidate-functions nil)
          (calls nil))
      (octocat-sync--write octocat-sync--db (octocat-sync-spec-key '(issue "o/r" 7))
-                          (octocat-sync-detail
+                          (octocat-model-detail
                            (json-parse-string octocat-timeline-tests--mine-json) '("comments")
-                           (lambda (f) (octocat-sync-item 'issue "o/r" f)))
+                           (lambda (f) (octocat-model-item 'issue "o/r" f)))
                           (float-time))
      (octocat-sync--write octocat-sync--db (octocat-sync-spec-key '(viewer))
                           (let ((h (make-hash-table :test #'equal))) (puthash "login" "me" h) h)
                           (float-time))
      (cl-letf (((symbol-function 'octocat--run-gh)
                 (lambda (_name args parse callback) (push (list args parse callback) calls))))
-       (cl-flet ((issue () (octocat-sync-detail-read '(issue "o/r" 7))))
+       (cl-flet ((issue () (octocat-model-detail-read '(issue "o/r" 7))))
          ,@body))))
 
 (defun octocat-timeline-tests--answer (call output)
@@ -428,7 +428,7 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
       (should (= (length comments) 2))
       (should (equal (octocat--comment-numeric-id (aref comments 1)) "9"))
       (should (equal (gethash "createdAt" (aref comments 1)) "2026-01-05T10:00:00Z"))
-      (should-not (gethash octocat-timeline--pending (aref comments 1))))
+      (should-not (gethash octocat-model-pending (aref comments 1))))
     ;; Stored as GitHub has it, so the refetch finds no gap to fill.
     (should (= (length (gethash "comments"
                                 (car (octocat-sync--read octocat-sync--db
@@ -452,11 +452,11 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
     (octocat-sync-submit '(edit-comment "issue" "o/r" 7 "5" "changed"))
     (let ((comment (aref (gethash "comments" (issue)) 0)))
       (should (equal (gethash "body" comment) "changed"))
-      (should (equal (gethash octocat-timeline--pending comment) "saving…")))
+      (should (equal (gethash octocat-model-pending comment) "saving…")))
     (octocat-timeline-tests--answer (car calls) "{}")
     (let ((comment (aref (gethash "comments" (issue)) 0)))
       (should (equal (gethash "body" comment) "changed"))
-      (should-not (gethash octocat-timeline--pending comment)))))
+      (should-not (gethash octocat-model-pending comment)))))
 
 (ert-deftest octocat-timeline-test-edit-body ()
   "An edited opening post shows its new body at once, behind a spinner."
@@ -501,7 +501,7 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
   "Picking a reaction you gave takes it back; the picker ticks it."
   (let (prompted submitted)
     (cl-letf (((symbol-function 'octocat-timeline-target) (lambda () 'body))
-              ((symbol-function 'octocat-sync-detail-read)
+              ((symbol-function 'octocat-model-detail-read)
                (lambda (_) (json-parse-string "{\"id\":\"I_7\"}")))
               ((symbol-function 'octocat-sync-get)
                (lambda (spec cb)

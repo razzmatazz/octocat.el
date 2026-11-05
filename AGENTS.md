@@ -86,8 +86,8 @@ succeeded or crashed; splitting makes failures attributable.
 Load order: `octocat-mermaid.el` first (standalone), then
 `octocat-markdown.el` (requires mermaid), then `octocat-image.el` (requires
 that; `octocat-core.el` requires both), then
-`octocat-core.el` (everything else depends on it), then `octocat-sync.el`
-(`octocat-vui.el` requires it), then `octocat-vui.el`, then
+`octocat-core.el` (everything else depends on it), then `octocat-sync.el`,
+then `octocat-model.el` (`octocat-vui.el` requires both), then `octocat-vui.el`, then
 `octocat-actions.el` and `octocat-diff.el` (the diff and commit pages,
 which require actions) before `octocat-pr.el`, which requires both;
 `octocat-dashboard.el` after `octocat-pr.el` and `octocat-issue.el`;
@@ -135,7 +135,8 @@ string rather than `ok` is an error — fix it before proceeding):
 ```elisp
 (let (results)
   (dolist (f (list "octocat-mermaid.el" "octocat-markdown.el"
-                   "octocat-image.el" "octocat-core.el" "octocat-sync.el" "octocat-vui.el"
+                   "octocat-image.el" "octocat-core.el" "octocat-sync.el" "octocat-model.el"
+                   "octocat-vui.el"
                    "octocat-edit.el" "octocat-actions.el" "octocat-diff.el"
                    "octocat-timeline.el" "octocat-pr.el" "octocat-issue.el"
                    "octocat-repo.el"

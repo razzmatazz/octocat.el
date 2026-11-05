@@ -18,13 +18,13 @@
 
 (ert-deftest octocat-pr-test-merge-args ()
   "Merge and squash pass the message split into subject and body; rebase none."
-  (should (equal (octocat-pr--merge-args "o/r" 7 "Squash" "Fix (#7)\n\n* a\n* b" t)
+  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Squash" "Fix (#7)\n\n* a\n* b" t)
                  '("pr" "merge" "7" "--repo" "o/r" "--squash"
                    "--subject" "Fix (#7)" "--body" "* a\n* b" "--delete-branch")))
-  (should (equal (octocat-pr--merge-args "o/r" 7 "Merge" "Merge it" nil)
+  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Merge" "Merge it" nil)
                  '("pr" "merge" "7" "--repo" "o/r" "--merge"
                    "--subject" "Merge it" "--body" "")))
-  (should (equal (octocat-pr--merge-args "o/r" 7 "Rebase" "ignored" nil)
+  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Rebase" "ignored" nil)
                  '("pr" "merge" "7" "--repo" "o/r" "--rebase"))))
 
 (ert-deftest octocat-pr-test-merge-message ()
@@ -39,10 +39,11 @@
     (should (equal (octocat-pr--merge-message "Rebase" pr) ""))))
 
 (defun octocat-pr-test--stack (&rest prs)
-  "Return a stack of PRS, bottom first, as `octocat-pr--parse-stack' gives it.
-Each of PRS is (NUMBER STATE DRAFT MERGEABLE)."
+  "Return a stack of PRS, bottom first.
+It is as `octocat-model--pr-parse-stack' gives it.  Each PR is a list
+of NUMBER, STATE, DRAFT and MERGEABLE."
   (gethash "stack"
-           (octocat-pr--parse-stack
+           (octocat-model--pr-parse-stack
             (json-serialize
              `((data
                 (repository
@@ -111,7 +112,7 @@ Each of PRS is (NUMBER STATE DRAFT MERGEABLE)."
                    "    #15  Layer 15  ✗ has conflicts"
                    "    #14  (draft) Layer 14  ✗ is a draft")))
   ;; A pull request in no stack shows none.
-  (let ((none (octocat-pr--parse-stack
+  (let ((none (octocat-model--pr-parse-stack
                "{\"data\":{\"repository\":{\"pullRequest\":{\"stack\":null}}}}")))
     (should (eq (gethash "stack" none) :null))
     (should-not (octocat-pr--stack-section "o/r" (json-parse-string "{\"number\":15}")
@@ -235,9 +236,9 @@ One stays on the line of the other fields; the stacks follow it in order."
 
 (ert-deftest octocat-pr-diff-test-review-args ()
   "A review passes its flag, and its body only when there is one."
-  (should (equal (octocat-pr-diff--review-args "o/r" 7 "--approve" "")
+  (should (equal (octocat-model--review-args "o/r" 7 "--approve" "")
                  '("pr" "review" "7" "--repo" "o/r" "--approve")))
-  (should (equal (octocat-pr-diff--review-args "o/r" 7 "--comment" "LGTM")
+  (should (equal (octocat-model--review-args "o/r" 7 "--comment" "LGTM")
                  '("pr" "review" "7" "--repo" "o/r" "--comment" "--body" "LGTM"))))
 
 (ert-deftest octocat-pr-diff-test-review-data ()
@@ -280,7 +281,7 @@ The thread's own fields go on its first comment; a draft is pending."
       (puthash "threads" threads data)
       (puthash "pending" (make-hash-table) data)
       (should (= (octocat-pr-diff--pending-count data) 1))
-      (setq data (octocat-pr-diff--drop-drafts data))
+      (setq data (octocat-model--review-drop-drafts data))
       (should (= (octocat-pr-diff--pending-count data) 0))
       (should-not (gethash "pending" data))
       (should (= (length (octocat--get (aref (gethash "threads" data) 0) "comments" "nodes"))
@@ -294,10 +295,10 @@ The thread's own fields go on its first comment; a draft is pending."
                                  "\"reviews\":{\"nodes\":[%s]},"
                                  "\"reviewThreads\":{\"nodes\":[%s]}}}}}")
                          reviews threads)))
-         (none (octocat-pr-diff--parse-threads
+         (none (octocat-model--review-parse-threads
                 (format "[%s,%s]" (funcall page "" "{\"id\":\"T1\"}")
                         (funcall page "" "{\"id\":\"T2\"}"))))
-         (some (octocat-pr-diff--parse-threads
+         (some (octocat-model--review-parse-threads
                 (format "[%s]" (funcall page "{\"id\":\"R1\",\"commit\":{\"oid\":\"def\"}}"
                                         "")))))
     (should (equal (gethash "id" none) "PR1"))

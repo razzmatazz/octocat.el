@@ -269,7 +269,7 @@
 (ert-deftest octocat-repo-test-parse-history ()
   "History edges become REST-shaped commits that keep their cursor."
   (let* ((json "{\"data\":{\"repository\":{\"object\":{\"history\":{\"edges\":[{\"cursor\":\"abc 0\",\"node\":{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}},{\"cursor\":\"abc 1\",\"node\":{\"oid\":\"def\",\"messageHeadline\":\"Old\",\"authoredDate\":\"2026-10-13T00:00:00Z\",\"author\":{\"name\":\"Bo\",\"email\":\"b@x\",\"user\":null}}}]}}}}}")
-         (commits (octocat-repo--parse-history json))
+         (commits (octocat-model--repo-parse-history json))
          (first   (car commits)))
     (should (equal (gethash "sha" first) "abc"))
     (should (equal (gethash "message" (gethash "commit" first)) "Fix it"))
@@ -277,10 +277,10 @@
     (should (equal (octocat--commit-author (cadr commits)) "Bo"))
     (should (equal (gethash "cursor" (cadr commits)) "abc 1"))
     (should-not (gethash "total" first)))
-  (should (equal (gethash "total" (car (octocat-repo--parse-history
+  (should (equal (gethash "total" (car (octocat-model--repo-parse-history
                                         "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":7,\"edges\":[{\"cursor\":\"c\",\"node\":{\"oid\":\"abc\"}}]}}}}}")))
                  7))
-  (should-error (octocat-repo--parse-history
+  (should-error (octocat-model--repo-parse-history
                  "{\"data\":{\"repository\":{\"object\":null}}}")))
 
 (ert-deftest octocat-repo-test-numbers-link ()
@@ -344,7 +344,7 @@
 
 (ert-deftest octocat-repo-test-parse-head ()
   "A directory at a ref has its last commit, its tree and its history count."
-  (let ((head (octocat-repo--parse-head
+  (let ((head (octocat-model--repo-parse-head
                "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\"}}}}"
                "main" "src")))
     (should (equal (gethash "sha" head) "abc"))
@@ -352,15 +352,15 @@
     (should (equal (gethash "tree" head) "t1"))
     (should (equal (gethash "kind" head) "tree"))
     (should (equal (gethash "total" head) 42)))
-  (should-error (octocat-repo--parse-head
+  (should-error (octocat-model--repo-parse-head
                  "{\"data\":{\"repository\":{\"object\":null,\"dir\":null}}}" "nope" nil))
-  (should-error (octocat-repo--parse-head
+  (should-error (octocat-model--repo-parse-head
                  "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":0,\"nodes\":[]}},\"dir\":null}}}"
                  "main" "missing")))
 
 (ert-deftest octocat-repo-test-file-notice ()
   "A binary or large file is not shown unasked; an image or small file is."
-  (let ((head (octocat-repo--parse-head
+  (let ((head (octocat-model--repo-parse-head
                "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":1,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Add\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Blob\",\"oid\":\"b1\",\"byteSize\":2000000,\"isBinary\":false}}}}"
                "main" "dist/app.min.js")))
     (should (equal (gethash "size" head) 2000000))
@@ -482,7 +482,7 @@ A listing not in the store is an error, so no gh call is made."
   (unless (derived-mode-p 'octocat-repo-mode)
     (octocat-repo-mode))
   (setq octocat-tree-tests--visited nil)
-  (cl-letf (((symbol-function 'octocat-tree--fetch-dir)
+  (cl-letf (((symbol-function 'octocat-model--tree-fetch-dir)
              (lambda (&rest _) (error "Unexpected directory fetch"))))
     (octocat-vui-refresh-page 'octocat-tree--dir "tree"
                               (list :repo "owner/repo" :branch "main" :sha "rootsha"
@@ -494,7 +494,7 @@ A listing not in the store is an error, so no gh call is made."
 FOCUS is where point goes, as for `octocat-tree--subtree'."
   (unless (derived-mode-p 'octocat-tree-mode)
     (octocat-tree-mode))
-  (cl-letf (((symbol-function 'octocat-tree--fetch-dir)
+  (cl-letf (((symbol-function 'octocat-model--tree-fetch-dir)
              (lambda (&rest _) (error "Unexpected directory fetch"))))
     (octocat-vui-refresh-page 'octocat-tree--subtree "tree"
                               (list :repo "owner/repo" :branch "main" :sha "rootsha"
@@ -522,12 +522,12 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
   (octocat-tree-tests--with-store
     (let ((bytes (string-to-unibyte "a\377b\n"))
           got)
-      (cl-letf (((symbol-function 'octocat-vui--fetch-file)
+      (cl-letf (((symbol-function 'octocat-model--fetch-file)
                  (lambda (_repo _sha callback) (funcall callback (base64-encode-string bytes)))))
         (octocat-tree--load-blob "owner/repo" "b1" (lambda (r) (setq got r))))
       (should (equal got bytes))
       (setq got nil)
-      (cl-letf (((symbol-function 'octocat-vui--fetch-file)
+      (cl-letf (((symbol-function 'octocat-model--fetch-file)
                  (lambda (&rest _) (error "Unexpected blob fetch"))))
         (octocat-tree--load-blob "owner/repo" "b1" (lambda (r) (setq got r))))
       (should (equal got bytes)))))
@@ -542,7 +542,7 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
                    (funcall cb (if (equal (list repo ref path) '("o/r" "main" "a.png"))
                                    "b1"
                                  '(error . "No file")))))
-                ((symbol-function 'octocat-vui--fetch-file)
+                ((symbol-function 'octocat-model--fetch-file)
                  (lambda (_repo _sha cb) (funcall cb (base64-encode-string bytes)))))
         (with-temp-buffer
           (octocat-file-mode)
@@ -560,7 +560,7 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
   "Store owner/repo, main by default, and file PATH at REF holding CONTENT."
   (octocat-tree-tests--store '(repo-summary "owner/repo")
                              (octocat-tree-tests--json "{\"default-branch\":\"main\"}"))
-  (let ((head (octocat-repo--history-commit
+  (let ((head (octocat-model--repo-history-commit
                (octocat-tree-tests--json
                 "{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}")))
         (blob (make-hash-table :test #'equal)))
@@ -764,7 +764,7 @@ The top line has a tab for each view, the one shown plain."
     (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n\nText.\n")
     (octocat-tree-tests--store
      '(blame "owner/repo" "abc1234def" "docs/GUIDE.md")
-     (octocat-repo--parse-blame
+     (octocat-model--repo-parse-blame
       (concat "{\"data\":{\"repository\":{\"object\":{\"blame\":{\"ranges\":["
               "{\"startingLine\":1,\"endingLine\":3,\"commit\":{\"oid\":\"abc1234def\","
               "\"messageHeadline\":\"Add the guide\",\"committedDate\":\"2026-10-01T10:00:00Z\","
@@ -806,7 +806,7 @@ The top line has a tab for each view, the one shown plain."
 
 (ert-deftest octocat-tree-test-last-commit-text ()
   "A tree entry is followed by its last commit's subject and, at the right, its age."
-  (let* ((commit (octocat-repo--history-commit
+  (let* ((commit (octocat-model--repo-history-commit
                   (octocat-tree-tests--json
                    "{\"oid\":\"abc\",\"messageHeadline\":\"Fix the build\",\"committedDate\":\"2026-10-01T10:00:00Z\",\"author\":null}")))
          (text   (concat "src/" (octocat-tree--last-commit-text "src/" commit 60))))
@@ -860,7 +860,7 @@ the margin as wide whatever the window."
 
 (ert-deftest octocat-tree-test-parse-last-commits ()
   "Each path gets the commit of its alias; one with no history is left out."
-  (let ((got (octocat-tree--parse-last-commits
+  (let ((got (octocat-model--tree-parse-last-commits
               (concat "{\"data\":{\"repository\":{\"object\":{"
                       "\"e0\":{\"nodes\":[{\"oid\":\"a1\",\"messageHeadline\":\"One\"}]},"
                       "\"e1\":{\"nodes\":[]}}}}}")
@@ -894,7 +894,7 @@ the margin as wide whatever the window."
   "While the last commits load, a stored older commit's show; a new entry's load."
   (octocat-tree-tests--with-store
     (let ((old (make-hash-table :test #'equal)))
-      (puthash "a.el" (octocat-repo--history-commit
+      (puthash "a.el" (octocat-model--repo-history-commit
                        (octocat-tree-tests--json
                         "{\"oid\":\"abc\",\"messageHeadline\":\"Old subject\",\"author\":null}"))
                old)
@@ -906,7 +906,7 @@ the margin as wide whatever the window."
                                  (make-hash-table :test #'equal))
       (with-temp-buffer
         (octocat-repo-mode)
-        (cl-letf (((symbol-function 'octocat-tree--fetch-last-commits) #'ignore))
+        (cl-letf (((symbol-function 'octocat-model--tree-fetch-last-commits) #'ignore))
           (octocat-vui-refresh-page 'octocat-tree--dir "tree"
                                     (list :repo "owner/repo" :branch "main" :sha "rootsha"
                                           :commit "c2")))
@@ -922,7 +922,7 @@ the margin as wide whatever the window."
                                (vector (octocat-tree-tests--entry "old.el" "blob" "b1")))
     (with-temp-buffer
       (octocat-repo-mode)
-      (cl-letf (((symbol-function 'octocat-tree--fetch-dir) #'ignore))
+      (cl-letf (((symbol-function 'octocat-model--tree-fetch-dir) #'ignore))
         (dolist (sha '("rootsha" "newsha"))
           (octocat-vui-refresh-page 'octocat-tree--dir "tree"
                                     (list :repo "owner/repo" :branch "main" :sha sha))))
@@ -1123,7 +1123,7 @@ It does not fold, however long."
     (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n")
     (octocat-tree-tests--store
      '(commits "owner/repo" "dev" "docs/GUIDE.md")
-     (vconcat (octocat-repo--parse-history
+     (vconcat (octocat-model--repo-parse-history
                "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":3,\"edges\":[{\"cursor\":\"c 0\",\"node\":{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}}]}}}}}")))
     (save-current-buffer
       (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md")
