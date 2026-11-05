@@ -1882,11 +1882,10 @@ The tree browser stays in its directory, as GitHub's does."
 
 (defvar octocat-repo-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "^") #'octocat-repo-up)
     (define-key map (kbd "C-c C-f") #'octocat-tree-find-file)
     (define-key map (kbd "C-c C-b") #'octocat-repo-switch-branch)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-repo-mode'.")
@@ -1928,13 +1927,11 @@ The tree browser stays in its directory, as GitHub's does."
 ;; Not derived from the repo page: a file has state of its own.
 (defvar octocat-file-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "C-c C-f") #'octocat-tree-find-file)
     (define-key map (kbd "C-c C-l") #'octocat-file-log-open)
     (define-key map (kbd "C-c C-b") #'octocat-file-switch-branch)
     (define-key map (kbd "C-c C-v") #'octocat-file-cycle-view)
-    (define-key map (kbd "gr")      #'octocat-vui-refresh)
     map)
   "Keymap for `octocat-file-mode'.")
 

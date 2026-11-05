@@ -619,18 +619,18 @@ map inherits the shared keys through its parent:
 
 - `octocat-common-map` (`octocat-core.el`) holds the keys of every octocat
   page, such as `C-c C-j` and `S-RET`.
-- `octocat-vui-page-map` (`octocat-vui.el`) is the parent of every vui
-  page's keymap.  It adds the keys only vui pages share, `q` and `g`, and
+- `octocat-page-mode-map` (`octocat-vui.el`) is the parent of every vui
+  page's keymap, as each page's mode derives from `octocat-page-mode`.
+  It adds the keys only vui pages share, `q`, `g` and `C-c C-o`, and
   inherits `octocat-common-map` and `vui-mode-map` through
   `make-composed-keymap`.
 - A page that is not a vui page composes `octocat-common-map` with its
   own base map, such as `special-mode-map`.
 
 A mode binds a shared key itself only when it means something else
-there, as `gr` does in the file viewer.  Evil's normal-state bindings
-are the exception: Evil does not reliably find them through a parent
-keymap, so `octocat-evil-setup` binds the shared ones in a loop over
-every mode's map.
+there.  Evil's normal-state bindings are the exception: Evil does not
+reliably find them through a parent keymap, so `octocat-evil-setup`
+binds the shared ones in a loop over every page mode's map.
 
 ## Indicating that a page is loading or refreshing
 

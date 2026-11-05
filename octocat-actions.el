@@ -796,8 +796,7 @@ unfolded, until the fresh data replaces it."
 
 (defvar octocat-job-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     map)
   "Keymap for `octocat-job-mode'.")
 
@@ -1344,8 +1343,7 @@ everything, keeping what is shown until the fresh data replaces it."
 
 (defvar octocat-run-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "C-c C-v") #'octocat-run-toggle-view)
     map)
   "Keymap for `octocat-run-mode'.")
@@ -2307,8 +2305,7 @@ the fetched one meanwhile.  A new TICK fetches them again."
 
 (defvar octocat-workflow-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     map)
   "Keymap for `octocat-workflow-mode'.")
 
@@ -2706,8 +2703,7 @@ A new TICK fetches them again."
 
 (defvar octocat-checks-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     map)
   "Keymap for `octocat-checks-mode'.")
 

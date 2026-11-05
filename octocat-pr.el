@@ -1306,8 +1306,7 @@ A new TICK fetches them again."
 
 (defvar octocat-pr-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "C-c C-a") #'octocat-pr-add-comment)
     (define-key map (kbd "C-c C-e") #'octocat-pr-edit)
     (define-key map (kbd "C-c C-l") #'octocat-pr-react)
@@ -1380,8 +1379,7 @@ the background, in place: what is unfolded stays so."
 
 (defvar octocat-pr-commits-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
     (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
     map)
@@ -2304,12 +2302,11 @@ It is at the diff line of point or the region."
 
 (defvar octocat-pr-diff-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "C-c C-a") #'octocat-diff-add-comment)
     (define-key map (kbd "C-c C-e") #'octocat-diff-edit-comment)
     (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
     (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
     (define-key map (kbd "C-c C-v") #'octocat-diff-toggle-comments)
     map)
   "Keymap for `octocat-pr-diff-mode'.")

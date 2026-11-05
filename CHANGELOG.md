@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `g` refreshes the file page outside Evil too; it waited for a second key
+* Under Evil, `gs` searches the repository from the file and user pages too
 * The dashboard, user and Actions pages keep within `octocat-max-width` too
 * `octocat-page-mode-hook` runs on every page, as each page's mode now derives from it
 * Copied text leaves out rails, indents and blame; quotes copy as `>`, wrapped lines rejoin

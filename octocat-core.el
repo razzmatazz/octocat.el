@@ -1646,7 +1646,7 @@ After toggling, the buffer is redrawn with `revert-buffer'."
     map)
   "Keys every octocat page shares, whatever its major mode.
 Each page's mode map inherits it: the vui pages through
-`octocat-vui-page-map', the others with `make-composed-keymap'.")
+`octocat-page-mode-map', the others with `make-composed-keymap'.")
 
 
 ;;;; Repo tab strip

@@ -437,6 +437,22 @@ unsubscribes it."
     (octocat-pr-mode)
     (should-not truncate-lines)))
 
+(ert-deftest octocat-vui-test-evil-page-maps ()
+  "Evil's shared keys go on every page's map but the lists'."
+  (require 'octocat-evil)               ; loaded only once Evil is on
+  (let ((maps (octocat-evil--page-maps)))
+    (dolist (map (list octocat-mode-map octocat-user-mode-map octocat-job-mode-map
+                       octocat-file-mode-map octocat-tree-mode-map))
+      (should (memq map maps)))
+    (should-not (memq octocat-pr-list-mode-map maps))
+    (should-not (memq octocat-doctor-mode-map maps))))
+
+(ert-deftest octocat-vui-test-page-map-shared-keys ()
+  "A page's map finds the shared keys through its parent's."
+  (should (eq (lookup-key octocat-user-mode-map (kbd "C-c C-o")) #'octocat-browse))
+  (should (eq (lookup-key octocat-file-mode-map (kbd "g")) #'octocat-vui-refresh))
+  (should (eq (lookup-key octocat-pr-list-mode-map (kbd "C-c C-o")) #'octocat-browse)))
+
 ;;;; Timed refetches
 
 (ert-deftest octocat-vui-test-poll-only-shown ()

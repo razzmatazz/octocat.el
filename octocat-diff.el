@@ -1619,8 +1619,7 @@ fetches them again."
 
 (defvar octocat-commit-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "C-c C-v") #'octocat-commit-toggle-patch)
     map)
   "Keymap for `octocat-commit-mode'.")
@@ -1832,8 +1831,7 @@ fetches it again."
 
 (defvar octocat-compare-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
     map)
   "Keymap for `octocat-compare-mode'.")

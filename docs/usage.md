@@ -388,7 +388,7 @@ it shows it in full, as does picking a branch.  Each ref of a file has a buffer 
 file at another branch, in another buffer, so the two can be read side
 by side.  Press `C-c C-o` to open the file on GitHub, or, on a link or
 image, what it links to; `C-c C-l` to open the file's history on the
-commits page, as `[N commits]` does; and `gr` to reload.  `RET` on an
+commits page, as `[N commits]` does; and `g` to reload.  `RET` on an
 image shown in place opens its file here, where it is shown whole.
 
 

@@ -344,8 +344,7 @@ A new TICK fetches everything again."
 
 (defvar octocat-issue-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "C-c C-a") #'octocat-issue-add-comment)
     (define-key map (kbd "C-c C-e") #'octocat-issue-edit)
     (define-key map (kbd "C-c C-l") #'octocat-issue-react)

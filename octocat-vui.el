@@ -32,7 +32,6 @@
 ;;
 ;; Contents:
 ;;
-;;   `octocat-vui-page-map'          parent keymap of every vui page
 ;;   `octocat-page-mode'             parent major mode of every vui page
 ;;   `octocat-vui-row'               RET-able, per-segment-styled line
 ;;   `octocat-vui-use-resource'      read a sync resource; re-render on change
@@ -73,13 +72,18 @@
 (defvar octocat-vui--state-width)  ; defconst under "Row builders"
 (defvar octocat-vui--mark-width)   ; likewise
 
-(defvar octocat-vui-page-map
+(define-obsolete-variable-alias 'octocat-vui-page-map 'octocat-page-mode-map "0.2.0")
+
+(defvar octocat-page-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map (make-composed-keymap octocat-common-map vui-mode-map))
-    (define-key map (kbd "q") #'octocat-quit-window)
-    (define-key map (kbd "g") #'octocat-vui-refresh)
+    (define-key map (kbd "q")       #'octocat-quit-window)
+    (define-key map (kbd "g")       #'octocat-vui-refresh)
+    (define-key map (kbd "C-c C-o") #'octocat-browse)
     map)
-  "Parent keymap of every vui-rendered octocat page, for the keys all share.")
+  "Keymap of `octocat-page-mode', for the keys every page shares.
+Each page's mode map sets it as its parent: `define-derived-mode' would
+only once the mode first runs, so describing the map left them out.")
 
 (define-derived-mode octocat-page-mode vui-mode "Octocat-Page"
   "Base major mode of every octocat page.
@@ -1352,8 +1356,7 @@ A filter other than the default goes along, so the page lists the same."
 
 (defvar octocat-vui-list-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "C-c C-v") #'octocat-vui-list-toggle-compact)
     (define-key map (kbd "F") #'octocat-vui-list-filter)
     map)

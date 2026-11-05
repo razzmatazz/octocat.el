@@ -60,9 +60,8 @@ Starts at `octocat-feed-limit' and grows with `octocat-feed-load-more'.")
 
 (defvar octocat-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
+    (set-keymap-parent map octocat-page-mode-map)
     (define-key map (kbd "+")       #'octocat-feed-load-more)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
     map)
   "Keymap for `octocat-mode' (GitHub account dashboard).")
 (define-derived-mode octocat-mode octocat-page-mode "Octocat"

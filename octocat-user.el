@@ -367,8 +367,7 @@ A new TICK fetches everything again."
 
 (defvar octocat-user-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map octocat-vui-page-map)
-    (define-key map (kbd "C-c C-o") #'octocat-browse)
+    (set-keymap-parent map octocat-page-mode-map)
     map)
   "Keymap for `octocat-user-mode'.")
 
