@@ -17,7 +17,10 @@
 ;; for `octocat' and (pr-list "acme/rocket").  :press lists buttons to
 ;; press first, by their text, or rows to press RET on, by a text on
 ;; them, or (:key KEY) to call KEY's command, (:key KEY TEXT) to call it
-;; on the row showing TEXT, as `m' marking it.  :name names its files,
+;; on the row showing TEXT, as `m' marking it.  :scroll TEXT shows the
+;; page in a window `octocat-screenshots-scroll-height' lines high,
+;; scrolled to the line showing TEXT: its header line comes first, in
+;; the text too.  :name names its files,
 ;; NAME.png and NAME.txt; it defaults to COMMAND.  To add a shot, add a
 ;; marker; to
 ;; show other data, edit fixtures.el.  A `gh' call fixtures.el lacks
@@ -73,6 +76,9 @@
 
 (defvar octocat-screenshots-width 100
   "The columns a page keeps within.")
+
+(defvar octocat-screenshots-scroll-height 16
+  "The lines of a :scroll shot, under its header line.")
 
 (defvar octocat-screenshots--problems nil
   "What went wrong in the shots, newest first: `gh' calls with no fixture, say.")
@@ -230,6 +236,54 @@ A LABEL of (:key KEY) calls the command KEY is bound to in BUFFER;
             (write-region (x-export-frames frame 'png) nil file nil 0)))
       (delete-frame frame t))))
 
+(defun octocat-screenshots--scrolled (buffer text png)
+  "Return BUFFER as a window scrolled to the line showing TEXT shows it.
+That is its header line, then `octocat-screenshots-scroll-height' lines.
+With PNG, a file name, save the window there too, when graphic."
+  (let* ((height octocat-screenshots-scroll-height)
+         (start  (with-current-buffer buffer
+                   (save-excursion
+                     (goto-char (point-min))
+                     (if (search-forward text nil t)
+                         (line-beginning-position)
+                       (push (format "No %S on %s to scroll to" text (buffer-name))
+                             octocat-screenshots--problems)
+                       (point-min)))))
+         (frame  (and png (display-graphic-p)
+                      (make-frame `((minibuffer . nil) (width . ,(+ octocat-screenshots-width 2))
+                                    (height . ,(1+ height)) (left-fringe . 0) (right-fringe . 0)
+                                    (internal-border-width . 16) (visibility . t)))))
+         (win    (if frame (frame-root-window frame) (selected-window)))
+         (old    (window-buffer win)))
+    (unwind-protect
+        (progn
+          (set-window-buffer win buffer)
+          (set-window-start win start)
+          ;; What redisplay runs; called here too, so a terminal or
+          ;; batch Emacs, which has none, writes the text the same.
+          (with-current-buffer buffer
+            (run-hook-with-args 'window-scroll-functions win start))
+          (when frame
+            (with-selected-frame frame
+              (redisplay t))
+            (make-directory (file-name-directory png) t)
+            (let ((coding-system-for-write 'binary))
+              (write-region (x-export-frames frame 'png) nil png nil 0)))
+          (let ((header (window-parameter win 'header-line-format)))
+            (concat (if header
+                        ;; Less the stretch space lining it up with the text.
+                        (concat (string-trim-left
+                                 (format-mode-line header nil win buffer))
+                                "\n")
+                      "")
+                    (with-current-buffer buffer
+                      (buffer-substring-no-properties
+                       start (save-excursion (goto-char start)
+                                             (forward-line height)
+                                             (point)))))))
+      (set-window-parameter win 'header-line-format nil)
+      (if frame (delete-frame frame t) (set-window-buffer win old)))))
+
 (defun octocat-screenshots--clock ()
   "Return the seconds since the epoch, of the real clock, not the frozen one.
 `format-time-string' reads it in C, past the advice."
@@ -245,24 +299,30 @@ A LABEL of (:key KEY) calls the command KEY is bound to in BUFFER;
           (apply (if (fboundp open) open (intern (format "octocat-%s" command))) args)))
       (window-buffer (selected-window)))))
 
-(defun octocat-screenshots-shoot (page &optional press png)
+(defun octocat-screenshots-shoot (page &optional press png scroll)
   "Return the text of PAGE, (COMMAND ARGS...), after pressing PRESS.
 See the Commentary for PAGE.  PRESS is a list of the labels of buttons
 to press, in turn.  With PNG, a file name, save the page there too,
-when graphic."
+when graphic.  With SCROLL, a text on the page, show it scrolled there,
+see `octocat-screenshots--scrolled'."
   (let ((start (octocat-screenshots--clock))
         (buffer (octocat-screenshots--open page)))
     (octocat-screenshots--settle buffer)
     (dolist (label press)
       (octocat-screenshots--press buffer label)
       (octocat-screenshots--settle buffer))
-    (when (and png (display-graphic-p))
-      (octocat-screenshots--png buffer png))
-    ;; So a slow page shows.
-    (princ (format "%5.2fs %S\n" (- (octocat-screenshots--clock) start) page)
-           #'external-debugging-output)
-    (prog1 (octocat-screenshots--text buffer)
-      (kill-buffer buffer))))
+    (let ((text (if scroll
+                    (replace-regexp-in-string
+                     "[ \t]+$" "" (string-trim-right
+                                   (octocat-screenshots--scrolled buffer scroll png)))
+                  (when (and png (display-graphic-p))
+                    (octocat-screenshots--png buffer png))
+                  (octocat-screenshots--text buffer))))
+      ;; So a slow page shows.
+      (princ (format "%5.2fs %S\n" (- (octocat-screenshots--clock) start) page)
+             #'external-debugging-output)
+      (kill-buffer buffer)
+      text)))
 
 (defconst octocat-screenshots--marker "^<!-- screenshot: \\(.*\\) -->\n"
   "A shot's marker.")
@@ -310,7 +370,8 @@ Signal an error after if something went wrong, as a page making a
                              (octocat-screenshots-shoot
                               (car spec) (plist-get (cdr spec) :press)
                               (expand-file-name (concat name ".png")
-                                                octocat-screenshots-directory)))))
+                                                octocat-screenshots-directory)
+                              (plist-get (cdr spec) :scroll)))))
                 (when (member name names)
                   (push (format "Two shots are named %s; give one a :name" name)
                         octocat-screenshots--problems))

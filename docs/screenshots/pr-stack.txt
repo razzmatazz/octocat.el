@@ -1,5 +1,6 @@
 acme/rocket#133  Incremental builds: skip pages whose inputs are unchanged  ≡ 2/2 · @srivera
-open    Assignees @srivera · Reviewers @jlindqvist (pending) · Labels  performance
+open    Assignees @srivera · Reviewers @jlindqvist (pending)
+        Labels  performance   enhancement
         incremental-builds → serve-double-save · Review required
 
 Conversation  [Commits (1)]  [Files changed (4)]

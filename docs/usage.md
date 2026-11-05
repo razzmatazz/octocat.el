@@ -536,6 +536,17 @@ there closes the window it made.
 On Doom Emacs, let `q` reach octocat pages with
 `(add-hook 'doom-real-buffer-functions #'octocat-buffer-p)`.
 
+### The title row in the header line
+
+Scrolled past its first line, a page shows that line, its title row,
+in the header line, so you can tell which PR or file you are in.
+Each window pins it by itself, and only once the row is out of view:
+at the top of a page there is no header line.  The copy is not buffer
+text, so it doesn't affect the region, copying or search.  Clicking it
+goes back to the top.  It is underlined, to part it from the page;
+the face `octocat-sticky-title` styles it.  Set `octocat-sticky-title`
+to nil to turn it off.
+
 ## github.com links
 
 Following a github.com link in an octocat page (`RET` on a link in a

@@ -1,0 +1,17 @@
+acme/rocket#128  Cache parsed templates between builds · @srivera
+● @pnair commented  1 day ago  🎉 3
+│ Tried it on our docs site: 9.4s → 2.0s here too.  Lovely.
+│
+○ @srivera changed the title Template cache → Cache parsed templates between builds  1 day ago
+│
+● @mchen commented  1 day ago
+│ Does the cache notice a template that includes another one which changed?
+│
+● @srivera commented  1 day ago
+│ It does now: an entry also keeps the times of the templates it includes.  Added a test for it.
+│
+○ @srivera committed 8ee9a2c Invalidate a template when one it includes changes  1 day ago  CI: ✓
+│
+● @mchen approved these changes  5 hours ago  ❤️ 1
+│
+[+ Add a comment]   [Close pull request]

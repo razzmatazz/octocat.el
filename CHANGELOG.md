@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Several assignees, reviewers or labels of a PR or issue share a line of their own
+* A long field line atop a PR or issue moves its last fields to lines of their own
+* Scrolled past a page's title row, the header line shows it (`octocat-sticky-title`)
 * Old names are gone: `octocat-pr-checks-shown`, `octocat-commits-mode`, `octocat-commit-file-*`
 * `M-x octocat-pr` opens the pull request of the branch checked out, if it has one
 * `M-x octocat-dashboard` opens the dashboard, as `M-x octocat` does

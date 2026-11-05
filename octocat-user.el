@@ -125,10 +125,14 @@ under \"user\", and the counts."
                                                    "public repos")))))
     (delq nil
           (list
-           (concat (propertize (concat "@" login) 'face 'octocat-repo)
-                   (when name (concat "  " (propertize name 'face 'octocat-pr-author)))
-                   (when (equal type "Organization")
-                     (propertize "  (organization)" 'face 'octocat-dimmed)))
+           ;; The sticky title, see `octocat-vui-sticky-title': the
+           ;; avatar shares its line.
+           (propertize
+            (concat (propertize (concat "@" login) 'face 'octocat-repo)
+                    (when name (concat "  " (propertize name 'face 'octocat-pr-author)))
+                    (when (equal type "Organization")
+                      (propertize "  (organization)" 'face 'octocat-dimmed)))
+            'octocat-page-title t)
            bio
            (and details (mapconcat #'identity details "  ·  "))
            (and counts (mapconcat #'identity counts "  ·  "))))))

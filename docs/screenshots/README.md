@@ -129,6 +129,15 @@ between it and a merge.
 [As text](pr.txt)
 <!-- /screenshot -->
 
+Scrolled down, past its title: the title row stays in the header
+line, here the first line, as on every page.
+
+<!-- screenshot: (pr "acme/rocket" 128) :name "pr-scrolled" :scroll "@pnair commented" -->
+![pr-scrolled](pr-scrolled.png)
+
+[As text](pr-scrolled.txt)
+<!-- /screenshot -->
+
 Its commits, a merge of `main` marked `⊕`:
 
 <!-- screenshot: (pr-commits "acme/rocket" 128) -->

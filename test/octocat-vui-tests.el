@@ -233,6 +233,44 @@
                              (octocat-vui-header-notice
                               (list (list :data h :error "x" :kind 'offline :fetched-at 0.0)))))))
 
+(ert-deftest octocat-vui-test-sticky-title ()
+  "The pinned title is the first line, or its `octocat-page-title' text, as plain text."
+  (with-temp-buffer
+    (insert (propertize "acme/rocket#1  Title" 'mouse-face 'highlight 'keymap 'x)
+            "  \nbody\n")
+    (let ((title (octocat-vui-sticky-title)))
+      (should (equal title "acme/rocket#1  Title"))
+      (should-not (get-text-property 0 'mouse-face title))
+      (should-not (get-text-property 0 'keymap title)))
+    (erase-buffer)
+    (insert "▀▀▀  " (propertize "@ann  Ann" 'octocat-page-title t) "\n▀▀▀  bio\n")
+    (should (equal (octocat-vui-sticky-title) "@ann  Ann"))))
+
+(ert-deftest octocat-vui-test-sticky-update ()
+  "A window pins the title once scrolled past it, and leaves another header line be."
+  (with-temp-buffer
+    (octocat-page-mode)
+    (let ((inhibit-read-only t))
+      (insert "Title\nline 2\nline 3\n"))
+    (let ((win (selected-window))
+          (old (window-buffer (selected-window))))
+      (unwind-protect
+          (progn
+            (set-window-buffer win (current-buffer))
+            (octocat-vui--sticky-update win 1)
+            (should-not (window-parameter win 'header-line-format))
+            (octocat-vui--sticky-update win 7)
+            (should (eq (window-parameter win 'header-line-format)
+                        octocat-vui--sticky-format))
+            (let ((octocat-sticky-title nil))
+              (octocat-vui--sticky-update win 7))
+            (should-not (window-parameter win 'header-line-format))
+            (set-window-parameter win 'header-line-format "other")
+            (octocat-vui--sticky-update win 7)
+            (should (equal (window-parameter win 'header-line-format) "other")))
+        (set-window-parameter win 'header-line-format nil)
+        (set-window-buffer win old)))))
+
 (ert-deftest octocat-vui-test-error-text ()
   "A failure with no data reads by its kind."
   (should (equal (octocat-vui-error-text '(:error "HTTP 404: Not Found" :kind permanent))

@@ -245,9 +245,9 @@ BG is as for `octocat--label-face'; the title is cut to fit WIDTH."
       repo issue (octocat-vui--state-label state)
       #'octocat-issue-edit-title bg width
       (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
-                  (cons :stack (octocat-vui--login-items (gethash "assignees" issue))))
+                  (cl-list* :line ", " (octocat-vui--login-items (gethash "assignees" issue))))
             (cons (octocat-timeline-edit-field "issue" repo issue "label")
-                  (octocat--format-labels (gethash "labels" issue) bg)))
+                  (cl-list* :line " " (octocat-vui--label-items (gethash "labels" issue) bg))))
       (list (cons "Milestone" (octocat-vui--milestone issue))
             (cons "Fixed by"  (octocat-vui--numbers
                                repo (gethash "closedByPullRequestsReferences" issue)

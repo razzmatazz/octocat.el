@@ -2,7 +2,7 @@
 
 Places where octocat works around vui.el, and what upstream could
 offer instead.  Each was checked against vui master ab55d98
-(2026-11-05), and all are filed.  File a new one at
+(2026-11-05), and all but 5 are filed.  File a new one at
 https://github.com/d12frosted/vui.el/issues, each with a repro run
 against vui master first: its code moves fast, and a fix can leave the
 code that looked at fault in place
@@ -68,3 +68,25 @@ link buttons, which a button's label cannot).
   timers can go, once MELPA's vui has it; `octocat--goto-line-target`
   still has to recenter each window showing the buffer, which on a
   first mount may not show it yet.
+
+## 5. No sticky title for a page
+
+vui pins a table's header row (`:sticky-header`), but nothing else:
+octocat wants any page's title row kept in view.
+
+- **Workaround:** `octocat-vui--sticky-update`, on
+  `window-scroll-functions`, sets the window's `header-line-format`
+  parameter to a copy of the first line once the window starts past
+  it, and `octocat-vui--sticky-unpin` drops it from a window showing
+  another buffer.  Its alignment copies `vui--table-sticky-header-padding`.
+- **Other packages:** Info, `org-sticky-header`, `topsy` and
+  `semantic-stickyfunc-mode` set a buffer-local `header-line-format`
+  that is always shown, `:eval`ing what is at `(window-start)`.  The
+  window parameter differs in showing no header line at the top, so no
+  blank bar, and in leaving the buffer's own header line, octocat's
+  notice, to be shown with it.
+- **Ask:** a sticky region, as for a table's header: a vnode, or a
+  `:sticky` prop on `vui-region` or a stack, pinned while the window is
+  scrolled past it.  vui's tables could pin through the same code, and
+  share the header line with it and with the page's own.
+- **Not filed yet.**

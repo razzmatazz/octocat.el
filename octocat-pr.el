@@ -929,13 +929,13 @@ TAB is the page showing it, `conversation' (the default), `commits' or
       (octocat-vui--state-label state (gethash "isDraft" pr))
       (lambda () (octocat-timeline-rename "pr" repo number))
       bg width
-      ;; Several assignees or reviewers stack under their line.
+      ;; Several assignees, reviewers or labels go on a line of their own.
       (list (cons (octocat-timeline-edit-field "pr" repo pr "assignee")
-                  (cons :stack (octocat-vui--login-items (gethash "assignees" pr))))
+                  (cl-list* :line ", " (octocat-vui--login-items (gethash "assignees" pr))))
             (cons (octocat-timeline-edit-field "pr" repo pr "reviewer")
-                  (cons :stack reviewers))
+                  (cl-list* :line ", " reviewers))
             (cons (octocat-timeline-edit-field "pr" repo pr "label")
-                  (octocat--format-labels (gethash "labels" pr) bg)))
+                  (cl-list* :line " " (octocat-vui--label-items (gethash "labels" pr) bg))))
       (list (cons "Milestone" (octocat-vui--milestone pr))
             (cons "Closes"    (octocat-vui--numbers
                                repo (gethash "closingIssuesReferences" pr)

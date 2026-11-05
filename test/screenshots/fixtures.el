@@ -548,6 +548,8 @@ Closes #97"
                      (:createdAt ,(octocat-screenshots--ago (* 3 h)))
                      (:baseRefName "serve-double-save") (:headRefName "incremental-builds")
                      (:url "https://github.com/acme/rocket/pull/133")
+                     (:labels [,(assoc-default "performance" octocat-screenshots--label-colors)
+                               ,(assoc-default "enhancement" octocat-screenshots--label-colors)])
                      (:reactionGroups []) (:reviewDecision "REVIEW_REQUIRED") (:changedFiles 4)
                      (:body "Each page now records the files it was built from; a build skips the pages whose inputs are all unchanged.
 

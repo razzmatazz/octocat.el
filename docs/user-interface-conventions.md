@@ -661,6 +661,18 @@ resizes the window; a refetch stays in the mode line.
 `octocat-vui-resource-view` draws the skeleton, the error or the page
 from a snapshot, so a page gives only those pieces.
 
+A page's first line is its title row: once a window is scrolled past
+it, a copy is pinned in that window's header line, after any notice
+(`octocat-vui--sticky-update`).  So keep the row that says what the page
+is first.  When the line holds more, as the user page's avatar beside
+the name, give the title text an `octocat-page-title` property: only
+that is pinned.
+
+Whatever stays pinned while the page scrolls under it, as this title,
+is parted from the content below by an underline across the window
+(face `octocat-sticky-title`), so the copy doesn't read as a line of
+the page.
+
 ## Keeping shown pages up to date
 
 A page shown in a window of a visible frame refetches what it shows on

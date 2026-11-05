@@ -94,7 +94,9 @@ as a page's refresh, stays in its own mode."
   (octocat--ts-eldoc-setup)
   (octocat-markdown-copy-setup)
   (octocat-markdown--ensure-invisibility)
-  (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t))
+  (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
+  (add-hook 'window-scroll-functions #'octocat-vui--sticky-update nil t)
+  (add-hook 'window-buffer-change-functions #'octocat-vui--sticky-unpin))
 
 (defvar-local octocat-vui--view-generation 0
   "Bumped by each `octocat-vui-refresh', see `octocat-vui-use-view-reset'.")
@@ -261,6 +263,111 @@ in the mode line, as a passing notice would resize the window."
                           (hash-table-values octocat-vui--snapshots)))))
         (setq header-line-format
               (and notice (propertize notice 'face 'octocat-dimmed)))))))
+
+
+;;;; Sticky title
+;;
+;; A page's title row, its first line, is pinned in the header line of
+;; each window scrolled past it, as Info pins its breadcrumb.  It is set
+;; as the window's `header-line-format' parameter, so each window
+;; showing the page pins or not by itself; a window still showing the
+;; row has no header line, so the copy takes the screen line the row
+;; leaves, and nothing below it moves.
+
+(defcustom octocat-sticky-title t
+  "Whether a page scrolled past its title row shows that row in the header line."
+  :type 'boolean
+  :group 'octocat)
+
+(defface octocat-sticky-title
+  '((t :inherit header-line))
+  "Face added to a title pinned in the header line, under its own faces.
+An underline in the colour of `octocat-dimmed' parts it from the text
+below; an underline set here replaces it."
+  :group 'octocat)
+
+(defconst octocat-vui--sticky-format '(:eval (octocat-vui--sticky-header-line))
+  "The `header-line-format' window parameter of a window pinning its page's title.")
+
+(defun octocat-vui-sticky-title-end ()
+  "Return the end of the current page's title row: its first line."
+  (save-excursion
+    (goto-char (point-min))
+    (line-end-position)))
+
+(defun octocat-vui-sticky-title ()
+  "Return the current page's title row, as pinned in the header line.
+That is its first line, or the text on it with an `octocat-page-title'
+property, as the user page's name beside its avatar.  Links on it are
+plain text, as it is not in the buffer: a click on it goes to the top."
+  (let* ((bol   (point-min))
+         (eol   (octocat-vui-sticky-title-end))
+         (start (or (text-property-any bol eol 'octocat-page-title t) bol))
+         (end   (if (get-text-property start 'octocat-page-title)
+                    (next-single-property-change start 'octocat-page-title nil eol)
+                  eol))
+         (title (buffer-substring start end))
+         (map   (make-sparse-keymap)))
+    (define-key map [header-line mouse-1] #'octocat-vui-sticky-top)
+    (remove-list-of-text-properties
+     0 (length title) '(keymap local-map mouse-face help-echo button category field)
+     title)
+    (propertize (string-trim-right title) 'local-map map
+                'help-echo "mouse-1: back to the top")))
+
+(defun octocat-vui--sticky-header-line ()
+  "Return the header line of a window pinning its page's title.
+The page's own header line, its notice, comes first.  It starts with a
+stretch space past any line numbers, as the header line spans the
+fringe, so the copy lines up with the row it copies, and ends with one
+to the right edge, so the face `octocat-sticky-title' spans the window.
+Never signals: redisplay evaluates it."
+  (condition-case nil
+      (let* ((notice (and header-line-format (format-mode-line header-line-format)))
+             (line   (concat (propertize " " 'display
+                                         `(space :align-to ,(line-number-display-width 'columns)))
+                             (if (octocat--nonempty notice) (concat notice "  ") "")
+                             (string-replace "%" "%%" (octocat-vui-sticky-title))
+                             (propertize " " 'display '(space :align-to right)))))
+        (add-face-text-property 0 (length line) 'octocat-sticky-title t line)
+        ;; One colour, not each segment's own.
+        (when (memq (face-attribute 'octocat-sticky-title :underline nil t) '(nil unspecified))
+          (let ((color (or (face-foreground 'octocat-dimmed nil t) 'foreground-color)))
+            (add-face-text-property 0 (length line)
+                                    (list :underline (list :color color :position t))
+                                    nil line)))
+        line)
+    (error "")))
+
+(defun octocat-vui-sticky-top (event)
+  "Go to the top of the page whose header line EVENT clicked."
+  (interactive "e")
+  (let ((win (posn-window (event-start event))))
+    (with-selected-window win
+      (goto-char (point-min))
+      (set-window-start win (point-min)))))
+
+(defun octocat-vui--sticky-update (window &optional start)
+  "Pin the page's title in WINDOW's header line when START is past it.
+START defaults to WINDOW's start.  A header line other than the pinned
+title, set by another package, is left alone."
+  (let ((param (window-parameter window 'header-line-format)))
+    (when (or (null param) (eq param octocat-vui--sticky-format))
+      (with-current-buffer (window-buffer window)
+        (set-window-parameter
+         window 'header-line-format
+         (and octocat-sticky-title
+              (derived-mode-p 'octocat-page-mode)
+              (> (or start (window-start window)) (octocat-vui-sticky-title-end))
+              octocat-vui--sticky-format))))))
+
+(defun octocat-vui--sticky-unpin (frame)
+  "Drop the pinned title of each window of FRAME no longer showing a page."
+  (dolist (win (window-list frame 'never))
+    (when (and (eq (window-parameter win 'header-line-format) octocat-vui--sticky-format)
+               (not (with-current-buffer (window-buffer win)
+                      (derived-mode-p 'octocat-page-mode))))
+      (set-window-parameter win 'header-line-format nil))))
 
 (defvar-local octocat-vui--resource-ticks nil
   "Resource key to the page tick it was last requested with, in this buffer.
@@ -2800,12 +2907,12 @@ right after the title, on which RET calls ACTION."
                      (octocat-vui--login-link (substring author 1)))))
        on-edit-title
        "RET: edit title"))
-     (octocat-vui--field-lines fields (concat state "  "))
-     (list
-      (octocat-vui--detail-fields
-       (cons (cons nil (octocat-vui--join-cells
-                        cells (seq-difference '(:branch :review :ci :prs :comments) omit)))
-             shown))))))
+     (octocat-vui--field-lines fields (concat state "  ") width)
+     (octocat-vui--field-lines
+      (cons (cons nil (octocat-vui--join-cells
+                       cells (seq-difference '(:branch :review :ci :prs :comments) omit)))
+            shown)
+      nil width))))
 
 (defun octocat-vui--fit-title (title width)
   "Return TITLE cut with an ellipsis to WIDTH columns, at least 10.
@@ -2848,43 +2955,97 @@ column."
                      (vui-text (or head (make-string (+ octocat-vui--state-width 2) ?\s)))
                      (octocat-vui--separate parts (propertize " · " 'face 'octocat-dimmed))))))
 
-(defun octocat-vui--detail-stack (label values)
-  "Return the field LABEL with VALUES, one per line, as a vnode.
-LABEL is as for `octocat-vui--detail-fields' and each of VALUES a
-list of vnodes: the first goes beside LABEL, the others under it, so
-many of them don't make one long line."
-  (apply #'vui-vstack
-         (octocat-vui--detail-fields (list (cons label (car values))))
-         (mapcar (lambda (value)
-                   (apply #'vui-hstack :spacing 0
-                          (vui-text (make-string (+ octocat-vui--state-width 3
-                                                    (string-width (if (consp label)
-                                                                      (car label)
-                                                                    label)))
-                                                 ?\s))
-                          value))
-                 (cdr values))))
+(defun octocat-vui--nodes-width (nodes)
+  "Return the columns NODES take: a string, a vnode, or a list of them.
+Only what field values are made of is measured: text, buttons and
+stacks of them; anything else counts as nothing."
+  (cond ((stringp nodes) (string-width nodes))
+        ((listp nodes) (apply #'+ 0 (mapcar #'octocat-vui--nodes-width nodes)))
+        ((vui-vnode-text-p nodes)
+         (string-width (format "%s" (vui-vnode-text-content nodes))))
+        ((vui-vnode-button-p nodes)
+         (+ (string-width (format "%s" (vui-vnode-button-label nodes)))
+            (if (vui-vnode-button-no-decoration nodes) 0 2)))
+        ((vui-vnode-hstack-p nodes)
+         (let ((children (flatten-tree (vui-vnode-hstack-children nodes))))
+           (+ (octocat-vui--nodes-width children)
+              (* (or (vui-vnode-hstack-spacing nodes) 1)
+                 (max 0 (1- (length children)))))))
+        ((vui-vnode-fragment-p nodes)
+         (octocat-vui--nodes-width (vui-vnode-fragment-children nodes)))
+        (t 0)))
 
-(defun octocat-vui--field-lines (fields &optional head)
-  "Return the vnodes of FIELDS: one line of them, then each stacked one.
-HEAD starts the line, as for `octocat-vui--detail-fields'.
+(defun octocat-vui--fields-width (fields &optional head)
+  "Return the width of the line of FIELDS from `octocat-vui--detail-fields'.
+HEAD is as there."
+  (let ((parts (delq nil
+                     (mapcar (lambda (f)
+                               (let ((name  (if (consp (car f)) (caar f) (car f)))
+                                     (empty (member (cdr f) '(nil ""))))
+                                 (unless (and empty (not (consp (car f))))
+                                   (+ (if name (1+ (string-width name)) 0)
+                                      (if empty 4 (octocat-vui--nodes-width (cdr f)))))))
+                             fields))))
+    (+ (if head (string-width head) (+ octocat-vui--state-width 2))
+       (apply #'+ 0 parts)
+       (* 3 (max 0 (1- (length parts)))))))
+
+(defun octocat-vui--detail-wrap (label sep items width)
+  "Return the field LABEL with ITEMS on a line of its own, as a vnode.
+LABEL is as for `octocat-vui--detail-fields', ITEMS a list of strings or
+vnode lists, with SEP between them.  Past WIDTH they go on further
+lines, lined up under the first, so many of them stay within the page."
+  (let* ((indent (+ octocat-vui--state-width 3
+                    (string-width (if (consp label) (car label) label))))
+         (rows nil) (row nil) (used indent))
+    (dolist (item items)
+      (let ((w (octocat-vui--nodes-width item)))
+        (when (and row width (> (+ used (string-width sep) w) width))
+          (push (nreverse row) rows)
+          (setq row nil used indent))
+        (when row (cl-incf used (string-width sep)))
+        (push (if (stringp item) (list (vui-text item)) item) row)
+        (cl-incf used w)))
+    (push (nreverse row) rows)
+    (let ((joined (mapcar (lambda (row) (octocat-vui--separate row sep)) (nreverse rows))))
+      (apply #'vui-vstack
+             (octocat-vui--detail-fields (list (cons label (car joined))))
+             (mapcar (lambda (nodes)
+                       (apply #'vui-hstack :spacing 0
+                              (vui-text (make-string indent ?\s))
+                              nodes))
+                     (cdr joined))))))
+
+(defun octocat-vui--field-lines (fields &optional head width)
+  "Return the vnodes of FIELDS: a line of them, then each on a line of its own.
+HEAD starts the first line, as for `octocat-vui--detail-fields'.
 FIELDS is as for `octocat-vui--detail-fields', except that a VALUE
-may be (:stack . ITEMS), ITEMS a list of vnode lists such as the users
-of `octocat-vui--login-items'.  One item stays on the line; several
-stack under their label below it (see `octocat-vui--detail-stack'),
-in the order of FIELDS."
-  (let ((items (lambda (f) (and (eq (car-safe (cdr f)) :stack) (cddr f)))))
+may be (:line SEP . ITEMS), ITEMS a list of strings or vnode lists,
+such as label chips or the users of `octocat-vui--login-items', with
+SEP between them.  One item stays on the first line; several go on a
+line of their own below it, wrapped within WIDTH (see
+`octocat-vui--detail-wrap'), in the order of FIELDS.  So do the
+fields at the end of the first line that would take it past WIDTH."
+  (let* ((items  (lambda (f) (and (eq (car-safe (cdr f)) :line) (cdddr f))))
+         (one    (lambda (f) (if (eq (car-safe (cdr f)) :line)
+                                 (cons (car f) (car (funcall items f)))
+                               f)))
+         (own    (seq-filter (lambda (f) (cdr (funcall items f))) fields))
+         (shared (seq-remove (lambda (f) (memq f own)) fields)))
+    (when width
+      (while (and (cdr shared)
+                  (> (octocat-vui--fields-width (mapcar one shared) head) width))
+        (push (car (last shared)) own)
+        (setq shared (butlast shared))))
     (delq nil
-          (cons (octocat-vui--detail-fields
-                 (mapcar (lambda (f)
-                           (cond ((not (eq (car-safe (cdr f)) :stack)) f)
-                                 ((cdr (funcall items f)) nil)
-                                 (t (cons (car f) (car (funcall items f))))))
-                         fields)
-                 head)
+          (cons (octocat-vui--detail-fields (mapcar one shared) head)
                 (mapcar (lambda (f)
-                          (when (cdr (funcall items f))
-                            (octocat-vui--detail-stack (car f) (funcall items f))))
+                          (cond ((not (memq f own)) nil)
+                                ((cdr (funcall items f))
+                                 (octocat-vui--detail-wrap
+                                  (car f) (nth 2 f) (funcall items f) width))
+                                (t (octocat-vui--detail-fields
+                                    (list (funcall one f))))))
                         fields)))))
 
 (defun octocat-vui--separate (items sep)
@@ -2905,6 +3066,12 @@ ACTION is called on RET or a click; HELP is its hover text, by default
   "Return \"@LOGIN\" as a link to the page of the user LOGIN."
   (octocat-vui--link (concat "@" login) 'octocat-pr-author
                      (lambda () (octocat-open 'user login))))
+
+(defun octocat-vui--label-items (labels bg)
+  "Return the chips of LABELS (a vector of label objects), or nil.
+BG is as for `octocat--label-face'."
+  (and (vectorp labels)
+       (mapcar (lambda (l) (octocat--format-label l bg)) labels)))
 
 (defun octocat-vui--login-items (users)
   "Return the \"@login\" names of USERS (a vector of user objects), or nil.

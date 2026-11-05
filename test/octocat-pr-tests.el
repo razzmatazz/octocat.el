@@ -16,6 +16,12 @@
   "Return the PR hash-table parsed from JSON."
   (json-parse-string json))
 
+(defun octocat-pr-test--field-lines (fields &optional width)
+  "Return the lines `octocat-vui--field-lines' makes of FIELDS within WIDTH."
+  (with-temp-buffer
+    (vui-render (apply #'vui-vstack (octocat-vui--field-lines fields nil width)))
+    (split-string (buffer-substring-no-properties (point-min) (point-max)) "\n" t)))
+
 (ert-deftest octocat-pr-test-merge-message ()
   "Default messages follow GitHub's."
   (let ((pr (octocat-pr-test--pr
@@ -192,36 +198,44 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
     (should (equal (cadr (car (octocat-pr--merge-rows pr (list run run))))
                    "2 workflows awaiting approval"))))
 
-(ert-deftest octocat-pr-test-reviewers-stack ()
-  "Several assignees or reviewers stack under their label, lined up after it.
-One stays on the line of the other fields; the stacks follow it in order."
+(ert-deftest octocat-pr-test-reviewers-line ()
+  "Several assignees or reviewers go on a line of their own, after the others.
+One stays on the line of the other fields; the lines follow it in order."
   (let* ((pr (json-parse-string
               (concat "{\"latestReviews\":[{\"author\":{\"login\":\"ann\"},\"state\":\"APPROVED\"}],"
                       "\"reviewRequests\":[{\"login\":\"bob\"}],"
                       "\"assignees\":[{\"login\":\"cy\"},{\"login\":\"di\"}]}")))
-         (render (lambda (fields)
-                   (with-temp-buffer
-                     (vui-render (apply #'vui-vstack (octocat-vui--field-lines fields)))
-                     (split-string (buffer-substring-no-properties (point-min) (point-max))
-                                   "\n" t))))
-         (lines (funcall render
-                         (list (cons (cons "Assignees" #'ignore)
-                                     (cons :stack (octocat-vui--login-items
+         (lines (octocat-pr-test--field-lines
+                 (list (cons (cons "Assignees" #'ignore)
+                             (cl-list* :line ", " (octocat-vui--login-items
                                                    (gethash "assignees" pr))))
-                               (cons (cons "Reviewers" #'ignore)
-                                     (cons :stack (octocat-pr--reviewers pr)))
-                               (cons "Milestone" "v1")))))
+                       (cons (cons "Reviewers" #'ignore)
+                             (cl-list* :line ", " (octocat-pr--reviewers pr)))
+                       (cons "Milestone" "v1")))))
     (should (equal (mapcar #'string-trim lines)
-                   '("Milestone v1" "Assignees @cy" "@di"
-                     "Reviewers @ann (approved)" "@bob (pending)")))
-    (should (= (string-search "@cy" (nth 1 lines)) (string-search "@di" (nth 2 lines))))
-    (should (= (string-search "@ann" (nth 3 lines)) (string-search "@bob" (nth 4 lines))))
+                   '("Milestone v1" "Assignees @cy, @di"
+                     "Reviewers @ann (approved), @bob (pending)")))
     (should (equal (mapcar #'string-trim
-                           (funcall render
-                                    (list (cons (cons "Reviewers" #'ignore)
-                                                (cons :stack (list (list (vui-text "@ann")))))
-                                          (cons "Milestone" "v1"))))
+                           (octocat-pr-test--field-lines
+                            (list (cons (cons "Reviewers" #'ignore)
+                                        (list :line ", " (list (vui-text "@ann"))))
+                                  (cons "Milestone" "v1"))))
                    '("Reviewers @ann · Milestone v1")))))
+
+(ert-deftest octocat-pr-test-field-lines-wrap ()
+  "A field's line of its own wraps within the width, lined up under its first item.
+Fields that would take the first line past the width get one too."
+  (let ((lines (octocat-pr-test--field-lines
+                (list (cons "Labels" (list :line " " "alpha" "beta" "gamma")))
+                30)))
+    (should (equal (mapcar #'string-trim lines) '("Labels alpha beta" "gamma")))
+    (should (= (string-search "alpha" (nth 0 lines)) (string-search "gamma" (nth 1 lines)))))
+  (should (equal (mapcar #'string-trim
+                         (octocat-pr-test--field-lines
+                          (list (cons "Milestone" "v1")
+                                (cons "Labels" (list :line " " "a-rather-long-label")))
+                          30))
+                 '("Milestone v1" "Labels a-rather-long-label"))))
 
 (ert-deftest octocat-pr-diff-test-review-data ()
   "Only an approval may be submitted without text, or a comment with drafts."
