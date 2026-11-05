@@ -983,10 +983,12 @@ none is queued, and only when no other prefetch or timed refetch runs."
   "Mutation name to a function of the spec's arguments returning its plist.")
 
 (defvar octocat-sync--pending nil
-  "Mutations sent and not yet answered, oldest first.
+  "Mutations submitted and not yet answered, oldest first.
 Each is a plist (:changes ALIST :edits EDITS :resources KEYS :specs SPECS
-:label LABEL :slot SLOT), where ALIST holds (ENTITY-KEY . FIELDS), EDITS
-\(RESOURCE-KEY . FUNCTION) and SPECS the specs of KEYS.")
+:label LABEL :slot SLOT :start START), where ALIST holds (ENTITY-KEY .
+FIELDS), EDITS (RESOURCE-KEY . FUNCTION) and SPECS the specs of KEYS.
+START is the function sending it while it waits its turn, see
+`octocat-sync--start-ready', and nil once sent.")
 
 (defun octocat-sync--pending-changed ()
   "Tell `octocat-sync-pending-functions' the labels of the pending mutations."
@@ -1045,6 +1047,8 @@ The newest of a slot comes first."
 
 (defun octocat-sync-submit (spec &optional on-done batch)
   "Send the mutation SPEC, applying its optimistic change at once.
+It is sent once the older mutations on its resources are answered, see
+`octocat-sync--start-ready'.
 ON-DONE, if given, is called with GitHub's answer, or (error . MESSAGE).
 On failure the change is dropped, the error shown in the echo area, and
 the resources it acts on refetched: GitHub may have made it anyway.
@@ -1070,24 +1074,54 @@ a cons, collects the specs it outdates instead of outdating them."
                 :resources (mapcar #'octocat-sync-spec-key specs)
                 :specs specs
                 :label (or (plist-get batch :label) (plist-get props :label))
-                :slot (if batch 'batch (or (plist-get props :slot) 'action)))))
+                :slot (if batch 'batch (or (plist-get props :slot) 'action))
+                :start nil))
+         (answer
+          (lambda (result)
+            (let ((outdated (and (plist-get props :invalidates)
+                                 (funcall (plist-get props :invalidates))))
+                  (held     (plist-get batch :outdated)))
+              (when held
+                (setcar held (append outdated (car held))))
+              (octocat-sync--answered
+               mutation result
+               (and (plist-get props :edits) (not (eq (car-safe result) 'error))
+                    (octocat-sync--keyed (funcall (plist-get props :edits) t result)))
+               (unless held outdated)))
+            (when on-done (funcall on-done result)))))
+    ;; A send that signals fails like one GitHub refused: it may be
+    ;; started from another mutation's answer, which must still settle.
+    (plist-put mutation :start
+               (lambda ()
+                 (let ((octocat--gh-reason 'mutation))
+                   (condition-case err
+                       (funcall (plist-get props :send) answer)
+                     (error (funcall answer (cons 'error (error-message-string err))))))))
     (setq octocat-sync--pending (append octocat-sync--pending (list mutation)))
     (octocat-sync--pending-changed)
     (octocat-sync--notify (octocat-sync--touched db mutation))
-    (let ((octocat--gh-reason 'mutation))
-      (funcall (plist-get props :send)
-               (lambda (result)
-                 (let ((outdated (and (plist-get props :invalidates)
-                                      (funcall (plist-get props :invalidates))))
-                       (held     (plist-get batch :outdated)))
-                   (when held
-                     (setcar held (append outdated (car held))))
-                   (octocat-sync--answered
-                    mutation result
-                    (and (plist-get props :edits) (not (eq (car-safe result) 'error))
-                         (octocat-sync--keyed (funcall (plist-get props :edits) t result)))
-                    (unless held outdated)))
-                 (when on-done (funcall on-done result)))))))
+    (octocat-sync--start-ready)))
+
+(defun octocat-sync--start-ready ()
+  "Send each waiting mutation that no older pending one shares a resource with.
+Mutations on one resource are sent one after another, in the order they
+were submitted, so GitHub sees them in that order: a merge sent while
+the approval is still on its way would be refused, or bypass the rule.
+A mutation acting on no resource never waits."
+  (let (ready)
+    (while (setq ready (seq-find
+                        (lambda (m)
+                          (and (plist-get m :start)
+                               (not (seq-some
+                                     (lambda (older)
+                                       (seq-intersection (plist-get older :resources)
+                                                         (plist-get m :resources)))
+                                     (seq-take-while (lambda (o) (not (eq o m)))
+                                                     octocat-sync--pending)))))
+                        octocat-sync--pending))
+      (let ((start (plist-get ready :start)))
+        (plist-put ready :start nil)
+        (funcall start)))))
 
 (defun octocat-sync-submit-each (specs label resources &optional on-done)
   "Send the mutations SPECS one after another, as one change.
@@ -1141,7 +1175,8 @@ them.  On failure the resources it acts on are outdated instead."
     (octocat-sync--notify (octocat-sync--touched db mutation))
     (octocat-sync--invalidate db (if (eq (car-safe result) 'error)
                                      (plist-get mutation :specs)
-                                   patterns))))
+                                   patterns))
+    (octocat-sync--start-ready)))
 
 (provide 'octocat-sync)
 ;;; octocat-sync.el ends here

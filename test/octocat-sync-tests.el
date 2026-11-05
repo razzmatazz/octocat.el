@@ -439,6 +439,49 @@ retry, and never once cancelled."
       (should (member "(thing 2)" (apply #'append outdated)))
       (should (equal answers '(((tag 1)) ((tag 2) error . "nope")))))))
 
+(ert-deftest octocat-sync-test-mutation-waits-its-turn ()
+  "A mutation waits for the older ones on its resources, in order, shown meanwhile.
+One on other resources, or on none, is sent at once."
+  (octocat-sync-tests--with-sync
+    (let ((sent nil) (inhibit-message t))
+      (octocat-sync-define-mutation act (n &rest specs)
+        :label (format "Act %s…" n)
+        :resources (lambda () specs)
+        :send (lambda (done) (push (cons n done) sent)))
+      (cl-flet ((answer (n result) (funcall (cdr (assoc n sent)) result)))
+        (octocat-sync-submit '(act 1 (thing 1)))
+        (octocat-sync-submit '(act 2 (thing 1) (thing 2)))
+        (octocat-sync-submit '(act 3 (thing 2)))
+        (octocat-sync-submit '(act 4 (thing 3)))
+        (octocat-sync-submit '(act 5))
+        ;; 3 waits behind 2, which waits behind 1.
+        (should (equal (mapcar #'car sent) '(5 4 1)))
+        (should (equal (plist-get (octocat-sync-read '(thing 2)) :mutating)
+                       '((action . "Act 3…") (action . "Act 2…"))))
+        ;; A failure lets the next go too: GitHub reports its own refusal.
+        (answer 1 '(error . "nope"))
+        (should (equal (mapcar #'car sent) '(2 5 4 1)))
+        (answer 2 nil)
+        (should (equal (mapcar #'car sent) '(3 2 5 4 1)))))))
+
+(ert-deftest octocat-sync-test-mutation-send-signals ()
+  "A send that signals fails its mutation, and the one waiting behind it is sent."
+  (octocat-sync-tests--with-sync
+    (let ((sent nil) (answers nil) (inhibit-message t))
+      (octocat-sync-define-mutation act (n)
+        :label "Acting…"
+        :resources (lambda () '((thing 1)))
+        :send (lambda (done)
+                (if (= n 2) (error "Boom") (push (cons n done) sent))))
+      (octocat-sync-submit '(act 1))
+      (octocat-sync-submit '(act 2) (lambda (a) (push (cons 2 a) answers)))
+      (octocat-sync-submit '(act 3))
+      (funcall (cdr (assoc 1 sent)) nil)
+      (should (equal answers '((2 error . "Boom"))))
+      (should (equal (mapcar #'car sent) '(3 1)))
+      (funcall (cdr (assoc 3 sent)) nil)
+      (should-not octocat-sync--pending))))
+
 (defmacro octocat-sync-tests--with-edit (&rest body)
   "Run BODY with resource (thing 1) stored and mutation `add' defined.
 `add' appends \"N?\" to its \"items\" while it runs, and what GitHub
