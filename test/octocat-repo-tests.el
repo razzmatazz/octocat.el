@@ -615,12 +615,6 @@ A refresh asks GitHub again, which never answers."
         (forward-line 1)))
     (nreverse out)))
 
-(defun octocat-tree-tests--settle ()
-  "Run the page's pending re-renders and timers, as the jump to a link's lines."
-  (dotimes (_ 3)
-    (vui-flush-sync)
-    (accept-process-output nil 0.01)))
-
 (defun octocat-tree-tests--goto-file-line (n)
   "Move point to the start of line N of the file shown."
   (goto-char (point-min))
@@ -660,7 +654,6 @@ The page's URL names the line of point, or the region's."
       (octocat-tree--open-file-by-path "owner/repo" "dev" "src/a.el" '(lines 3 5))
       (unwind-protect
           (progn
-            (octocat-tree-tests--settle)
             (should (equal (octocat-tree-tests--highlighted-lines) '(3 4 5)))
             (should (looking-at-p "(line 3)"))
             (should (equal (octocat-file--page-url)
@@ -695,7 +688,6 @@ The page's URL names the line of point, or the region's."
                            "https://github.com/owner/repo/blob/dev/src/a.el"))
             ;; A new link to the open page moves the highlight.
             (octocat-tree--open-file-by-path "owner/repo" "dev" "src/a.el" '(lines 20 20))
-            (octocat-tree-tests--settle)
             (should (equal (octocat-tree-tests--highlighted-lines) '(20)))
             (should (looking-at-p "(line 20)")))
         (kill-buffer)))))
@@ -708,7 +700,6 @@ The page's URL names the line of point, or the region's."
       (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md" '(lines 3 3))
       (unwind-protect
           (progn
-            (octocat-tree-tests--settle)
             (should (string-match-p "^# Guide$" (buffer-string)))
             (should (equal (octocat-tree-tests--highlighted-lines) '(3)))
             (should (looking-at-p "Text\\."))
@@ -1071,7 +1062,6 @@ It does not fold, however long."
                       (number-sequence 1 5))))
     (with-temp-buffer
       (octocat-tree-tests--mount-full-tree nil "f04")
-      (accept-process-output nil 0.01)
       (should (equal (octocat-tree--path-at-point) "f04")))))
 
 (ert-deftest octocat-tree-test-commits-page ()

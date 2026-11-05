@@ -582,9 +582,8 @@ keymaps."
 A hook: call it during render."
   (let ((buf (current-buffer)))
     (vui-use-effect (focus paths)
-      ;; After the render: a first mount ends at `point-min'.
       (when (and focus (member focus paths))
-        (run-at-time 0 nil #'octocat-tree--jump-to buf focus))
+        (octocat-tree--jump-to buf focus))
       nil)))
 
 (defun octocat-tree--older-last-commits (stored commit sha)

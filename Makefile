@@ -135,7 +135,9 @@ test:
 # first step wrote, and fails on a "━" section too.  Its make, under ci's
 # -j, would warn of the jobserver.  The steps are also targets of their
 # own: CI builds melpazoid's image between them, with its layers cached,
-# as building it compiles Emacs.
+# as building it compiles Emacs.  The layer installing the dependencies
+# is cached on _requirements.el, which names only `(vui "0.1")': the vui
+# that deps installed is added to it, so a new vui builds it again.
 MELPAZOID_COMMIT := fcf5d883c6ced74ba16963d48c9e9e0bf0a1ff37
 MELPAZOID_RECIPE := (octocat :fetcher github :repo "razzmatazz/octocat.el")
 MELPAZOID_MAKE = MAKEFLAGS= MFLAGS= $(MAKE) -s -C .ci/melpazoid-build DOCKER="$(DOCKER)" \
@@ -165,6 +167,8 @@ melpazoid-prepare:
 	    echo "melpazoid: found something, see above"; exit 1; fi
 	@cp -a .ci/melpazoid .ci/melpazoid-build && rm -rf .ci/melpazoid-build/pkg && \
 	  cp -a .ci/melpazoid-out/. .ci/melpazoid-build
+	@echo ";; $$(ls .eldev/$(EMACS)/packages | grep '^vui-' | sort | tail -1)" \
+	  >> .ci/melpazoid-build/_requirements.el
 
 # Its build's log shows only when the build fails.  Its FROM is
 # BASE_IMAGE too, so Podman skips the registry for it, as for ours.

@@ -369,8 +369,7 @@ A thread that can be resolved ends in a button doing it, a row apart."
 
 (defun octocat-diff-tests--files-with (at)
   "Mount the Files section of a.el and b.el, folded, AT the lines a link named.
-Return the buffer, current, once point has moved there.  Mounted, as a
-page is: `vui-render' would put point back at the top."
+Return the buffer, current, once point has moved there."
   (let ((buf (generate-new-buffer " *files*")))
     (set-buffer buf)
     (vui-mount (vui-component 'octocat-diff--files
@@ -383,9 +382,6 @@ page is: `vui-render' would put point back at the top."
                                    f))
                   :fits nil :raw nil :width 80 :at at)
                (buffer-name))
-    (dotimes (_ 3)
-      (vui-flush-sync)
-      (accept-process-output nil 0.01))
     buf))
 
 (ert-deftest octocat-diff-test-files-total ()

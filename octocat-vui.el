@@ -1362,11 +1362,8 @@ keeps its state (see docs/using-vui.md); a part that must start afresh
 for the new props takes them as its :key.  Return nil when the buffer
 has no page."
   (when-let* ((root (vui-get-instance)))
-    (let ((new (copy-sequence (vui-instance-props root))))
-      (while props
-        (setq new (plist-put new (pop props) (pop props))))
-      (vui-update-props root new)
-      t)))
+    (apply #'vui-set-props root props)
+    t))
 
 (defvar-local octocat-vui--page nil
   "The page `octocat-vui-refresh-page' mounted here: (COMPONENT ID INSTANCE).")
@@ -2237,8 +2234,7 @@ A [clear] button shows when it differs from the default."
 
 (defun octocat-vui-list-marks ()
   "Return the numbers of the items marked in the current list buffer."
-  (when-let* ((page (vui-get-instance)))
-    (plist-get (vui-instance-state page) :marks)))
+  (vui-get-state (vui-get-instance) :marks))
 
 (defun octocat-vui-list--item-at (pos)
   "Return the number of the list item at POS, or nil."
