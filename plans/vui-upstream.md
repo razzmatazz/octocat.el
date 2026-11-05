@@ -1,8 +1,8 @@
 # What to ask of vui.el upstream
 
 Places where octocat works around vui.el, and what upstream could
-offer instead.  Each was checked against vui master 80a31b6
-(2026-11-04), and all are filed.  File a new one at
+offer instead.  Each was checked against vui master ab55d98
+(2026-11-05), and all are filed.  File a new one at
 https://github.com/d12frosted/vui.el/issues, each with a repro run
 against vui master first: its code moves fast, and a fix can leave the
 code that looked at fault in place
@@ -21,6 +21,9 @@ item here.
   current ones.
 - **Filed:** https://github.com/d12frosted/vui.el/issues/296, with a
   repro on vui master e3f1795, as a question of how vui would have it.
+- **Fixed** on vui master by #302 (ab55d98), as `vui-set-props`, which
+  does what `octocat-vui-update-page` does by hand.  MELPA's vui
+  (20261104.2125) predates it: port once it has it.
 
 ## 2. A component's state is read from outside
 
@@ -60,3 +63,8 @@ link buttons, which a button's label cannot).
   `vui-goto-key` also matching a keyed `vui-region`.
 - **Filed:** https://github.com/d12frosted/vui.el/issues/295, with a
   repro on vui master e3f1795, leaving the shape of a fix to upstream.
+- **Fixed** on vui master by #301 (bb7c008): the first render puts point
+  at the start before its effects run, so an effect can move it.  Both
+  timers can go, once MELPA's vui has it; `octocat--goto-line-target`
+  still has to recenter each window showing the buffer, which on a
+  first mount may not show it yet.
