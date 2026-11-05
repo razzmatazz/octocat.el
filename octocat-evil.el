@@ -73,17 +73,16 @@
 `evil-ret' would treat the field as a button without an action and
 insert a newline into it."
   (interactive)
-  (let ((widget (octocat-vui-list--query-widget)))
-    (if (and widget (eq (widget-field-at (point)) widget))
-        (octocat-evil-list-edit-query)
-      (call-interactively #'evil-ret))))
+  (if (octocat-vui-list--query-at-point)
+      (octocat-evil-list-edit-query)
+    (call-interactively #'evil-ret)))
 
 (defun octocat-evil-field-ret ()
   "Edit the field at point from the end of its text, else `evil-ret'.
 `evil-ret' would insert a newline into the field."
   (interactive)
-  (if-let* ((widget (widget-field-at (point))))
-      (progn (goto-char (octocat-vui-field-value-end widget))
+  (if-let* ((field (vui-field-at)))
+      (progn (goto-char (octocat-vui-field-value-end field))
              (evil-insert-state))
     (call-interactively #'evil-ret)))
 

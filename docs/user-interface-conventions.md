@@ -26,10 +26,8 @@ control (see "Brackets mean \"button\"" below).
 ### Folds
 
 A fold's toggle must be reachable with TAB, and its title must keep its
-own faces.  A `vui-button` gives the first but draws its label in one face;
-a row gives the second but is not a TAB stop.  So a fold header is both:
-the ▸/▾ marker is a `vui-button`, the TAB stop, and the title after it is
-an `octocat-vui-row`.  RET on either toggles.  `octocat-vui-fold-header`
+own faces.  So a fold header is one `vui-button`, the ▸/▾ marker and the
+title, whose faces show over the button's.  `octocat-vui-fold-header`
 builds it, for `octocat-vui-fold`:
 
 ```

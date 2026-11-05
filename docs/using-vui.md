@@ -4,11 +4,10 @@ Gotchas of vui.el as octocat uses it, and how the code works around them.
 
 ## Layout
 
-- Folds use `octocat-vui-fold`, not `vui-collapsible`: the latter's toggle
-  draws the whole title in the `link` face, losing the icons and status
-  faces in it.
-- Rows use `vui-text` inside a `vui-region` (not `vui-button`) so per-segment
-  faces are preserved; see "Rows of PRs, issues and commits" in `octocat-vui.el`.
+- Folds use `octocat-vui-fold`, not `vui-collapsible`: it animates, builds
+  its body only once unfolded, and follows "Expand all".
+- Rows use `vui-text` inside a `vui-region`, not `vui-button`: a row may
+  hold link buttons, which a button's label cannot.
 
 ## Moving point from an effect
 
@@ -37,13 +36,11 @@ state.
 
 ## Timers
 
-Every repeating timer goes through `octocat-vui-use-timer`, never a bare
-`run-with-timer`.  It ties the timer to the component: it is cancelled
-when the component unmounts or the hook's dependencies change, when the
-callback returns nil (done), and when the callback signals, so a broken
-frame is reported once instead of on every tick.  A callback that sets
-state to the value it already has does not re-render, so a timer that
-only stopped on a re-render would run forever: return nil instead.
+Every repeating timer is a `vui-use-interval`, never a bare
+`run-with-timer`, so it stops when its component unmounts.  Its BODY
+returns `:stop` when done: a BODY that sets state to the value it
+already has does not re-render, so a timer that waited for SECONDS to
+turn nil would run forever.
 
 ## Update a page in place; don't remount it
 

@@ -595,31 +595,6 @@ INDENT columns \(default two).  The flush-left list pages pass 0."
        :help-echo (if loading nil help-echo)
        :on-click on-click))))
 
-(defmacro octocat-vui-use-timer (deps interval active &rest body)
-  "Run BODY every INTERVAL seconds while ACTIVE, tied to the component.
-The timer is started when the component renders with ACTIVE true, and
-restarted when DEPS, a list of variables like `vui-use-effect' takes,
-change; ACTIVE should depend only on them.  It is cancelled when DEPS
-change, when the component unmounts, when BODY returns nil (done), and
-when BODY signals an error, so a broken frame is reported once instead
-of on every tick.  BODY runs in the component's context, so it may call
-`vui-set-state'.  Every octocat timer goes through here."
-  (declare (indent 3))
-  (let ((timer (make-symbol "timer")))
-    `(vui-use-effect ,deps
-       (when ,active
-         (let ((,timer nil))
-           (setq ,timer
-                 (run-with-timer
-                  ,interval ,interval
-                  (vui-with-async-context
-                   (condition-case err
-                       (unless (progn ,@body)
-                         (cancel-timer ,timer))
-                     (error (cancel-timer ,timer)
-                            (signal (car err) (cdr err)))))))
-           (lambda () (cancel-timer ,timer)))))))
-
 (defconst octocat-vui-unfold-growth 0.4
   "How much of the distance still to go each frame of an animation moves.
 At least two things, so an animation eases out onto its end.")
@@ -833,20 +808,20 @@ line RET was pressed on, where the rest starts."
     ;; `octocat-vui-unfold-step') until all show.  It exists only while
     ;; that is going on.
     (let ((now visible))
-      (octocat-vui-use-timer (unfolding) octocat-vui-unfold-interval unfolding
+      (vui-use-interval () (and unfolding octocat-vui-unfold-interval)
         (setq now (octocat-vui--unfold-next now limit total))
         (vui-set-state :shown now)
-        (< now total)))
+        (unless (< now total) :stop)))
     ;; Fold back the same way, in reverse.
     (let ((now visible))
-      (octocat-vui-use-timer (closing) octocat-vui-unfold-interval closing
+      (vui-use-interval () (and closing octocat-vui-unfold-interval)
         (setq now (octocat-vui--unfold-next now total limit))
         (if (> now limit)
             (vui-set-state :shown now)
           (vui-set-state :shown nil)
           (vui-set-state :open nil)
-          (vui-set-state :closing nil))
-        (> now limit)))
+          (vui-set-state :closing nil)
+          :stop)))
     (vui-fragment
      (funcall render visible)
      (when folds
@@ -929,11 +904,11 @@ The timer exists only while items are being revealed."
     (let* ((v          (car cell))
            (visible    (aref v 0))
            (unfolding  (< visible total)))
-      (octocat-vui-use-timer (unfolding) octocat-vui-unfold-interval unfolding
+      (vui-use-interval () (and unfolding octocat-vui-unfold-interval)
         (let ((all (aref v 1)))
           (aset v 0 (octocat-vui--unfold-next (aref v 0) (aref v 2) all))
-          (vui-set-state :tick (lambda (n) (1+ n)))
-          (< (aref v 0) all)))
+          (vui-set-state :tick #'1+)
+          (unless (< (aref v 0) all) :stop)))
       (funcall render (seq-take items visible)))))
 
 (vui-defcomponent octocat-vui-fold (header prepare deps bulk)
@@ -974,12 +949,12 @@ called during render, like any hook."
   (let* ((now    (min shown total))
          (target (if open total 0))
          (moving (/= now target)))
-    (octocat-vui-use-timer (moving open total) octocat-vui-unfold-interval moving
+    (vui-use-interval (open total) (and moving octocat-vui-unfold-interval)
       (setq now (octocat-vui--unfold-next now (- total target) target))
       (vui-set-state :shown now)
       ;; Done at the target: setting the same value again would not
       ;; re-render, so the timer would never be cleaned up.
-      (/= now target))
+      (when (= now target) :stop))
     now))
 
 (vui-defcomponent octocat-vui-unfolding-text (text open)
@@ -1007,20 +982,19 @@ which the caller keeps, typically in its state, and passes to every fold."
 (defun octocat-vui-fold-header (indent open toggle title help)
   "Return a header row for `octocat-vui-fold': a ▸/▾ marker, then TITLE.
 INDENT starts the row.  OPEN and TOGGLE are as the fold passes them;
-HELP is a pair of hints, for when the fold is closed and open.  The
-marker is a button, so TAB stops on it; the title is a row, so its own
-faces show (a button would draw it in one face).  RET on either toggles."
-  (let ((hint (if open (cdr help) (car help))))
-    (vui-hstack
-     :spacing 0
-     (vui-text indent)
-     (vui-button (if open "▾" "▸")
-       :no-decoration t
-       :face 'octocat-dimmed
-       :key 'fold-toggle
-       :help-echo hint
-       :on-click toggle)
-     (octocat-vui-row (concat " " title) toggle hint))))
+HELP is a pair of hints, for when the fold is closed and open.  Marker
+and title are one button, a TAB stop that keeps TITLE's faces and the
+`help-echo' of its parts."
+  (vui-hstack
+   :spacing 0
+   (vui-text indent)
+   (vui-button (octocat-vui--default-help-echo
+                (concat (propertize (if open "▾" "▸") 'face 'octocat-dimmed) " " title)
+                (if open (cdr help) (car help)))
+     :no-decoration t
+     :face 'default
+     :key 'fold-toggle
+     :on-click toggle)))
 
 (defun octocat-vui-text-body (text)
   "Return TEXT as the (TOTAL . RENDER) body of an `octocat-vui-fold'."
@@ -1956,26 +1930,29 @@ takes the input as typed."
 (defvar octocat-vui-list-query-submit-hook nil
   "Hook run in a list buffer when its query field is submitted.")
 
-(defun octocat-vui-list--query-widget ()
-  "Return the query field widget of the current buffer, or nil."
-  (seq-find (lambda (widget) (eq (vui-element-get widget :vui-key) :query))
-            widget-field-list))
+(defun octocat-vui-list--query-at-point ()
+  "Return the query field if point is in it, else nil."
+  (when-let* ((field (vui-field-at)))
+    (and (eq (vui-element-get field :vui-key) :query) field)))
 
 (defun octocat-vui-list--qualifier-capf ()
   "Complete a search qualifier before point in the query field.
 See `octocat-vui-list--qualifiers'."
-  (when-let* ((widget (octocat-vui-list--query-widget))
-              ((eq (widget-field-at (point)) widget)))
+  (when-let* ((field (octocat-vui-list--query-at-point)))
     (let ((end (point))
           (beg (save-excursion
-                 (skip-chars-backward "^[:space:]" (widget-field-start widget))
+                 (skip-chars-backward "^[:space:]" (car (vui-element-bounds field)))
                  (point))))
       (list beg end octocat-vui-list--qualifiers))))
 
-(defun octocat-vui-field-value-end (widget)
-  "Return the position after the text of the field WIDGET."
-  ;; The field is padded with spaces, which its value leaves out.
-  (+ (widget-field-start widget) (length (widget-value widget))))
+(defun octocat-vui-field-value-end (field)
+  "Return the position after the text of FIELD, from `vui-field-at'."
+  ;; The field is padded with spaces up to its size.
+  (let ((bounds (vui-element-bounds field)))
+    (save-excursion
+      (goto-char (cdr bounds))
+      (skip-chars-backward " " (car bounds))
+      (point))))
 
 (defvar octocat-vui-field-next-hook nil
   "Hook run as `octocat-vui-field-next' leaves a field.")
@@ -1991,7 +1968,7 @@ For a form's field, whose RET should not send the form."
   (interactive)
   (octocat-vui-list--check-filterable)
   (goto-char (octocat-vui-field-value-end
-              (or (octocat-vui-list--query-widget)
+              (or (vui-element-by-key :query)
                   (user-error "Octocat: No query field on this page")))))
 
 (defun octocat-vui-list--query-submitted (query)
