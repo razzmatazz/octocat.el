@@ -2012,18 +2012,5 @@ CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
                    (lambda (output) (split-string output "\n" t))
                    callback))
 
-(defun octocat--branch-candidates (names default local)
-  "Return branch NAMES ordered for a picker, as GitHub's branch dropdown.
-DEFAULT (the default branch) comes first, then LOCAL (the checked-out
-branch) when it was pushed, then the rest as given."
-  (let ((front (delete-dups (seq-filter (lambda (b) (and b (member b names)))
-                                        (list default local)))))
-    (append front (seq-difference names front))))
-
-(defun octocat--branch-note (branch default local)
-  "Return the picker annotation of BRANCH, given DEFAULT and LOCAL, or nil."
-  (cond ((equal branch default) "  default")
-        ((equal branch local)   "  checked out")))
-
 (provide 'octocat-core)
 ;;; octocat-core.el ends here

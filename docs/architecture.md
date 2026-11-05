@@ -24,10 +24,10 @@ From the bottom up:
   and parsers behind them.  It draws nothing; a page that needs the same
   knowledge, such as a resource's spec or the shape of its data, calls
   its public `octocat-model-` functions.
-- **`octocat-vui`**: components and helpers on top of vui.el, and the
-  branch picker.  Its `octocat-page-mode` is the parent major mode of
-  every page: setup all pages share goes in its body, and a page's own
-  mode keeps only what differs.
+- **`octocat-vui`**: components and helpers on top of vui.el.  Its
+  `octocat-page-mode` is the parent major mode of every page: setup all
+  pages share goes in its body, and a page's own mode keeps only what
+  differs.
 - **Shared parts of pages**: `octocat-edit`, `octocat-timeline`.
 - **Pages**: one module per kind of page, or per group of related
   pages, such as `octocat-pr` (a PR's conversation, commits and files
@@ -94,6 +94,7 @@ flowchart TD
   octocat[octocat]
   octocat_actions --> octocat_core
   octocat_actions --> octocat_mermaid
+  octocat_actions --> octocat_repo
   octocat_actions --> octocat_sync
   octocat_actions --> octocat_vui
   octocat_core --> octocat_image
@@ -205,7 +206,7 @@ flowchart TD
 <!-- module-list -->
 | Module | What it is | Requires |
 |---|---|---|
-| `octocat-actions` | GitHub Actions and commit checks for octocat | `octocat-core`, `octocat-mermaid`, `octocat-sync`, `octocat-vui` |
+| `octocat-actions` | GitHub Actions and commit checks for octocat | `octocat-core`, `octocat-mermaid`, `octocat-repo`, `octocat-sync`, `octocat-vui` |
 | `octocat-avatar` | Draw an avatar image as coloured ASCII art |  |
 | `octocat-core` | Shared infrastructure for octocat | `octocat-image`, `octocat-markdown` |
 | `octocat-dashboard` | GitHub account dashboard for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |

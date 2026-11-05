@@ -47,6 +47,7 @@
 (require 'seq)
 (require 'octocat-core)
 (require 'octocat-mermaid)
+(require 'octocat-repo) ; `octocat--read-branch'
 (require 'octocat-sync)
 (require 'octocat-vui)
 (require 'vui)

@@ -88,6 +88,7 @@ Load order: `octocat-mermaid.el` first (standalone), then
 that; `octocat-core.el` requires both), then
 `octocat-core.el` (everything else depends on it), then `octocat-sync.el`,
 then `octocat-model.el` (`octocat-vui.el` requires both), then `octocat-vui.el`, then
+`octocat-repo.el` (its branch picker is the workflow page's too), then
 `octocat-actions.el` and `octocat-diff.el` (the diff and commit pages,
 which require actions) before `octocat-pr.el`, which requires both;
 `octocat-dashboard.el` after `octocat-pr.el` and `octocat-issue.el`;
@@ -137,9 +138,9 @@ string rather than `ok` is an error — fix it before proceeding):
   (dolist (f (list "octocat-mermaid.el" "octocat-markdown.el"
                    "octocat-image.el" "octocat-core.el" "octocat-sync.el" "octocat-model.el"
                    "octocat-vui.el"
-                   "octocat-edit.el" "octocat-actions.el" "octocat-diff.el"
+                   "octocat-edit.el" "octocat-repo.el"
+                   "octocat-actions.el" "octocat-diff.el"
                    "octocat-timeline.el" "octocat-pr.el" "octocat-issue.el"
-                   "octocat-repo.el"
                    "octocat-search.el" "octocat-avatar.el"
                    "octocat-user.el" "octocat-doctor.el" "octocat-dashboard.el"
                    "octocat-evil.el" "octocat.el"))
