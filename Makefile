@@ -69,9 +69,12 @@ image:
 	$(DOCKER) build $(NO_PULL) --build-arg EMACS=$(EMACS) -t $(IMAGE) .
 
 # The linters too, as lint and test run at once, against the same .eldev.
+# Then upgraded, as prepare keeps what is installed: vui comes from MELPA
+# snapshots, which `(vui "0.1")' all satisfy, so octocat is checked
+# against the latest, as users install it.
 deps:
 	@mkdir -p .eldev
-	$(RUN_ONLINE) eldev prepare build test lint exec
+	$(RUN_ONLINE) sh -c 'eldev prepare build test lint exec && eldev upgrade'
 
 clean:
 	find . -maxdepth 1 -name '*.elc' -delete
