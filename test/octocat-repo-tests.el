@@ -266,23 +266,6 @@
           (should-not (octocat-repo--tracked-branch clone)))
       (delete-directory root t))))
 
-(ert-deftest octocat-repo-test-parse-history ()
-  "History edges become REST-shaped commits that keep their cursor."
-  (let* ((json "{\"data\":{\"repository\":{\"object\":{\"history\":{\"edges\":[{\"cursor\":\"abc 0\",\"node\":{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}},{\"cursor\":\"abc 1\",\"node\":{\"oid\":\"def\",\"messageHeadline\":\"Old\",\"authoredDate\":\"2026-10-13T00:00:00Z\",\"author\":{\"name\":\"Bo\",\"email\":\"b@x\",\"user\":null}}}]}}}}}")
-         (commits (octocat-model--repo-parse-history json))
-         (first   (car commits)))
-    (should (equal (gethash "sha" first) "abc"))
-    (should (equal (gethash "message" (gethash "commit" first)) "Fix it"))
-    (should (equal (octocat--commit-author first) "@ann"))
-    (should (equal (octocat--commit-author (cadr commits)) "Bo"))
-    (should (equal (gethash "cursor" (cadr commits)) "abc 1"))
-    (should-not (gethash "total" first)))
-  (should (equal (gethash "total" (car (octocat-model--repo-parse-history
-                                        "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":7,\"edges\":[{\"cursor\":\"c\",\"node\":{\"oid\":\"abc\"}}]}}}}}")))
-                 7))
-  (should-error (octocat-model--repo-parse-history
-                 "{\"data\":{\"repository\":{\"object\":null}}}")))
-
 (ert-deftest octocat-repo-test-numbers-link ()
   "Each number opens its own issue, in its repository when another."
   (let* ((refs (json-parse-string
@@ -341,22 +324,6 @@
     (should (equal (get-text-property (string-search "shots" text)
                                       'octocat-markdown-url text)
                    "https://github.com/o/r/blob/dev/docs/shots/README.md"))))
-
-(ert-deftest octocat-repo-test-parse-head ()
-  "A directory at a ref has its last commit, its tree and its history count."
-  (let ((head (octocat-model--repo-parse-head
-               "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\"}}}}"
-               "main" "src")))
-    (should (equal (gethash "sha" head) "abc"))
-    (should (equal (octocat--commit-author head) "@ann"))
-    (should (equal (gethash "tree" head) "t1"))
-    (should (equal (gethash "kind" head) "tree"))
-    (should (equal (gethash "total" head) 42)))
-  (should-error (octocat-model--repo-parse-head
-                 "{\"data\":{\"repository\":{\"object\":null,\"dir\":null}}}" "nope" nil))
-  (should-error (octocat-model--repo-parse-head
-                 "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":0,\"nodes\":[]}},\"dir\":null}}}"
-                 "main" "missing")))
 
 (ert-deftest octocat-repo-test-file-notice ()
   "A binary or large file is not shown unasked; an image or small file is."
@@ -857,16 +824,6 @@ the margin as wide whatever the window."
     (should (equal (string-search "│" (nth 0 lines)) (1+ octocat-repo--blame-width)))
     ;; Copying leaves the blame column out, keeping only the code.
     (should (equal (octocat-markdown-copy-text text) "a\nb\nc"))))
-
-(ert-deftest octocat-tree-test-parse-last-commits ()
-  "Each path gets the commit of its alias; one with no history is left out."
-  (let ((got (octocat-model--tree-parse-last-commits
-              (concat "{\"data\":{\"repository\":{\"object\":{"
-                      "\"e0\":{\"nodes\":[{\"oid\":\"a1\",\"messageHeadline\":\"One\"}]},"
-                      "\"e1\":{\"nodes\":[]}}}}}")
-              '("README.md" "gone"))))
-    (should (equal (gethash "sha" (gethash "README.md" got)) "a1"))
-    (should-not (gethash "gone" got))))
 
 (ert-deftest octocat-tree-test-older-last-commits ()
   "An older commit's last commits stand in, the newest at the same tree first."

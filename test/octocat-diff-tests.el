@@ -501,15 +501,6 @@ Only that file; a hash naming none changes nothing."
     (should (equal (octocat-vui--date both)
                    (octocat--format-ts-relative "2026-10-02T10:00:00Z")))))
 
-(ert-deftest octocat-commit-test-parse-branch ()
-  "The default branch holds a commit behind its head or at it, not one ahead."
-  (dolist (case '(("BEHIND" . "main") ("IDENTICAL" . "main") ("AHEAD" . :null) ("DIVERGED" . :null)))
-    (should (equal (gethash "name"
-                            (octocat-model--commit-parse-branch
-                             (format "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\",\"compare\":{\"status\":\"%s\"}}}}}"
-                                     (car case))))
-                   (cdr case)))))
-
 (ert-deftest octocat-commit-test-date-as-git ()
   "A date reads as `git show' prints it, its age after it."
   (let ((commit (json-parse-string

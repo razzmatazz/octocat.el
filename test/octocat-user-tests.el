@@ -33,40 +33,5 @@
       (should (equal (nth 2 lines) "@github"))
       (should (equal (nth 3 lines) "3 followers  ·  1 following  ·  8 public repos")))))
 
-(ert-deftest octocat-user-test-parse-pinned ()
-  "Pinned repositories become repo entities; gists and unknown owners drop out."
-  (let* ((tree (octocat-model--user-parse-pinned
-                (concat "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":["
-                        "{\"nameWithOwner\":\"bob/App\",\"description\":null,"
-                        "\"stargazerCount\":7,\"primaryLanguage\":{\"name\":\"Go\"},"
-                        "\"pushedAt\":\"2026-01-01T10:00:00Z\",\"isFork\":false,\"isArchived\":true},"
-                        "{}]}}}}")))
-         (nodes (gethash "nodes" tree)))
-    (should (= (length nodes) 1))
-    (should (equal (octocat-sync--entity-key (aref nodes 0)) "repo:bob/app"))
-    (should (eq (gethash "isArchived" (octocat-sync--entity-fields (aref nodes 0))) t))
-    (should (equal (gethash "nodes" (octocat-model--user-parse-pinned
-                                     "{\"data\":{\"repositoryOwner\":null}}"))
-                   []))))
-
-(ert-deftest octocat-user-test-repos-share-entities ()
-  "The REST list and the pinned list write one entity per repository."
-  (let ((db (octocat-sync--create (sqlite-open nil))))
-    (octocat-sync--write
-     db "pinned"
-     (octocat-model--user-parse-pinned
-      "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":[{\"nameWithOwner\":\"bob/app\",\"description\":\"old\",\"isFork\":false}]}}}}")
-     1.0)
-    (should (equal (sort (octocat-sync--write
-                          db "repos"
-                    (octocat-model--user-parse-repos
-                     "[{\"full_name\":\"bob/app\",\"description\":\"new\",\"language\":\"Go\",\"fork\":false}]")
-                          2.0)
-                         #'string<)
-                   '("pinned" "repos")))
-    (let ((repo (aref (gethash "nodes" (car (octocat-sync--read db "pinned"))) 0)))
-      (should (equal (gethash "description" repo) "new"))
-      (should (equal (gethash "name" (gethash "primaryLanguage" repo)) "Go")))))
-
 (provide 'octocat-user-tests)
 ;;; octocat-user-tests.el ends here

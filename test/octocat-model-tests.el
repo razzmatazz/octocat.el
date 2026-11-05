@@ -1,0 +1,289 @@
+;;; octocat-model-tests.el --- ERT tests for octocat-model.el  -*- lexical-binding: t; -*-
+
+;; Assisted-by: Claude:claude-opus-5-5
+
+;;; Commentary:
+
+;; Run via:
+;;   eldev test test/octocat-model-tests.el
+
+;;; Code:
+
+(require 'cl-lib)
+(require 'ert)
+(require 'octocat)
+
+;;;; Issues
+
+(ert-deftest octocat-model-test-issue-shares-entity-with-list ()
+  "The issue page and the list store one entity; the comments stay with the page."
+  (let ((db (octocat-sync--create (sqlite-open nil)))
+        (issue (json-parse-string
+                (concat "{\"number\":12,\"title\":\"Crash\",\"state\":\"OPEN\","
+                        "\"author\":{\"login\":\"alice\",\"is_bot\":false},"
+                        "\"labels\":[],\"comments\":[{\"body\":\"me too\"}]}"))))
+    (octocat-sync--write db "list"
+                         (octocat-model-list-tree
+                          'issues "o/r"
+                          (list :items (list (json-parse-string
+                                              "{\"number\":12,\"title\":\"Old\",\"commentCount\":0}"))))
+                         1.0)
+    (should (member "list"
+                    (octocat-sync--write
+                     db "issue"
+                     (octocat-model-detail issue '("comments")
+                                          (lambda (f) (octocat-model-item 'issue "o/r" f)))
+                     2.0)))
+    (let ((row (aref (gethash "nodes" (car (octocat-sync--read db "list"))) 0)))
+      (should (equal (gethash "title" row) "Crash"))
+      (should (= (gethash "commentCount" row) 1))
+      (should-not (gethash "comments" row)))
+    (let ((page (octocat-model-detail-item (car (octocat-sync--read db "issue")))))
+      (should (equal (gethash "login" (gethash "author" page)) "alice"))
+      (should (equal (gethash "body" (aref (gethash "comments" page) 0)) "me too")))))
+
+(ert-deftest octocat-model-test-issue-parse-created ()
+  "The number is read from the URL `gh issue create' prints."
+  (should (= (octocat-model--issue-parse-created
+              "https://github.com/o/r/issues/42\n")
+             42))
+  (should-error (octocat-model--issue-parse-created "oops")))
+
+;;;; Pull requests and reviews
+
+(ert-deftest octocat-model-test-pr-merge-args ()
+  "Merge and squash pass the message split into subject and body; rebase none."
+  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Squash" "Fix (#7)\n\n* a\n* b" t)
+                 '("pr" "merge" "7" "--repo" "o/r" "--squash"
+                   "--subject" "Fix (#7)" "--body" "* a\n* b" "--delete-branch")))
+  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Merge" "Merge it" nil)
+                 '("pr" "merge" "7" "--repo" "o/r" "--merge"
+                   "--subject" "Merge it" "--body" "")))
+  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Rebase" "ignored" nil)
+                 '("pr" "merge" "7" "--repo" "o/r" "--rebase"))))
+
+(ert-deftest octocat-model-test-review-review-args ()
+  "A review passes its flag, and its body only when there is one."
+  (should (equal (octocat-model--review-args "o/r" 7 "--approve" "")
+                 '("pr" "review" "7" "--repo" "o/r" "--approve")))
+  (should (equal (octocat-model--review-args "o/r" 7 "--comment" "LGTM")
+                 '("pr" "review" "7" "--repo" "o/r" "--comment" "--body" "LGTM"))))
+
+(ert-deftest octocat-model-test-review-parse-threads ()
+  "The pages' threads join; with no pending review, \"pending\" is nil."
+  (let* ((page (lambda (reviews threads)
+                 (format (concat "{\"data\":{\"repository\":{\"pullRequest\":{"
+                                 "\"id\":\"PR1\",\"headRefOid\":\"abc\","
+                                 "\"reviews\":{\"nodes\":[%s]},"
+                                 "\"reviewThreads\":{\"nodes\":[%s]}}}}}")
+                         reviews threads)))
+         (none (octocat-model--review-parse-threads
+                (format "[%s,%s]" (funcall page "" "{\"id\":\"T1\"}")
+                        (funcall page "" "{\"id\":\"T2\"}"))))
+         (some (octocat-model--review-parse-threads
+                (format "[%s]" (funcall page "{\"id\":\"R1\",\"commit\":{\"oid\":\"def\"}}"
+                                        "")))))
+    (should (equal (gethash "id" none) "PR1"))
+    (should (equal (gethash "head" none) "abc"))
+    (should-not (gethash "pending" none))
+    (should (equal (mapcar (lambda (th) (gethash "id" th)) (gethash "threads" none))
+                   '("T1" "T2")))
+    (should (equal (octocat--get some "pending" "id") "R1"))
+    (should (equal (octocat--get some "pending" "commit") "def"))))
+
+;;;; Commits
+
+(ert-deftest octocat-model-test-commit-parse-branch ()
+  "The default branch holds a commit behind its head or at it, not one ahead."
+  (dolist (case '(("BEHIND" . "main") ("IDENTICAL" . "main") ("AHEAD" . :null) ("DIVERGED" . :null)))
+    (should (equal (gethash "name"
+                            (octocat-model--commit-parse-branch
+                             (format "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\",\"compare\":{\"status\":\"%s\"}}}}}"
+                                     (car case))))
+                   (cdr case)))))
+
+;;;; Repository code
+
+(ert-deftest octocat-model-test-repo-parse-history ()
+  "History edges become REST-shaped commits that keep their cursor."
+  (let* ((json "{\"data\":{\"repository\":{\"object\":{\"history\":{\"edges\":[{\"cursor\":\"abc 0\",\"node\":{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}},{\"cursor\":\"abc 1\",\"node\":{\"oid\":\"def\",\"messageHeadline\":\"Old\",\"authoredDate\":\"2026-10-13T00:00:00Z\",\"author\":{\"name\":\"Bo\",\"email\":\"b@x\",\"user\":null}}}]}}}}}")
+         (commits (octocat-model--repo-parse-history json))
+         (first   (car commits)))
+    (should (equal (gethash "sha" first) "abc"))
+    (should (equal (gethash "message" (gethash "commit" first)) "Fix it"))
+    (should (equal (octocat--commit-author first) "@ann"))
+    (should (equal (octocat--commit-author (cadr commits)) "Bo"))
+    (should (equal (gethash "cursor" (cadr commits)) "abc 1"))
+    (should-not (gethash "total" first)))
+  (should (equal (gethash "total" (car (octocat-model--repo-parse-history
+                                        "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":7,\"edges\":[{\"cursor\":\"c\",\"node\":{\"oid\":\"abc\"}}]}}}}}")))
+                 7))
+  (should-error (octocat-model--repo-parse-history
+                 "{\"data\":{\"repository\":{\"object\":null}}}")))
+
+(ert-deftest octocat-model-test-repo-parse-head ()
+  "A directory at a ref has its last commit, its tree and its history count."
+  (let ((head (octocat-model--repo-parse-head
+               "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\"}}}}"
+               "main" "src")))
+    (should (equal (gethash "sha" head) "abc"))
+    (should (equal (octocat--commit-author head) "@ann"))
+    (should (equal (gethash "tree" head) "t1"))
+    (should (equal (gethash "kind" head) "tree"))
+    (should (equal (gethash "total" head) 42)))
+  (should-error (octocat-model--repo-parse-head
+                 "{\"data\":{\"repository\":{\"object\":null,\"dir\":null}}}" "nope" nil))
+  (should-error (octocat-model--repo-parse-head
+                 "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":0,\"nodes\":[]}},\"dir\":null}}}"
+                 "main" "missing")))
+
+(ert-deftest octocat-model-test-tree-parse-last-commits ()
+  "Each path gets the commit of its alias; one with no history is left out."
+  (let ((got (octocat-model--tree-parse-last-commits
+              (concat "{\"data\":{\"repository\":{\"object\":{"
+                      "\"e0\":{\"nodes\":[{\"oid\":\"a1\",\"messageHeadline\":\"One\"}]},"
+                      "\"e1\":{\"nodes\":[]}}}}}")
+              '("README.md" "gone"))))
+    (should (equal (gethash "sha" (gethash "README.md" got)) "a1"))
+    (should-not (gethash "gone" got))))
+
+;;;; Actions
+
+(ert-deftest octocat-model-test-job-run-annotations-order ()
+  "A run's annotations come in its jobs' order, not their answers'."
+  (let (calls result)
+    (cl-letf (((symbol-function 'octocat--run-gh)
+               (lambda (_name _args _parse callback) (push callback calls))))
+      (octocat--fetch-run-annotations
+       "o/r"
+       (vector (let ((j (make-hash-table :test #'equal)))
+                 (puthash "databaseId" 1 j) (puthash "name" "a" j) j)
+               (let ((j (make-hash-table :test #'equal)))
+                 (puthash "databaseId" 2 j) (puthash "name" "b" j) j))
+       (lambda (r) (setq result r)))
+      ;; CALLS is newest first, so job 2 answers first.
+      (dolist (cb calls) (funcall cb [])))
+    (should (equal (mapcar #'car result) '(1 2)))))
+
+(ert-deftest octocat-model-test-run-yaml-jobs ()
+  "A job's needs are read in each form, and nothing else of the file."
+  (let ((jobs (octocat-model--workflow-yaml-jobs "name: CI
+on: push
+jobs:
+  lint:   # first
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          needs: not-a-job
+  test:
+    name: Test ${{ matrix.rust }}
+    needs: lint
+  build:
+    needs: [lint]
+
+  docs:
+    needs:
+      - test
+      - build
+env:
+  needs: nope
+")))
+    (should (equal (mapcar (lambda (j) (list (gethash "id" j) (gethash "name" j) (gethash "needs" j)))
+                           jobs)
+                   '(("lint" nil []) ("test" "Test ${{ matrix.rust }}" ["lint"])
+                     ("build" nil ["lint"]) ("docs" nil ["test" "build"]))))
+    (should (equal (octocat-model--workflow-yaml-jobs "on: push\n") []))))
+
+(ert-deftest octocat-model-test-workflow-yaml-on ()
+  "The triggers are read in each way a workflow may write them."
+  (should (equal (octocat-model--workflow-yaml-on "on: workflow_dispatch\n") "workflow_dispatch"))
+  (should (equal (octocat-model--workflow-yaml-on "on: [push, workflow_dispatch]\n")
+                 ["push" "workflow_dispatch"]))
+  (should (equal (octocat-model--workflow-yaml-on "\"on\":\n  - push\n  - workflow_dispatch\n")
+                 ["push" "workflow_dispatch"]))
+  (should (equal (octocat-model--workflow-yaml-on
+                  "name: CI\non:\n  workflow_dispatch:  # by hand\n  push: {branches: [main]}\njobs:\n  a:\n")
+                 '(("workflow_dispatch") ("push" ("branches" . ["main"])))))
+  (should-not (octocat-model--workflow-yaml-on "name: CI\njobs:\n")))
+
+(ert-deftest octocat-model-test-workflow-parse-dispatched ()
+  "The run's ID is read from the answer; an empty answer gives none."
+  (should (= (octocat-model--workflow-parse-dispatched
+              "{\"workflow_run_id\":42,\"run_url\":\"u\",\"html_url\":\"h\"}")
+             42))
+  (should-not (octocat-model--workflow-parse-dispatched "\n")))
+
+;;;; Dashboard
+
+(ert-deftest octocat-model-test-dashboard-items-query ()
+  "The dashboard searches the user's open items of a kind, with their repo."
+  (should (equal (octocat--dashboard-search-query 'pulls)
+                 "is:open archived:false involves:@me sort:updated-desc type:pr"))
+  (should (string-match-p "type:issue\\'" (octocat--dashboard-search-query 'issues)))
+  (let ((q (octocat--dashboard-items-query 'issues)))
+    (should (string-search "...on Issue{repository{nameWithOwner}}" q))
+    (should (string-search (alist-get 'issues octocat--list-item-fields) q))))
+
+(ert-deftest octocat-model-test-dashboard-items-tree ()
+  "Each dashboard item keeps its repo beside its entity."
+  (let* ((page (octocat--parse-list-items
+                "{\"data\":{\"search\":{\"nodes\":[{\"repository\":{\"nameWithOwner\":\"O/R\"},\"number\":5,\"title\":\"T\",\"state\":\"OPEN\",\"comments\":{\"totalCount\":4}}],\"pageInfo\":{\"hasNextPage\":false}}}}"))
+         (tree (octocat--dashboard-items-tree 'pulls page))
+         (node (aref tree 0))
+         (item (gethash "item" node)))
+    (should (equal (gethash "repo" node) "O/R"))
+    (should (octocat-sync--entity-p item))
+    (should (equal (octocat-sync--entity-key item) "pr:o/r#5"))
+    (should-not (gethash "repository" (octocat-sync--entity-fields item)))
+    (should (equal (gethash "commentCount" (octocat-sync--entity-fields item)) 4))))
+
+;;;; Users
+
+(ert-deftest octocat-model-test-user-parse-pinned ()
+  "Pinned repositories become repo entities; gists and unknown owners drop out."
+  (let* ((tree (octocat-model--user-parse-pinned
+                (concat "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":["
+                        "{\"nameWithOwner\":\"bob/App\",\"description\":null,"
+                        "\"stargazerCount\":7,\"primaryLanguage\":{\"name\":\"Go\"},"
+                        "\"pushedAt\":\"2026-01-01T10:00:00Z\",\"isFork\":false,\"isArchived\":true},"
+                        "{}]}}}}")))
+         (nodes (gethash "nodes" tree)))
+    (should (= (length nodes) 1))
+    (should (equal (octocat-sync--entity-key (aref nodes 0)) "repo:bob/app"))
+    (should (eq (gethash "isArchived" (octocat-sync--entity-fields (aref nodes 0))) t))
+    (should (equal (gethash "nodes" (octocat-model--user-parse-pinned
+                                     "{\"data\":{\"repositoryOwner\":null}}"))
+                   []))))
+
+(ert-deftest octocat-model-test-user-repos-share-entities ()
+  "The REST list and the pinned list write one entity per repository."
+  (let ((db (octocat-sync--create (sqlite-open nil))))
+    (octocat-sync--write
+     db "pinned"
+     (octocat-model--user-parse-pinned
+      "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":[{\"nameWithOwner\":\"bob/app\",\"description\":\"old\",\"isFork\":false}]}}}}")
+     1.0)
+    (should (equal (sort (octocat-sync--write
+                          db "repos"
+                    (octocat-model--user-parse-repos
+                     "[{\"full_name\":\"bob/app\",\"description\":\"new\",\"language\":\"Go\",\"fork\":false}]")
+                          2.0)
+                         #'string<)
+                   '("pinned" "repos")))
+    (let ((repo (aref (gethash "nodes" (car (octocat-sync--read db "pinned"))) 0)))
+      (should (equal (gethash "description" repo) "new"))
+      (should (equal (gethash "name" (gethash "primaryLanguage" repo)) "Go")))))
+
+;;;; Search
+
+(ert-deftest octocat-model-test-search-repo-search-args ()
+  "Forks are searched; \"owner/name\" searches the repos of owner."
+  (should (equal (octocat--repo-search-args "razzmatazz/open")
+                 '("search" "repos" "--limit" "30" "--json" "fullName"
+                   "--include-forks=true" "--owner=razzmatazz" "open")))
+  (should (equal (last (octocat--repo-search-args "razzmatazz/"))
+                 '("--owner=razzmatazz")))
+  (should (equal (last (octocat--repo-search-args "openra")) '("openra"))))
+
+(provide 'octocat-model-tests)
+;;; octocat-model-tests.el ends here

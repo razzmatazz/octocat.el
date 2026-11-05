@@ -16,17 +16,6 @@
   "Return the PR hash-table parsed from JSON."
   (json-parse-string json))
 
-(ert-deftest octocat-pr-test-merge-args ()
-  "Merge and squash pass the message split into subject and body; rebase none."
-  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Squash" "Fix (#7)\n\n* a\n* b" t)
-                 '("pr" "merge" "7" "--repo" "o/r" "--squash"
-                   "--subject" "Fix (#7)" "--body" "* a\n* b" "--delete-branch")))
-  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Merge" "Merge it" nil)
-                 '("pr" "merge" "7" "--repo" "o/r" "--merge"
-                   "--subject" "Merge it" "--body" "")))
-  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Rebase" "ignored" nil)
-                 '("pr" "merge" "7" "--repo" "o/r" "--rebase"))))
-
 (ert-deftest octocat-pr-test-merge-message ()
   "Default messages follow GitHub's."
   (let ((pr (octocat-pr-test--pr
@@ -234,13 +223,6 @@ One stays on the line of the other fields; the stacks follow it in order."
                                           (cons "Milestone" "v1"))))
                    '("Reviewers @ann · Milestone v1")))))
 
-(ert-deftest octocat-pr-diff-test-review-args ()
-  "A review passes its flag, and its body only when there is one."
-  (should (equal (octocat-model--review-args "o/r" 7 "--approve" "")
-                 '("pr" "review" "7" "--repo" "o/r" "--approve")))
-  (should (equal (octocat-model--review-args "o/r" 7 "--comment" "LGTM")
-                 '("pr" "review" "7" "--repo" "o/r" "--comment" "--body" "LGTM"))))
-
 (ert-deftest octocat-pr-diff-test-review-data ()
   "Only an approval may be submitted without text, or a comment with drafts."
   (should (plist-get (octocat-pr-diff--review-data "Approve") :allow-empty))
@@ -286,28 +268,6 @@ The thread's own fields go on its first comment; a draft is pending."
       (should-not (gethash "pending" data))
       (should (= (length (octocat--get (aref (gethash "threads" data) 0) "comments" "nodes"))
                  1)))))
-
-(ert-deftest octocat-pr-diff-test-parse-threads ()
-  "The pages' threads join; with no pending review, \"pending\" is nil."
-  (let* ((page (lambda (reviews threads)
-                 (format (concat "{\"data\":{\"repository\":{\"pullRequest\":{"
-                                 "\"id\":\"PR1\",\"headRefOid\":\"abc\","
-                                 "\"reviews\":{\"nodes\":[%s]},"
-                                 "\"reviewThreads\":{\"nodes\":[%s]}}}}}")
-                         reviews threads)))
-         (none (octocat-model--review-parse-threads
-                (format "[%s,%s]" (funcall page "" "{\"id\":\"T1\"}")
-                        (funcall page "" "{\"id\":\"T2\"}"))))
-         (some (octocat-model--review-parse-threads
-                (format "[%s]" (funcall page "{\"id\":\"R1\",\"commit\":{\"oid\":\"def\"}}"
-                                        "")))))
-    (should (equal (gethash "id" none) "PR1"))
-    (should (equal (gethash "head" none) "abc"))
-    (should-not (gethash "pending" none))
-    (should (equal (mapcar (lambda (th) (gethash "id" th)) (gethash "threads" none))
-                   '("T1" "T2")))
-    (should (equal (octocat--get some "pending" "id") "R1"))
-    (should (equal (octocat--get some "pending" "commit") "def"))))
 
 ;;;; M-x octocat-pr
 

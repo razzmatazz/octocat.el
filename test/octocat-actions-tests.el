@@ -163,22 +163,6 @@ byte-order mark, and steps yet to start that get none of it."
     (should (seq-every-p (lambda (l) (<= (string-width l) 40)) lines))
     (should (string-prefix-p "     word" (cadr lines)))))
 
-(ert-deftest octocat-job-test-run-annotations-order ()
-  "A run's annotations come in its jobs' order, not their answers'."
-  (let (calls result)
-    (cl-letf (((symbol-function 'octocat--run-gh)
-               (lambda (_name _args _parse callback) (push callback calls))))
-      (octocat--fetch-run-annotations
-       "o/r"
-       (vector (let ((j (make-hash-table :test #'equal)))
-                 (puthash "databaseId" 1 j) (puthash "name" "a" j) j)
-               (let ((j (make-hash-table :test #'equal)))
-                 (puthash "databaseId" 2 j) (puthash "name" "b" j) j))
-       (lambda (r) (setq result r)))
-      ;; CALLS is newest first, so job 2 answers first.
-      (dolist (cb calls) (funcall cb [])))
-    (should (equal (mapcar #'car result) '(1 2)))))
-
 (ert-deftest octocat-job-test-artifact-cleanup ()
   "A previewed artifact is deleted once the last buffer showing it is killed."
   (let* ((octocat--artifact-preview-dir (file-truename (make-temp-file "octocat-test-" t)))
@@ -256,35 +240,6 @@ It has five steps, STEPS-DONE of them done and the next running."
     (when name (puthash "name" name h))
     (puthash "needs" (vconcat needs) h)
     h))
-
-(ert-deftest octocat-run-test-yaml-jobs ()
-  "A job's needs are read in each form, and nothing else of the file."
-  (let ((jobs (octocat-model--workflow-yaml-jobs "name: CI
-on: push
-jobs:
-  lint:   # first
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          needs: not-a-job
-  test:
-    name: Test ${{ matrix.rust }}
-    needs: lint
-  build:
-    needs: [lint]
-
-  docs:
-    needs:
-      - test
-      - build
-env:
-  needs: nope
-")))
-    (should (equal (mapcar (lambda (j) (list (gethash "id" j) (gethash "name" j) (gethash "needs" j)))
-                           jobs)
-                   '(("lint" nil []) ("test" "Test ${{ matrix.rust }}" ["lint"])
-                     ("build" nil ["lint"]) ("docs" nil ["test" "build"]))))
-    (should (equal (octocat-model--workflow-yaml-jobs "on: push\n") []))))
 
 (ert-deftest octocat-run-test-job-edges ()
   "Run jobs are matched to the file's by name, matrix and reusable ones too."
@@ -366,18 +321,6 @@ env:
   (should (equal (octocat-workflow--url "o/r" 7 nil)
                  "https://github.com/o/r/actions/workflows/7")))
 
-(ert-deftest octocat-workflow-test-yaml-on ()
-  "The triggers are read in each way a workflow may write them."
-  (should (equal (octocat-model--workflow-yaml-on "on: workflow_dispatch\n") "workflow_dispatch"))
-  (should (equal (octocat-model--workflow-yaml-on "on: [push, workflow_dispatch]\n")
-                 ["push" "workflow_dispatch"]))
-  (should (equal (octocat-model--workflow-yaml-on "\"on\":\n  - push\n  - workflow_dispatch\n")
-                 ["push" "workflow_dispatch"]))
-  (should (equal (octocat-model--workflow-yaml-on
-                  "name: CI\non:\n  workflow_dispatch:  # by hand\n  push: {branches: [main]}\njobs:\n  a:\n")
-                 '(("workflow_dispatch") ("push" ("branches" . ["main"])))))
-  (should-not (octocat-model--workflow-yaml-on "name: CI\njobs:\n")))
-
 (ert-deftest octocat-workflow-test-dispatch-spec ()
   "Inputs keep their order, options and description, a block scalar too."
   (let* ((spec (octocat-model--workflow-dispatch-spec
@@ -433,13 +376,6 @@ jobs:
                    '(("n" . "not a number") ("tag" . "required"))))
     (should-not (octocat-workflow--input-errors
                  inputs (octocat-workflow--input-values inputs '(("n" . "-1.5e3") ("tag" . "v1")))))))
-
-(ert-deftest octocat-workflow-test-parse-dispatched ()
-  "The run's ID is read from the answer; an empty answer gives none."
-  (should (= (octocat-model--workflow-parse-dispatched
-              "{\"workflow_run_id\":42,\"run_url\":\"u\",\"html_url\":\"h\"}")
-             42))
-  (should-not (octocat-model--workflow-parse-dispatched "\n")))
 
 (ert-deftest octocat-checks-test-from-rest ()
   "A REST check-run takes the shape of a statusCheckRollup entry."

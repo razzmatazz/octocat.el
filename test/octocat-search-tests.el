@@ -68,15 +68,6 @@ Each `gh' call is pushed to `calls' as (ARGS . CALLBACK), not run."
       (funcall (cdr (pop calls)) "[{\"login\":\"alice\"}]")
       (should (equal (car log) '("@alice"))))))
 
-(ert-deftest octocat-search-test-repo-search-args ()
-  "Forks are searched; \"owner/name\" searches the repos of owner."
-  (should (equal (octocat--repo-search-args "razzmatazz/open")
-                 '("search" "repos" "--limit" "30" "--json" "fullName"
-                   "--include-forks=true" "--owner=razzmatazz" "open")))
-  (should (equal (last (octocat--repo-search-args "razzmatazz/"))
-                 '("--owner=razzmatazz")))
-  (should (equal (last (octocat--repo-search-args "openra")) '("openra"))))
-
 ;; Fields as `gh repo view' gives them, no more than the entity needs.
 (defun octocat-search-tests--repo (name)
   "Return the `repo' entity of NAME."
