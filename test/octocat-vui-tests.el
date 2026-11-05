@@ -722,5 +722,18 @@ The marks are kept in a variable, as the page keeps them in its state."
   (should-not (octocat-vui-lanes (cons 'root (number-sequence 1 9))
                                  (mapcar (lambda (n) (list 'root n)) (number-sequence 1 9)))))
 
+(ert-deftest octocat-vui-test-stage-lanes ()
+  "A node sits in its stage's column; lines into a column join."
+  (should (equal (octocat-vui-stage-lanes '(l s b d) '((l s) (l b) (s d) (b d)))
+                 '((" ─╮  " . 0) ("   ─╮" . 1) ("   ─┤" . 1) ("     " . 2))))
+  ;; A line running on down a column hops a row's line across it.
+  (should (equal (octocat-vui-stage-lanes '(a x b c) '((a b) (x c) (b c)))
+                 '((" ─╮  " . 0) (" ╴│╶╮" . 0) ("   ─┤" . 1) ("     " . 2))))
+  ;; A target above is left out.
+  (should (equal (octocat-vui-stage-lanes '(x y) '((y x))) '((" " . 0) (" " . 0))))
+  (should-not (octocat-vui-stage-lanes (number-sequence 0 8)
+                                       (mapcar (lambda (n) (list n (1+ n)))
+                                               (number-sequence 0 7)))))
+
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here

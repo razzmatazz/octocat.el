@@ -1260,6 +1260,72 @@ in ─╴│╶─, so it is not taken for a line joining there."
                (t "─"))))
       (number-sequence 0 (1- (length after))) ""))))
 
+(defun octocat-vui-stage-lanes (ids edges)
+  "Return the graph beside each of IDS, rows in that order, by stage.
+Each is (TEXT . COLUMN), as of `octocat-vui-lanes', but a node sits in
+the column of its stage, one past the latest of the nodes above with an
+edge to it in EDGES, each (FROM TO), so the graph flows left to right.
+A line runs right from a node and down each target's column, joining
+the others that run down it.  A target above FROM is left out.  Return nil past
+`octocat-vui-max-lanes' stages."
+  (let* ((row   (make-hash-table :test #'equal))
+         (stage (make-hash-table :test #'equal))
+         (down  (progn (cl-loop for id in ids for i from 0 do (puthash id i row))
+                       (seq-filter (pcase-lambda (`(,from ,to))
+                                     (and (gethash from row) (gethash to row)
+                                          (< (gethash from row) (gethash to row))))
+                                   edges))))
+    (dolist (id ids)
+      (puthash id (apply #'max 0 (cl-loop for (from to) in down
+                                          when (equal to id)
+                                          collect (1+ (gethash from stage))))
+               stage))
+    (let* ((n     (1+ (apply #'max 0 (mapcar (lambda (id) (gethash id stage)) ids))))
+           ;; Each line down a column, as (COLUMN FROM-ROW TO-ROW).
+           (segs  (mapcar (pcase-lambda (`(,from ,to))
+                            (list (gethash to stage) (gethash from row) (gethash to row)))
+                          down))
+           ;; Whether a line runs down column C into row R from above, or
+           ;; out of it below.
+           (line-p (lambda (c r above)
+                     (seq-some (pcase-lambda (`(,col ,from ,to))
+                                 (and (= col c)
+                                      (if above (and (< from r) (<= r to)) (<= from r (1- to)))))
+                               segs))))
+      (when (<= n octocat-vui-max-lanes)
+        (cl-loop
+         for id in ids
+         for r from 0
+         collect
+         (let* ((d       (gethash id stage))
+                (targets (cl-loop for (from to) in down
+                                  when (equal from id) collect (gethash to stage)))
+                (hi      (apply #'max d targets))
+                (above   (lambda (c) (funcall line-p c r t)))
+                (through (lambda (c) (and (funcall above c) (funcall line-p c r nil))))
+                (hop-p   (lambda (c) (and (< d c hi) (not (memq c targets))
+                                          (funcall through c)))))
+           (cons (substring
+                  (mapconcat
+                   (lambda (c)
+                     (concat
+                      (cond ((= c d) " ")
+                            ((memq c targets)
+                             (if (= c hi)
+                                 (if (funcall above c) "┤" "╮")
+                               (if (funcall above c) "┼" "┬")))
+                            ((funcall through c) "│")
+                            ((< d c hi) "─")
+                            (t " "))
+                      (cond ((not (and (>= c d) (< c hi))) " ")
+                            ((and (funcall hop-p c) (funcall hop-p (1+ c))) " ")
+                            ((funcall hop-p c) "╶")
+                            ((funcall hop-p (1+ c)) "╴")
+                            (t "─"))))
+                   (number-sequence 0 (1- n)) "")
+                  0 (1- (* 2 n)))
+                 d)))))))
+
 (defun octocat-vui-lane-mirror (lane)
   "Return LANE, of `octocat-vui-lanes', drawn right to left.
 Its first column is then the one beside the row's text."

@@ -314,14 +314,14 @@ It has five steps, STEPS-DONE of them done and the next running."
         (should (looking-at "test"))))))
 
 (ert-deftest octocat-run-test-table ()
-  "The table shows the graph, the steps done and the step running."
+  "The table shows the graph, the status, the steps done and the step running."
   (let ((jobs (list (octocat-run-tests--job 1 "lint")
                     (octocat-run-tests--job 2 "test" "in_progress" 3)))
         (specs (list (octocat-run-tests--spec "lint") (octocat-run-tests--spec "test" nil "lint"))))
     (with-temp-buffer
       (vui-render (apply #'vui-vstack (octocat-run--jobs-section "o/r" 9 jobs specs 'table 80))
                   (current-buffer))
-      (should (string-search "  ✓  lint    5/5   2m00s\n  ●  test    3/5          Step 4"
+      (should (string-search "  ✓─╮  lint  success        5/5   2m00s\n    ●  test  in_progress    3/5          Step 4"
                              (buffer-string))))))
 
 (ert-deftest octocat-workflow-test-url ()

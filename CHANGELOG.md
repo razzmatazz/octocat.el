@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* The lines beside a run's table of jobs flow right, a column per stage
+* A run page's table of jobs shows each job's status after its name
 * A job page lists its steps before their log has downloaded, a grey bar till then
 * The title pinned in the header line leads with the PR's, issue's or run's status
 * Changes to one PR or issue reach GitHub in order: a merge no longer beats its approval

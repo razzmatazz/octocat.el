@@ -943,14 +943,20 @@ SPECS are the jobs of the workflow's file, see
   "Return the web page of JOB of run RUN-ID of REPO."
   (octocat--web-url "%s/actions/runs/%s/job/%s" repo run-id (gethash "databaseId" job)))
 
+(defconst octocat-run--status-width 11
+  "Columns of a job's status in the run's table, as \"in_progress\" takes.
+Fixed, so what follows stays put as the statuses change.")
+
 (defun octocat-run--job-row (repo run-id job name-width &optional lane)
   "Return the table's RET-able row for JOB of run RUN-ID of REPO.
-Its name takes NAME-WIDTH columns.  LANE, from `octocat-vui-lanes', is
-drawn first, the job's status icon in its own cell."
+Its name takes NAME-WIDTH columns, its status after it.  LANE, from
+`octocat-vui-stage-lanes', is drawn first, the job's status icon in its own
+cell."
   (pcase-let* ((`(,status ,conclusion ,duration) (octocat-run--job-status job))
                (`(,done ,total ,current ,failed) (octocat-run--job-steps job))
                (icon (octocat-run--job-icon status conclusion))
                (name (or (gethash "name" job) ""))
+               (shown (or conclusion status))
                (note (or current (and (equal conclusion "failure") failed))))
     (octocat-vui-row
      (string-trim-right
@@ -959,6 +965,9 @@ drawn first, the job's status icon in its own cell."
               "  "
               (propertize (truncate-string-to-width name name-width nil ?\s "…")
                           'face 'octocat-run-job-name)
+              "  "
+              (propertize (truncate-string-to-width shown octocat-run--status-width nil ?\s "…")
+                          'face (octocat--job-status-face shown))
               (propertize (format "  %5s  %6s" (if (> total 0) (format "%d/%d" done total) "")
                                   (or duration ""))
                           'face 'octocat-dimmed)
@@ -970,8 +979,9 @@ drawn first, the job's status icon in its own cell."
 (defun octocat-run--table (repo run-id jobs edges)
   "Return the table rows of JOBS of run RUN-ID of REPO, with EDGES beside."
   (let* ((jobs (octocat-run--job-order jobs edges))
-         (lanes (and edges (octocat-vui-lanes (mapcar (lambda (j) (gethash "databaseId" j)) jobs)
-                                              edges)))
+         (lanes (and edges (octocat-vui-stage-lanes
+                            (mapcar (lambda (j) (gethash "databaseId" j)) jobs)
+                            edges)))
          (name-width (min 45 (apply #'max 1 (mapcar (lambda (j)
                                                       (string-width (or (gethash "name" j) "")))
                                                     jobs)))))
