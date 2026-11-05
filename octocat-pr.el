@@ -1318,7 +1318,7 @@ A new TICK fetches them again."
     map)
   "Keymap for `octocat-pr-mode'.")
 
-(define-derived-mode octocat-pr-mode vui-mode "Octocat-PR"
+(define-derived-mode octocat-pr-mode octocat-page-mode "Octocat-PR"
   "Major mode for viewing a GitHub Pull Request as a timeline.
 
 \\{octocat-pr-mode-map}"
@@ -1327,8 +1327,6 @@ A new TICK fetches them again."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-pr-refresh)
   (setq-local octocat--refresh-fn #'octocat-pr-refresh)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-pr--page-url)
   (setq-local octocat--repo-function (lambda () octocat--pr-repo)))
@@ -1392,7 +1390,7 @@ the background, in place: what is unfolded stays so."
     map)
   "Keymap for `octocat-pr-commits-mode'.")
 
-(define-derived-mode octocat-pr-commits-mode vui-mode "Octocat-PR-Commits"
+(define-derived-mode octocat-pr-commits-mode octocat-page-mode "Octocat-PR-Commits"
   "Major mode for the commits of a GitHub Pull Request.
 
 \\{octocat-pr-commits-mode-map}"
@@ -1401,8 +1399,6 @@ the background, in place: what is unfolded stays so."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-pr-commits-refresh)
   (setq-local octocat--refresh-fn #'octocat-pr-commits-refresh)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-pr-commits--page-url)
   (setq-local octocat--repo-function (lambda () octocat--pr-commits-repo)))
@@ -2324,7 +2320,7 @@ It is at the diff line of point or the region."
     map)
   "Keymap for `octocat-pr-diff-mode'.")
 
-(define-derived-mode octocat-pr-diff-mode vui-mode "Octocat-PR-Diff"
+(define-derived-mode octocat-pr-diff-mode octocat-page-mode "Octocat-PR-Diff"
   "Major mode for viewing the complete diff of a GitHub Pull Request.
 
 \\{octocat-pr-diff-mode-map}"
@@ -2334,8 +2330,6 @@ It is at the diff line of point or the region."
   (setq-local revert-buffer-function #'octocat-pr-diff-refresh)
   (setq-local octocat--refresh-fn #'octocat-pr-diff-refresh)
   (octocat-markdown--ensure-invisibility)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-pr-diff--page-url)
   (setq-local octocat-diff--comment-backend octocat-pr-diff--comment-backend)

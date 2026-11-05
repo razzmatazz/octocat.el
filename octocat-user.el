@@ -372,7 +372,7 @@ A new TICK fetches everything again."
     map)
   "Keymap for `octocat-user-mode'.")
 
-(define-derived-mode octocat-user-mode vui-mode "Octocat-User"
+(define-derived-mode octocat-user-mode octocat-page-mode "Octocat-User"
   "Major mode for a GitHub user or organization page.
 
 \\{octocat-user-mode-map}"
@@ -380,8 +380,6 @@ A new TICK fetches everything again."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-user-refresh)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (setq-local octocat--url-function #'octocat-user--page-url))
 
 (defun octocat-user-refresh (&optional _ignore-auto _noconfirm)

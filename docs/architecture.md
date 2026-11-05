@@ -19,7 +19,9 @@ From the bottom up:
   syncing that fills it (see "Refresh and the sync store" in
   CONTRIBUTING.md).
 - **`octocat-vui`**: components and helpers on top of vui.el, and the
-  branch and repo pickers.
+  branch and repo pickers.  Its `octocat-page-mode` is the parent major
+  mode of every page: setup all pages share goes in its body, and a
+  page's own mode keeps only what differs.
 - **Shared parts of pages**: `octocat-edit`, `octocat-timeline`.
 - **Pages**: one module per kind of page, or per group of related
   pages, such as `octocat-pr` (a PR's conversation, commits and files

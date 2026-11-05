@@ -1625,7 +1625,7 @@ fetches them again."
     map)
   "Keymap for `octocat-commit-mode'.")
 
-(define-derived-mode octocat-commit-mode vui-mode "Octocat-Commit"
+(define-derived-mode octocat-commit-mode octocat-page-mode "Octocat-Commit"
   "Major mode for viewing a GitHub commit.
 
 \\{octocat-commit-mode-map}"
@@ -1635,8 +1635,6 @@ fetches them again."
   (setq-local revert-buffer-function #'octocat-commit-refresh)
   (setq-local octocat--refresh-fn #'octocat-commit-refresh)
   (octocat-markdown--ensure-invisibility)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-commit--page-url)
   (setq-local octocat--repo-function (lambda () octocat--commit-repo)))
@@ -1844,7 +1842,7 @@ fetches it again."
     map)
   "Keymap for `octocat-compare-mode'.")
 
-(define-derived-mode octocat-compare-mode vui-mode "Octocat-Compare"
+(define-derived-mode octocat-compare-mode octocat-page-mode "Octocat-Compare"
   "Major mode for viewing the comparison of two refs of a GitHub repository.
 
 \\{octocat-compare-mode-map}"
@@ -1854,8 +1852,6 @@ fetches it again."
   (setq-local revert-buffer-function #'octocat-compare-refresh)
   (setq-local octocat--refresh-fn #'octocat-compare-refresh)
   (octocat-markdown--ensure-invisibility)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-compare--page-url)
   (setq-local octocat--repo-function (lambda () octocat--compare-repo)))

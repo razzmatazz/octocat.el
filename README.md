@@ -61,6 +61,10 @@ Optional extras:
 
 ;; Doom Emacs: let `q' step back to octocat pages
 (add-hook 'doom-real-buffer-functions #'octocat-buffer-p)
+
+;; Customise every page at once: each page's mode derives from
+;; `octocat-page-mode', so its hook runs on all of them
+(add-hook 'octocat-page-mode-hook (lambda () (setq-local line-spacing 0.1)))
 ```
 
 | Command | Opens |

@@ -801,7 +801,7 @@ unfolded, until the fresh data replaces it."
     map)
   "Keymap for `octocat-job-mode'.")
 
-(define-derived-mode octocat-job-mode vui-mode "Octocat-Job"
+(define-derived-mode octocat-job-mode octocat-page-mode "Octocat-Job"
   "Major mode for viewing a GitHub Actions job.
 
 \\{octocat-job-mode-map}"
@@ -809,8 +809,6 @@ unfolded, until the fresh data replaces it."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-job-refresh)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (setq-local octocat--url-function #'octocat-job--page-url)
   (setq-local octocat--repo-function (lambda () octocat--job-repo)))
 
@@ -1354,7 +1352,7 @@ everything, keeping what is shown until the fresh data replaces it."
     map)
   "Keymap for `octocat-run-mode'.")
 
-(define-derived-mode octocat-run-mode vui-mode "Octocat-Run"
+(define-derived-mode octocat-run-mode octocat-page-mode "Octocat-Run"
   "Major mode for viewing a GitHub Actions workflow run.
 
 \\{octocat-run-mode-map}"
@@ -1362,8 +1360,6 @@ everything, keeping what is shown until the fresh data replaces it."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-run-refresh)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (setq-local octocat--url-function #'octocat-run--page-url)
   (setq-local octocat--repo-function (lambda () octocat--run-repo)))
 
@@ -2320,7 +2316,7 @@ the fetched one meanwhile.  A new TICK fetches them again."
     map)
   "Keymap for `octocat-workflow-mode'.")
 
-(define-derived-mode octocat-workflow-mode vui-mode "Octocat-Workflow"
+(define-derived-mode octocat-workflow-mode octocat-page-mode "Octocat-Workflow"
   "Major mode for viewing a GitHub Actions Workflow.
 
 \\{octocat-workflow-mode-map}"
@@ -2330,8 +2326,6 @@ the fetched one meanwhile.  A new TICK fetches them again."
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-workflow-refresh)
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (setq-local octocat--url-function #'octocat-workflow--page-url)
   (setq-local octocat--repo-function (lambda () octocat--workflow-repo)))
 
@@ -2722,7 +2716,7 @@ A new TICK fetches them again."
     map)
   "Keymap for `octocat-checks-mode'.")
 
-(define-derived-mode octocat-checks-mode vui-mode "Octocat-Checks"
+(define-derived-mode octocat-checks-mode octocat-page-mode "Octocat-Checks"
   "Major mode for viewing the GitHub check-runs of a commit.
 
 \\{octocat-checks-mode-map}"
@@ -2730,8 +2724,6 @@ A new TICK fetches them again."
   (setq-local buffer-read-only t)
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-checks-refresh)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (setq-local octocat--url-function #'octocat-checks--page-url)
   (setq-local octocat--repo-function (lambda () octocat--checks-repo)))
 

@@ -249,7 +249,7 @@ Only such hints reach the echo area, marked by a text property on the
 `help-echo` string.  The plain "RET: …" hint of every row and button
 would show on every line point crosses, and add nothing to what the
 line already shows.  The hook is added by `octocat--ts-eldoc-setup`,
-which every octocat major mode already calls.
+which `octocat-page-mode`, the parent of every page's mode, calls.
 
 ### Show what the text hides
 
@@ -340,8 +340,9 @@ inline `propertize` + `truncate-string-to-width` at every call site.
 
 Show the relative age (`3 days ago`); put the exact time in `help-echo`
 (`Mon 2026-06-08 14:23:05 EEST`) for the mouse and ElDoc (echo area,
-after `eldoc-idle-delay`) for point.  Never print both.  Every octocat
-major mode calls `(octocat--ts-eldoc-setup)` in its body.
+after `eldoc-idle-delay`) for point.  Never print both.  Every page's mode
+gets this from `octocat-page-mode`, whose body calls
+`(octocat--ts-eldoc-setup)`.
 
 Helpers in `octocat-core.el` take an ISO-8601 UTC string; nil, `:null`
 or `""` give `""`.

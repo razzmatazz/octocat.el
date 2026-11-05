@@ -1891,7 +1891,7 @@ The tree browser stays in its directory, as GitHub's does."
     map)
   "Keymap for `octocat-repo-mode'.")
 
-(define-derived-mode octocat-repo-mode vui-mode "Octocat-Repo"
+(define-derived-mode octocat-repo-mode octocat-page-mode "Octocat-Repo"
   "Major mode for browsing a GitHub repository.
 
 \\{octocat-repo-mode-map}"
@@ -1901,8 +1901,6 @@ The tree browser stays in its directory, as GitHub's does."
   (setq-local revert-buffer-function #'octocat-repo-refresh)
   (setq-local octocat--refresh-fn #'octocat-repo-refresh)
   (octocat-markdown--ensure-invisibility)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (add-hook 'window-buffer-change-functions #'octocat-repo--follow-checkout nil t)
   (add-hook 'window-selection-change-functions #'octocat-repo--follow-checkout nil t)
@@ -1947,7 +1945,7 @@ The tree browser stays in its directory, as GitHub's does."
     map)
   "Keymap for `octocat-file-mode'.")
 
-(define-derived-mode octocat-file-mode vui-mode "Octocat-File"
+(define-derived-mode octocat-file-mode octocat-page-mode "Octocat-File"
   "Major mode for a GitHub file: highlighted, or rendered if markdown or org.
 
 \\{octocat-file-mode-map}"
@@ -1957,8 +1955,6 @@ The tree browser stays in its directory, as GitHub's does."
   (setq-local revert-buffer-function #'octocat-file-refresh)
   (setq-local octocat--refresh-fn #'octocat-file-refresh)
   (octocat-markdown--ensure-invisibility)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-file--page-url)
   (setq-local octocat--repo-function (lambda () octocat-tree--file-repo))

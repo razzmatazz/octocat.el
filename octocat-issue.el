@@ -354,7 +354,7 @@ A new TICK fetches everything again."
     map)
   "Keymap for `octocat-issue-mode'.")
 
-(define-derived-mode octocat-issue-mode vui-mode "Octocat-Issue"
+(define-derived-mode octocat-issue-mode octocat-page-mode "Octocat-Issue"
   "Major mode for viewing a GitHub Issue as a timeline.
 
 \\{octocat-issue-mode-map}"
@@ -363,8 +363,6 @@ A new TICK fetches everything again."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-issue-refresh)
   (setq-local octocat--refresh-fn #'octocat-issue-refresh)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-issue--page-url)
   (setq-local octocat--repo-function (lambda () octocat--issue-repo)))

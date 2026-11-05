@@ -408,6 +408,20 @@ unsubscribes it."
         (octocat-vui-revisit-page)))
     (should (equal requests '(((a 1)))))))
 
+;;;; Page mode
+
+(ert-deftest octocat-vui-test-pages-derive-from-page-mode ()
+  "Every vui page derives from `octocat-page-mode', so none misses its setup."
+  (let (modes)
+    (mapatoms (lambda (sym)
+                (when (and (string-prefix-p "octocat-" (symbol-name sym))
+                           (get sym 'derived-mode-parent)
+                           (provided-mode-derived-p sym 'vui-mode))
+                  (push sym modes))))
+    (should (memq 'octocat-pr-mode modes))
+    (should-not (seq-remove (lambda (m) (provided-mode-derived-p m 'octocat-page-mode))
+                            modes))))
+
 ;;;; Timed refetches
 
 (ert-deftest octocat-vui-test-poll-only-shown ()
@@ -431,6 +445,10 @@ unsubscribes it."
             (should (equal (octocat-vui--poll-shown-changed) (list shown)))
             (should (equal (car polled) '(nil (thing 1))))
             (should (timerp octocat-vui--poll-timer))
+            (let ((status (octocat-vui-refresh-status)))
+              (should (equal (plist-get status :pages) (list (list shown '(thing 1)))))
+              (should (= (plist-get status :hidden) 1))
+              (should (= (plist-get status :tick) octocat-vui--poll-tick)))
             (switch-to-buffer buried)
             (remhash "(thing 2)" octocat-vui--subscriptions)
             (setq polled nil)

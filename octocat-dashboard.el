@@ -65,7 +65,7 @@ Starts at `octocat-feed-limit' and grows with `octocat-feed-load-more'.")
     (define-key map (kbd "C-c C-o") #'octocat-browse)
     map)
   "Keymap for `octocat-mode' (GitHub account dashboard).")
-(define-derived-mode octocat-mode vui-mode "Octocat"
+(define-derived-mode octocat-mode octocat-page-mode "Octocat"
   "Major mode for the GitHub account dashboard.
 
 \\{octocat-mode-map}"
@@ -74,8 +74,6 @@ Starts at `octocat-feed-limit' and grows with `octocat-feed-load-more'.")
   (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-refresh)
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (setq-local octocat--url-function #'octocat-dashboard--page-url))
 
 

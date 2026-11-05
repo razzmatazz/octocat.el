@@ -110,8 +110,7 @@ Mention in the final reply whether you killed anything and why.
 keymaps stick to live buffers):
 ```elisp
 (dolist (buf (buffer-list))
-  (when (string-prefix-p "octocat-"
-                         (symbol-name (buffer-local-value 'major-mode buf)))
+  (when (with-current-buffer buf (derived-mode-p 'octocat-page-mode))
     (kill-buffer buf)))
 "display-buffers-killed"
 ```

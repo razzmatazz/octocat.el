@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `octocat-page-mode-hook` runs on every page, as each page's mode now derives from it
 * Copied text leaves out rails, indents and blame; quotes copy as `>`, wrapped lines rejoin
 * RET in a Run workflow input moves to the next one; only the button starts the run
 * Under Evil, RET on a Run workflow input edits it from the end of its text

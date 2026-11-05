@@ -151,7 +151,7 @@
 ;;;; Refreshes
 
 (defun octocat-doctor--rate (state offline idle-after)
-  "Return how timed refetches run, from STATE, `octocat-vui--poll-state'.
+  "Return how timed refetches run, from STATE, see `octocat-vui-refresh-status'.
 OFFLINE is whether GitHub was out of reach, and IDLE-AFTER
 `octocat-sync-poll-idle-after'."
   (pcase-let* ((`(,_ ,slowdown ,idle ,focused ,power) state)
@@ -185,13 +185,11 @@ OFFLINE is whether GitHub was out of reach, and IDLE-AFTER
 
 (defun octocat-doctor--refreshes (now)
   "Return the report's lines on the pages refreshing on their own, at NOW."
-  (let* ((state    octocat-vui--poll-state)
-         (slowdown (nth 1 state))
-         (shown    (octocat-vui--shown-pages))
-         (pages    (seq-uniq (mapcar #'car (apply #'append
-                                                  (hash-table-values
-                                                   octocat-vui--subscriptions)))))
-         (hidden   (seq-count #'buffer-live-p (seq-difference pages shown #'eq))))
+  (let* ((status   (octocat-vui-refresh-status))
+         (state    (plist-get status :state))
+         (tick     (plist-get status :tick))
+         (pages    (plist-get status :pages))
+         (slowdown (nth 1 state)))
     (concat
      "Refreshing pages on screen\n"
      (format "  Default     %s\n"
@@ -205,17 +203,18 @@ OFFLINE is whether GitHub was out of reach, and IDLE-AFTER
                  (octocat-doctor--rate state octocat-sync--offline octocat-sync-poll-idle-after)
                "not checked yet"))
      (format "  Checked     %s\n"
-             (if (timerp octocat-vui--poll-timer)
-                 (format "every %d s, last %s ago" octocat-vui--poll-tick
+             (if tick
+                 (format "every %d s, last %s ago" tick
                          (if state (octocat-doctor--duration (- now (car state))) "never"))
                "not running: no page on screen"))
      (format "  Power       %s\n" (octocat-power))
-     (format "  Pages       %d on screen, %d not, which don't refresh\n" (length shown) hidden)
-     (mapconcat (lambda (buf)
+     (format "  Pages       %d on screen, %d not, which don't refresh\n"
+             (length pages) (plist-get status :hidden))
+     (mapconcat (pcase-lambda (`(,buf . ,specs))
                   (concat (format "  %s\n" (buffer-name buf))
                           (mapconcat (lambda (spec) (octocat-doctor--resource spec slowdown now))
-                                     (octocat-vui--page-specs (list buf)) "")))
-                shown ""))))
+                                     specs "")))
+                pages ""))))
 
 
 ;;;; Requests

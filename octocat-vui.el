@@ -33,6 +33,7 @@
 ;; Contents:
 ;;
 ;;   `octocat-vui-page-map'          parent keymap of every vui page
+;;   `octocat-page-mode'             parent major mode of every vui page
 ;;   `octocat-vui-row'               RET-able, per-segment-styled line
 ;;   `octocat-vui-use-resource'      read a sync resource; re-render on change
 ;;   `octocat-vui-refresh-page'      mount a page, or refresh it in place
@@ -79,6 +80,15 @@
     (define-key map (kbd "g") #'octocat-vui-refresh)
     map)
   "Parent keymap of every vui-rendered octocat page, for the keys all share.")
+
+(define-derived-mode octocat-page-mode vui-mode "Octocat-Page"
+  "Base major mode of every octocat page.
+Holds the setup that is the same on all of them; the rest, such as
+`octocat--max-width-setup', differs between pages and stays in their
+own modes."
+  :group 'octocat
+  (octocat--ts-eldoc-setup)
+  (octocat-markdown-copy-setup))
 
 (defvar-local octocat-vui--view-generation 0
   "Bumped by each `octocat-vui-refresh', see `octocat-vui-use-view-reset'.")
@@ -349,7 +359,8 @@ moving through rows prefetches nothing."
   "The buffers of the pages on screen at the last check.")
 
 (defvar octocat-vui--poll-state nil
-  "The last check, (TIME SLOWDOWN IDLE FOCUSED POWER), for `octocat-doctor'.")
+  "The last check, (TIME SLOWDOWN IDLE FOCUSED POWER).
+See `octocat-vui-refresh-status'.")
 
 (defun octocat-vui--shown-pages ()
   "Return the live buffers of the pages in a window of a visible frame."
@@ -370,6 +381,20 @@ moving through rows prefetches nothing."
                  (push (car (read-from-string key)) specs)))
              octocat-vui--subscriptions)
     specs))
+
+(defun octocat-vui-refresh-status ()
+  "Return how the pages refresh on their own, for `octocat-doctor'.
+A plist: :state is the last check, (TIME SLOWDOWN IDLE FOCUSED POWER),
+or nil before the first; :tick the seconds between checks, or nil while
+the timer is stopped; :pages a (BUFFER . SPECS) per page on screen, with
+the specs of what it reads; :hidden the count of pages not on screen."
+  (let* ((shown (octocat-vui--shown-pages))
+         (subs  (apply #'append (hash-table-values octocat-vui--subscriptions)))
+         (pages (seq-uniq (mapcar #'car subs))))
+    (list :state  octocat-vui--poll-state
+          :tick   (and (timerp octocat-vui--poll-timer) octocat-vui--poll-tick)
+          :pages  (mapcar (lambda (buf) (cons buf (octocat-vui--page-specs (list buf)))) shown)
+          :hidden (seq-count #'buffer-live-p (seq-difference pages shown #'eq)))))
 
 (defun octocat-vui--focused-p ()
   "Return non-nil if an Emacs frame has focus, or none can tell."
@@ -1327,7 +1352,7 @@ A filter other than the default goes along, so the page lists the same."
     map)
   "Keymap for `octocat-vui-list-mode' and the list pages derived from it.")
 
-(define-derived-mode octocat-vui-list-mode vui-mode "Octocat-List"
+(define-derived-mode octocat-vui-list-mode octocat-page-mode "Octocat-List"
   "Base major mode for the octocat PR, issue and workflow list pages.
 
 \\{octocat-vui-list-mode-map}"
@@ -1338,8 +1363,6 @@ A filter other than the default goes along, so the page lists the same."
   (add-hook 'completion-at-point-functions
             #'octocat-vui-list--qualifier-capf nil t)
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
-  (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-vui-list--page-url)
   (setq-local octocat--repo-function (lambda () octocat-vui-list--repo)))
