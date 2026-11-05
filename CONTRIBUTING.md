@@ -157,7 +157,7 @@ Emacs.  Dependencies come from the `Package-Requires` header of
 |---------|------|
 | `make ci` | Compile, lint and test on Emacs 31.1, then run melpazoid |
 | `make ci EMACS=29.1` | The same on another release |
-| `make ci-all` | 29.1, 30.2 and 31.1 at once, as CI does; logs in `.ci/VERSION.log` |
+| `make ci-all` | 29.1, 30.2 and 31.1 at once, as CI does; logs in `.ci/VERSION.log`, and each check's in `.ci/VERSION-CHECK.log` |
 | `make melpazoid` | MELPA's review checks; reports in `.ci/melpazoid-*.txt` |
 | `make screenshots` | Redraw [docs/screenshots](docs/screenshots/README.md) (see [Updating](docs/screenshots/README.md#updating)) |
 

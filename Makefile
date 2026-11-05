@@ -40,15 +40,32 @@ CI_CHECKS ?= compile lint test melpazoid
 
 # Build the image and install the dependencies, then run compile, lint,
 # test and melpazoid in parallel, as they are independent.  Each can also
-# run on its own once ci has run.
+# run on its own once ci has run.  Each check's output goes to
+# .ci/EMACS-CHECK.log, as run at once they would interleave; the end is a
+# line per check, a failed one's findings under it: its log but for the
+# tests passed, the files compiled clean and the linter's progress.
+CI_NOISE := ^ *passed |: no warnings$$|^Indenting region|^Running linter|^$$
 ci: clean
 	$(MAKE) image
 	$(MAKE) deps
-	$(MAKE) -j4 $(CI_CHECKS)
+	@mkdir -p .ci
+	@for c in $(CI_CHECKS); do \
+	  ( $(MAKE) -s $$c > .ci/$(EMACS)-$$c.log 2>&1; echo $$? > .ci/$(EMACS)-$$c.status ) & \
+	done; \
+	wait; \
+	echo "== Emacs $(EMACS)"; \
+	failed=0; \
+	for c in $(CI_CHECKS); do \
+	  if [ "$$(cat .ci/$(EMACS)-$$c.status)" = 0 ]; then echo "$$c: ok"; \
+	  else failed=1; echo "$$c: failed, see .ci/$(EMACS)-$$c.log"; \
+	    grep -vE "$(CI_NOISE)" .ci/$(EMACS)-$$c.log | grep -v "^make" | sed "s/^/    /"; fi; \
+	done; \
+	exit $$failed
 
 # ci on every release CI runs, at once: each release has its own image,
 # and its own .eldev/VERSION.  Each run's output goes to .ci/VERSION.log;
-# a failed one's end is printed.
+# a failed one's checks are printed, as ci ends, or its end when it
+# failed before them, as when the image or the dependencies did.
 ci-all:
 	@mkdir -p .ci
 	@for v in $(EMACS_ALL); do \
@@ -61,7 +78,9 @@ ci-all:
 	for v in $(EMACS_ALL); do \
 	  if [ "$$(cat .ci/$$v.status)" = 0 ]; then echo "Emacs $$v: ok"; \
 	  else failed=1; echo "Emacs $$v: failed, see .ci/$$v.log"; \
-	    grep -E "\.el:[0-9]+: |FAILED|Error|melpazoid: " .ci/$$v.log | tail -20; fi; \
+	    if grep -q "^== Emacs" .ci/$$v.log; then \
+	      sed -n "/^== Emacs/,\$$p" .ci/$$v.log | sed 1d | grep -v "^make" | sed "s/^/  /"; \
+	    else tail -20 .ci/$$v.log; fi; fi; \
 	done; \
 	exit $$failed
 
