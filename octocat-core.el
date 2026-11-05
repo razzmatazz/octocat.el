@@ -1005,11 +1005,6 @@ default)."
 When nil (the default) body text is rendered by
 `octocat-markdown-render'.  Toggle with `octocat-toggle-markdown'.")
 
-(defvar-local octocat--refresh-fn nil
-  "Buffer-local refresh function called by `octocat-toggle-markdown'.
-Each markdown-displaying mode sets this to its own refresh command so the
-toggle can re-render the buffer after flipping `octocat--markdown-raw'.")
-
 (defun octocat--markdown-string (text indent raw width &optional file)
   "Return TEXT rendered by `octocat-markdown-render', one line per row.
 Each line is prefixed with INDENT (a string, nil for \"  \") and ends in a
@@ -1640,12 +1635,11 @@ owner/repo#12, where it has one."
   "Toggle between rendered and raw markdown display in the current buffer.
 When raw mode is active the body text is shown verbatim; when rendered mode
 is active (the default) it is processed through `octocat-markdown-render'.
-After toggling, the buffer is refreshed via `octocat--refresh-fn'."
+After toggling, the buffer is redrawn with `revert-buffer'."
   (interactive)
   (setq octocat--markdown-raw (not octocat--markdown-raw))
   (message "Markdown display: %s" (if octocat--markdown-raw "raw" "rendered"))
-  (when octocat--refresh-fn
-    (funcall octocat--refresh-fn)))
+  (revert-buffer nil t))
 
 ;;;; Common keys
 

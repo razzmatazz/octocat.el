@@ -806,8 +806,6 @@ unfolded, until the fresh data replaces it."
 
 \\{octocat-job-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
-  (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-job-refresh)
   (setq-local octocat--url-function #'octocat-job--page-url)
   (setq-local octocat--repo-function (lambda () octocat--job-repo)))
@@ -1357,8 +1355,6 @@ everything, keeping what is shown until the fresh data replaces it."
 
 \\{octocat-run-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
-  (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-run-refresh)
   (setq-local octocat--url-function #'octocat-run--page-url)
   (setq-local octocat--repo-function (lambda () octocat--run-repo)))
@@ -2323,9 +2319,8 @@ the fetched one meanwhile.  A new TICK fetches them again."
   :group 'octocat
   ;; Not read-only, so the run form's fields can be edited; see
   ;; `octocat-vui-list-mode'.
-  (setq-local truncate-lines t)
+  (setq-local buffer-read-only nil)
   (setq-local revert-buffer-function #'octocat-workflow-refresh)
-  (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
   (setq-local octocat--url-function #'octocat-workflow--page-url)
   (setq-local octocat--repo-function (lambda () octocat--workflow-repo)))
 
@@ -2721,8 +2716,6 @@ A new TICK fetches them again."
 
 \\{octocat-checks-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
-  (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-checks-refresh)
   (setq-local octocat--url-function #'octocat-checks--page-url)
   (setq-local octocat--repo-function (lambda () octocat--checks-repo)))

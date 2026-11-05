@@ -18,8 +18,9 @@ a link named, does it from a zero-delay timer (`octocat--goto-line-target`).
 
 ## Editable fields
 
-A page with a `vui-field` must not set `buffer-read-only`: the field
-can't be typed in then.  `widget-setup` already refuses edits outside
+A page with a `vui-field` sets `buffer-read-only` to nil in its mode,
+undoing `octocat-page-mode`'s `t`: the field can't be typed in
+otherwise.  `widget-setup` already refuses edits outside
 fields.  Under Evil, normal-state RET on a field runs `evil-ret`, which
 inserts a newline into it, and the field's keymap hides the mode's
 Evil bindings, so bind RET buffer-locally to `octocat-evil-field-ret`

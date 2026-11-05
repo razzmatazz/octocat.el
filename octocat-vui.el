@@ -87,8 +87,15 @@ Holds the setup that is the same on all of them; the rest, such as
 `octocat--max-width-setup', differs between pages and stays in their
 own modes."
   :group 'octocat
+  ;; `vui-mode' leaves the buffer writable for its fields; a page with
+  ;; fields makes it so again.
+  (setq-local buffer-read-only t)
+  ;; Rows stay one line each; a page of prose wraps instead.
+  (setq-local truncate-lines t)
   (octocat--ts-eldoc-setup)
-  (octocat-markdown-copy-setup))
+  (octocat-markdown-copy-setup)
+  (octocat-markdown--ensure-invisibility)
+  (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t))
 
 (defvar-local octocat-vui--view-generation 0
   "Bumped by each `octocat-vui-refresh', see `octocat-vui-use-view-reset'.")
@@ -1359,10 +1366,9 @@ A filter other than the default goes along, so the page lists the same."
   :group 'octocat
   ;; Not read-only, so the query field can be edited: as in any vui
   ;; buffer, `widget-setup' rejects edits outside widget fields.
-  (setq-local truncate-lines t)
+  (setq-local buffer-read-only nil)
   (add-hook 'completion-at-point-functions
             #'octocat-vui-list--qualifier-capf nil t)
-  (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-vui-list--page-url)
   (setq-local octocat--repo-function (lambda () octocat-vui-list--repo)))

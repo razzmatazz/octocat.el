@@ -377,8 +377,6 @@ A new TICK fetches everything again."
 
 \\{octocat-user-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
-  (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-user-refresh)
   (setq-local octocat--url-function #'octocat-user--page-url))
 

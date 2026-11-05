@@ -359,10 +359,8 @@ A new TICK fetches everything again."
 
 \\{octocat-issue-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-issue-refresh)
-  (setq-local octocat--refresh-fn #'octocat-issue-refresh)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-issue--page-url)
   (setq-local octocat--repo-function (lambda () octocat--issue-repo)))

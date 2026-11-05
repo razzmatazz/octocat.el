@@ -1323,10 +1323,8 @@ A new TICK fetches them again."
 
 \\{octocat-pr-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-pr-refresh)
-  (setq-local octocat--refresh-fn #'octocat-pr-refresh)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-pr--page-url)
   (setq-local octocat--repo-function (lambda () octocat--pr-repo)))
@@ -1395,10 +1393,8 @@ the background, in place: what is unfolded stays so."
 
 \\{octocat-pr-commits-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-pr-commits-refresh)
-  (setq-local octocat--refresh-fn #'octocat-pr-commits-refresh)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-pr-commits--page-url)
   (setq-local octocat--repo-function (lambda () octocat--pr-commits-repo)))
@@ -2325,11 +2321,8 @@ It is at the diff line of point or the region."
 
 \\{octocat-pr-diff-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-pr-diff-refresh)
-  (setq-local octocat--refresh-fn #'octocat-pr-diff-refresh)
-  (octocat-markdown--ensure-invisibility)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-pr-diff--page-url)
   (setq-local octocat-diff--comment-backend octocat-pr-diff--comment-backend)

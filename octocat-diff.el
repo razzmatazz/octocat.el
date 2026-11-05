@@ -1630,11 +1630,8 @@ fetches them again."
 
 \\{octocat-commit-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-commit-refresh)
-  (setq-local octocat--refresh-fn #'octocat-commit-refresh)
-  (octocat-markdown--ensure-invisibility)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-commit--page-url)
   (setq-local octocat--repo-function (lambda () octocat--commit-repo)))
@@ -1847,11 +1844,8 @@ fetches it again."
 
 \\{octocat-compare-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-compare-refresh)
-  (setq-local octocat--refresh-fn #'octocat-compare-refresh)
-  (octocat-markdown--ensure-invisibility)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-compare--page-url)
   (setq-local octocat--repo-function (lambda () octocat--compare-repo)))

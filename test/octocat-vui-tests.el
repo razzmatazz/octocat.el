@@ -422,6 +422,21 @@ unsubscribes it."
     (should-not (seq-remove (lambda (m) (provided-mode-derived-p m 'octocat-page-mode))
                             modes))))
 
+(ert-deftest octocat-vui-test-page-mode-setup ()
+  "A page is read-only unless it has fields, and prefetches its rows."
+  (with-temp-buffer
+    (octocat-user-mode)
+    (should buffer-read-only)
+    (should truncate-lines)
+    (should (memq #'octocat-vui--prefetch-schedule post-command-hook))
+    (should (memq 'octocat-markdown-details buffer-invisibility-spec)))
+  (with-temp-buffer
+    (octocat-pr-list-mode)
+    (should-not buffer-read-only))
+  (with-temp-buffer
+    (octocat-pr-mode)
+    (should-not truncate-lines)))
+
 ;;;; Timed refetches
 
 (ert-deftest octocat-vui-test-poll-only-shown ()

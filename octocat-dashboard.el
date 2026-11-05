@@ -70,10 +70,7 @@ Starts at `octocat-feed-limit' and grows with `octocat-feed-load-more'.")
 
 \\{octocat-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
-  (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-refresh)
-  (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
   (setq-local octocat--url-function #'octocat-dashboard--page-url))
 
 

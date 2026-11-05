@@ -1896,11 +1896,7 @@ The tree browser stays in its directory, as GitHub's does."
 
 \\{octocat-repo-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
-  (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-repo-refresh)
-  (setq-local octocat--refresh-fn #'octocat-repo-refresh)
-  (octocat-markdown--ensure-invisibility)
   (octocat--max-width-setup)
   (add-hook 'window-buffer-change-functions #'octocat-repo--follow-checkout nil t)
   (add-hook 'window-selection-change-functions #'octocat-repo--follow-checkout nil t)
@@ -1916,8 +1912,7 @@ The tree browser stays in its directory, as GitHub's does."
 
 \\{octocat-tree-mode-map}"
   :group 'octocat
-  (setq-local revert-buffer-function #'octocat-tree-refresh)
-  (setq-local octocat--refresh-fn #'octocat-tree-refresh))
+  (setq-local revert-buffer-function #'octocat-tree-refresh))
 
 ;; Named as the PR and issue lists are; 0.1.0 had the old names.
 (define-obsolete-variable-alias 'octocat-commits-mode-hook 'octocat-commit-list-mode-hook "0.2.0")
@@ -1929,8 +1924,7 @@ The tree browser stays in its directory, as GitHub's does."
 
 \\{octocat-commit-list-mode-map}"
   :group 'octocat
-  (setq-local revert-buffer-function #'octocat-commit-list-refresh)
-  (setq-local octocat--refresh-fn #'octocat-commit-list-refresh))
+  (setq-local revert-buffer-function #'octocat-commit-list-refresh))
 
 ;; Not derived from the repo page: a file has state of its own.
 (defvar octocat-file-mode-map
@@ -1950,11 +1944,7 @@ The tree browser stays in its directory, as GitHub's does."
 
 \\{octocat-file-mode-map}"
   :group 'octocat
-  (setq-local buffer-read-only t)
-  (setq-local truncate-lines t)
   (setq-local revert-buffer-function #'octocat-file-refresh)
-  (setq-local octocat--refresh-fn #'octocat-file-refresh)
-  (octocat-markdown--ensure-invisibility)
   (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-file--page-url)
   (setq-local octocat--repo-function (lambda () octocat-tree--file-repo))
