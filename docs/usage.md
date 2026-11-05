@@ -6,7 +6,8 @@ pictured in [screenshots](screenshots/README.md).
 
 ## GitHub account dashboard (`M-x octocat`)
 
-Run `M-x octocat` to open the GitHub account dashboard in a global
+Run `M-x octocat`, or `M-x octocat-dashboard`, to open the GitHub
+account dashboard in a global
 `*octocat*` buffer.  Like github.com's own dashboard, it starts with
 the open pull requests and issues that involve you, then shows your
 repositories and recent activity:
@@ -222,7 +223,10 @@ whatever the other columns leave.
 
 ## PR detail view (`octocat-pr-mode`)
 
-Press `RET` on any PR row to open its detail buffer.  The buffer contains the
+Press `RET` on any PR row to open its detail buffer.  In a Git clone,
+`M-x octocat-pr` opens the PR of the branch checked out: the one `gh pr
+view` finds for it, of its upstream branch or of the branch of the same
+name.  A branch with no PR says so in the echo area.  The buffer contains the
 following collapsible sections (toggle with `TAB`):
 
 | Section | Contents |

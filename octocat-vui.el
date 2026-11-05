@@ -72,8 +72,6 @@
 (defvar octocat-vui--state-width)  ; defconst under "Row builders"
 (defvar octocat-vui--mark-width)   ; likewise
 
-(define-obsolete-variable-alias 'octocat-vui-page-map 'octocat-page-mode-map "0.2.0")
-
 (defvar octocat-page-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map (make-composed-keymap octocat-common-map vui-mode-map))

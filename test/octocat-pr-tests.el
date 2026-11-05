@@ -308,5 +308,40 @@ The thread's own fields go on its first comment; a draft is pending."
     (should (equal (octocat--get some "pending" "id") "R1"))
     (should (equal (octocat--get some "pending" "commit") "def"))))
 
+;;;; M-x octocat-pr
+
+(defun octocat-pr-tests--branch-pr (result)
+  "Run `octocat-pr' on branch \"topic\" with `gh' answering RESULT.
+Return the (REPO NUMBER) it opened, or the message it showed."
+  (let (opened shown)
+    (cl-letf (((symbol-function 'octocat--current-branch) (lambda () "topic"))
+              ((symbol-function 'octocat-repo--current-repo) (lambda () "acme/rocket"))
+              ((symbol-function 'octocat--run-gh)
+               (lambda (_name args parse callback)
+                 (should (equal args '("pr" "view" "--json" "url")))
+                 (funcall callback (if (stringp result) (funcall parse result) result))))
+              ((symbol-function 'octocat-pr-open)
+               (lambda (repo number) (setq opened (list repo number))))
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (and fmt (setq shown (apply #'format fmt args))))))
+      (octocat-pr))
+    (or opened shown)))
+
+(ert-deftest octocat-pr-test-open-branch-pr ()
+  "`octocat-pr' opens the PR of the branch checked out, if it has one."
+  (should (equal (octocat-pr-tests--branch-pr
+                  "{\"url\":\"https://github.com/acme/rocket/pull/42\"}")
+                 '("acme/rocket" 42)))
+  (should (equal (octocat-pr-tests--branch-pr
+                  '(error . "no pull requests found for branch \"topic\""))
+                 "Octocat: topic has no pull request"))
+  (should (equal (octocat-pr-tests--branch-pr '(error . "HTTP 502"))
+                 "Octocat: Could not look up the pull request: HTTP 502")))
+
+(ert-deftest octocat-pr-test-open-branch-pr-detached ()
+  "`octocat-pr' with no branch checked out says so."
+  (cl-letf (((symbol-function 'octocat--current-branch) #'ignore))
+    (should-error (octocat-pr) :type 'user-error)))
+
 (provide 'octocat-pr-tests)
 ;;; octocat-pr-tests.el ends here

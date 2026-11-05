@@ -1912,11 +1912,6 @@ The tree browser stays in its directory, as GitHub's does."
   :group 'octocat
   (setq-local revert-buffer-function #'octocat-tree-refresh))
 
-;; Named as the PR and issue lists are; 0.1.0 had the old names.
-(define-obsolete-variable-alias 'octocat-commits-mode-hook 'octocat-commit-list-mode-hook "0.2.0")
-(define-obsolete-variable-alias 'octocat-commits-mode-map 'octocat-commit-list-mode-map "0.2.0")
-(define-obsolete-function-alias 'octocat-commits-mode #'octocat-commit-list-mode "0.2.0")
-
 (define-derived-mode octocat-commit-list-mode octocat-repo-mode "Octocat-Commits"
   "Major mode for the commits of a repository's branch, tag or commit.
 

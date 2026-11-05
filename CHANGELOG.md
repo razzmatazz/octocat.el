@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Old names are gone: `octocat-pr-checks-shown`, `octocat-commits-mode`, `octocat-commit-file-*`
+* `M-x octocat-pr` opens the pull request of the branch checked out, if it has one
+* `M-x octocat-dashboard` opens the dashboard, as `M-x octocat` does
 * `g` refreshes the file page outside Evil too; it waited for a second key
 * Under Evil, `gs` searches the repository from the file and user pages too
 * The dashboard, user and Actions pages keep within `octocat-max-width` too

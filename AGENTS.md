@@ -18,6 +18,9 @@ See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as f
 - **Update `CHANGELOG.md` for significant changes**: anything a user would notice (features, key bindings, fixed bugs) or that changes which Emacs versions are supported or tested. Add a line at the top of `## [Unreleased]`, newest first, worded for users, in the style of the entries already there.
   Keep an entry short, about 80 characters and rarely past 100: name
   what changed for the user, not every detail.
+  Don't edit an existing entry because a later change supersedes it:
+  add a new entry saying what changed.  Edit one only when it was wrong
+  when written, to correct the record.
 - **Keep `Assisted-by:` headers complete.** Every `.el` file, tests included, lists each model that has worked on it, one line per model, as MELPA asks (`;; Assisted-by: AGENT_NAME:MODEL_VERSION`, e.g. `;; Assisted-by: Claude:claude-opus-5-5`). When you edit or create a file and your model is not listed there, add a line after the existing `Assisted-by:` lines, or, in a file with none, after the title line. Never remove a line.
 - **Keep docs and comments minimal.** Say only what the code doesn't: the why, the non-obvious. Short, but complete enough to understand.
   Docs (`README.md`, `docs/`) must not be too short either: a reader new to the feature should get what it does, why, and how to use or extend it, in full sentences.

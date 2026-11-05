@@ -2603,7 +2603,6 @@ RET, described by HELP-ECHO.  INDENT starts the row, two spaces if nil."
      (or (octocat--nonempty (gethash "detailsUrl" check))
          (octocat--nonempty (gethash "targetUrl" check))))))
 
-(define-obsolete-variable-alias 'octocat-pr-checks-shown 'octocat-checks-shown "0.1.0")
 (defcustom octocat-checks-shown 5
   "Number of checks shown on a PR or commit page before the rest folds away.
 The rest expands on RET.  Nil never folds."

@@ -79,6 +79,34 @@
     (octocat-refresh)))
 
 ;;;###autoload
+(defalias 'octocat-dashboard #'octocat)
+
+;;;###autoload
+(defun octocat-pr ()
+  "Open the pull request of the branch checked out in this Git clone.
+That is the PR `gh pr view' finds for it: of its upstream branch, or
+of the branch of the same name."
+  (interactive)
+  (let ((branch (or (octocat--current-branch)
+                    (user-error "Octocat: No branch is checked out here"))))
+    (octocat-repo--current-repo)        ; signals outside a GitHub clone
+    (message "Octocat: Looking up the pull request of %s…" branch)
+    (octocat--run-gh "pr-of-branch" (list "pr" "view" "--json" "url")
+                     (lambda (output) (gethash "url" (json-parse-string output)))
+                     (lambda (result)
+                       (pcase result
+                         (`(error . ,msg)
+                          (if (string-match-p "no pull requests found" msg)
+                              (message "Octocat: %s has no pull request" branch)
+                            (message "Octocat: Could not look up the pull request: %s" msg)))
+                         (url
+                          (pcase (octocat--github-url-target url)
+                            (`(pr ,repo ,number)
+                             (message nil)
+                             (octocat-pr-open repo number))
+                            (_ (message "Octocat: %s has no pull request" branch)))))))))
+
+;;;###autoload
 (defun octocat-repo ()
   "Open (or switch to) the octocat-repo buffer for the current GitHub repository.
 When invoked from inside a git working tree the buffer is opened in

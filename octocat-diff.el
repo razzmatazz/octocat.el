@@ -74,12 +74,6 @@
   "Face for the letter of a renamed file in a diff."
   :group 'octocat)
 
-;; They colour the PR diff too; 0.1.0 named them after the commit page.
-(define-obsolete-face-alias 'octocat-commit-file-modified 'octocat-diff-file-modified "0.2.0")
-(define-obsolete-face-alias 'octocat-commit-file-added 'octocat-diff-file-added "0.2.0")
-(define-obsolete-face-alias 'octocat-commit-file-removed 'octocat-diff-file-removed "0.2.0")
-(define-obsolete-face-alias 'octocat-commit-file-renamed 'octocat-diff-file-renamed "0.2.0")
-
 (defface octocat-diff-file-name
   '((t :inherit bold))
   "Face for a file's name in a diff, set apart from the code below it."

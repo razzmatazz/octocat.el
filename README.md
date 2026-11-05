@@ -69,8 +69,9 @@ Optional extras:
 
 | Command | Opens |
 |---------|-------|
-| `M-x octocat` | Your dashboard |
+| `M-x octocat` / `octocat-dashboard` | Your dashboard |
 | `M-x octocat-repo` | The repository of the current Git clone |
+| `M-x octocat-pr` | The pull request of its checked-out branch, if it has one |
 | `M-x octocat-pr-list` / `octocat-issue-list` | Its pull requests / issues |
 | `M-x octocat-actions` | Its workflow runs |
 
