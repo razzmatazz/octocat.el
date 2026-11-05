@@ -269,6 +269,10 @@ not be text."
                                     r
                                   (progn (puthash "base64" r h) h)))))))))
 
+(defun octocat-model-blob-content (data)
+  "Return the content of a file from DATA, the `blob' resource's."
+  (base64-decode-string (gethash "base64" data)))
+
 (defcustom octocat-repo-search-cache-ttl 3600
   "Seconds a repo search result is reused by `octocat-switch-repo'.
 Within it a query seen before shows its stored result with no `gh

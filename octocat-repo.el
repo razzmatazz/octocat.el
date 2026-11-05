@@ -342,7 +342,7 @@ From the store at once when there, else once fetched."
                     (lambda (r)
                       (funcall callback (if (eq (car-safe r) 'error)
                                             r
-                                          (octocat-vui--blob-content r))))))
+                                          (octocat-model-blob-content r))))))
 
 (defun octocat-tree--image-file (repo ref path callback)
   "Call CALLBACK with the bytes of file PATH of REPO at REF, or nil.
@@ -993,7 +993,7 @@ stays put no request is made."
          (text  (vui-use-memo ((plist-get blob :data) ref raw width)
                   (and entry (plist-get blob :data)
                        (octocat-repo--doc-text repo ref (gethash "path" entry)
-                                               (octocat-vui--blob-content
+                                               (octocat-model-blob-content
                                                 (plist-get blob :data))
                                                raw width)))))
     (cond
@@ -1339,7 +1339,7 @@ LINES are as for `octocat-repo--mark-lines'."
                        (octocat-repo--mark-lines
                         (octocat-repo--blame-text
                          repo (octocat-repo--source-text
-                               path (octocat-vui--blob-content (plist-get file :data)))
+                               path (octocat-model-blob-content (plist-get file :data)))
                          (plist-get snap :data) edge)
                         lines))))
          (ready (and text t)))
@@ -1366,7 +1366,7 @@ RAW shows markdown as is.  In the code view, LINES are as for
          (text  (vui-use-memo ((plist-get snap :data) raw width lines)
                   (when-let* ((data (plist-get snap :data)))
                     (let ((text (octocat-repo--file-text repo ref path
-                                                         (octocat-vui--blob-content data)
+                                                         (octocat-model-blob-content data)
                                                          raw width)))
                       (if code (octocat-repo--mark-lines text lines) text)))))
          (ready (and text t)))
