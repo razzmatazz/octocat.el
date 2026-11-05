@@ -362,12 +362,12 @@ title, set by another package, is left alone."
               octocat-vui--sticky-format))))))
 
 (defun octocat-vui--sticky-unpin (frame)
-  "Drop the pinned title of each window of FRAME no longer showing a page."
+  "Pin or unpin the title of each pinning window of FRAME, for its buffer now.
+The pin is the window's: a page opened from a scrolled one would
+otherwise keep it, above the new page's own title."
   (dolist (win (window-list frame 'never))
-    (when (and (eq (window-parameter win 'header-line-format) octocat-vui--sticky-format)
-               (not (with-current-buffer (window-buffer win)
-                      (derived-mode-p 'octocat-page-mode))))
-      (set-window-parameter win 'header-line-format nil))))
+    (when (eq (window-parameter win 'header-line-format) octocat-vui--sticky-format)
+      (octocat-vui--sticky-update win))))
 
 (defvar-local octocat-vui--resource-ticks nil
   "Resource key to the page tick it was last requested with, in this buffer.

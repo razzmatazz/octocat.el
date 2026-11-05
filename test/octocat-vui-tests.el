@@ -271,6 +271,24 @@
         (set-window-parameter win 'header-line-format nil)
         (set-window-buffer win old)))))
 
+(ert-deftest octocat-vui-test-sticky-unpin-on-new-page ()
+  "A page opened in a window pinning another page's title is not pinned."
+  (let ((win (selected-window))
+        (old (window-buffer (selected-window)))
+        (page (generate-new-buffer " *page*")))
+    (unwind-protect
+        (with-current-buffer page
+          (octocat-page-mode)
+          (let ((inhibit-read-only t))
+            (insert "Title\nline 2\n"))
+          (set-window-buffer win page)
+          (set-window-parameter win 'header-line-format octocat-vui--sticky-format)
+          (octocat-vui--sticky-unpin (window-frame win))
+          (should-not (window-parameter win 'header-line-format)))
+      (set-window-parameter win 'header-line-format nil)
+      (set-window-buffer win old)
+      (kill-buffer page))))
+
 (ert-deftest octocat-vui-test-error-text ()
   "A failure with no data reads by its kind."
   (should (equal (octocat-vui-error-text '(:error "HTTP 404: Not Found" :kind permanent))
