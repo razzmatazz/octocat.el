@@ -244,7 +244,10 @@
       (should-not (get-text-property 0 'keymap title)))
     (erase-buffer)
     (insert "▀▀▀  " (propertize "@ann  Ann" 'octocat-page-title t) "\n▀▀▀  bio\n")
-    (should (equal (octocat-vui-sticky-title) "@ann  Ann"))))
+    (should (equal (octocat-vui-sticky-title) "@ann  Ann"))
+    (erase-buffer)
+    (insert "a.el  " (propertize " Blame " 'face 'bold) "  \nbody\n")
+    (should (equal (octocat-vui-sticky-title) "a.el   Blame "))))
 
 (ert-deftest octocat-vui-test-sticky-update ()
   "A window pins the title once scrolled past it, and leaves another header line be."

@@ -307,12 +307,18 @@ plain text, as it is not in the buffer: a click on it goes to the top."
                     (next-single-property-change start 'octocat-page-title nil eol)
                   eol))
          (title (buffer-substring start end))
-         (map   (make-sparse-keymap)))
+         (map   (make-sparse-keymap))
+         (keep  (length title)))
+    ;; Trim only the plain space after it: a pill's padding is faced.
+    (while (and (> keep 0)
+                (memq (aref title (1- keep)) '(?\s ?\t))
+                (not (get-text-property (1- keep) 'face title)))
+      (setq keep (1- keep)))
     (define-key map [header-line mouse-1] #'octocat-vui-sticky-top)
     (remove-list-of-text-properties
      0 (length title) '(keymap local-map mouse-face help-echo button category field)
      title)
-    (propertize (string-trim-right title) 'local-map map
+    (propertize (substring title 0 keep) 'local-map map
                 'help-echo "mouse-1: back to the top")))
 
 (defun octocat-vui--sticky-header-line ()
