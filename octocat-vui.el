@@ -295,18 +295,33 @@ below; an underline set here replaces it."
     (goto-char (point-min))
     (line-end-position)))
 
+(defun octocat-vui-sticky-status ()
+  "Return the current page's status, as its title row is pinned with, or nil.
+That is the text with an `octocat-page-status' property in the page's
+first lines, as the state heading a PR's fields."
+  (let* ((limit (save-excursion (goto-char (point-min)) (forward-line 4) (point)))
+         (start (text-property-any (point-min) limit 'octocat-page-status t)))
+    (and start
+         (string-trim
+          (buffer-substring start (next-single-property-change
+                                   start 'octocat-page-status nil limit))))))
+
 (defun octocat-vui-sticky-title ()
   "Return the current page's title row, as pinned in the header line.
 That is its first line, or the text on it with an `octocat-page-title'
-property, as the user page's name beside its avatar.  Links on it are
-plain text, as it is not in the buffer: a click on it goes to the top."
+property, as the user page's name beside its avatar, led by the page's
+status (`octocat-vui-sticky-status'), which scrolls away under it.
+Links on it are plain text, as it is not in the buffer: a click on it
+goes to the top."
   (let* ((bol   (point-min))
          (eol   (octocat-vui-sticky-title-end))
          (start (or (text-property-any bol eol 'octocat-page-title t) bol))
          (end   (if (get-text-property start 'octocat-page-title)
                     (next-single-property-change start 'octocat-page-title nil eol)
                   eol))
-         (title (buffer-substring start end))
+         (status (octocat-vui-sticky-status))
+         (title (concat (if (octocat--nonempty status) (concat status "  ") "")
+                        (buffer-substring start end)))
          (map   (make-sparse-keymap))
          (keep  (length title)))
     ;; Trim only the plain space after it: a pill's padding is faced.
@@ -1581,8 +1596,10 @@ The top row is REPO, Actions, then CRUMBS, the pages below Actions
 down to this one, as for `octocat-vui-crumbs', kept within WIDTH.
 Under it, STATE, a propertized string, heads the first of LINES, each a
 list of fields as for `octocat-vui-fields'; the others are lined up
-under it.  With no STATE, there is only the top row."
+under it.  STATE leads the title row when it is pinned, see
+`octocat-vui-sticky-status'.  With no STATE, there is only the top row."
   (let* ((fields (delq nil (mapcar #'octocat-vui-fields lines)))
+         (state  (and state (propertize state 'octocat-page-status t)))
          (head   (and state (concat state "  "))))
     (cons
      (octocat-vui-crumbs repo (cons (octocat-vui-tab-crumb repo 'actions) crumbs) width)
@@ -2874,7 +2891,8 @@ title and author, the `title' target of the page's edit command, on
 which RET calls ON-EDIT-TITLE; the title is cut to fit WIDTH, its whole
 shown on hover and by ElDoc.  Then the FIELDS one edits, as for
 `octocat-vui--field-lines', headed by STATE, its coloured state
-text (see `octocat-vui--state-label').  Last, the cells of ITEM,
+text (see `octocat-vui--state-label'), which leads the title row when it
+is pinned (see `octocat-vui-sticky-status').  Last, the cells of ITEM,
 then SHOWN, fields as for `octocat-vui--detail-fields'; not the
 date, which the opening timeline entry shows.  BG is as for
 `octocat-vui--cells'.  BRANCH, when non-nil, is shown first.
@@ -2909,7 +2927,8 @@ right after the title, on which RET calls ACTION."
                      (octocat-vui--login-link (substring author 1)))))
        on-edit-title
        "RET: edit title"))
-     (octocat-vui--field-lines fields (concat state "  ") width)
+     (octocat-vui--field-lines
+      fields (concat (propertize state 'octocat-page-status t) "  ") width)
      (octocat-vui--field-lines
       (cons (cons nil (octocat-vui--join-cells
                        cells (seq-difference '(:branch :review :ci :prs :comments) omit)))

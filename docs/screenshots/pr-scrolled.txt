@@ -1,4 +1,4 @@
-acme/rocket#128  Cache parsed templates between builds · @srivera
+open  acme/rocket#128  Cache parsed templates between builds · @srivera
 ● @pnair commented  1 day ago  🎉 3
 │ Tried it on our docs site: 9.4s → 2.0s here too.  Lovely.
 │

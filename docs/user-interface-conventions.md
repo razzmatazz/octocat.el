@@ -668,6 +668,12 @@ is first.  When the line holds more, as the user page's avatar beside
 the name, give the title text an `octocat-page-title` property: only
 that is pinned.
 
+A page's status, such as an issue's or PR's state or a run's
+conclusion, is part of what it is, so it stays in view too: give it an
+`octocat-page-status` property, in the page's first few lines, and it
+leads the pinned copy (`octocat-vui-sticky-status`).  The state of
+`octocat-vui--detail-header` and `octocat-vui-actions-header` has it.
+
 Whatever stays pinned while the page scrolls under it, as this title,
 is parted from the content below by an underline across the window
 (face `octocat-sticky-title`), so the copy doesn't read as a line of

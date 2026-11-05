@@ -247,7 +247,12 @@
     (should (equal (octocat-vui-sticky-title) "@ann  Ann"))
     (erase-buffer)
     (insert "a.el  " (propertize " Blame " 'face 'bold) "  \nbody\n")
-    (should (equal (octocat-vui-sticky-title) "a.el   Blame "))))
+    (should (equal (octocat-vui-sticky-title) "a.el   Blame "))
+    (erase-buffer)
+    (insert "acme/rocket#1  Title\n"
+            (propertize "open  " 'octocat-page-status t) "  Labels none\n")
+    (should (equal (octocat-vui-sticky-status) "open"))
+    (should (equal (octocat-vui-sticky-title) "open  acme/rocket#1  Title"))))
 
 (ert-deftest octocat-vui-test-sticky-update ()
   "A window pins the title once scrolled past it, and leaves another header line be."

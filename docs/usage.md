@@ -539,7 +539,9 @@ On Doom Emacs, let `q` reach octocat pages with
 ### The title row in the header line
 
 Scrolled past its first line, a page shows that line, its title row,
-in the header line, so you can tell which PR or file you are in.
+in the header line, so you can tell which PR or file you are in.  A
+PR's, issue's, run's, job's or workflow's status leads it: `open`,
+`merged`, `success`.
 Each window pins it by itself, and only once the row is out of view:
 at the top of a page there is no header line.  The copy is not buffer
 text, so it doesn't affect the region, copying or search.  Clicking it
