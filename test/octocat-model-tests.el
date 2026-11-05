@@ -92,15 +92,12 @@
 ;;;; Actions
 
 (ert-deftest octocat-model-test-job-tree ()
-  "A job's log, annotations and artifacts may fail; the job itself may not."
-  (let ((tree (octocat-model--job-tree (json-parse-string "{\"id\":1}") '(error . "gone")
-                                       '(error . "no") [])))
+  "A job's annotations and artifacts may fail; the job itself may not."
+  (let ((tree (octocat-model--job-tree (json-parse-string "{\"id\":1}") '(error . "no") [])))
     (should (equal (octocat--get tree "job" "id") 1))
-    (should (equal (gethash "log_error" tree) "gone"))
-    (should-not (gethash "log" tree))
     (should (equal (gethash "annotations" tree) []))
     (should (equal (gethash "artifacts" tree) [])))
-  (should (equal (octocat-model--job-tree '(error . "no job") "log" [] [])
+  (should (equal (octocat-model--job-tree '(error . "no job") [] [])
                  '(error . "no job"))))
 
 (ert-deftest octocat-model-test-parse-annotations-artifacts ()

@@ -151,6 +151,16 @@ byte-order mark, and steps yet to start that get none of it."
                    '((1 "setting up")
                      (2 "Run make test" "running\tnow"))))))
 
+(ert-deftest octocat-job-test-steps-log-loading ()
+  "While the log comes, the steps show without folds or Expand all, over a grey bar."
+  (let* ((job   (make-hash-table :test #'equal))
+         (_     (puthash "steps" (vector (octocat-job-test--step 1 "Set up job" 0 1)) job))
+         (nodes (octocat-job--steps job 'loading nil #'ignore))
+         (bar   (vui-vnode-text-content (car (last nodes)))))
+    (should (vui-vnode-text-p (car nodes)))
+    (should (vui-vnode-text-p (cadr nodes)))
+    (should (eq (get-text-property 2 'face bar) 'octocat-skeleton))))
+
 (ert-deftest octocat-job-test-annotations-wrap ()
   "A long annotation message wraps within the width, hung under the job."
   (let* ((ann (make-hash-table :test #'equal))

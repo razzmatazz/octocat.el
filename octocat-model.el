@@ -1593,21 +1593,17 @@ or (error . MSG)."
             []))
     (error [])))
 
-(defun octocat-model--job-tree (job log annotations artifacts)
+(defun octocat-model--job-tree (job annotations artifacts)
   "Return the tree of the `job' resource from what GitHub answered.
-JOB is the job, as the REST API has it, and LOG the raw log text, see
-`octocat--job-parse-log'; ANNOTATIONS and ARTIFACTS are vectors.  Any
-may be (error . MESSAGE) instead.  The tree holds them as \"job\",
-\"log\" or, unavailable, its \"log_error\", \"annotations\" and
-\"artifacts\", those two \\=[] when unavailable.  Without JOB there is
-no page to show, so its error is returned."
+JOB is the job, as the REST API has it; ANNOTATIONS and ARTIFACTS are
+vectors.  Any may be (error . MESSAGE) instead.  The tree holds them as
+\"job\", \"annotations\" and \"artifacts\", those two \\=[] when
+unavailable.  Without JOB there is no page to show, so its error is
+returned."
   (if (eq (car-safe job) 'error)
       job
     (let ((h (make-hash-table :test #'equal)))
       (puthash "job" job h)
-      (if (eq (car-safe log) 'error)
-          (puthash "log_error" (cdr log) h)
-        (puthash "log" log h))
       (puthash "annotations" (if (eq (car-safe annotations) 'error) [] annotations) h)
       (puthash "artifacts" (if (eq (car-safe artifacts) 'error) [] artifacts) h)
       h)))
@@ -1615,8 +1611,8 @@ no page to show, so its error is returned."
 (octocat-sync-define-resource job (repo run-id job-id)
   :poll (lambda (data) (octocat-sync-poll-status (octocat--get data "job" "status")))
   :fetch (lambda (done)
-           ;; Four calls at once, answered in RESULTS as they come.
-           (let* ((results (make-vector 4 'pending))
+           ;; Three calls at once, answered in RESULTS as they come.
+           (let* ((results (make-vector 3 'pending))
                   (answer  (lambda (i)
                              (lambda (r)
                                (aset results i r)
@@ -1628,24 +1624,34 @@ no page to show, so its error is returned."
                                                   (number-to-string job-id)))
                               (lambda (output) (json-parse-string (string-trim output)))
                               (funcall answer 0))
-             (octocat--run-gh "job-log"
-                              (list "run" "view" "--log" "--job" (number-to-string job-id)
-                                    "--repo" repo)
-                              #'identity
-                              (funcall answer 1))
              (octocat--run-gh "job-annotations"
                               (list "api" (format "repos/%s/check-runs/%s/annotations?per_page=100"
                                                   repo (number-to-string job-id)))
                               #'octocat-model--parse-annotations
-                              (funcall answer 2))
+                              (funcall answer 1))
              (if (not run-id)
-                 (funcall (funcall answer 3) [])
+                 (funcall (funcall answer 2) [])
                (octocat--run-gh "job-artifacts"
                                 (list "api"
                                       (format "repos/%s/actions/runs/%s/artifacts?per_page=100"
                                               repo (number-to-string run-id)))
                                 #'octocat-model--parse-artifacts
-                                (funcall answer 3))))))
+                                (funcall answer 2))))))
+
+(octocat-sync-define-resource job-log (repo job-id)
+  ;; Apart from `job', so the steps show before a long log has come; the
+  ;; job page refetches it as the job runs, see `octocat-job--page'.
+  ;; Its data is the raw text as "log", see `octocat--job-parse-log'.
+  :poll nil
+  :fetch (lambda (done)
+           (octocat--run-gh "job-log"
+                            (list "run" "view" "--log" "--job" (number-to-string job-id)
+                                  "--repo" repo)
+                            (lambda (raw)
+                              (let ((h (make-hash-table :test #'equal :size 1)))
+                                (puthash "log" raw h)
+                                h))
+                            done)))
 
 (defun octocat--fetch-run (repo run-id callback)
   "Fetch detail for run RUN-ID in REPO asynchronously.

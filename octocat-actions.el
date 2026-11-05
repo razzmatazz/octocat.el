@@ -59,8 +59,10 @@
 ;;   gh api repos/OWNER/REPO/actions/jobs/JOB-ID
 ;; and its log from
 ;;   gh run view --log --job JOB-ID --repo OWNER/REPO
-;; The requests run in parallel.  A log-fetch failure is non-fatal: the
-;; steps are shown without log lines, with a note below them.
+;; The requests run in parallel, as two resources: the steps show as soon
+;; as the job comes, folding over their log once it does.  A log-fetch
+;; failure is non-fatal: the steps are shown without log lines, with a
+;; note below them.
 
 ;;;;; Buffer-local state
 
@@ -371,14 +373,16 @@ BULK is as for `octocat-vui-fold'."
 
 (defun octocat-job--steps (job log bulk on-bulk)
   "Return the vnodes of the section listing each step of JOB.
-LOG is the parsed log, as from `octocat--job-parse-log', or \\=(error . MSG).
+LOG is the parsed log, as from `octocat--job-parse-log', \\=(error . MSG),
+or `loading' while it comes, shown as a grey bar below the steps.
 The heading carries an \"Expand all\" button for the steps and their log
 groups: BULK and ON-BULK are as for `octocat-vui-expand-all-button'."
   (let ((steps (let ((v (gethash "steps" job)))
                  (if (vectorp v) (append v nil) nil)))
-        (failed (eq (car-safe log) 'error)))
+        (failed (eq (car-safe log) 'error))
+        (loading (eq log 'loading)))
     (append
-     (list (if (and steps (not failed))
+     (list (if (and steps (not failed) (not loading))
                (vui-hstack :spacing 2
                            (vui-text (propertize (format "Steps (%d)" (length steps))
                                                  'face 'octocat-section-heading))
@@ -389,12 +393,14 @@ groups: BULK and ON-BULK are as for `octocat-vui-expand-all-button'."
          (list (vui-text "  (no steps)" :face 'octocat-dimmed))
        (mapcar (lambda (step)
                  (octocat-job--step step
-                                    (unless failed
+                                    (unless (or failed loading)
                                       (cdr (assoc (gethash "number" step) log)))
                                     bulk))
                steps))
      (when failed
-       (list (vui-text (format "  (log unavailable: %s)" (cdr log)) :face 'octocat-dimmed))))))
+       (list (vui-text (format "  (log unavailable: %s)" (cdr log)) :face 'octocat-dimmed)))
+     (when (and steps loading)
+       (list (vui-text (octocat-vui-skeleton '(("  " 30)))))))))
 
 
 ;;;;; Artifacts and annotations
@@ -656,7 +662,8 @@ status and details."
 (vui-defcomponent octocat-job--page (repo run-id job-id name tick)
   "Job JOB-ID of run RUN-ID of REPO; NAME shows while it loads.
 A new TICK refetches the job, keeping what is shown, and which steps are
-unfolded, until the fresh data replaces it."
+unfolded, until the fresh data replaces it.  The log is fetched alongside,
+and again whenever the job, still running, comes anew."
   :state ((bulk nil))
   :render
   (let* ((_ (octocat-vui-use-view-reset (vui-async-callback () (vui-set-state :bulk nil))))
@@ -666,12 +673,21 @@ unfolded, until the fresh data replaces it."
                     (or (plist-get snap :data) (plist-get snap :partial))))
          (crumbs  (octocat-job--crumbs repo run-id run name))
          (data    (plist-get result :data))
-         (raw     (and data (gethash "log" data)))
+         (status  (and data (octocat--get data "job" "status")))
+         ;; While the job runs, each fresh copy of it refetches the log.
+         (log-snap (octocat-vui-use-resource
+                    (list 'job-log repo job-id)
+                    (list tick (and status (not (equal (downcase status) "completed"))
+                                    (plist-get result :fetched-at)))))
+         (log-status (octocat-vui-snapshot-status log-snap))
+         (log-error  (plist-get log-snap :error))
+         (raw     (and (eq log-status 'ready) (octocat--get (plist-get log-snap :data) "log")))
          (steps   (and data (append (octocat--get data "job" "steps") nil)))
-         (log     (vui-use-memo (raw steps)
-                    (if raw
-                        (octocat--job-parse-log raw steps)
-                      (cons 'error (or (and data (gethash "log_error" data)) ""))))))
+         (log     (vui-use-memo (raw steps log-status log-error)
+                    (pcase log-status
+                      ('ready (octocat--job-parse-log (or raw "") steps))
+                      ('error (cons 'error log-error))
+                      (_ 'loading)))))
     (apply #'vui-vstack
            (append
             (if data
