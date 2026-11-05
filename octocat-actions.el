@@ -355,7 +355,7 @@ The log is laid out only once the step is unfolded: a log can be long.
 BULK is as for `octocat-vui-fold'."
   (let ((title (octocat-job--step-title step)))
     (if (null lines)
-        (vui-text (concat "    " title))
+        (vui-text (concat "  " title))
       ;; `octocat-vui-fold', not `vui-collapsible': its toggle button would
       ;; draw the whole title in the `link' face, losing the icon and
       ;; status faces.
@@ -363,7 +363,7 @@ BULK is as for `octocat-vui-fold'."
         :key (gethash "number" step)
         :bulk bulk
         :header (lambda (open toggle)
-                  (octocat-vui-fold-header "  " open toggle title
+                  (octocat-vui-fold-header "" open toggle title
                                            '("RET: show log" . "RET: hide log")))
         ;; BULK too, for the log groups it unfolds.
         :deps (cons lines bulk)
