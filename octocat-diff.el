@@ -1632,7 +1632,6 @@ fetches them again."
   :group 'octocat
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-commit-refresh)
-  (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-commit--page-url)
   (setq-local octocat--repo-function (lambda () octocat--commit-repo)))
 
@@ -1846,7 +1845,6 @@ fetches it again."
   :group 'octocat
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-compare-refresh)
-  (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-compare--page-url)
   (setq-local octocat--repo-function (lambda () octocat--compare-repo)))
 

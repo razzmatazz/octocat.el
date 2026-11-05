@@ -83,15 +83,15 @@
 
 (define-derived-mode octocat-page-mode vui-mode "Octocat-Page"
   "Base major mode of every octocat page.
-Holds the setup that is the same on all of them; the rest, such as
-`octocat--max-width-setup', differs between pages and stays in their
-own modes."
+Holds the setup that is the same on all of them; what differs, such
+as a page's refresh, stays in its own mode."
   :group 'octocat
   ;; `vui-mode' leaves the buffer writable for its fields; a page with
   ;; fields makes it so again.
   (setq-local buffer-read-only t)
   ;; Rows stay one line each; a page of prose wraps instead.
   (setq-local truncate-lines t)
+  (setq-local octocat--capped t)
   (octocat--ts-eldoc-setup)
   (octocat-markdown-copy-setup)
   (octocat-markdown--ensure-invisibility)
@@ -1369,7 +1369,6 @@ A filter other than the default goes along, so the page lists the same."
   (setq-local buffer-read-only nil)
   (add-hook 'completion-at-point-functions
             #'octocat-vui-list--qualifier-capf nil t)
-  (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-vui-list--page-url)
   (setq-local octocat--repo-function (lambda () octocat-vui-list--repo)))
 

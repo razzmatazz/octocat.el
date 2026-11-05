@@ -361,7 +361,6 @@ A new TICK fetches everything again."
   :group 'octocat
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-issue-refresh)
-  (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-issue--page-url)
   (setq-local octocat--repo-function (lambda () octocat--issue-repo)))
 

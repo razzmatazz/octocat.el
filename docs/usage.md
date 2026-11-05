@@ -216,9 +216,9 @@ and **[Actor]** buttons (or `F`).  The qualifiers are `branch:`,
 `gh run list` option, and anything else in the query is ignored, with a
 note saying so.
 
-Like the repo and file pages and the issue and pull request pages, the list pages
-keep within `octocat-max-width` columns (112 by default, nil for the
-whole window); the titles of rows take whatever the other columns leave.
+Like every page, the list pages keep within `octocat-max-width` columns
+(112 by default, nil for the whole window); the titles of rows take
+whatever the other columns leave.
 
 ## PR detail view (`octocat-pr-mode`)
 

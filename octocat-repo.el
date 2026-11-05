@@ -1897,7 +1897,6 @@ The tree browser stays in its directory, as GitHub's does."
 \\{octocat-repo-mode-map}"
   :group 'octocat
   (setq-local revert-buffer-function #'octocat-repo-refresh)
-  (octocat--max-width-setup)
   (add-hook 'window-buffer-change-functions #'octocat-repo--follow-checkout nil t)
   (add-hook 'window-selection-change-functions #'octocat-repo--follow-checkout nil t)
   (setq-local octocat--url-function #'octocat-repo--page-url)
@@ -1945,7 +1944,6 @@ The tree browser stays in its directory, as GitHub's does."
 \\{octocat-file-mode-map}"
   :group 'octocat
   (setq-local revert-buffer-function #'octocat-file-refresh)
-  (octocat--max-width-setup)
   (setq-local octocat--url-function #'octocat-file--page-url)
   (setq-local octocat--repo-function (lambda () octocat-tree--file-repo))
   (setq-local octocat-image-file-function #'octocat-tree--image-file

@@ -239,7 +239,7 @@
   (with-temp-buffer
     (let ((octocat-max-width 100))
       (should (= (octocat--cap-width 140) 140))
-      (octocat--max-width-setup)
+      (setq-local octocat--capped t)
       (should (= (octocat--cap-width 140) 100))
       (should (= (octocat--cap-width 80) 80))
       (let ((octocat-max-width nil))
