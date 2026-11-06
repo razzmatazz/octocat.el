@@ -5,8 +5,8 @@
 
 ;;; Commentary:
 
-;; Tests for octocat-markdown.el and the glue around it in octocat-core.el
-;; and octocat-edit.el.  Run via:
+;; Tests for octocat-markdown.el and the glue around it in octocat-core.el.
+;; Run via:
 ;;   eldev test test/octocat-markdown-tests.el
 
 ;;; Code:

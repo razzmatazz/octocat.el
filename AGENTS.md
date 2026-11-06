@@ -138,7 +138,7 @@ string rather than `ok` is an error — fix it before proceeding):
   (dolist (f (list "octocat-mermaid.el" "octocat-markdown.el"
                    "octocat-image.el" "octocat-core.el" "octocat-sync.el" "octocat-model.el"
                    "octocat-vui.el"
-                   "octocat-edit.el" "octocat-repo.el"
+                   "octocat-repo.el"
                    "octocat-actions.el" "octocat-diff.el"
                    "octocat-timeline.el" "octocat-pr.el" "octocat-issue.el"
                    "octocat-search.el" "octocat-avatar.el"

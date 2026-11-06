@@ -2007,5 +2007,168 @@ CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
                    (lambda (output) (split-string output "\n" t))
                    callback))
 
+;;;; Edit buffer
+;;
+;; A Magit-style buffer for writing multi-line markdown: a comment, or
+;; the body of a PR, issue or comment.  C-c C-c submits, C-c C-k
+;; discards.  It knows nothing of PRs or issues: the caller passes
+;; SUBMIT-FN and REFRESH-FN to `octocat-edit-open'.
+
+;; Those without `--' are for the callers, whose submit functions and
+;; minor modes read them in the edit buffer.
+
+(defvar-local octocat-edit-title nil
+  "Short human-readable title shown in the buffer name and header line.")
+
+(defvar-local octocat-edit-submit-fn nil
+  "Function (BODY SOURCE-BUFFER ON-SUCCESS ON-ERROR) called on submit.
+BODY is the trimmed buffer text.  The function must perform its async
+operation and call ON-SUCCESS () on success or ON-ERROR (MSG) on failure.")
+
+(defvar-local octocat-edit--refresh-fn nil
+  "Function called with SOURCE-BUFFER after a successful submit.")
+
+(defvar-local octocat-edit-source-buffer nil
+  "The PR/issue buffer that opened this edit buffer.")
+
+(defvar-local octocat-edit-user-data nil
+  "Caller-supplied plist for arbitrary extra state.
+Set via the USER-DATA argument to `octocat-edit-open'.  Submit
+functions read it as they run, since they are called from inside the
+edit buffer.")
+
+(defvar-local octocat-edit-window nil
+  "The window displaying this edit buffer.
+Used by `quit-window' to close the split cleanly on submit or abort.")
+
+(defvar octocat-edit-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map text-mode-map)
+    (define-key map (kbd "C-c C-c") #'octocat-edit-submit)
+    (define-key map (kbd "C-c C-k") #'octocat-edit-abort)
+    map)
+  "Keymap for `octocat-edit-mode'.
+\\[octocat-edit-submit] submits, \\[octocat-edit-abort] discards.")
+
+(define-derived-mode octocat-edit-mode text-mode "Octocat-Edit"
+  "Major mode for composing GitHub PR/issue bodies and comments.
+
+Type your markdown text, then:
+  \\[octocat-edit-submit]  — submit (post / save)
+  \\[octocat-edit-abort]   — discard and return
+
+\\{octocat-edit-mode-map}"
+  :group 'octocat
+  ;; Install our keymap as the local map after the parent mode has set up
+  ;; its own, so C-c C-c / C-c C-k take precedence.
+  (use-local-map octocat-edit-mode-map)
+  ;; Highlight the markdown source with the renderer's own faces.
+  (setq-local font-lock-defaults '(octocat-markdown-font-lock-keywords t)
+              font-lock-multiline t))
+
+(defun octocat-edit--buffer-name (title)
+  "Return the name for an edit buffer with TITLE."
+  (format "*%s*" title))
+
+(defun octocat-edit-header-line (title)
+  "Return a header-line string for TITLE."
+  (format "  %s    %s  submit   %s  discard"
+          title
+          (propertize "C-c C-c" 'face 'help-key-binding)
+          (propertize "C-c C-k" 'face 'help-key-binding)))
+
+(defun octocat-edit-submit ()
+  "Submit the edit buffer: validate, call submit-fn, kill buffer, refresh source."
+  (interactive)
+  (let ((body (string-trim (buffer-string))))
+    (when (and (string-empty-p body)
+               (not (plist-get octocat-edit-user-data :allow-empty)))
+      (user-error "Octocat: body is empty — nothing to submit"))
+    (let ((submit-fn  octocat-edit-submit-fn)
+          (refresh-fn octocat-edit--refresh-fn)
+          (source     octocat-edit-source-buffer)
+          (edit-win   octocat-edit-window)
+          (edit-buf   (current-buffer)))
+      (setq mode-line-process (octocat-mode-line-busy ":submitting"))
+      (funcall submit-fn body source
+               ;; on-success: close edit window then refresh source
+               (lambda ()
+                 (when (buffer-live-p edit-buf)
+                   (with-current-buffer edit-buf
+                     (set-buffer-modified-p nil)))
+                 (if (window-live-p edit-win)
+                     (quit-window t edit-win)
+                   (when (buffer-live-p edit-buf)
+                     (kill-buffer edit-buf)))
+                 (when (buffer-live-p source)
+                   (funcall refresh-fn source)))
+               ;; on-error: report but leave buffer open so user can retry
+               (lambda (msg)
+                 (when (buffer-live-p edit-buf)
+                   (with-current-buffer edit-buf
+                     (setq mode-line-process nil)
+                     (message "Octocat submit error: %s" msg))))))))
+
+(defun octocat-edit-abort ()
+  "Discard the edit buffer and return to the source buffer."
+  (interactive)
+  (when (or (not (buffer-modified-p))
+            (yes-or-no-p "Discard edit? "))
+    (let ((win octocat-edit-window))
+      (set-buffer-modified-p nil)
+      (quit-window t win))))
+
+(defun octocat-edit-open (title submit-fn refresh-fn
+                                &optional initial-content user-data)
+  "Open (or reuse) an edit buffer with TITLE, wired to SUBMIT-FN and REFRESH-FN.
+
+TITLE       — short human-readable string used in the buffer name and header.
+SUBMIT-FN   — function (BODY SOURCE-BUFFER ON-SUCCESS ON-ERROR) called on
+              \\[octocat-edit-submit].  Must perform its async operation and
+              invoke ON-SUCCESS () on success or ON-ERROR (MSG) on failure.
+              It is called from inside the edit buffer, so submit functions
+              can read `octocat-edit-user-data' from `current-buffer'.
+REFRESH-FN  — function (SOURCE-BUFFER) called after a successful submit.
+INITIAL-CONTENT — string pre-populated into the buffer; nil for blank.
+USER-DATA   — optional plist stored as `octocat-edit-user-data', which
+              SUBMIT-FN reads, as it runs in the edit buffer.
+              A non-nil :allow-empty lets an empty body be submitted.
+
+The buffer is shown in a bottom window.  The source buffer is the one
+that was current when this function was called.
+Use \\[octocat-edit-abort] to discard."
+  (let* ((name   (octocat-edit--buffer-name title))
+         (source (current-buffer))
+         (buf    (get-buffer-create name)))
+    (with-current-buffer buf
+      (unless (derived-mode-p 'octocat-edit-mode)
+        (octocat-edit-mode))
+      ;; Restore state even if buffer already existed (e.g. re-opened after
+      ;; a failed submit).
+      (setq octocat-edit-title          title
+            octocat-edit-submit-fn      submit-fn
+            octocat-edit--refresh-fn     refresh-fn
+            octocat-edit-source-buffer  source
+            octocat-edit-user-data      user-data)
+      (setq-local header-line-format
+                  (octocat-edit-header-line title))
+      ;; Only pre-populate when the buffer is fresh (not dirty from a
+      ;; previous failed attempt the user wants to keep).
+      (when (and initial-content
+                 (not (buffer-modified-p))
+                 (string-empty-p (string-trim (buffer-string))))
+        (erase-buffer)
+        (insert (string-replace "\r\n" "\n" initial-content))
+        (goto-char (point-max)))
+      (set-buffer-modified-p nil))
+    ;; display-buffer returns the window and automatically stamps it with a
+    ;; quit-restore parameter so quit-window knows how to clean it up.
+    (let ((win (display-buffer buf
+                               '(display-buffer-below-selected
+                                 . ((window-height . 0.35))))))
+      (with-current-buffer buf
+        (setq octocat-edit-window win))
+      (select-window win))))
+
 (provide 'octocat-core)
 ;;; octocat-core.el ends here

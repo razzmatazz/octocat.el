@@ -13,8 +13,8 @@ From the bottom up:
   require no other module, so they can be loaded and tested on their
   own.  `octocat-markdown`, which also turns org into markdown, and
   `octocat-image` build on them to draw GitHub's markdown.
-- **`octocat-core`**: running `gh`, faces, and the helpers every page
-  shares.
+- **`octocat-core`**: running `gh`, faces, the helpers every page
+  shares, and the edit buffer for writing a comment or body.
 - **`octocat-sync`**: the local SQLite store pages read from, and the
   syncing that fills it (see "Refresh and the sync store" in
   CONTRIBUTING.md).  It knows how to fetch, store and change a resource,
@@ -28,7 +28,7 @@ From the bottom up:
   `octocat-page-mode` is the parent major mode of every page: setup all
   pages share goes in its body, and a page's own mode keeps only what
   differs.
-- **Shared parts of pages**: `octocat-edit`, `octocat-timeline`.
+- **Shared parts of pages**: `octocat-timeline`.
 - **Pages**: one module per kind of page, or per group of related
   pages, such as `octocat-pr` (a PR's conversation, commits and files
   changed), `octocat-issue`, `octocat-repo` (a repository's code),
@@ -78,7 +78,6 @@ flowchart TD
   octocat_dashboard[octocat-dashboard]
   octocat_diff[octocat-diff]
   octocat_doctor[octocat-doctor]
-  octocat_edit[octocat-edit]
   octocat_image[octocat-image]
   octocat_issue[octocat-issue]
   octocat_markdown[octocat-markdown]
@@ -109,10 +108,8 @@ flowchart TD
   octocat_doctor --> octocat_core
   octocat_doctor --> octocat_sync
   octocat_doctor --> octocat_vui
-  octocat_edit --> octocat_core
   octocat_image --> octocat_markdown
   octocat_issue --> octocat_core
-  octocat_issue --> octocat_edit
   octocat_issue --> octocat_model
   octocat_issue --> octocat_sync
   octocat_issue --> octocat_timeline
@@ -123,7 +120,6 @@ flowchart TD
   octocat_pr --> octocat_actions
   octocat_pr --> octocat_core
   octocat_pr --> octocat_diff
-  octocat_pr --> octocat_edit
   octocat_pr --> octocat_model
   octocat_pr --> octocat_sync
   octocat_pr --> octocat_timeline
@@ -139,7 +135,6 @@ flowchart TD
   octocat_search --> octocat_vui
   octocat_sync --> octocat_core
   octocat_timeline --> octocat_core
-  octocat_timeline --> octocat_edit
   octocat_timeline --> octocat_model
   octocat_timeline --> octocat_sync
   octocat_timeline --> octocat_vui
@@ -212,18 +207,17 @@ flowchart TD
 | `octocat-dashboard` | GitHub account dashboard for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-diff` | Diffs, commits and comparisons for octocat | `octocat-actions`, `octocat-core`, `octocat-model`, `octocat-vui` |
 | `octocat-doctor` | Report on octocat's code, store and requests | `octocat-core`, `octocat-sync`, `octocat-vui` |
-| `octocat-edit` | Edit buffer for octocat PRs and issues | `octocat-core` |
 | `octocat-evil` | Evil keybindings for octocat | `octocat-actions`, `octocat-core`, `octocat-dashboard`, `octocat-diff`, `octocat-doctor`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-user`, `octocat-vui` |
 | `octocat-image` | Show images uploaded to GitHub in markdown | `octocat-markdown` |
-| `octocat-issue` | Issue detail view for octocat | `octocat-core`, `octocat-edit`, `octocat-model`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
+| `octocat-issue` | Issue detail view for octocat | `octocat-core`, `octocat-model`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
 | `octocat-markdown` | GitHub markdown renderer | `octocat-mermaid` |
 | `octocat-mermaid` | Draw mermaid diagrams as text |  |
 | `octocat-model` | The GitHub data octocat syncs | `octocat-core`, `octocat-sync` |
-| `octocat-pr` | Pull Request detail view for octocat | `octocat-actions`, `octocat-core`, `octocat-diff`, `octocat-edit`, `octocat-model`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
+| `octocat-pr` | Pull Request detail view for octocat | `octocat-actions`, `octocat-core`, `octocat-diff`, `octocat-model`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
 | `octocat-repo` | Repository overview, tree, files and history for octocat | `octocat-core`, `octocat-markdown`, `octocat-model`, `octocat-sync`, `octocat-vui` |
 | `octocat-search` | Repo-wide PR, issue and commit search for octocat | `octocat-core`, `octocat-repo`, `octocat-sync`, `octocat-vui` |
 | `octocat-sync` | Sync GitHub data into a local SQLite store | `octocat-core` |
-| `octocat-timeline` | GitHub-style timeline for issue and PR views | `octocat-core`, `octocat-edit`, `octocat-model`, `octocat-sync`, `octocat-vui` |
+| `octocat-timeline` | GitHub-style timeline for issue and PR views | `octocat-core`, `octocat-model`, `octocat-sync`, `octocat-vui` |
 | `octocat-user` | GitHub user / organization page for octocat | `octocat-avatar`, `octocat-core`, `octocat-vui` |
 | `octocat-vui` | vui.el helpers and components for octocat | `octocat-core`, `octocat-model`, `octocat-sync` |
 | `octocat` | GitHub Client powered by the gh CLI | `octocat-actions`, `octocat-core`, `octocat-dashboard`, `octocat-doctor`, `octocat-image`, `octocat-issue`, `octocat-model`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-sync`, `octocat-timeline`, `octocat-user`, `octocat-vui`, `octocat-evil` (lazily) |

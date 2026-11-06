@@ -61,7 +61,6 @@
 ;;; Code:
 
 (require 'octocat-core)
-(require 'octocat-edit)
 (require 'octocat-sync)
 (require 'octocat-model)
 (require 'octocat-vui)

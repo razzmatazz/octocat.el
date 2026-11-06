@@ -39,7 +39,6 @@
 (require 'octocat-core)
 (require 'octocat-actions)
 (require 'octocat-diff)
-(require 'octocat-edit)
 (require 'octocat-sync)
 (require 'octocat-model)
 (require 'octocat-timeline)
