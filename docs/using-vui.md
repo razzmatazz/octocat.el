@@ -132,8 +132,10 @@ old shape.
 To add a resource or mutation, define it in `octocat-model.el`, in the
 section of its page, with `octocat-sync-define-resource` or
 `octocat-sync-define-mutation`, along with the queries and parsers it
-fetches through.  Its `:fetch` calls `DONE` with the parsed tree, each
-shared record wrapped in `octocat-sync-entity` with GraphQL's field
-names (the builders in "Entities" there do it), or with
-`(error . MESSAGE)`.  The design, and
+fetches through.  Most name their `gh` call, `:gh` with its arguments
+or `:graphql` with its query, and a `:parse` that makes the parsed tree
+of its JSON; one that needs more has a `:fetch`, which calls `DONE`
+with the tree or with `(error . MESSAGE)`.  Either way each shared
+record in the tree is wrapped in `octocat-sync-entity` with GraphQL's
+field names (the builders in "Entities" there do it).  The design, and
 what is still to come, is in `plans/github-sync-mechanism.md`.

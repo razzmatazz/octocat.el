@@ -177,24 +177,6 @@
   (should (equal (octocat--search-query "o/r" 'issues "  ")
                  "repo:o/r type:issue")))
 
-(ert-deftest octocat-core-test-parse-list-items ()
-  "Connections flatten to what the rows read; the cursor ends with the pages."
-  (let* ((json "{\"data\":{\"search\":{\"nodes\":[{\"number\":5,\"labels\":{\"nodes\":[{\"name\":\"bug\",\"color\":\"d73a4a\"}]},\"comments\":{\"totalCount\":3},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":{\"state\":\"FAILURE\",\"contexts\":{\"checkRunCountsByState\":[{\"state\":\"SUCCESS\",\"count\":3},{\"state\":\"FAILURE\",\"count\":1}],\"statusContextCountsByState\":[{\"state\":\"SUCCESS\",\"count\":1}]}}}}]}},{\"number\":6,\"labels\":{\"nodes\":[]},\"comments\":{\"totalCount\":0},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":null}}]}}],\"pageInfo\":{\"hasNextPage\":true,\"endCursor\":\"Y3I\"}}}}")
-         (page  (octocat--parse-list-items json))
-         (pr    (car (plist-get page :items)))
-         (bare  (cadr (plist-get page :items))))
-    (should (equal (plist-get page :cursor) "Y3I"))
-    (should (equal (gethash "name" (aref (gethash "labels" pr) 0)) "bug"))
-    (should (= (gethash "commentCount" pr) 3))
-    (should (equal (gethash "ciState" pr) "FAILURE"))
-    (should (equal (substring-no-properties (octocat--ci-status pr)) "✗"))
-    (should (equal (substring-no-properties (octocat--ci-count-label pr)) "✗ 4/5"))
-    (should-not (gethash "ciState" bare))
-    (should-not (gethash "commits" bare)))
-  (should-not (plist-get (octocat--parse-list-items
-                          "{\"data\":{\"search\":{\"nodes\":[],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}")
-                         :cursor)))
-
 (ert-deftest octocat-core-test-checks-ci-status ()
   "A check's outcome is its conclusion or state, in any case."
   (cl-flet ((status (&rest checks)
@@ -209,30 +191,6 @@
     (should (equal (status '("conclusion" "success") '("state" "SUCCESS")) "✓"))
     (should (equal (status '("conclusion" "SUCCESS") '("conclusion" "FAILURE")) "✗"))
     (should (equal (status '("conclusion" "SUCCESS") '("status" "IN_PROGRESS")) "●"))))
-
-(ert-deftest octocat-core-test-counts-query-and-parse ()
-  "Pull requests also count merged; the response parses to a plist."
-  (should (string-match-p "merged:pullRequests(states:MERGED)"
-                          (octocat--counts-query 'pulls)))
-  (should-not (string-match-p "merged" (octocat--counts-query 'issues)))
-  (should (equal (octocat--parse-counts
-                  "{\"data\":{\"repository\":{\"open\":{\"totalCount\":2},\"closed\":{\"totalCount\":5}}}}")
-                 '(:open 2 :closed 5))))
-
-
-(ert-deftest octocat-core-test-parse-repo-summary-fork ()
-  "A fork's summary carries its parent, default branch and counts."
-  (should (equal (octocat--parse-repo-summary
-                  "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\"},\"parent\":{\"nameWithOwner\":\"up/stream\"},\"issues\":{\"totalCount\":3},\"pullRequests\":{\"totalCount\":2}}}}")
-                 '(:default-branch "main" :fork-parent "up/stream"
-                   :open-issues 3 :open-prs 2))))
-
-(ert-deftest octocat-core-test-parse-repo-summary-empty-repo ()
-  "A non-fork with no default branch yields nils, not errors."
-  (should (equal (octocat--parse-repo-summary
-                  "{\"data\":{\"repository\":{\"defaultBranchRef\":null,\"parent\":null,\"issues\":{\"totalCount\":0},\"pullRequests\":{\"totalCount\":0}}}}")
-                 '(:default-branch nil :fork-parent nil
-                   :open-issues 0 :open-prs 0))))
 
 (ert-deftest octocat-core-test-cap-width ()
   "Only a capped page keeps to `octocat-max-width'."
@@ -528,7 +486,7 @@ browser, skip it."
       (setq-local octocat--url-function (lambda () "https://github.com/o/r/pull/1"))
       (insert (octocat-markdown-render "<https://x.org/a> #7 abc1234 plain" ""))
       (cl-flet ((at (needle) (goto-char (point-min)) (search-forward needle)
-                    (backward-char 1) (octocat--url-at-point)))
+                  (backward-char 1) (octocat--url-at-point)))
         (should (equal (at "x.org") "https://x.org/a"))
         (should (equal (at "#7") "https://github.com/o/r/issues/7"))
         (should (equal (at "abc1234") "https://github.com/o/r/commit/abc1234"))
@@ -580,8 +538,8 @@ browser, skip it."
                "<a href=\"https://x.org/a\">#42</a> #7 octo/cat#3 abc1234 <https://y.org> plain"
                ""))
       (cl-flet ((at (needle) (goto-char (point-min))
-                    (search-forward needle) (backward-char 1)
-                    (octocat--link-eldoc)))
+                  (search-forward needle) (backward-char 1)
+                  (octocat--link-eldoc)))
         (should (equal (at "#42") "https://x.org/a"))
         (should (equal (at "#7") "o/r#7"))
         (should-not (at "cat#3"))
@@ -715,43 +673,6 @@ browser, skip it."
       (octocat--gh-log-start "newer" 4700.0))
     (should (equal (mapcar (lambda (e) (aref e 2)) octocat--gh-log) '("newer" "new")))
     (should (eq (aref (car octocat--gh-log) 4) 'poll))))
-
-(ert-deftest octocat-core-test-list-item-assignees ()
-  "A list row's assignees become a vector of their nodes, as its labels do."
-  (let ((item (car (plist-get
-                    (octocat--parse-list-items
-                     "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
-                       \"nodes\":[{\"number\":3,
-                                   \"assignees\":{\"nodes\":[{\"login\":\"a\"}]}}]}}}")
-                    :items))))
-    (should (equal (mapcar (lambda (u) (gethash "login" u)) (gethash "assignees" item))
-                   '("a")))))
-
-(ert-deftest octocat-core-test-list-item-requested-reviewers ()
-  "A PR row's requested reviewers become the users and teams asked."
-  (let ((item (car (plist-get
-                    (octocat--parse-list-items
-                     "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
-                       \"nodes\":[{\"number\":3,\"requestedReviewers\":{\"nodes\":[
-                         {\"requestedReviewer\":{\"login\":\"a\"}},
-                         {\"requestedReviewer\":{\"name\":\"core\"}}]}}]}}}")
-                    :items))))
-    (should (equal (mapcar (lambda (r) (or (gethash "login" r) (gethash "name" r)))
-                           (gethash "requestedReviewers" item))
-                   '("a" "core")))
-    ;; The team has no login to toggle.
-    (should (equal (octocat-vui-list--value-counts (list item) "requestedReviewers" "login")
-                   '(("a" . 1))))))
-
-(ert-deftest octocat-core-test-list-item-without-commits ()
-  "A PR that comes with no commits parses, without a CI state."
-  (let ((item (car (plist-get
-                    (octocat--parse-list-items
-                     "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
-                       \"nodes\":[{\"number\":3,\"commits\":{\"nodes\":[]}}]}}}")
-                    :items))))
-    (should (= (gethash "number" item) 3))
-    (should-not (gethash "ciState" item))))
 
 (provide 'octocat-core-tests)
 ;;; octocat-core-tests.el ends here

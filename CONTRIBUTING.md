@@ -60,11 +60,13 @@ fetched just now; `g` always does.  A failed fetch keeps the stored
 data.  See "Reading the sync store" in
 [docs/using-vui.md](docs/using-vui.md).
 
-A resource's `gh` call goes in its `:fetch`, and a mutation's in its
-`:send`, not in a function of their own; a GraphQL one goes through
-`octocat--gh-graphql`.  Give its parser or a transform of its data a
-name of its own (a pure function) when the parser is long, tested or
-shared.  A query used once goes next to it, inline or as a `defconst`
+A resource's `gh` call goes in its `:gh`, or its query in `:graphql`,
+with a `:parse` making its tree of the JSON; only a resource that needs
+more, such as several calls or none yet, writes a `:fetch`.  A
+mutation's goes in its `:send`, not in a function of its own; a GraphQL
+one goes through `octocat--gh-graphql`.  Give a parser or a transform
+of its data a name of its own (a pure function) when it is long, tested
+or shared.  A query used once goes next to it, inline or as a `defconst`
 beside a named parser.
 
 Completion candidates and search results are resources too, read with
@@ -174,7 +176,9 @@ ones, and only 31 catches every call with the wrong number of arguments.
 
 Lint covers `checkdoc`, `package-lint`, `check-declare` and
 `elisp-lint`, which wants every line indented as stock Emacs indents
-it, no tabs or trailing whitespace, and at most 100 columns.  Any
+it, no tabs or trailing whitespace, and at most 100 columns.  Eldev
+lints only the package's files, so `tools/check-indent.el` checks the
+tests' indentation too; `make indent` fixes it.  Any
 melpazoid finding fails the build, even those melpazoid only warns
 about; to take a newer melpazoid, bump `MELPAZOID_COMMIT` in the
 `Makefile` and fix what it finds.

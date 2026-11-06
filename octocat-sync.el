@@ -505,6 +505,11 @@ Return their keys.  Their data stays, but the next open refetches them."
 PROPS are evaluated with ARGS bound.  :fetch is a function of DONE that
 fetches the resource and calls DONE with the parsed tree, its shared
 records wrapped in `octocat-sync-entity', or with (error . MESSAGE).
+In place of :fetch, :gh is the arguments of a `gh' call printing JSON,
+or :graphql a GraphQL query, run with :repo, when non-nil, as $owner
+and $name, and with :vars, as for `octocat--gh-graphql'.  Either way
+:parse, optional, makes the tree of the JSON, read as
+`octocat-sync--parse' does, of a query the answer's \"data\".
 :entity, optional, is the key of the resource's main entity: until the
 resource is first fetched, a snapshot carries that entity's fields, as
 another resource stored them, in :partial.  :invalidates, optional, is
@@ -525,6 +530,25 @@ least :max-age."
   (apply (or (gethash (car spec) octocat-sync--resources)
              (error "Octocat: Unknown resource `%s'" (car spec)))
          (cdr spec)))
+
+(defun octocat-sync--fetch (spec done)
+  "Fetch SPEC, calling DONE as its :fetch does.
+See `octocat-sync-define-resource'.  The `gh' call is named after SPEC's
+resource."
+  (let* ((props (octocat-sync--props spec))
+         (name  (symbol-name (car spec)))
+         (parse (or (plist-get props :parse) #'identity)))
+    (cond ((plist-get props :fetch) (funcall (plist-get props :fetch) done))
+          ((plist-get props :graphql)
+           (octocat--gh-graphql name (plist-get props :repo) (plist-get props :graphql)
+                                (plist-get props :vars)
+                                (lambda (output)
+                                  (funcall parse (gethash "data" (octocat-sync--parse output))))
+                                done))
+          (t (octocat--run-gh name (plist-get props :gh)
+                              (lambda (output)
+                                (funcall parse (octocat-sync--parse (string-trim output))))
+                              done)))))
 
 (defun octocat-sync-spec-key (spec)
   "Return the store key of SPEC, such as \"(user-profile \\\"octocat\\\")\"."
@@ -895,11 +919,11 @@ leave KEY loading for good."
     (condition-case err
         (let ((octocat--gh-owner token)
               (octocat--gh-reason reason))
-          (funcall (plist-get (octocat-sync--props spec) :fetch)
-                   (lambda (result)
-                     (setq answered t)
-                     (when (eq (gethash key octocat-sync--fetches) token)
-                       (octocat-sync--done key result)))))
+          (octocat-sync--fetch spec
+                               (lambda (result)
+                                 (setq answered t)
+                                 (when (eq (gethash key octocat-sync--fetches) token)
+                                   (octocat-sync--done key result)))))
       (error (cond (answered (signal (car err) (cdr err)))
                    ((eq (gethash key octocat-sync--fetches) token)
                     (octocat-sync--done key (cons 'error (error-message-string err)))))))))

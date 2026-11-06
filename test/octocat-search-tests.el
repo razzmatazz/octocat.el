@@ -91,8 +91,8 @@ GitHub's results lead once in, the stored ones it lacks after them."
                            ["e/octo-old"] (- now octocat-search-reuse-for 1))
       (octocat-sync--write octocat-sync--db "(user-profile \"octavia\")"
                            (octocat-model-user (let ((h (make-hash-table :test #'equal)))
-                                                (puthash "login" "octavia" h)
-                                                h))
+                                                 (puthash "login" "octavia" h)
+                                                 h))
                            (- now 1))
       (let* ((log (list nil))
              (stage (funcall (octocat--async-search-repos #'identity)
@@ -160,18 +160,18 @@ item once."
           (git-calls nil))
       (octocat-sync--write octocat-sync--db "(pr \"o/r\" 7)"
                            (octocat-model-item 'pr "O/R"
-                                              (let ((h (make-hash-table :test #'equal)))
-                                                (puthash "number" 7 h)
-                                                (puthash "title" "Fix the crash" h)
-                                                (puthash "state" "OPEN" h)
-                                                h))
+                                               (let ((h (make-hash-table :test #'equal)))
+                                                 (puthash "number" 7 h)
+                                                 (puthash "title" "Fix the crash" h)
+                                                 (puthash "state" "OPEN" h)
+                                                 h))
                            (- now 1))
       (octocat-sync--write octocat-sync--db "(pr \"x/y\" 8)"
                            (octocat-model-item 'pr "x/y"
-                                              (let ((h (make-hash-table :test #'equal)))
-                                                (puthash "number" 8 h)
-                                                (puthash "title" "Another crash" h)
-                                                h))
+                                               (let ((h (make-hash-table :test #'equal)))
+                                                 (puthash "number" 8 h)
+                                                 (puthash "title" "Another crash" h)
+                                                 h))
                            (- now 1))
       (octocat-sync--write octocat-sync--db "(commits \"o/r\" nil nil)"
                            (vector (octocat-search-tests--commit "aaa111" "Crash on start")

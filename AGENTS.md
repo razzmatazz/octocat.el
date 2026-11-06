@@ -26,7 +26,10 @@ See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as f
   Docs (`README.md`, `docs/`) must not be too short either: a reader new to the feature should get what it does, why, and how to use or extend it, in full sentences.
   Keep new prose in docs short and to the point: the rule or fact, not
   the history or context that led to it.
-- **Never modify source files through Emacs** (`emacs__eval-elisp`, buffer edits, `save-buffer`, etc.); it risks a live buffer and the file on disk drifting apart. Use the file-editing tools or any shell tool (`sed`, Python, etc.).
+- **Never modify source files through Emacs** (`emacs__eval-elisp`, buffer edits, `save-buffer`, etc.); it risks a live buffer and the file on disk drifting apart. Use the file-editing tools, or a batch Emacs as below.
+- **Never write your own Elisp parser or refactoring script** (regex, Python, etc.): it misreads strings, comments and `?(`.
+  Edit with the file-editing tools; for many forms at once, use or extend `tools/`, run by a batch Emacs, on Emacs's reader and `indent-region`.
+  `make indent` reindents the tests.
 
 ## Screenshots
 
@@ -68,8 +71,9 @@ parallel sub-agents for **pure research / read-only** tasks.
 
 ## Checking paren structure
 
-`make lint`'s elisp linter checks every line's indentation against
-Emacs's own.  A `)` removed by mistake (e.g. along with a `(goto-char
+`make lint` checks every line's indentation against Emacs's own: its
+elisp linter in the package's files, `tools/check-indent.el` in the
+tests.  A `)` removed by mistake (e.g. along with a `(goto-char
 (point-min))`) and made up by an extra one further on leaves the file
 balanced but swallows the `defun`s in between; they then sit indented
 inside the form above, and the linter names their lines.  `M-x

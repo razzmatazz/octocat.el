@@ -1224,7 +1224,7 @@ FIELDS, a plist, override the rest."
                                                                        2 1)))))
                                    octocat-screenshots--pr-128-commits))))))))
       ("pr-merges" () (:data (:repository (:pullRequest (:commits (:nodes []))))))
-      ("pr-diff" ("pulls/128/files") ,octocat-screenshots--pr-128-files)
+      ("pr-files" ("pulls/128/files") ,octocat-screenshots--pr-128-files)
       ("pr-review-threads" ("number=128") ,octocat-screenshots--pr-128-review-threads)
       ("viewer" () (:login "jlindqvist"))
 
@@ -1264,10 +1264,10 @@ FIELDS, a plist, override the rest."
         (:id 4201 :name "Deploy docs" :state "active" :path ".github/workflows/docs.yml")
         (:id 4202 :name "Benchmarks" :state "active" :path ".github/workflows/bench.yml")
         (:id 4203 :name "Release" :state "disabled_manually" :path ".github/workflows/release.yml")])
-      ("recent-runs" ("--workflow 4200")
+      ("runs" ("--workflow 4200")
        ,(vconcat (seq-filter (lambda (r) (equal (plist-get r :workflowName) "CI"))
                              octocat-screenshots--runs)))
-      ("recent-runs" () ,(vconcat octocat-screenshots--runs))
+      ("runs" () ,(vconcat octocat-screenshots--runs))
       ("run-view" ("9100200300")
        (:databaseId 9100200300 :number 300 :displayTitle "Cache parsed templates between builds"
         :workflowName "CI" :workflowDatabaseId 4200
@@ -1305,7 +1305,7 @@ FIELDS, a plist, override the rest."
       ("job-log" ("27100200300") ,octocat-screenshots--job-log)
       ("job-annotations" () [])
       ("run-annotations" () [])
-      ("workflow-detail" ("workflows/4200")
+      ("workflow" ("workflows/4200")
        (:id 4200 :name "CI" :state "active" :path ".github/workflows/ci.yml"
         :html_url "https://github.com/acme/rocket/actions/workflows/ci.yml"
         :badge_url "https://github.com/acme/rocket/workflows/CI/badge.svg"

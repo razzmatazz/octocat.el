@@ -1916,10 +1916,7 @@ dropped, so that only items shown are marked."
                 (lambda (after done)
                   (octocat--list-items
                    kind repo
-                   (lambda (r)
-                     (funcall done (if (eq (car-safe r) 'error)
-                                       r
-                                     (octocat-model-list-tree kind repo r))))
+                   (octocat--then (lambda (page) (octocat-model-list-tree kind repo page)) done)
                    query after limit))
                 (vui-async-callback (r)
                   (vui-set-state :fetching nil)

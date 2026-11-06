@@ -39,9 +39,9 @@ It is as `octocat-model--pr-parse-stack' gives it.  Each PR is a list
 of NUMBER, STATE, DRAFT and MERGEABLE."
   (gethash "stack"
            (octocat-model--pr-parse-stack
-            (json-serialize
-             `((data
-                (repository
+            (octocat-sync--parse
+             (json-serialize
+              `((repository
                  (pullRequest
                   (stack
                    (number . 17) (baseRefName . "main")
@@ -108,7 +108,9 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
                    "    #14  (draft) Layer 14  ✗ is a draft")))
   ;; A pull request in no stack shows none.
   (let ((none (octocat-model--pr-parse-stack
-               "{\"data\":{\"repository\":{\"pullRequest\":{\"stack\":null}}}}")))
+               (octocat--get (octocat-sync--parse
+                              "{\"data\":{\"repository\":{\"pullRequest\":{\"stack\":null}}}}")
+                             "data"))))
     (should (eq (gethash "stack" none) :null))
     (should-not (octocat-pr--stack-section "o/r" (json-parse-string "{\"number\":15}")
                                            (octocat--get none "stack") 80))))

@@ -24,7 +24,7 @@
   "The header shows the handle, name, bio, details and counts."
   (let ((db (octocat-sync--create (sqlite-open nil))))
     (octocat-sync--write db "p" (octocat-model--user-parse-profile
-                                 "{\"login\":\"octocat\",\"name\":\"The Octocat\",\"type\":\"User\",\"bio\":\"Hi\",\"company\":\"@github\",\"location\":null,\"blog\":\"\",\"followers\":3,\"following\":1,\"public_repos\":8}")
+                                 (octocat-sync--parse "{\"login\":\"octocat\",\"name\":\"The Octocat\",\"type\":\"User\",\"bio\":\"Hi\",\"company\":\"@github\",\"location\":null,\"blog\":\"\",\"followers\":3,\"following\":1,\"public_repos\":8}"))
                          1.0)
     (let ((lines (mapcar #'substring-no-properties
                          (octocat-user--profile-lines (car (octocat-sync--read db "p"))))))

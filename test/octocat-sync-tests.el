@@ -508,7 +508,7 @@ items as pages see them and as stored."
                             (octocat-sync-tests--table "items" ["a"]) (float-time))
        (cl-flet ((items () (gethash "items" (plist-get (octocat-sync-read '(thing 1)) :data)))
                  (stored () (gethash "items" (car (octocat-sync--read octocat-sync--db
-                                                                       "(thing 1)")))))
+                                                                      "(thing 1)")))))
          ,@body))))
 
 (ert-deftest octocat-sync-test-mutation-edits ()

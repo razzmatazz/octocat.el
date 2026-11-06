@@ -328,7 +328,7 @@
 (ert-deftest octocat-repo-test-file-notice ()
   "A binary or large file is not shown unasked; an image or small file is."
   (let ((head (octocat-model--repo-parse-head
-               "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":1,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Add\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Blob\",\"oid\":\"b1\",\"byteSize\":2000000,\"isBinary\":false}}}}"
+               (gethash "data" (octocat-sync--parse "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":1,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Add\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Blob\",\"oid\":\"b1\",\"byteSize\":2000000,\"isBinary\":false}}}}"))
                "main" "dist/app.min.js")))
     (should (equal (gethash "size" head) 2000000))
     (should (string-match-p "too large" (octocat-repo--file-notice "dist/app.min.js" head)))
@@ -718,49 +718,52 @@ The page's URL names the line of point, or the region's."
   "C-c C-v takes markdown from rendered to raw to blame and back.
 The top line has a tab for each view, the one shown plain."
   (octocat-tree-tests--with-file-page
-   (cl-letf (((symbol-function 'octocat-power) (lambda () 'low)))
-    (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n\nText.\n")
-    (octocat-tree-tests--store
-     '(blame "owner/repo" "abc1234def" "docs/GUIDE.md")
-     (octocat-model--repo-parse-blame
-      (concat "{\"data\":{\"repository\":{\"object\":{\"blame\":{\"ranges\":["
-              "{\"startingLine\":1,\"endingLine\":3,\"commit\":{\"oid\":\"abc1234def\","
-              "\"messageHeadline\":\"Add the guide\",\"committedDate\":\"2026-10-01T10:00:00Z\","
-              "\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}}]}}}}}")))
-    (save-current-buffer
-      (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md")
-      (unwind-protect
-          (progn
-            (should (eq (key-binding (kbd "C-c C-v")) #'octocat-file-cycle-view))
-            (should (string-match-p "^Guide$" (buffer-string)))
-            (should (string-match-p ":/docs/GUIDE.md   Preview  Code  Blame $" (buffer-string)))
-            (goto-char (point-min))
-            (search-forward "Preview")
-            (should (eq (get-text-property (point) 'face) 'octocat-segment-current))
-            (octocat-file-cycle-view)
-            (should (string-match-p "^# Guide$" (buffer-string)))
-            (should (= (octocat--cap-width 1000) octocat-max-width))
-            (octocat-file-cycle-view)
-            ;; The blame widens the page by its column, the code as wide.
-            (should (= (octocat--cap-width 1000)
-                       (+ octocat-max-width (octocat-repo--blame-column-width))))
-            (let ((text (buffer-substring-no-properties (point-min) (point-max))))
-              (should (string-match-p "^Add the guide +.* │ 1 # Guide$" text))
-              (should (string-match-p "^ + │ 3 Text\\.$" text)))
-            (let (opened)
-              (cl-letf (((symbol-function 'octocat-commit-open)
-                         (lambda (repo sha) (push (list repo sha) opened))))
-                (goto-char (point-min))
-                (search-forward "Add the guide" nil t 2)
-                (call-interactively (key-binding (kbd "RET"))))
-              (should (equal opened '(("owner/repo" "abc1234def")))))
-            (goto-char (point-min))
-            (search-forward "Blame")
-            (should (eq (get-text-property (1- (point)) 'face) 'octocat-segment-current))
-            (octocat-file-cycle-view)
-            (should (= (octocat--cap-width 1000) octocat-max-width))
-            (should (string-match-p "^Guide$" (buffer-string))))
-        (kill-buffer))))))
+    (cl-letf (((symbol-function 'octocat-power) (lambda () 'low)))
+      (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n\nText.\n")
+      (octocat-tree-tests--store
+       '(blame "owner/repo" "abc1234def" "docs/GUIDE.md")
+       (octocat-model--repo-parse-blame
+        (octocat--get
+         (octocat-sync--parse
+          (concat "{\"data\":{\"repository\":{\"object\":{\"blame\":{\"ranges\":["
+                  "{\"startingLine\":1,\"endingLine\":3,\"commit\":{\"oid\":\"abc1234def\","
+                  "\"messageHeadline\":\"Add the guide\",\"committedDate\":\"2026-10-01T10:00:00Z\","
+                  "\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}}]}}}}}"))
+         "data")))
+      (save-current-buffer
+        (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md")
+        (unwind-protect
+            (progn
+              (should (eq (key-binding (kbd "C-c C-v")) #'octocat-file-cycle-view))
+              (should (string-match-p "^Guide$" (buffer-string)))
+              (should (string-match-p ":/docs/GUIDE.md   Preview  Code  Blame $" (buffer-string)))
+              (goto-char (point-min))
+              (search-forward "Preview")
+              (should (eq (get-text-property (point) 'face) 'octocat-segment-current))
+              (octocat-file-cycle-view)
+              (should (string-match-p "^# Guide$" (buffer-string)))
+              (should (= (octocat--cap-width 1000) octocat-max-width))
+              (octocat-file-cycle-view)
+              ;; The blame widens the page by its column, the code as wide.
+              (should (= (octocat--cap-width 1000)
+                         (+ octocat-max-width (octocat-repo--blame-column-width))))
+              (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+                (should (string-match-p "^Add the guide +.* │ 1 # Guide$" text))
+                (should (string-match-p "^ + │ 3 Text\\.$" text)))
+              (let (opened)
+                (cl-letf (((symbol-function 'octocat-commit-open)
+                           (lambda (repo sha) (push (list repo sha) opened))))
+                  (goto-char (point-min))
+                  (search-forward "Add the guide" nil t 2)
+                  (call-interactively (key-binding (kbd "RET"))))
+                (should (equal opened '(("owner/repo" "abc1234def")))))
+              (goto-char (point-min))
+              (search-forward "Blame")
+              (should (eq (get-text-property (1- (point)) 'face) 'octocat-segment-current))
+              (octocat-file-cycle-view)
+              (should (= (octocat--cap-width 1000) octocat-max-width))
+              (should (string-match-p "^Guide$" (buffer-string))))
+          (kill-buffer))))))
 
 (ert-deftest octocat-tree-test-last-commit-text ()
   "A tree entry is followed by its last commit's subject and, at the right, its age."
@@ -996,28 +999,28 @@ the margin as wide whatever the window."
 It does not fold, however long."
   (with-temp-buffer
     (octocat-tree-tests--with-store
-     (let ((octocat-tree-entries 1))
-      (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
-                                 (vector (octocat-tree-tests--entry "doc" "tree" "docsha")
-                                         (octocat-tree-tests--entry "src" "tree" "srcsha")
-                                         (octocat-tree-tests--entry "a.el" "blob" "b1")))
-      (octocat-tree-tests--store '(tree-dir "owner/repo" "srcsha")
-                                 (vector (octocat-tree-tests--entry "x.el" "blob" "b2")))
-      (octocat-tree-tests--mount-full-tree "src" "src")
-      (accept-process-output nil 0.01)
-      (should (string-match-p "▸ doc/\n▾ src/\n    x\\.el\n  a\\.el" (buffer-string)))
-      (should (equal (octocat-tree--path-at-point) "src"))
-      (octocat-tree-visit)
-      (vui-flush-sync)
-      (should (string-match-p "▸ src/" (buffer-string)))
-      (should-not (string-match-p "x\\.el" (buffer-string)))
-      (should-not (string-match-p "more entries" (buffer-string)))
-      ;; g shows the tree as it opened.
-      (setq-local revert-buffer-function
-                  (lambda (&rest _) (octocat-tree-tests--mount-full-tree "src" "src")))
-      (octocat-vui-refresh)
-      (vui-flush-sync)
-      (should (string-match-p "▾ src/\n    x\\.el" (buffer-string)))))))
+      (let ((octocat-tree-entries 1))
+        (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
+                                   (vector (octocat-tree-tests--entry "doc" "tree" "docsha")
+                                           (octocat-tree-tests--entry "src" "tree" "srcsha")
+                                           (octocat-tree-tests--entry "a.el" "blob" "b1")))
+        (octocat-tree-tests--store '(tree-dir "owner/repo" "srcsha")
+                                   (vector (octocat-tree-tests--entry "x.el" "blob" "b2")))
+        (octocat-tree-tests--mount-full-tree "src" "src")
+        (accept-process-output nil 0.01)
+        (should (string-match-p "▸ doc/\n▾ src/\n    x\\.el\n  a\\.el" (buffer-string)))
+        (should (equal (octocat-tree--path-at-point) "src"))
+        (octocat-tree-visit)
+        (vui-flush-sync)
+        (should (string-match-p "▸ src/" (buffer-string)))
+        (should-not (string-match-p "x\\.el" (buffer-string)))
+        (should-not (string-match-p "more entries" (buffer-string)))
+        ;; g shows the tree as it opened.
+        (setq-local revert-buffer-function
+                    (lambda (&rest _) (octocat-tree-tests--mount-full-tree "src" "src")))
+        (octocat-vui-refresh)
+        (vui-flush-sync)
+        (should (string-match-p "▾ src/\n    x\\.el" (buffer-string)))))))
 
 (ert-deftest octocat-tree-test-up ()
   "Up moves point to the directory holding the entry, not past the root's."

@@ -85,9 +85,9 @@ The comments come as a sync snapshot."
     (should (string-search "(no comments)" (funcall text [])))
     (let ((out (funcall text
                         (vector (json-parse-string
-                               "{\"user\":{\"login\":\"me\"},\"body\":\"hi\",\"created_at\":\"\"}")
-                              (json-parse-string
-                               "{\"path\":\"a.el\",\"body\":\"x\",\"created_at\":\"\"}")))))
+                                 "{\"user\":{\"login\":\"me\"},\"body\":\"hi\",\"created_at\":\"\"}")
+                                (json-parse-string
+                                 "{\"path\":\"a.el\",\"body\":\"x\",\"created_at\":\"\"}")))))
       (should (string-search "Comments (2)" out))
       (should (string-search "(1 inline comment, in the diff above)" out))
       (should (string-search "  ● @me" out))
@@ -102,10 +102,10 @@ The comments come as a sync snapshot."
                 "{\"path\":\"a.el\",\"line\":1,\"body\":\"note\",\"created_at\":\"\"}"))
          (out  (with-temp-buffer
                  (vui-render (vui-component 'octocat-diff--files
-                                            :files (vector file)
-                                            :by-path (octocat-diff-by-path (vector c))
-                                            :hide t
-                                            :fits t :raw nil :width 80))
+                               :files (vector file)
+                               :by-path (octocat-diff-by-path (vector c))
+                               :hide t
+                               :fits t :raw nil :width 80))
                  (buffer-substring-no-properties (point-min) (point-max)))))
     (should (string-search "]   Comments (1)  Diff only " out))
     (should (string-search "+x" out))
@@ -119,9 +119,9 @@ The comments come as a sync snapshot."
                 "{\"path\":\"a.el\",\"line\":40,\"body\":\"gone\",\"created_at\":\"\"}"))
          (out  (with-temp-buffer
                  (vui-render (vui-component 'octocat-diff--files
-                                            :files (vector file)
-                                            :by-path (octocat-diff-by-path (vector c))
-                                            :hide nil :fits t :raw nil :width 80))
+                               :files (vector file)
+                               :by-path (octocat-diff-by-path (vector c))
+                               :hide nil :fits t :raw nil :width 80))
                  (buffer-substring-no-properties (point-min) (point-max)))))
     (should-not (string-search "Comments (" out))
     (should (string-search "+x" out))))
@@ -223,7 +223,7 @@ Each side counts from its `@@' header; a header or a note has none."
                         (lambda (_line _placed anchor) (push anchor seen)))
     (should (equal (nreverse seen)
                    '(nil ("RIGHT" 7 2 1) ("LEFT" 6 3 1) ("RIGHT" 8 4 1) ("RIGHT" 9 5 1)
-                     nil ("RIGHT" 22 7 2))))))
+                         nil ("RIGHT" 22 7 2))))))
 
 (defun octocat-diff-tests--comment (json)
   "Return the comment of JSON, with its body and date."
@@ -323,12 +323,12 @@ A thread that can be resolved ends in a button doing it, a row apart."
   "An image is unfolded only by its own RET, not with the rest of the diff."
   (let ((out (with-temp-buffer
                (vui-render (vui-component 'octocat-diff--files
-                                          :repo "o/r"
-                                          :files (vector (json-parse-string
-                                                          "{\"filename\":\"a.png\",\"status\":\"added\",\"sha\":\"abc\",\"changes\":0}")
-                                                         (json-parse-string
-                                                          "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}"))
-                                          :fits t :raw nil :width 80))
+                             :repo "o/r"
+                             :files (vector (json-parse-string
+                                             "{\"filename\":\"a.png\",\"status\":\"added\",\"sha\":\"abc\",\"changes\":0}")
+                                            (json-parse-string
+                                             "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}"))
+                             :fits t :raw nil :width 80))
                (buffer-substring-no-properties (point-min) (point-max)))))
     (should (string-search "▸ A a.png" out))
     (should (string-search "+x" out))))
@@ -373,14 +373,14 @@ Return the buffer, current, once point has moved there."
   (let ((buf (generate-new-buffer " *files*")))
     (set-buffer buf)
     (vui-mount (vui-component 'octocat-diff--files
-                  :repo "o/r"
-                  :files (vector (json-parse-string
-                                  "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}")
-                                 (let ((f (make-hash-table :test #'equal)))
-                                   (puthash "filename" "b.el" f)
-                                   (puthash "patch" octocat-diff-tests--patch f)
-                                   f))
-                  :fits nil :raw nil :width 80 :at at)
+                 :repo "o/r"
+                 :files (vector (json-parse-string
+                                 "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}")
+                                (let ((f (make-hash-table :test #'equal)))
+                                  (puthash "filename" "b.el" f)
+                                  (puthash "patch" octocat-diff-tests--patch f)
+                                  f))
+                 :fits nil :raw nil :width 80 :at at)
                (buffer-name))
     buf))
 
@@ -584,8 +584,8 @@ Only that file; a hash naming none changes nothing."
       (unwind-protect
           (progn
             (vui-mount (vui-component 'octocat-compare--page
-                                      :repo "o/r" :base "main" :dots "..." :head "topic"
-                                      :raw nil :tick 0)
+                         :repo "o/r" :base "main" :dots "..." :head "topic"
+                         :raw nil :tick 0)
                        "*octocat-compare-test*")
             (with-current-buffer "*octocat-compare-test*"
               (should (string-search "Files (1)" (buffer-string)))))

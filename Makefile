@@ -32,7 +32,7 @@ RUN = $(DOCKER) run $(ISOLATED) --network=none \
   -v "$(CURDIR)":/src:ro -v "$(CURDIR)/.eldev":/src/.eldev -w /src $(IMAGE)
 
 .PHONY: ci ci-all image deps clean compile lint test melpazoid melpazoid-prepare \
-  melpazoid-image melpazoid-check screenshots update-architecture-md
+  melpazoid-image melpazoid-check screenshots update-architecture-md indent
 
 # What ci runs at once.  ci-all runs melpazoid, which is the same on every
 # release, with 31.1's only.
@@ -109,10 +109,12 @@ compile:
 	  && cd /tmp/build && eldev compile --warnings-as-errors --set all"
 
 # checkdoc, package-lint and elisp-lint, as the Eldev file says, then
-# check-declare, which flags redundant declarations too, then that
+# check-declare, which flags redundant declarations too, then the tests'
+# indentation, which Eldev does not lint, then that
 # docs/architecture.md's module graph is current.
 lint:
 	$(RUN) sh -c 'eldev lint && eldev exec -R --file tools/check-declare.el \
+	  && eldev exec -R --file tools/check-indent.el \
 	  && emacs -Q --batch -l tools/module-graph.el check'
 
 # The tests share one process, but for the evil one, which must load
@@ -195,6 +197,12 @@ screenshots: compile
 	  test/screenshots/run.sh
 
 # Rewrite docs/architecture.md's module graph and table from the sources.
+# Reindent the tests as `make lint' checks them.
+indent:
+	$(DOCKER) run $(ISOLATED) --network=none -v "$(CURDIR)":/src:ro \
+	  -v "$(CURDIR)/.eldev":/src/.eldev -v "$(CURDIR)/test":/src/test \
+	  -e OCTOCAT_FIX_INDENT=1 -w /src $(IMAGE) eldev exec -R --file tools/check-indent.el
+
 update-architecture-md:
 	$(DOCKER) run $(ISOLATED) --network=none -v "$(CURDIR)":/src:ro \
 	  -v "$(CURDIR)/docs":/src/docs -w /src $(IMAGE) \

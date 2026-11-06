@@ -13,6 +13,10 @@
 (require 'ert)
 (require 'octocat)
 
+(defun octocat-model-tests--data (json)
+  "Return the \"data\" of JSON, a GraphQL answer, as a resource's :parse gets it."
+  (gethash "data" (octocat-sync--parse json)))
+
 ;;;; Issues
 
 (ert-deftest octocat-model-test-issue-shares-entity-with-list ()
@@ -32,7 +36,7 @@
                     (octocat-sync--write
                      db "issue"
                      (octocat-model-detail issue '("comments")
-                                          (lambda (f) (octocat-model-item 'issue "o/r" f)))
+                                           (lambda (f) (octocat-model-item 'issue "o/r" f)))
                      2.0)))
     (let ((row (aref (gethash "nodes" (car (octocat-sync--read db "list"))) 0)))
       (should (equal (gethash "title" row) "Crash"))
@@ -48,6 +52,94 @@
               "https://github.com/o/r/issues/42\n")
              42))
   (should-error (octocat-model--issue-parse-created "oops")))
+
+;;;; Shared resources
+
+(ert-deftest octocat-model-test-counts-query-and-parse ()
+  "Pull requests also count merged; the answer parses to a table."
+  (should (string-match-p "merged:pullRequests(states:MERGED)"
+                          (octocat-model--counts-query 'pulls)))
+  (should-not (string-match-p "merged" (octocat-model--counts-query 'issues)))
+  (let ((counts (octocat-model--parse-counts
+                 (octocat-model-tests--data
+                  "{\"data\":{\"repository\":{\"open\":{\"totalCount\":2},\"closed\":{\"totalCount\":5}}}}"))))
+    (should (= (hash-table-count counts) 2))
+    (should (= (gethash "open" counts) 2))
+    (should (= (gethash "closed" counts) 5))))
+
+(ert-deftest octocat-model-test-parse-repo-summary-fork ()
+  "A fork's summary carries its parent, default branch and counts."
+  (let ((summary (octocat-model--parse-repo-summary
+                  (octocat-model-tests--data
+                   "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\"},\"parent\":{\"nameWithOwner\":\"up/stream\"},\"issues\":{\"totalCount\":3},\"pullRequests\":{\"totalCount\":2}}}}"))))
+    (should (equal (gethash "default-branch" summary) "main"))
+    (should (equal (gethash "fork-parent" summary) "up/stream"))
+    (should (= (gethash "open-issues" summary) 3))
+    (should (= (gethash "open-prs" summary) 2))))
+
+(ert-deftest octocat-model-test-parse-repo-summary-empty-repo ()
+  "A non-fork with no default branch yields nils, not errors."
+  (let ((summary (octocat-model--parse-repo-summary
+                  (octocat-model-tests--data
+                   "{\"data\":{\"repository\":{\"defaultBranchRef\":null,\"parent\":null,\"issues\":{\"totalCount\":0},\"pullRequests\":{\"totalCount\":0}}}}"))))
+    (should-not (gethash "default-branch" summary))
+    (should-not (gethash "fork-parent" summary))
+    (should (= (gethash "open-issues" summary) 0))))
+
+(ert-deftest octocat-model-test-parse-list-items ()
+  "Connections flatten to what the rows read; the cursor ends with the pages."
+  (let* ((json "{\"data\":{\"search\":{\"nodes\":[{\"number\":5,\"labels\":{\"nodes\":[{\"name\":\"bug\",\"color\":\"d73a4a\"}]},\"comments\":{\"totalCount\":3},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":{\"state\":\"FAILURE\",\"contexts\":{\"checkRunCountsByState\":[{\"state\":\"SUCCESS\",\"count\":3},{\"state\":\"FAILURE\",\"count\":1}],\"statusContextCountsByState\":[{\"state\":\"SUCCESS\",\"count\":1}]}}}}]}},{\"number\":6,\"labels\":{\"nodes\":[]},\"comments\":{\"totalCount\":0},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":null}}]}}],\"pageInfo\":{\"hasNextPage\":true,\"endCursor\":\"Y3I\"}}}}")
+         (page  (octocat--parse-list-items json))
+         (pr    (car (plist-get page :items)))
+         (bare  (cadr (plist-get page :items))))
+    (should (equal (plist-get page :cursor) "Y3I"))
+    (should (equal (gethash "name" (aref (gethash "labels" pr) 0)) "bug"))
+    (should (= (gethash "commentCount" pr) 3))
+    (should (equal (gethash "ciState" pr) "FAILURE"))
+    (should (equal (substring-no-properties (octocat--ci-status pr)) "✗"))
+    (should (equal (substring-no-properties (octocat--ci-count-label pr)) "✗ 4/5"))
+    (should-not (gethash "ciState" bare))
+    (should-not (gethash "commits" bare)))
+  (should-not (plist-get (octocat--parse-list-items
+                          "{\"data\":{\"search\":{\"nodes\":[],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}")
+                         :cursor)))
+
+(ert-deftest octocat-model-test-list-item-assignees ()
+  "A list row's assignees become a vector of their nodes, as its labels do."
+  (let ((item (car (plist-get
+                    (octocat--parse-list-items
+                     "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
+                       \"nodes\":[{\"number\":3,
+                                   \"assignees\":{\"nodes\":[{\"login\":\"a\"}]}}]}}}")
+                    :items))))
+    (should (equal (mapcar (lambda (u) (gethash "login" u)) (gethash "assignees" item))
+                   '("a")))))
+
+(ert-deftest octocat-model-test-list-item-requested-reviewers ()
+  "A PR row's requested reviewers become the users and teams asked."
+  (let ((item (car (plist-get
+                    (octocat--parse-list-items
+                     "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
+                       \"nodes\":[{\"number\":3,\"requestedReviewers\":{\"nodes\":[
+                         {\"requestedReviewer\":{\"login\":\"a\"}},
+                         {\"requestedReviewer\":{\"name\":\"core\"}}]}}]}}}")
+                    :items))))
+    (should (equal (mapcar (lambda (r) (or (gethash "login" r) (gethash "name" r)))
+                           (gethash "requestedReviewers" item))
+                   '("a" "core")))
+    ;; The team has no login to toggle.
+    (should (equal (octocat-vui-list--value-counts (list item) "requestedReviewers" "login")
+                   '(("a" . 1))))))
+
+(ert-deftest octocat-model-test-list-item-without-commits ()
+  "A PR that comes with no commits parses, without a CI state."
+  (let ((item (car (plist-get
+                    (octocat--parse-list-items
+                     "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
+                       \"nodes\":[{\"number\":3,\"commits\":{\"nodes\":[]}}]}}}")
+                    :items))))
+    (should (= (gethash "number" item) 3))
+    (should-not (gethash "ciState" item))))
 
 ;;;; Comments
 
@@ -158,8 +250,9 @@
   (dolist (case '(("BEHIND" . "main") ("IDENTICAL" . "main") ("AHEAD" . :null) ("DIVERGED" . :null)))
     (should (equal (gethash "name"
                             (octocat-model--commit-parse-branch
-                             (format "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\",\"compare\":{\"status\":\"%s\"}}}}}"
-                                     (car case))))
+                             (octocat-model-tests--data
+                              (format "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\",\"compare\":{\"status\":\"%s\"}}}}}"
+                                      (car case)))))
                    (cdr case)))))
 
 ;;;; Repository code
@@ -184,7 +277,7 @@
 (ert-deftest octocat-model-test-repo-parse-head ()
   "A directory at a ref has its last commit, its tree and its history count."
   (let ((head (octocat-model--repo-parse-head
-               "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\"}}}}"
+               (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\"}}}}")
                "main" "src")))
     (should (equal (gethash "sha" head) "abc"))
     (should (equal (octocat--commit-author head) "@ann"))
@@ -192,9 +285,11 @@
     (should (equal (gethash "kind" head) "tree"))
     (should (equal (gethash "total" head) 42)))
   (should-error (octocat-model--repo-parse-head
-                 "{\"data\":{\"repository\":{\"object\":null,\"dir\":null}}}" "nope" nil))
+                 (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":null,\"dir\":null}}}")
+                 "nope" nil))
   (should-error (octocat-model--repo-parse-head
-                 "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":0,\"nodes\":[]}},\"dir\":null}}}"
+                 (octocat-model-tests--data
+                  "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":0,\"nodes\":[]}},\"dir\":null}}}")
                  "main" "missing")))
 
 (ert-deftest octocat-model-test-tree-parse-last-commits ()
@@ -302,17 +397,19 @@ env:
 (ert-deftest octocat-model-test-user-parse-pinned ()
   "Pinned repositories become repo entities; gists and unknown owners drop out."
   (let* ((tree (octocat-model--user-parse-pinned
-                (concat "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":["
-                        "{\"nameWithOwner\":\"bob/App\",\"description\":null,"
-                        "\"stargazerCount\":7,\"primaryLanguage\":{\"name\":\"Go\"},"
-                        "\"pushedAt\":\"2026-01-01T10:00:00Z\",\"isFork\":false,\"isArchived\":true},"
-                        "{}]}}}}")))
+                (octocat-model-tests--data
+                 (concat "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":["
+                         "{\"nameWithOwner\":\"bob/App\",\"description\":null,"
+                         "\"stargazerCount\":7,\"primaryLanguage\":{\"name\":\"Go\"},"
+                         "\"pushedAt\":\"2026-01-01T10:00:00Z\",\"isFork\":false,\"isArchived\":true},"
+                         "{}]}}}}"))))
          (nodes (gethash "nodes" tree)))
     (should (= (length nodes) 1))
     (should (equal (octocat-sync--entity-key (aref nodes 0)) "repo:bob/app"))
     (should (eq (gethash "isArchived" (octocat-sync--entity-fields (aref nodes 0))) t))
     (should (equal (gethash "nodes" (octocat-model--user-parse-pinned
-                                     "{\"data\":{\"repositoryOwner\":null}}"))
+                                     (octocat-model-tests--data
+                                      "{\"data\":{\"repositoryOwner\":null}}")))
                    []))))
 
 (ert-deftest octocat-model-test-user-repos-share-entities ()
@@ -321,12 +418,14 @@ env:
     (octocat-sync--write
      db "pinned"
      (octocat-model--user-parse-pinned
-      "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":[{\"nameWithOwner\":\"bob/app\",\"description\":\"old\",\"isFork\":false}]}}}}")
+      (octocat-model-tests--data
+       "{\"data\":{\"repositoryOwner\":{\"pinnedItems\":{\"nodes\":[{\"nameWithOwner\":\"bob/app\",\"description\":\"old\",\"isFork\":false}]}}}}"))
      1.0)
     (should (equal (sort (octocat-sync--write
                           db "repos"
-                    (octocat-model--user-parse-repos
-                     "[{\"full_name\":\"bob/app\",\"description\":\"new\",\"language\":\"Go\",\"fork\":false}]")
+                          (octocat-model--user-parse-repos
+                           (octocat-sync--parse
+                            "[{\"full_name\":\"bob/app\",\"description\":\"new\",\"language\":\"Go\",\"fork\":false}]"))
                           2.0)
                          #'string<)
                    '("pinned" "repos")))

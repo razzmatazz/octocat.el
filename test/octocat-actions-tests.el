@@ -235,13 +235,13 @@ It has five steps, STEPS-DONE of them done and the next running."
   (json-parse-string
    (json-serialize
     `(:databaseId ,id :name ,name :status ,(or status "completed")
-      :conclusion ,(if (member status '("in_progress" "queued")) "" "success")
-      :startedAt "2026-10-12T07:00:00Z" :completedAt "2026-10-12T07:02:00Z"
-      :steps ,(vconcat (cl-loop for n from 1 to 5
-                                collect `(:name ,(format "Step %d" n)
-                                          :status ,(cond ((<= n (or steps-done 5)) "completed")
-                                                         ((= n (1+ steps-done)) "in_progress")
-                                                         (t "queued")))))))))
+                  :conclusion ,(if (member status '("in_progress" "queued")) "" "success")
+                  :startedAt "2026-10-12T07:00:00Z" :completedAt "2026-10-12T07:02:00Z"
+                  :steps ,(vconcat (cl-loop for n from 1 to 5
+                                            collect `(:name ,(format "Step %d" n)
+                                                            :status ,(cond ((<= n (or steps-done 5)) "completed")
+                                                                           ((= n (1+ steps-done)) "in_progress")
+                                                                           (t "queued")))))))))
 
 (defun octocat-run-tests--spec (id &optional name &rest needs)
   "Return the job ID of a workflow file, NAME, waiting for NEEDS."

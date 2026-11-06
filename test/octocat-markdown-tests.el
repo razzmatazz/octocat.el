@@ -438,7 +438,7 @@ the window's point; mid-render that scrambled the page."
                   (ensure-list (octocat-markdown-tests--prop out "[image: p]" 'face))))
     (should (equal (octocat-markdown-tests--prop out "[image: p]" 'octocat-markdown-img)
                    '(:url "https://github.com/o/r/raw/feat/x/docs/shots/a%20b.png"
-                     :width nil :file ("o/r" "feat/x" "docs/shots/a b.png")))))
+                          :width nil :file ("o/r" "feat/x" "docs/shots/a b.png")))))
   (let ((out (octocat-markdown-render "[a](docs/README.md)" "")))
     (should (equal (octocat-markdown-tests--prop out "a" 'octocat-markdown-url)
                    "docs/README.md"))))
@@ -550,9 +550,9 @@ the window's point; mid-render that scrambled the page."
     (should (= (string-width (car lines)) 20))
     (should (string-search "↪" (get-text-property 0 'wrap-prefix (cadr lines))))
     (should-not (string-search "↪" (or (get-text-property
-                                         0 'wrap-prefix
-                                         (octocat-markdown-render "text" "" 20))
-                                        "")))))
+                                        0 'wrap-prefix
+                                        (octocat-markdown-render "text" "" 20))
+                                       "")))))
 
 (ert-deftest octocat-markdown-test-mermaid-is-labelled ()
   "A mermaid fence is shown as source, labelled as such."
@@ -1067,7 +1067,7 @@ Text replaced by a `display' string shows as that string."
 (ert-deftest octocat-markdown-test-org-headings ()
   "The title and headings become markdown headings, their tags dropped."
   (should (equal (octocat-markdown-tests--org-md "#+TITLE: vui.el" "#+AUTHOR: me"
-                                        "* Features" "** TODO Later   :wip:docs:")
+                                                 "* Features" "** TODO Later   :wip:docs:")
                  (octocat-markdown-tests--org-lines "# vui.el" "# Features" "## TODO Later"))))
 
 (ert-deftest octocat-markdown-test-org-emphasis ()
@@ -1116,22 +1116,22 @@ Text replaced by a `display' string shows as that string."
 (ert-deftest octocat-markdown-test-org-table ()
   "A table's first row is its header, its rules dropped."
   (should (equal (octocat-markdown-tests--org-md "| Name | /What/ |" "|------+--------|"
-                                        "| a    | one    |" "|------+--------|"
-                                        "| b    | two    |" "#+TBLFM: $1=x")
+                                                 "| a    | one    |" "|------+--------|"
+                                                 "| b    | two    |" "#+TBLFM: $1=x")
                  (octocat-markdown-tests--org-lines "| Name | *What* |" "|---|---|"
-                                           "| a | one |" "| b | two |"))))
+                                                    "| a | one |" "| b | two |"))))
 
 (ert-deftest octocat-markdown-test-org-lists ()
   "Lists keep their nesting; checkboxes and descriptions become markdown's."
   (should (equal (octocat-markdown-tests--org-md "- [X] done" "  + [ ] todo" "1) first"
-                                        "2. second" "- term :: what it /is/")
+                                                 "2. second" "- term :: what it /is/")
                  (octocat-markdown-tests--org-lines "- [x] done" "  - [ ] todo" "1. first"
-                                           "2. second" "- **term**: what it *is*"))))
+                                                    "2. second" "- **term**: what it *is*"))))
 
 (ert-deftest octocat-markdown-test-org-drawers-and-fixed-width ()
   "Drawers are dropped; fixed-width lines are fenced; dashes make a rule."
   (should (equal (octocat-markdown-tests--org-md "* A" ":PROPERTIES:" ":CUSTOM_ID: a" ":END:"
-                                        ": $ make" ":" ": done" "-----")
+                                                 ": $ make" ":" ": done" "-----")
                  (octocat-markdown-tests--org-lines "# A" "```" "$ make" "" "done" "```" "---"))))
 
 (provide 'octocat-markdown-tests)

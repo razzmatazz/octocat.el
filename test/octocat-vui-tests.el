@@ -363,7 +363,7 @@ unsubscribes it."
                                        (point-min) (point-max))))))
       (unwind-protect
           (let ((root (vui-mount (vui-component 'octocat-vui-tests--reader
-                                                :spec '(thing 1) :tick 1)
+                                   :spec '(thing 1) :tick 1)
                                  "*octocat-vui-test*")))
             (setq buf (get-buffer "*octocat-vui-test*"))
             (should (equal (mapcar #'car pending) '(1)))

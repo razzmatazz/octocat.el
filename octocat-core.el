@@ -228,14 +228,6 @@ LABELS is nil, `:null' or empty."
       ""
     (mapconcat (lambda (l) (octocat--format-label l bg)) labels " ")))
 
-(defun octocat--format-branch (branch width)
-  "Return BRANCH truncated to WIDTH characters and styled with `octocat-branch'.
-WIDTH should be at most `octocat-branch-max-width'.  Shorter names are
-padded with spaces so columns stay aligned.  The string is decorated
-with the `octocat-branch' face."
-  (propertize (truncate-string-to-width branch width nil ?\s "…")
-              'face 'octocat-branch))
-
 (defun octocat--branch-column-width (runs key)
   "Return the branch column width to use when rendering a workflow list.
 KEY names the hash entry holding the branch string (e.g. \"headBranch\"
@@ -697,6 +689,18 @@ Missing keys, non-table intermediates and JSON null all give nil."
   (while (and keys (hash-table-p obj))
     (setq obj (gethash (pop keys) obj)))
   (and (null keys) (not (eq obj :null)) obj))
+
+(defun octocat--table (&rest pairs)
+  "Return a hash table of PAIRS, alternating keys and values."
+  (let ((h (make-hash-table :test #'equal)))
+    (while pairs (puthash (pop pairs) (pop pairs) h))
+    h))
+
+(defun octocat--then (fn callback)
+  "Return a callback calling CALLBACK with FN of its result, or its error.
+For a `gh' call's CALLBACK: an (error . MESSAGE) is passed on as is."
+  (lambda (result)
+    (funcall callback (if (eq (car-safe result) 'error) result (funcall fn result)))))
 
 (defun octocat--nonempty (value)
   "Return VALUE if it is a non-empty, non-null string, otherwise nil.
@@ -1822,171 +1826,6 @@ OR in it cannot escape the repo scope."
     (if (string-empty-p query)
         scope
       (format "( %s ) %s" query scope))))
-
-(defconst octocat--list-item-fields
-  `((pulls  . ,(concat "...on PullRequest{number title state isDraft reviewDecision "
-                       "createdAt author{login} labels(first:100){nodes{name color}} "
-                       "assignees(first:100){nodes{login}} "
-                       ;; Not reviewRequests: the PR page keeps that apart.
-                       "requestedReviewers:reviewRequests(first:100){nodes{requestedReviewer{"
-                       "...on User{login} ...on Team{name}}}} "
-                       "comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{"
-                       "state contexts{checkRunCountsByState{state count} "
-                       "statusContextCountsByState{state count}}}}}}}"))
-    (issues . ,(concat "...on Issue{number title state createdAt author{login} "
-                       "labels(first:100){nodes{name color}} comments{totalCount} "
-                       "assignees(first:100){nodes{login}} "
-                       "closedByPullRequestsReferences(first:20){nodes{number repository{"
-                       "name owner{login}}}}}")))
-  "The GraphQL fields of a list row, by KIND.
-Only what the row shows: `gh pr/issue list --json' would fetch every
-comment's body and every check run, many times the size and the API cost.
-Labels and assignees are all fetched, since the sync store keeps them
-on the item's entity, which must hold the whole set; the Marked bar
-toggles them.")
-
-(defun octocat--list-items-query (kind)
-  "Return the GraphQL search query for a page of KIND list items."
-  (format (concat "query($q:String!,$limit:Int!,$after:String){search(query:$q,"
-                  "type:ISSUE_ADVANCED,first:$limit,after:$after){nodes{%s}pageInfo{"
-                  "hasNextPage endCursor}}}")
-          (alist-get kind octocat--list-item-fields)))
-
-(defun octocat--flatten-list-item (item)
-  "Flatten the connections of the search result ITEM in place; return it.
-\"labels\", \"assignees\" and \"closedByPullRequestsReferences\" become
-vectors of their nodes, as gh's JSON has them; the comments become their
-count, \"commentCount\"; a PR's \"requestedReviewers\" the users and
-teams asked to review it; and the head commit's checks become GitHub's
-rolled-up state, \"ciState\", and how many passed of how many,
-\"ciPassed\" and \"ciTotal\", absent without checks."
-  (dolist (key '("labels" "assignees" "closedByPullRequestsReferences"))
-    (let ((conn (gethash key item)))
-      (when (hash-table-p conn)
-        (puthash key (gethash "nodes" conn) item))))
-  (let ((requests (gethash "requestedReviewers" item)))
-    (when (hash-table-p requests)
-      (puthash "requestedReviewers"
-               (cl-map 'vector (lambda (n) (gethash "requestedReviewer" n))
-                       (gethash "nodes" requests))
-               item)))
-  (let ((comments (gethash "comments" item)))
-    (when (hash-table-p comments)
-      (puthash "commentCount" (gethash "totalCount" comments) item)
-      (remhash "comments" item)))
-  (let* ((commits (gethash "commits" item))
-         ;; A closed PR may come with no commits: [].
-         (node    (and (hash-table-p commits) (car (append (gethash "nodes" commits) nil))))
-         (rollup  (and node (gethash "statusCheckRollup" (gethash "commit" node)))))
-    (when (hash-table-p rollup)
-      (puthash "ciState" (gethash "state" rollup) item)
-      (let ((ctx (gethash "contexts" rollup)) (passed 0) (total 0))
-        (when (hash-table-p ctx)
-          (dolist (kind '(("checkRunCountsByState" "SUCCESS" "NEUTRAL" "SKIPPED")
-                          ("statusContextCountsByState" "SUCCESS")))
-            (seq-doseq (c (or (gethash (car kind) ctx) []))
-              (let ((n (gethash "count" c)))
-                (setq total (+ total n))
-                (when (member (gethash "state" c) (cdr kind))
-                  (setq passed (+ passed n))))))
-          (puthash "ciPassed" passed item)
-          (puthash "ciTotal" total item))))
-    (remhash "commits" item))
-  item)
-
-(defun octocat--parse-list-items (json-string)
-  "Parse the list search response JSON-STRING into (:items LIST :cursor C).
-The items are flattened by `octocat--flatten-list-item'.  C is the cursor
-to pass for the next page, or nil on the last."
-  (let* ((search (gethash "search" (gethash "data" (json-parse-string json-string))))
-         (info   (gethash "pageInfo" search)))
-    (list :items  (mapcar #'octocat--flatten-list-item (gethash "nodes" search))
-          :cursor (and (eq (gethash "hasNextPage" info) t)
-                       (octocat--nonempty (gethash "endCursor" info))))))
-
-(defun octocat--list-items (kind repo callback &optional query after limit)
-  "Fetch a page of the KIND items of REPO matching the search QUERY.
-KIND is `issues' or `pulls'.  AFTER, a cursor from an earlier page,
-fetches the page after it; a page is LIMIT items, by default
-`octocat-list-page-size'.
-CALLBACK is called with the plist from `octocat--parse-list-items', or a
-cons \\=(error . MSG).  One API call."
-  (octocat--gh-graphql
-   (symbol-name kind) nil (octocat--list-items-query kind)
-   `(("q" . ,(octocat--search-query repo kind query))
-     ("limit" . ,(or limit octocat-list-page-size))
-     ("after" . ,after))
-   #'octocat--parse-list-items
-   callback))
-
-(defun octocat--counts-query (kind)
-  "Return the GraphQL query counting items of KIND (`issues' or `pulls')."
-  (let ((field (if (eq kind 'pulls) "pullRequests" "issues"))
-        (states (if (eq kind 'pulls)
-                    '(("open" . "OPEN") ("closed" . "CLOSED") ("merged" . "MERGED"))
-                  '(("open" . "OPEN") ("closed" . "CLOSED")))))
-    (format "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){%s}}"
-            (mapconcat (lambda (s)
-                         (format "%s:%s(states:%s){totalCount}" (car s) field (cdr s)))
-                       states " "))))
-
-(defun octocat--parse-counts (json-string)
-  "Parse the GraphQL counts response JSON-STRING into a plist.
-Keys: :open, :closed and, for pull requests, :merged."
-  (let ((repo (gethash "repository"
-                       (gethash "data" (json-parse-string json-string :null-object nil)))))
-    (apply #'append
-           (mapcar (lambda (key)
-                     (let ((entry (gethash (substring (symbol-name key) 1) repo)))
-                       (and entry (list key (gethash "totalCount" entry)))))
-                   '(:open :closed :merged)))))
-
-(defun octocat--fetch-counts (repo kind callback)
-  "Fetch the open/closed(/merged) counts of KIND in REPO asynchronously.
-KIND is `issues' or `pulls'.  CALLBACK is called with the plist described
-in `octocat--parse-counts', or a cons \\=(error . MSG).  One API call."
-  (octocat--gh-graphql "counts" repo (octocat--counts-query kind) nil
-                       #'octocat--parse-counts callback))
-
-(defconst octocat--repo-summary-query
-  (concat "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){"
-          "defaultBranchRef{name} parent{nameWithOwner} issues(states:OPEN){totalCount} "
-          "pullRequests(states:OPEN){totalCount}}}")
-  "GraphQL query behind `octocat--fetch-repo-summary'.")
-
-(defun octocat--parse-repo-summary (json-string)
-  "Parse the GraphQL response JSON-STRING into a summary plist.
-Keys: :default-branch (string or nil), :fork-parent (\"owner/repo\" or
-nil), :open-issues and :open-prs (integers)."
-  (let* ((repo (gethash "repository"
-                        (gethash "data" (json-parse-string json-string :null-object nil))))
-         (ref    (gethash "defaultBranchRef" repo))
-         (parent (gethash "parent" repo)))
-    (list :default-branch (and ref (gethash "name" ref))
-          :fork-parent    (and parent (gethash "nameWithOwner" parent))
-          :open-issues    (gethash "totalCount" (gethash "issues" repo))
-          :open-prs       (gethash "totalCount" (gethash "pullRequests" repo)))))
-
-(defun octocat--fetch-repo-summary (repo callback)
-  "Fetch the repo-view summary for REPO asynchronously in one API call.
-Calls CALLBACK with the plist described in `octocat--parse-repo-summary',
-or a cons \\=(error . MSG) on failure.  One GraphQL request replaces what
-would otherwise be separate default-branch, fork-parent and
-issue/PR-count lookups."
-  (octocat--gh-graphql "repo-summary" repo octocat--repo-summary-query nil
-                       #'octocat--parse-repo-summary callback))
-
-(defun octocat--list-labels (repo callback)
-  "Fetch the labels of REPO asynchronously and call CALLBACK.
-CALLBACK is called with a list of tables of \"name\" and \"color\", or a
-cons \\=(error . MSG)."
-  (octocat--run-gh "labels"
-                   (list "label" "list"
-                         "--repo" repo
-                         "--limit" "200"
-                         "--json" "name,color")
-                   #'octocat--parse-json-list
-                   callback))
 
 (defun octocat--list-people (repo callback)
   "Fetch the logins that can be assigned in REPO and call CALLBACK.

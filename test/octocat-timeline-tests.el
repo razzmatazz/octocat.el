@@ -159,10 +159,10 @@
   ;; None: the heading ends at the date.
   (should-not (string-match-p
                "[[:space:]]\n" (substring-no-properties
-                                 (octocat-timeline--entry-string
-                                  (list :time "2026-01-04T10:00:00Z" :kind 'comment
-                                        :actor "@bob" :verb "commented" :body "hi")
-                                  t 80)))))
+                                (octocat-timeline--entry-string
+                                 (list :time "2026-01-04T10:00:00Z" :kind 'comment
+                                       :actor "@bob" :verb "commented" :body "hi")
+                                 t 80)))))
 
 (ert-deftest octocat-timeline-test-event-line-wraps ()
   "An event line wider than WIDTH breaks, hung under its actor on the rail."
