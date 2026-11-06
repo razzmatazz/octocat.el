@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `C-c C-f` finds a file on disk in the local clone, its prompt at the file shown
 * `M-x octocat-here` opens the file or directory you're in, on your pushed branch (`C-u`: pick)
 * The user page shows the avatar as an image in a graphical frame, and none in a terminal
 * The run list's filter has an Event button, for the event that triggered a run

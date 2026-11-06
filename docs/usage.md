@@ -78,8 +78,9 @@ files, such as a plain-text LICENSE, are shown as they are.
 The page can show any ref, not only a branch: a github.com link to a tag
 or a commit (`/tree/v1.0`, `/tree/a1b2c3d`) opens the page at it.
 
-`C-c C-f` picks any file of the commit by path, with `completing-read`,
-and opens it; its list is fetched once per commit.  `C-c C-o` opens the
+`C-c C-f` is `find-file` in the local clone, its prompt filled in with
+the clone's copy of the file shown, or of the entry at point, so `RET`
+visits it.  Without a local clone it is a plain `find-file`.  `C-c C-o` opens the
 entry at point on GitHub, and elsewhere the page itself.
 
 ### Tree browser (`octocat-tree-mode`)

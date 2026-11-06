@@ -34,7 +34,7 @@
 ;; The tree browser and the commits page derive from the repo page, for
 ;; its state.  The file viewer's top is the tree browser's, so one reads
 ;; on from the other; each ref of a file has a buffer of its own.
-;; `octocat-tree-find-file' (C-c C-f) picks any file of the ref shown.
+;; `octocat-tree-find-file' (C-c C-f) finds the file shown in the local clone.
 ;;
 ;; Each line of a tree carries text properties so commands work
 ;; regardless of keymap precedence (e.g. under Evil):
@@ -1757,35 +1757,38 @@ See `octocat-tree--open-file-by-path'."
                                         octocat-tree--file-branch)))
     (octocat-tree--open-file-by-path repo picked octocat-tree--file-path)))
 
+(defun octocat-tree--find-file-start (path type)
+  "Return (INITIAL . DEFAULT) for finding a file from PATH, of TYPE.
+PATH is the file shown or the entry at point, nil for none; TYPE is
+`file' or `dir'.  INITIAL is the directory to start in, as `find-file'
+starts in the current one, and DEFAULT the file itself."
+  (when path
+    (if (eq type 'dir)
+        (cons (file-name-as-directory path) nil)
+      (cons (file-name-directory path) path))))
+
 (defun octocat-tree-find-file ()
-  "Interactively find and open a file in this repository by path.
-Offers every file of the ref shown, through `completing-read', and opens
-the one picked in `octocat-file-mode'.  The list is fetched once per
-commit.  Works from the repo page and from a file viewer."
+  "Visit a file of the local clone, as `find-file' does.
+The prompt starts in the clone's copy of the file shown, or of the
+entry at point, so RET visits it.  Without a local clone, this is a
+plain `find-file'."
   (interactive)
-  (pcase-let* ((`(,repo ,ref ,label)
-                (cond ((derived-mode-p 'octocat-repo-mode)
-                       (let ((ref (or octocat-repo--ref octocat-repo--tracked)))
-                         (list octocat-repo--repo ref
-                               (or ref octocat-repo--default-branch "HEAD"))))
-                      ((derived-mode-p 'octocat-file-mode)
-                       (list octocat-tree--file-repo octocat-tree--file-branch
-                             octocat-tree--file-branch))
-                      (t (user-error "Octocat: Not in a repo or file buffer"))))
-               (buf (current-buffer)))
-    (unless repo
-      (user-error "Octocat: Buffer is not associated with a repository"))
-    (setq mode-line-process (octocat-mode-line-busy ":loading"))
-    (octocat-model-tree-load-files
-     repo ref
-     (lambda (files)
-       (when (buffer-live-p buf)
-         (with-current-buffer buf
-           (setq mode-line-process nil)
-           (if (eq (car-safe files) 'error)
-               (message "Octocat: Error loading file list: %s" (cdr files))
-             (let ((path (completing-read "Find file: " files nil t)))
-               (octocat-tree--open-file-by-path repo label path)))))))))
+  (pcase-let* ((`(,dir . ,file)
+                (if (derived-mode-p 'octocat-file-mode)
+                    (octocat-tree--find-file-start octocat-tree--file-path 'file)
+                  (octocat-tree--find-file-start (octocat-tree--path-at-point)
+                                                 (octocat-tree--type-at-point))))
+               (local-dir (cond ((derived-mode-p 'octocat-repo-mode) octocat-repo--local-dir)
+                                ((derived-mode-p 'octocat-file-mode)
+                                 (and octocat-tree--file-repo
+                                      (octocat-repo--local-dir-for octocat-tree--file-repo)))
+                                (t (user-error "Octocat: Not in a repo or file buffer")))))
+    (if (not local-dir)
+        (call-interactively #'find-file)
+      (find-file (read-file-name "Find file: "
+                                 (file-name-as-directory (expand-file-name (or dir "") local-dir))
+                                 (and file (expand-file-name file local-dir))
+                                 nil (and file (file-name-nondirectory file)))))))
 
 (defun octocat-tree--entry-url (repo ref type path)
   "Return the web URL of the tree entry at PATH of REPO at REF.

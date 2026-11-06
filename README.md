@@ -98,7 +98,7 @@ Optional extras:
 | `C-c C-r` | Review the PR |
 | `C-c C-m` | Merge the PR |
 | `C-c C-b` | Show another branch |
-| `C-c C-f` | Find a file in the repository |
+| `C-c C-f` | Find a file in the local clone, from the one shown |
 | `C-c C-l` | History of the file shown |
 
 Some keys do more than fits here; see [Keys in more

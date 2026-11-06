@@ -291,6 +291,13 @@
     (should (equal (octocat-repo--here-target "o/r" "main" "src/a.el" nil nil has t)
                    '(file "o/r" "main" "src/a.el")))))
 
+(ert-deftest octocat-repo-test-find-file-start ()
+  "Finding a file starts in the directory of the one shown, which is the default."
+  (should-not (octocat-tree--find-file-start nil nil))
+  (should (equal (octocat-tree--find-file-start "src/a.el" 'file) '("src/" . "src/a.el")))
+  (should (equal (octocat-tree--find-file-start "a.el" 'file) '(nil . "a.el")))
+  (should (equal (octocat-tree--find-file-start "src/lib" 'dir) '("src/lib/"))))
+
 (ert-deftest octocat-repo-test-here-ref ()
   "The ref is the pushed branch, a pushed detached HEAD, or the default."
   (skip-unless (executable-find "git"))
