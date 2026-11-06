@@ -33,5 +33,20 @@
       (should (equal (nth 2 lines) "@github"))
       (should (equal (nth 3 lines) "3 followers  ·  1 following  ·  8 public repos")))))
 
+(ert-deftest octocat-user-test-avatar-columns-follow-window-width ()
+  "The avatar takes a quarter of the window, within its limits."
+  (let ((octocat-user-avatar-max-columns 40))
+    (should (= (octocat-user--avatar-columns 80) 20))
+    (should (= (octocat-user--avatar-columns 120) 30))
+    (should (= (octocat-user--avatar-columns 400) 40))
+    (should (= (octocat-user--avatar-columns 40) 0))))
+
+(ert-deftest octocat-user-test-beside-pads-the-shorter-side ()
+  "Lines sit to the right of the avatar; the shorter list is padded."
+  (should (equal (octocat-user--beside '("ab" "cd") "  " '("one"))
+                 '("ab  one" "cd  ")))
+  (should (equal (octocat-user--beside '("ab") "  " '("one" "two"))
+                 '("ab  one" "    two"))))
+
 (provide 'octocat-user-tests)
 ;;; octocat-user-tests.el ends here

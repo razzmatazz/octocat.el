@@ -371,7 +371,7 @@ text, beside this file.  It takes about 15 seconds, compiling first.
   they would GitHub's answer.  A page making a call it lacks fails
   `make screenshots`, naming the call.  Keep it made up: no real
   repositories, people or hashes.
-- **Avatars** are all drawn from
+- **Avatars** all show
   [test/screenshots/avatar.png](../../test/screenshots/avatar.png), a
   made-up identicon; other images don't load.
 - **The clock** is frozen at 2026-10-23 12:00 UTC, so ages don't change

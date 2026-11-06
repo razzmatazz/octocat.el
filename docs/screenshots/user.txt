@@ -1,15 +1,14 @@
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  @srivera  Sam Rivera
-▀▀▀▀▀▀▌▀▀▀▌▀▀▀▌▀▀▀▀▀▀▀▀▀▀  Building rocket, a static site generator.  Emacs, Rust, and long walks.
-▀▀▀▀▀▀▌▀▀▀▌▀▀▀▌▀▀▀▀▀▀▀▀▀▀  @acme  ·  Lisbon  ·  https://srivera.example.com
-▀▀▌▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  412 followers  ·  38 following  ·  23 public repos
-▀▀▌▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-▀▀▌▀▀▀▌▀▀▀▌▀▀▀▌▀▀▀▀▀▀▀▀▀▀
-▀▀▌▀▀▀▌▀▀▀▌▀▀▀▌▀▀▀▀▀▀▀▀▀▀
-▀▀▀▀▀▀▌▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-▀▀▀▀▀▀▌▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-▀▀▌▀▀▀▀▀▀▀▌▀▀▀▌▀▀▀▀▀▀▀▀▀▀
-▀▀▌▀▀▀▀▀▀▀▌▀▀▀▌▀▀▀▀▀▀▀▀▀▀
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   @srivera  Sam Rivera
+   Building rocket, a static site generator.  Emacs, Rust, and long walks.
+   @acme  ·  Lisbon  ·  https://srivera.example.com
+   412 followers  ·  38 following  ·  23 public repos
+
+
+
+
+
+
+
 
 Pinned
   acme/rocket  A small, fast static site generator  Rust  ★ 2481  2 hours ago

@@ -119,7 +119,7 @@ PARSE-FN and CALLBACK are as there."
                      (funcall callback result))))))
 
 (defun octocat-screenshots--avatar (_url callback)
-  "Call CALLBACK with the made-up avatar's bytes, as `octocat-avatar-fetch'."
+  "Call CALLBACK with the made-up avatar's bytes, as `octocat-image-fetch'."
   (run-at-time 0 nil
                (lambda ()
                  (funcall callback
@@ -140,7 +140,7 @@ PARSE-FN and CALLBACK are as there."
           default-directory (file-name-as-directory dir)))
   (set-time-zone-rule "UTC")
   (advice-add 'octocat--run-gh :override #'octocat-screenshots--run-gh)
-  (advice-add 'octocat-avatar-fetch :override #'octocat-screenshots--avatar)
+  (advice-add 'octocat-image-fetch :override #'octocat-screenshots--avatar)
   (advice-add 'octocat-image--fetch :override
               (lambda (_url _hops callback) (run-at-time 0 nil callback nil)))
   (advice-add 'octocat-repo--local-dir-for :override #'ignore)

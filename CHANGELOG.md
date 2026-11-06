@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* The user page shows the avatar as an image in a graphical frame, and none in a terminal
 * The run list's filter has an Event button, for the event that triggered a run
 * The lines beside a run's table of jobs flow right, a column per stage
 * A run page's table of jobs shows each job's status after its name

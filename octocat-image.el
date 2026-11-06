@@ -151,6 +151,12 @@ Allowed redirects are followed, at most HOPS of them."
           (with-current-buffer buf (setq-local url-max-redirections 0))))
     (error (funcall callback nil))))
 
+(defun octocat-image-fetch (url callback)
+  "Fetch image URL and call CALLBACK with its bytes, or nil if that failed.
+For an image whose URL GitHub gave, as an avatar's: redirects are
+followed only as for an upload."
+  (octocat-image--fetch url octocat-image--max-hops callback))
+
 (defun octocat-image--fetched (status hops callback)
   "Hand the body of the finished fetch to CALLBACK, or follow its redirect.
 STATUS is the retrieval's status plist; the current buffer holds the

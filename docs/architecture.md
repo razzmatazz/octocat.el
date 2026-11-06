@@ -9,10 +9,10 @@ loaded (see "Entry points" in [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 From the bottom up:
 
-- **Standalone renderers**: `octocat-mermaid` and `octocat-avatar`
-  require no other module, so they can be loaded and tested on their
-  own.  `octocat-markdown`, which also turns org into markdown, and
-  `octocat-image` build on them to draw GitHub's markdown.
+- **Standalone renderer**: `octocat-mermaid` requires no other module,
+  so it can be loaded and tested on its own.  `octocat-markdown`, which
+  also turns org into markdown, and `octocat-image` build on it to draw
+  GitHub's markdown.
 - **`octocat-core`**: running `gh`, faces, the helpers every page
   shares, and the edit buffer for writing a comment or body.
 - **`octocat-sync`**: the local SQLite store pages read from, and the
@@ -73,7 +73,6 @@ own, below.
 ```mermaid
 flowchart TD
   octocat_actions[octocat-actions]
-  octocat_avatar[octocat-avatar]
   octocat_core[octocat-core]
   octocat_dashboard[octocat-dashboard]
   octocat_diff[octocat-diff]
@@ -138,7 +137,6 @@ flowchart TD
   octocat_timeline --> octocat_model
   octocat_timeline --> octocat_sync
   octocat_timeline --> octocat_vui
-  octocat_user --> octocat_avatar
   octocat_user --> octocat_core
   octocat_user --> octocat_vui
   octocat_vui --> octocat_core
@@ -202,7 +200,6 @@ flowchart TD
 | Module | What it is | Requires |
 |---|---|---|
 | `octocat-actions` | GitHub Actions and commit checks for octocat | `octocat-core`, `octocat-mermaid`, `octocat-repo`, `octocat-sync`, `octocat-vui` |
-| `octocat-avatar` | Draw an avatar image as coloured ASCII art |  |
 | `octocat-core` | Shared infrastructure for octocat | `octocat-image`, `octocat-markdown` |
 | `octocat-dashboard` | GitHub account dashboard for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-diff` | Diffs, commits and comparisons for octocat | `octocat-actions`, `octocat-core`, `octocat-model`, `octocat-vui` |
@@ -218,7 +215,7 @@ flowchart TD
 | `octocat-search` | Repo-wide PR, issue and commit search for octocat | `octocat-core`, `octocat-repo`, `octocat-sync`, `octocat-vui` |
 | `octocat-sync` | Sync GitHub data into a local SQLite store | `octocat-core` |
 | `octocat-timeline` | GitHub-style timeline for issue and PR views | `octocat-core`, `octocat-model`, `octocat-sync`, `octocat-vui` |
-| `octocat-user` | GitHub user / organization page for octocat | `octocat-avatar`, `octocat-core`, `octocat-vui` |
+| `octocat-user` | GitHub user / organization page for octocat | `octocat-core`, `octocat-vui` |
 | `octocat-vui` | vui.el helpers and components for octocat | `octocat-core`, `octocat-model`, `octocat-sync` |
 | `octocat` | GitHub Client powered by the gh CLI | `octocat-actions`, `octocat-core`, `octocat-dashboard`, `octocat-doctor`, `octocat-image`, `octocat-issue`, `octocat-model`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-sync`, `octocat-timeline`, `octocat-user`, `octocat-vui`, `octocat-evil` (lazily) |
 <!-- /module-list -->

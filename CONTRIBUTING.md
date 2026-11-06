@@ -115,7 +115,7 @@ Prefer a required argument to an optional one that falls back to ambient
 state.
 
 In particular, render code (vui components, memo bodies, section
-inserters) and library modules (markdown, mermaid, avatar, timeline) must
+inserters) and library modules (markdown, mermaid, timeline) must
 not select windows or frames, move point other than by inserting, or
 change global state, and must not prompt or `sit-for`.  Side effects
 belong in commands and `vui-use-effect`.

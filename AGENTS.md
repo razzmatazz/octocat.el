@@ -141,7 +141,7 @@ string rather than `ok` is an error — fix it before proceeding):
                    "octocat-repo.el"
                    "octocat-actions.el" "octocat-diff.el"
                    "octocat-timeline.el" "octocat-pr.el" "octocat-issue.el"
-                   "octocat-search.el" "octocat-avatar.el"
+                   "octocat-search.el"
                    "octocat-user.el" "octocat-doctor.el" "octocat-dashboard.el"
                    "octocat-evil.el" "octocat.el"))
     (condition-case err
