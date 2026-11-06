@@ -34,6 +34,7 @@
 ;;   M-x octocat      — GitHub account dashboard (your open PRs and issues,
 ;;                      recent repos, activity feed)
 ;;   M-x octocat-repo — Per-repository view (summary, Commits)
+;;   M-x octocat-here — This file or directory, as GitHub has it
 ;;   M-x octocat-pr-list / octocat-issue-list / octocat-actions — list pages
 ;;   M-x octocat-run-list / octocat-workflow-list — the Actions pages
 
@@ -57,6 +58,7 @@
 ;; Evil integration is optional; declare its entry point to silence the
 ;; byte-compiler when `octocat-evil' has not been loaded yet.
 (declare-function octocat-evil-setup "octocat-evil" ())
+(declare-function dired-get-filename "dired" (&optional localp no-error-if-not-filep))
 
 
 ;;;; Entry points
@@ -129,6 +131,76 @@ mode with no local directory bound."
                                        (expand-file-name local-dir))
           octocat-repo--ref       nil)
     (octocat-repo-refresh)))
+
+;;;###autoload
+(defun octocat-here (&optional pick)
+  "Open the file or directory of this buffer in octocat, as GitHub has it.
+A file opens in the file viewer at point's line or the region's, a
+directory in the tree browser, the clone's root on the repo page, a
+workflow's file on its workflow page; in Dired, the entry at point.
+The ref is the branch checked out, as pushed to origin; a branch never
+pushed shows the default branch.  With PICK, interactively a prefix
+argument, prompt for the branch instead.  A path that ref lacks shows
+the nearest directory above it that it has."
+  (interactive "P")
+  (let* ((target (expand-file-name
+                  (or (and (derived-mode-p 'dired-mode) (dired-get-filename nil t))
+                      buffer-file-name
+                      default-directory)))
+         (dir-p  (file-directory-p target))
+         (default-directory (if dir-p
+                                (file-name-as-directory target)
+                              (file-name-directory target)))
+         (root   (expand-file-name
+                  (or (locate-dominating-file target ".git")
+                      (user-error "Octocat: %s is not in a Git clone" target))))
+         (repo   (octocat-repo--current-repo))
+         (rel    (file-relative-name target root))
+         (path   (and (not (equal rel ".")) (directory-file-name rel)))
+         (at     (and (equal target buffer-file-name)
+                      (if (use-region-p)
+                          (let ((beg (region-beginning)) (end (region-end)))
+                            ;; A region ending at a line's start ends on the line above.
+                            (when (and (> end beg)
+                                       (save-excursion (goto-char end) (bolp)))
+                              (setq end (1- end)))
+                            (list 'lines (line-number-at-pos beg) (line-number-at-pos end)))
+                        (let ((n (line-number-at-pos)))
+                          (list 'lines n n)))))
+         (ref+rev (octocat-repo--here-ref root))
+         (ref+rev (if pick
+                      (let* ((default (octocat-tree--file-ref repo nil))
+                             (default (unless (equal default "HEAD") default))
+                             (picked  (octocat--read-branch
+                                       repo default (octocat-repo--tracked-branch root)
+                                       (or (car ref+rev) default "HEAD"))))
+                        (cons picked (concat "origin/" picked)))
+                    ref+rev))
+         (rev    (cdr ref+rev))
+         (known  (octocat-repo--git-ok root "rev-parse" "--verify" "--quiet" rev))
+         (args   (octocat-repo--here-target
+                  repo (car ref+rev) path dir-p at
+                  (lambda (p) (or (not known)
+                                  (octocat-repo--git-ok root "cat-file" "-e"
+                                                        (concat rev ":" p))))
+                  (and (not pick) (car ref+rev)
+                       (equal (car ref+rev) (octocat-repo--tracked-branch root)))))
+         (shown  (nth 3 args))
+         (notes  (delq nil
+                       (list (unless (car ref+rev)
+                               (format "%s isn't on GitHub; showing the default branch"
+                                       (or (octocat--current-branch) "HEAD")))
+                             (and path (memq (car args) '(repo tree))
+                                  (not (equal shown path))
+                                  (format "%s isn't there; showing %s"
+                                          path (or shown "the repository")))
+                             (and (eq (car args) 'file) known
+                                  (not (octocat-repo--git-ok root "diff" "--quiet" rev
+                                                             "--" path))
+                                  "local changes; lines may differ")))))
+    (apply #'octocat-open args)
+    (when notes
+      (message "Octocat: %s" (string-join notes "; ")))))
 
 ;;;###autoload
 (defun octocat-user (login)

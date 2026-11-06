@@ -212,6 +212,46 @@ the branch was never pushed: GitHub has nothing to show for it."
                                       (concat "refs/remotes/origin/" branch))
              branch)))))
 
+;;;; This file or directory on GitHub, for `octocat-here'
+
+(defun octocat-repo--git-ok (dir &rest args)
+  "Return non-nil when git ARGS run in DIR succeeds."
+  (let ((default-directory dir))
+    (eq 0 (apply #'process-file "git" nil nil nil args))))
+
+(defun octocat-repo--here-ref (dir)
+  "Return (REF . REV) for what GitHub has of the checkout of the clone in DIR.
+REF names it to GitHub: the tracked branch, else a detached HEAD's SHA
+once origin has it, else nil for the default branch.  REV names that
+commit to the clone's git, as of the last fetch."
+  (if-let* ((branch (octocat-repo--tracked-branch dir)))
+      (cons branch (concat "origin/" branch))
+    (let ((sha (and (not (octocat-repo--git-ok dir "symbolic-ref" "--quiet" "HEAD"))
+                    (octocat-repo--git-lines dir "branch" "--remotes" "--contains" "HEAD"
+                                             "--list" "origin/*")
+                    (car (octocat-repo--git-lines dir "rev-parse" "HEAD")))))
+      (if sha (cons sha sha) (cons nil "origin/HEAD")))))
+
+(defun octocat-repo--here-target (repo ref path dir-p at exists-p &optional follow)
+  "Return the `octocat-open' arguments to show PATH of REPO at REF.
+PATH is relative to the clone's root, nil for the root; DIR-P says it
+is a directory, AT is the lines to show of a file.  EXISTS-P, called
+with a path, says whether REF has it; when it hasn't, the nearest
+directory above that it has is shown instead.  A workflow's file
+opens its workflow page.  FOLLOW says REF is the checkout's branch:
+the repo and tree pages are then given no ref, to follow the checkout."
+  (let ((shown    path)
+        (page-ref (unless follow ref)))
+    (while (and shown (not (funcall exists-p shown)))
+      (setq shown (file-name-directory (directory-file-name shown))
+            shown (and shown (directory-file-name shown))))
+    (cond ((null shown)                          (list 'repo repo page-ref))
+          ((or dir-p (not (equal shown path)))   (list 'tree repo page-ref shown))
+          ((string-match "\\`\\.github/workflows/\\([^/]+\\.ya?ml\\)\\'" shown)
+           (let ((file (match-string 1 shown)))
+             (list 'workflow repo file file shown)))
+          (t (append (list 'file repo ref shown) (and at (list at)))))))
+
 (defun octocat-repo--sync-checkout ()
   "Re-read the local clone's checkout into this page's state.
 Return the new `octocat-repo--tracked'."

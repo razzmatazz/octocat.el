@@ -263,6 +263,60 @@
           (should-not (octocat-repo--tracked-branch clone)))
       (delete-directory root t))))
 
+(ert-deftest octocat-repo-test-here-target ()
+  "A path opens its page, or the nearest directory above that the ref has."
+  (let ((has (lambda (p) (member p '("src" "src/a.el" "docs" ".github" ".github/workflows"
+                                     ".github/workflows/ci.yml")))))
+    (should (equal (octocat-repo--here-target "o/r" "main" ".github/workflows/ci.yml" nil
+                                              '(lines 1 1) has)
+                   '(workflow "o/r" "ci.yml" "ci.yml" ".github/workflows/ci.yml")))
+    (should (equal (octocat-repo--here-target "o/r" "main" ".github/workflows/new.yml" nil
+                                              '(lines 1 1) has)
+                   '(tree "o/r" "main" ".github/workflows")))
+    (should (equal (octocat-repo--here-target "o/r" "main" nil t nil has)
+                   '(repo "o/r" "main")))
+    (should (equal (octocat-repo--here-target "o/r" "main" "src/a.el" nil '(lines 3 3) has)
+                   '(file "o/r" "main" "src/a.el" (lines 3 3))))
+    (should (equal (octocat-repo--here-target "o/r" "main" "docs" t nil has)
+                   '(tree "o/r" "main" "docs")))
+    (should (equal (octocat-repo--here-target "o/r" "main" "src/new/b.el" nil '(lines 1 1) has)
+                   '(tree "o/r" "main" "src")))
+    (should (equal (octocat-repo--here-target "o/r" nil "new.el" nil nil has)
+                   '(repo "o/r" nil)))
+    ;; Following the checkout, the repo and tree pages get no ref; a file still needs one.
+    (should (equal (octocat-repo--here-target "o/r" "main" nil t nil has t)
+                   '(repo "o/r" nil)))
+    (should (equal (octocat-repo--here-target "o/r" "main" "docs" t nil has t)
+                   '(tree "o/r" nil "docs")))
+    (should (equal (octocat-repo--here-target "o/r" "main" "src/a.el" nil nil has t)
+                   '(file "o/r" "main" "src/a.el")))))
+
+(ert-deftest octocat-repo-test-here-ref ()
+  "The ref is the pushed branch, a pushed detached HEAD, or the default."
+  (skip-unless (executable-find "git"))
+  (let* ((root   (make-temp-file "octocat-here" t))
+         (origin (expand-file-name "origin" root))
+         (clone  (expand-file-name "clone" root))
+         (git    (lambda (dir &rest args)
+                   (let ((default-directory (file-name-as-directory dir)))
+                     (apply #'call-process "git" nil nil nil
+                            "-c" "user.name=T" "-c" "user.email=t@t" args)))))
+    (unwind-protect
+        (progn
+          (make-directory origin)
+          (funcall git origin "init" "-q" "-b" "main")
+          (funcall git origin "commit" "-q" "--allow-empty" "-m" "base")
+          (funcall git root "clone" "-q" origin clone)
+          (should (equal (octocat-repo--here-ref clone) '("main" . "origin/main")))
+          (funcall git clone "checkout" "-q" "--detach")
+          (let ((sha (car (octocat-repo--git-lines clone "rev-parse" "HEAD"))))
+            (should (equal (octocat-repo--here-ref clone) (cons sha sha))))
+          (funcall git clone "commit" "-q" "--allow-empty" "-m" "local")
+          (should (equal (octocat-repo--here-ref clone) '(nil . "origin/HEAD")))
+          (funcall git clone "checkout" "-q" "-b" "unpushed")
+          (should (equal (octocat-repo--here-ref clone) '(nil . "origin/HEAD"))))
+      (delete-directory root t))))
+
 (ert-deftest octocat-repo-test-numbers-link ()
   "Each number opens its own issue, in its repository when another."
   (let* ((refs (json-parse-string

@@ -114,6 +114,26 @@ not buttons, so `TAB` does not step from file to file.  The repo name
 on the top line leads back to the repo page.  A github.com link to a
 path (`/tree/main/src/parser`) opens the browser at it.
 
+### This file on GitHub (`M-x octocat-here`)
+
+`M-x octocat-here` shows what you are looking at in Emacs as GitHub has
+it.  From a file it opens the file viewer at point's line, or the
+region's lines; from a directory, or the entry at point in Dired, the
+tree browser at it; from the clone's root, the repo page.  A
+workflow's file under `.github/workflows` opens its workflow page.  It shows the
+branch checked out, under its upstream's name on `origin`, or a detached
+`HEAD` once `origin` has its commit.  A branch never pushed shows the
+default branch instead.  With a prefix argument, `C-u M-x
+octocat-here` asks for the branch, as the pages' branch picker does.  A path that ref lacks, such as a new file,
+shows the nearest directory above it that the ref has.  The echo area
+says when either happened, and when the file has local changes, as its
+lines may then not match GitHub's.  What `origin` has is read from the
+clone, as of its last fetch.  Bind it to a key of your own:
+
+```elisp
+(global-set-key (kbd "C-c g h") #'octocat-here)
+```
+
 ### Commits page (`octocat-commit-list-mode`)
 
 `[N commits]` on the repo page lists the history of the ref shown, or of
