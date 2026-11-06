@@ -32,7 +32,7 @@ RUN = $(DOCKER) run $(ISOLATED) --network=none \
   -v "$(CURDIR)":/src:ro -v "$(CURDIR)/.eldev":/src/.eldev -w /src $(IMAGE)
 
 .PHONY: ci ci-all image deps clean compile lint test melpazoid melpazoid-prepare \
-  melpazoid-image melpazoid-check screenshots update-architecture-md indent
+  melpazoid-image melpazoid-check screenshots update-architecture-md format
 
 # What ci runs at once.  ci-all runs melpazoid, which is the same on every
 # release, with 31.1's only.
@@ -198,7 +198,7 @@ screenshots: compile
 
 # Rewrite docs/architecture.md's module graph and table from the sources.
 # Reindent the tests as `make lint' checks them.
-indent:
+format:
 	$(DOCKER) run $(ISOLATED) --network=none -v "$(CURDIR)":/src:ro \
 	  -v "$(CURDIR)/.eldev":/src/.eldev -v "$(CURDIR)/test":/src/test \
 	  -e OCTOCAT_FIX_INDENT=1 -w /src $(IMAGE) eldev exec -R --file tools/check-indent.el

@@ -11,7 +11,7 @@
 ;; file balanced but swallows the forms in between, which then sit
 ;; indented as they were, outside the form they are now in.
 ;;
-;; With OCTOCAT_FIX_INDENT set, as `make indent' runs it, it reindents
+;; With OCTOCAT_FIX_INDENT set, as `make format' runs it, it reindents
 ;; the files instead.
 
 ;;; Code:

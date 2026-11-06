@@ -178,7 +178,7 @@ Lint covers `checkdoc`, `package-lint`, `check-declare` and
 `elisp-lint`, which wants every line indented as stock Emacs indents
 it, no tabs or trailing whitespace, and at most 100 columns.  Eldev
 lints only the package's files, so `tools/check-indent.el` checks the
-tests' indentation too; `make indent` fixes it.  Any
+tests' indentation too; `make format` fixes it.  Any
 melpazoid finding fails the build, even those melpazoid only warns
 about; to take a newer melpazoid, bump `MELPAZOID_COMMIT` in the
 `Makefile` and fix what it finds.
