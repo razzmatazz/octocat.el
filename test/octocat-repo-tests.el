@@ -442,6 +442,17 @@
 (defvar octocat-tree-tests--visited nil
   "The directories the mounted files asked the page to show, latest first.")
 
+(defun octocat-tree-tests--no-dir-fetch (name &rest _)
+  "Stand in for `octocat--run-gh': a directory listing, call NAME, is an error."
+  (when (equal name "tree-dir")
+    (error "Unexpected directory fetch")))
+
+(defun octocat-tree-tests--blob-answer (bytes)
+  "Return a stand-in for `octocat--run-gh' answering a blob holding BYTES."
+  (lambda (_name _args parse callback)
+    (funcall callback (funcall parse (json-serialize
+                                      `((content . ,(base64-encode-string bytes))))))))
+
 (defun octocat-tree-tests--mount-tree ()
   "List the root, tree \"rootsha\", of owner/repo here, as the repo page does.
 Moving into a directory is recorded in `octocat-tree-tests--visited'.
@@ -449,8 +460,7 @@ A listing not in the store is an error, so no gh call is made."
   (unless (derived-mode-p 'octocat-repo-mode)
     (octocat-repo-mode))
   (setq octocat-tree-tests--visited nil)
-  (cl-letf (((symbol-function 'octocat-model--tree-fetch-dir)
-             (lambda (&rest _) (error "Unexpected directory fetch"))))
+  (cl-letf (((symbol-function 'octocat--run-gh) #'octocat-tree-tests--no-dir-fetch))
     (octocat-vui-refresh-page 'octocat-tree--dir "tree"
                               (list :repo "owner/repo" :branch "main" :sha "rootsha"
                                     :on-dir (lambda (dir)
@@ -461,8 +471,7 @@ A listing not in the store is an error, so no gh call is made."
 FOCUS is where point goes, as for `octocat-tree--subtree'."
   (unless (derived-mode-p 'octocat-tree-mode)
     (octocat-tree-mode))
-  (cl-letf (((symbol-function 'octocat-model--tree-fetch-dir)
-             (lambda (&rest _) (error "Unexpected directory fetch"))))
+  (cl-letf (((symbol-function 'octocat--run-gh) #'octocat-tree-tests--no-dir-fetch))
     (octocat-vui-refresh-page 'octocat-tree--subtree "tree"
                               (list :repo "owner/repo" :branch "main" :sha "rootsha"
                                     :depth 0 :path "" :reveal reveal :focus focus))))
@@ -489,12 +498,11 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
   (octocat-tree-tests--with-store
     (let ((bytes (string-to-unibyte "a\377b\n"))
           got)
-      (cl-letf (((symbol-function 'octocat-model--fetch-file)
-                 (lambda (_repo _sha callback) (funcall callback (base64-encode-string bytes)))))
+      (cl-letf (((symbol-function 'octocat--run-gh) (octocat-tree-tests--blob-answer bytes)))
         (octocat-tree--load-blob "owner/repo" "b1" (lambda (r) (setq got r))))
       (should (equal got bytes))
       (setq got nil)
-      (cl-letf (((symbol-function 'octocat-model--fetch-file)
+      (cl-letf (((symbol-function 'octocat--run-gh)
                  (lambda (&rest _) (error "Unexpected blob fetch"))))
         (octocat-tree--load-blob "owner/repo" "b1" (lambda (r) (setq got r))))
       (should (equal got bytes)))))
@@ -509,8 +517,7 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
                    (funcall cb (if (equal (list repo ref path) '("o/r" "main" "a.png"))
                                    "b1"
                                  '(error . "No file")))))
-                ((symbol-function 'octocat-model--fetch-file)
-                 (lambda (_repo _sha cb) (funcall cb (base64-encode-string bytes)))))
+                ((symbol-function 'octocat--run-gh) (octocat-tree-tests--blob-answer bytes)))
         (with-temp-buffer
           (octocat-file-mode)
           (should (eq octocat-image-file-function #'octocat-tree--image-file)))
@@ -873,7 +880,7 @@ the margin as wide whatever the window."
                                (vector (octocat-tree-tests--entry "old.el" "blob" "b1")))
     (with-temp-buffer
       (octocat-repo-mode)
-      (cl-letf (((symbol-function 'octocat-model--tree-fetch-dir) #'ignore))
+      (cl-letf (((symbol-function 'octocat--run-gh) #'ignore))
         (dolist (sha '("rootsha" "newsha"))
           (octocat-vui-refresh-page 'octocat-tree--dir "tree"
                                     (list :repo "owner/repo" :branch "main" :sha sha))))

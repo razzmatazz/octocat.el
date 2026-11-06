@@ -539,24 +539,29 @@ least :max-age."
              (error "Octocat: Unknown resource `%s'" (car spec)))
          (cdr spec)))
 
+(defun octocat-sync--gh (name props parse done)
+  "Make the `gh' call of PROPS, its :gh or :graphql, as call NAME; call DONE.
+DONE gets PARSE of the JSON it prints, read as `octocat-sync--parse'
+does, of a query the answer's \"data\"; PARSE `ignore' reads none."
+  (let* ((query (plist-get props :graphql))
+         (read  (lambda (output)
+                  (unless (eq parse #'ignore)
+                    (let ((json (octocat-sync--parse (string-trim output))))
+                      (funcall parse (if query (gethash "data" json) json)))))))
+    (if query
+        (octocat--gh-graphql name (plist-get props :repo) query (plist-get props :vars)
+                             read done)
+      (octocat--run-gh name (plist-get props :gh) read done))))
+
 (defun octocat-sync--fetch (spec done)
   "Fetch SPEC, calling DONE as its :fetch does.
 See `octocat-sync-define-resource'.  The `gh' call is named after SPEC's
 resource."
-  (let* ((props (octocat-sync--props spec))
-         (name  (symbol-name (car spec)))
-         (parse (or (plist-get props :parse) #'identity)))
-    (cond ((plist-get props :fetch) (funcall (plist-get props :fetch) done))
-          ((plist-get props :graphql)
-           (octocat--gh-graphql name (plist-get props :repo) (plist-get props :graphql)
-                                (plist-get props :vars)
-                                (lambda (output)
-                                  (funcall parse (gethash "data" (octocat-sync--parse output))))
-                                done))
-          (t (octocat--run-gh name (plist-get props :gh)
-                              (lambda (output)
-                                (funcall parse (octocat-sync--parse (string-trim output))))
-                              done)))))
+  (let ((props (octocat-sync--props spec)))
+    (if (plist-get props :fetch)
+        (funcall (plist-get props :fetch) done)
+      (octocat-sync--gh (symbol-name (car spec)) props
+                        (or (plist-get props :parse) #'identity) done))))
 
 (defun octocat-sync-spec-key (spec)
   "Return the store key of SPEC, such as \"(user-profile \\\"octocat\\\")\"."
@@ -1038,7 +1043,10 @@ PROPS are evaluated with ARGS bound:
               while it runs, and t for the one written, ANSWER then
               being what GitHub answered;
 :send         a function of DONE that sends it and calls DONE with
-              GitHub's answer, or with (error . MESSAGE);
+              GitHub's answer, or with (error . MESSAGE); or in its
+              place :gh or :graphql, with :repo, :vars and :parse, as
+              for `octocat-sync-define-resource', the answer nil
+              without :parse;
 :invalidates  optional, a function returning the specs, `_' matching
               anything, of resources it makes outdated."
   (declare (indent 2) (debug (&define name lambda-list &rest [keywordp form])))
@@ -1119,7 +1127,10 @@ a cons, collects the specs it outdates instead of outdating them."
                (lambda ()
                  (let ((octocat--gh-reason 'mutation))
                    (condition-case err
-                       (funcall (plist-get props :send) answer)
+                       (if (plist-get props :send)
+                           (funcall (plist-get props :send) answer)
+                         (octocat-sync--gh (symbol-name (car spec)) props
+                                           (or (plist-get props :parse) #'ignore) answer))
                      (error (funcall answer (cons 'error (error-message-string err))))))))
     (setq octocat-sync--pending (append octocat-sync--pending (list mutation)))
     (octocat-sync--pending-changed)

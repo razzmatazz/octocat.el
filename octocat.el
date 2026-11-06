@@ -144,11 +144,12 @@ the handle instead (a leading \"@\" is optional)."
   (if (string-empty-p (string-trim (or login "")))
       (progn
         (message "Octocat: Looking up your GitHub login…")
-        (octocat--fetch-viewer-login
+        (octocat-sync-get
+         '(viewer)
          (lambda (result)
            (if (eq (car-safe result) 'error)
                (message "Octocat: Could not look up your login: %s" (cdr result))
-             (octocat-user-open result)))))
+             (octocat-user-open (gethash "login" result))))))
     (octocat-user-open login)))
 
 (defun octocat--open-list (mode name path &optional repo)

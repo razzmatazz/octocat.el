@@ -281,15 +281,19 @@ rolled-up state, \"ciState\", and how many passed of how many,
     (remhash "commits" item))
   item)
 
-(defun octocat--parse-list-items (json-string)
-  "Parse the list search response JSON-STRING into (:items LIST :cursor C).
+(defun octocat--list-page (data)
+  "Return DATA, a list search's answer, as (:items LIST :cursor C).
 The items are flattened by `octocat--flatten-list-item'.  C is the cursor
 to pass for the next page, or nil on the last."
-  (let* ((search (gethash "search" (gethash "data" (json-parse-string json-string))))
+  (let* ((search (gethash "search" data))
          (info   (gethash "pageInfo" search)))
     (list :items  (mapcar #'octocat--flatten-list-item (gethash "nodes" search))
           :cursor (and (eq (gethash "hasNextPage" info) t)
                        (octocat--nonempty (gethash "endCursor" info))))))
+
+(defun octocat--parse-list-items (json-string)
+  "Parse JSON-STRING, a list search's response, as `octocat--list-page' does."
+  (octocat--list-page (gethash "data" (json-parse-string json-string))))
 
 (defun octocat--list-items (kind repo callback &optional query after limit)
   "Fetch a page of the KIND items of REPO matching the search QUERY.
@@ -337,29 +341,16 @@ PAGE is as `octocat--parse-list-items' returns; each item is an entity."
 (defconst octocat-model--fixed-max-age (* 30 24 60 60)
   "Seconds to keep what a SHA names, which never changes.")
 
-(defun octocat-model--fetch-file (repo sha callback)
-  "Fetch the content of blob SHA in REPO asynchronously.
-CALLBACK is called with the content, base64-encoded as GitHub sends it,
-or a cons (error . MSG).  Encoded, it can be stored as JSON: a file need
-not be text."
-  (octocat--run-gh
-   (format "tree-blob-%s" (substring sha 0 (min 8 (length sha))))
-   (list "api"
-         (format "repos/%s/git/blobs/%s" repo sha)
-         "--jq" ".content")
-   (lambda (output)
-     ;; GitHub wraps lines at 60 chars.
-     (replace-regexp-in-string "\n" "" (string-trim output)))
-   callback))
-
+;; The content is kept base64-encoded, as GitHub sends it, so it can be
+;; stored as JSON: a file need not be text.
 (octocat-sync-define-resource blob (repo sha)
   :max-age octocat-model--fixed-max-age
-  :fetch (lambda (done)
-           ;; No SHA, no file: a page asks for one before it knows it.
-           (if (null sha)
-               (funcall done (octocat--table "base64" ""))
-             (octocat-model--fetch-file
-              repo sha (octocat--then (lambda (b) (octocat--table "base64" b)) done)))))
+  ;; No SHA, no file: a page asks for one before it knows it.
+  :fetch (and (null sha) (lambda (done) (funcall done (octocat--table "base64" ""))))
+  :gh (list "api" (format "repos/%s/git/blobs/%s" repo sha))
+  ;; GitHub wraps lines at 60 chars.
+  :parse (lambda (blob)
+           (octocat--table "base64" (replace-regexp-in-string "\n" "" (gethash "content" blob)))))
 
 (defun octocat-model-blob-content (data)
   "Return the content of a file from DATA, the `blob' resource's."
@@ -486,9 +477,7 @@ what is being done to it, such as \"saving…\"."
   :optimistic (lambda ()
                 `((,(octocat-model-item-key (if (equal kind "pr") 'pr 'issue) repo number)
                    ("state" . ,(if (equal verb "close") "CLOSED" "OPEN")))))
-  :send (lambda (done)
-          (octocat--run-gh verb (list kind verb (number-to-string number) "--repo" repo)
-                           #'ignore done))
+  :gh (list kind verb (number-to-string number) "--repo" repo)
   ;; The lists it moves in or out of, their counts, and the new event.
   :invalidates (lambda ()
                  (let ((kind (if (equal kind "pr") 'pulls 'issues)))
@@ -503,11 +492,7 @@ what is being done to it, such as \"saving…\"."
   :optimistic (lambda ()
                 `((,(octocat-model-item-key (if (equal kind "pr") 'pr 'issue) repo number)
                    ("title" . ,title))))
-  :send (lambda (done)
-          (octocat--run-gh "edit-title"
-                           (list kind "edit" (number-to-string number) "--repo" repo
-                                 "--title" title)
-                           #'ignore done))
+  :gh (list kind "edit" (number-to-string number) "--repo" repo "--title" title)
   ;; It adds a "changed the title" event.
   :invalidates (lambda () `((timeline-events ,repo ,number))))
 
@@ -527,12 +512,8 @@ what is being done to it, such as \"saving…\"."
                      (format-time-string "%Y-%m-%dT%H:%M:%SZ" nil t)))))
              (list (cons (octocat-model-detail-spec kind repo number)
                          (lambda (data) (octocat-model--put-comment data comment))))))
-  :send (lambda (done)
-          (octocat--run-gh "comment"
-                           (list "api" (format "repos/%s/issues/%d/comments" repo number)
-                                 "-f" (concat "body=" body))
-                           (lambda (output) (json-parse-string (string-trim output)))
-                           done))
+  :gh (list "api" (format "repos/%s/issues/%d/comments" repo number) "-f" (concat "body=" body))
+  :parse #'identity
   ;; The comment count, on the entity.
   :invalidates (lambda () (list (octocat-model-detail-spec kind repo number))))
 
@@ -550,11 +531,7 @@ what is being done to it, such as \"saving…\"."
                          (lambda (data)
                            (puthash octocat-model-pending "saving…" data)
                            data)))))
-  :send (lambda (done)
-          (octocat--run-gh "edit-body"
-                           (list kind "edit" (number-to-string number) "--repo" repo
-                                 "--body" body)
-                           #'ignore done)))
+  :gh (list kind "edit" (number-to-string number) "--repo" repo "--body" body))
 
 (octocat-sync-define-mutation edit-comment (kind repo number comment-id body)
   :label "Saving comment…"
@@ -565,22 +542,15 @@ what is being done to it, such as \"saving…\"."
                        (lambda (data)
                          (octocat-model--set-comment-body
                           data comment-id body (unless answered "saving…"))))))
-  :send (lambda (done)
-          (octocat--run-gh "edit-comment"
-                           (list "api" (format "repos/%s/issues/comments/%s" repo comment-id)
-                                 "--method" "PATCH" "-f" (format "body=%s" body))
-                           #'ignore done)))
+  :gh (list "api" (format "repos/%s/issues/comments/%s" repo comment-id)
+            "--method" "PATCH" "-f" (format "body=%s" body)))
 
 (octocat-sync-define-mutation edit-values (kind repo number flag add remove)
   :label (format "Saving %ss…" flag)
   :resources (lambda () (list (octocat-model-detail-spec kind repo number)))
-  :send (lambda (done)
-          (octocat--run-gh (concat "edit-" flag)
-                           (append (list kind "edit" (number-to-string number) "--repo" repo)
-                                   (and add (list (concat "--add-" flag) (string-join add ",")))
-                                   (and remove (list (concat "--remove-" flag)
-                                                     (string-join remove ","))))
-                           #'ignore done))
+  :gh (append (list kind "edit" (number-to-string number) "--repo" repo)
+              (and add (list (concat "--add-" flag) (string-join add ",")))
+              (and remove (list (concat "--remove-" flag) (string-join remove ","))))
   :invalidates (lambda ()
                  `(,(octocat-model-detail-spec kind repo number)
                    (timeline-events ,repo ,number)
@@ -639,14 +609,10 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
                          (let ((given (remove content (append (gethash "given" data) nil))))
                            (puthash "given" (vconcat (if add (cons content given) given)) data)
                            data)))))
-  :send (lambda (done)
-          (octocat--gh-graphql
-           "react" nil
-           (format (concat "mutation($id:ID!,$content:ReactionContent!){"
+  :graphql (format (concat "mutation($id:ID!,$content:ReactionContent!){"
                            "%s(input:{subjectId:$id,content:$content}){clientMutationId}}")
                    (if add "addReaction" "removeReaction"))
-           `(("id" . ,subject) ("content" . ,content))
-           #'ignore done)))
+  :vars `(("id" . ,subject) ("content" . ,content)))
 
 ;;;; Issues
 
@@ -703,9 +669,7 @@ none.  DELETE non-nil deletes the head branch as well."
   :label "Merging pull request…"
   :slot 'merge
   :resources (lambda () `((pr ,repo ,number)))
-  :send (lambda (done)
-          (octocat--run-gh "merge" (octocat-model--pr-merge-args repo number method text delete)
-                           #'ignore done))
+  :gh (octocat-model--pr-merge-args repo number method text delete)
   :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number)
                             (list-items pulls ,repo _ _) (counts pulls ,repo)
                             (repo-summary ,repo))))
@@ -738,11 +702,8 @@ none.  DELETE non-nil deletes the head branch as well."
   :resources (lambda () `((pr ,repo ,number)))
   :optimistic (lambda ()
                 `((,(octocat-model-item-key 'pr repo number) ("isDraft" . ,(if draft t :false)))))
-  :send (lambda (done)
-          (octocat--run-gh "ready"
-                           (append (list "pr" "ready" (number-to-string number) "--repo" repo)
-                                   (and draft (list "--undo")))
-                           #'ignore done))
+  :gh (append (list "pr" "ready" (number-to-string number) "--repo" repo)
+              (and draft (list "--undo")))
   ;; It adds an event, and may change what the merge box allows.
   :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number))))
 
@@ -1056,12 +1017,8 @@ thread left with no comment is dropped."
                (puthash "state" "SUBMITTED" c)
                (list (cons (octocat-model-review-threads-spec repo number)
                            (lambda (data) (octocat-model--review-add-reply data thread-id c)))))))
-  :send (lambda (done)
-          (octocat--run-gh "review-reply"
-                           (list "api" (format "repos/%s/pulls/%d/comments/%d/replies"
-                                               repo number comment-id)
-                                 "-f" (concat "body=" body))
-                           #'ignore done))
+  :gh (list "api" (format "repos/%s/pulls/%d/comments/%d/replies" repo number comment-id)
+            "-f" (concat "body=" body))
   :invalidates (lambda () (list (octocat-model-review-threads-spec repo number))))
 
 (octocat-sync-define-mutation review-comment-edit (repo number node-id body)
@@ -1078,14 +1035,10 @@ thread left with no comment is dropped."
                                    (let ((c (copy-hash-table c)))
                                      (puthash "body" body c)
                                      c))))))))
-  :send (lambda (done)
-          (octocat-model--review-graphql
-           "review-comment-edit"
-           (concat "mutation($id:ID!,$body:String!){updatePullRequestReviewComment("
+  :graphql (concat "mutation($id:ID!,$body:String!){updatePullRequestReviewComment("
                    "input:{pullRequestReviewCommentId:$id,body:$body}){"
                    "pullRequestReviewComment{id}}}")
-           `(("id" . ,node-id) ("body" . ,body))
-           #'ignore done)))
+  :vars `(("id" . ,node-id) ("body" . ,body)))
 
 (octocat-sync-define-mutation review-comment-delete (repo number node-id)
   :label "Deleting comment…"
@@ -1096,13 +1049,9 @@ thread left with no comment is dropped."
                        (lambda (data)
                          (octocat-model--review-map-comments
                           data (lambda (c) (unless (equal (gethash "id" c) node-id) c)))))))
-  :send (lambda (done)
-          (octocat-model--review-graphql
-           "review-comment-delete"
-           (concat "mutation($id:ID!){deletePullRequestReviewComment(input:{id:$id}){"
+  :graphql (concat "mutation($id:ID!){deletePullRequestReviewComment(input:{id:$id}){"
                    "clientMutationId}}")
-           `(("id" . ,node-id))
-           #'ignore done)))
+  :vars `(("id" . ,node-id)))
 
 (octocat-sync-define-mutation review-thread-resolve (repo number thread-id resolve)
   :label (if resolve "Resolving…" "Unresolving…")
@@ -1142,13 +1091,9 @@ thread left with no comment is dropped."
   :edits (lambda (_answered _)
            (list (cons (octocat-model-review-threads-spec repo number)
                        #'octocat-model--review-drop-drafts)))
-  :send (lambda (done)
-          (octocat-model--review-graphql
-           "review-discard"
-           (concat "mutation($id:ID!){deletePullRequestReview(input:{pullRequestReviewId:$id}){"
+  :graphql (concat "mutation($id:ID!){deletePullRequestReview(input:{pullRequestReviewId:$id}){"
                    "clientMutationId}}")
-           `(("id" . ,review-id))
-           #'ignore done)))
+  :vars `(("id" . ,review-id)))
 
 (defconst octocat-model-review-events
   '(("Comment"         "--comment"         "COMMENT")
@@ -1399,21 +1344,6 @@ them, as `octocat-model--repo-history-commit' shapes it."
 ;; `octocat-model--fixed-max-age'.  The tree of a directory at a ref comes
 ;; with its last commit, the repo page's `repo-head' resource.
 
-(defun octocat-model--tree-fetch-dir (repo sha callback)
-  "Fetch the children of directory with SHA in REPO asynchronously.
-Calls CALLBACK with a vector of entry hash-tables, or a cons (error . MSG)."
-  (octocat--run-gh
-   (format "tree-dir-%s" (substring sha 0 (min 8 (length sha))))
-   (list "api"
-         (format "repos/%s/git/trees/%s" repo sha))
-   (lambda (output)
-     (let* ((data  (json-parse-string output))
-            (tree  (gethash "tree" data)))
-       (if (vectorp tree)
-           tree
-         (error "Unexpected tree response format"))))
-   callback))
-
 (defun octocat-model--tree-fetch-all-files (repo sha callback)
   "Fetch the full recursive file list for REPO rooted at tree SHA.
 Calls CALLBACK with an alist of (PATH . BLOB-SHA) pairs for every blob
@@ -1493,9 +1423,13 @@ Calls CALLBACK once with a hash-table of path to commit, see
            (when (zerop (cl-decf left))
              (funcall callback (or failed out)))))))))
 
+;; The children of directory SHA, a vector of entries.
 (octocat-sync-define-resource tree-dir (repo sha)
   :max-age octocat-model--fixed-max-age
-  :fetch (lambda (done) (octocat-model--tree-fetch-dir repo sha done)))
+  :gh (list "api" (format "repos/%s/git/trees/%s" repo sha))
+  :parse (lambda (r)
+           (let ((tree (gethash "tree" r)))
+             (if (vectorp tree) tree (error "Unexpected tree response format")))))
 
 (octocat-sync-define-resource tree-commits (repo commit dir sha)
   ;; COMMIT names the history, so what it says never changes.
@@ -2065,16 +1999,6 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
 
 ;;;; Dashboard
 
-
-(defun octocat--fetch-viewer-login (callback)
-  "Fetch the authenticated user's GitHub login via gh.
-Calls CALLBACK with the login string, or an (error . MSG) cons."
-  (octocat--run-gh
-   "dashboard-login"
-   (list "api" "user" "--jq" ".login")
-   (lambda (output) (string-trim output))
-   callback))
-
 ;; As github.com's dashboard: the open items the user opened, is assigned
 ;; to, was asked to review, is mentioned in or commented on, across
 ;; every repository.  The rows are the list pages', so the fields are
@@ -2097,7 +2021,7 @@ KIND is `issues' or `pulls'."
 
 (defun octocat--dashboard-items-tree (kind page)
   "Return PAGE, the dashboard's KIND items, as its resource's tree.
-PAGE is as `octocat--parse-list-items' returns.  Each item becomes a
+PAGE is as `octocat--list-page' returns.  Each item becomes a
 table of its \"repo\" and its entity, \"item\", shared with the lists."
   (let ((type (if (eq kind 'pulls) 'pr 'issue)))
     (vconcat
@@ -2113,24 +2037,21 @@ table of its \"repo\" and its entity, \"item\", shared with the lists."
   :parse (lambda (repos) (cl-map 'vector #'octocat-model-repo-rest repos)))
 
 (octocat-sync-define-resource dashboard-items (kind limit)
-  :fetch (lambda (done)
-           (octocat--gh-graphql
-            (format "dashboard-%s" kind) nil (octocat--dashboard-items-query kind)
-            `(("q" . ,(octocat--dashboard-search-query kind)) ("limit" . ,limit))
-            (lambda (output)
-              (octocat--dashboard-items-tree kind (octocat--parse-list-items output)))
-            done)))
+  :graphql (octocat--dashboard-items-query kind)
+  :vars `(("q" . ,(octocat--dashboard-search-query kind)) ("limit" . ,limit))
+  :parse (lambda (data) (octocat--dashboard-items-tree kind (octocat--list-page data))))
 
 ;; The events of the people you follow and the repositories you watch.
 (octocat-sync-define-resource dashboard-feed (limit)
   :fetch (lambda (done)
-           (octocat--fetch-viewer-login
-            (lambda (login)
-              (if (eq (car-safe login) 'error)
-                  (funcall done login)
+           (octocat-sync-get
+            '(viewer)
+            (lambda (viewer)
+              (if (eq (car-safe viewer) 'error)
+                  (funcall done viewer)
                 (octocat--run-gh "dashboard-feed"
                                  (list "api" (format "users/%s/received_events?per_page=%d"
-                                                     login limit))
+                                                     (gethash "login" viewer) limit))
                                  (lambda (output) (vconcat (octocat--parse-json-list output)))
                                  done))))))
 

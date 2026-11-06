@@ -1112,18 +1112,17 @@ FIELDS, a plist, override the rest."
 (defvar octocat-screenshots-fixtures
   (let ((d octocat-screenshots--d) (h octocat-screenshots--h))
     `(;; Dashboard
-      ("dashboard-login" () "srivera\n")
       ("dashboard-repos" () ,(vconcat octocat-screenshots--repos))
-      ("dashboard-pulls" ()
+      ("dashboard-items" ("type:pr")
        ,(octocat-screenshots--search
          (mapcar #'octocat-screenshots--with-repo
                  (list (nth 0 octocat-screenshots--prs) (nth 3 octocat-screenshots--prs)
                        (nth 2 octocat-screenshots--prs)))))
-      ("dashboard-issues" ()
+      ("dashboard-items" ("type:issue")
        ,(octocat-screenshots--search
          (mapcar #'octocat-screenshots--with-repo
                  (list (nth 1 octocat-screenshots--issues) (nth 2 octocat-screenshots--issues)))))
-      ("dashboard-feed" ("users/srivera/received_events") ,octocat-screenshots--feed)
+      ("dashboard-feed" ("/received_events") ,octocat-screenshots--feed)
 
       ;; Repository
       ("repo-summary" ("name=rocket")
@@ -1152,36 +1151,36 @@ FIELDS, a plist, override the rest."
        (:data (:repository (:object (:history (:totalCount 12 :nodes [,(octocat-screenshots--history-node
                                                                         (nth 2 octocat-screenshots--commits))]))
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/guide.md"))))))
-      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "docs/guide.md") 0 8)) ()
-       ,(octocat-screenshots--base64 octocat-screenshots--guide))
+      ("blob" (,(octocat-screenshots--sha "docs/guide.md"))
+       (:content ,(octocat-screenshots--base64 octocat-screenshots--guide)))
       ("repo-head" ("dir=main:src/cache.rs")
        (:data (:repository (:object (:history (:totalCount 4 :nodes [,(octocat-screenshots--history-node
                                                                        (nth 2 octocat-screenshots--commits))]))
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "src/cache.rs"))))))
-      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "src/cache.rs") 0 8)) ()
-       ,(octocat-screenshots--base64 octocat-screenshots--cache-rs))
+      ("blob" (,(octocat-screenshots--sha "src/cache.rs"))
+       (:content ,(octocat-screenshots--base64 octocat-screenshots--cache-rs)))
       ("repo-head" ("dir=main:docs/html.md")
        (:data (:repository (:object (:history (:totalCount 3 :nodes [,(octocat-screenshots--history-node
                                                                        (nth 2 octocat-screenshots--commits))]))
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/html.md"))))))
-      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "docs/html.md") 0 8)) ()
-       ,(octocat-screenshots--base64 octocat-screenshots--html))
+      ("blob" (,(octocat-screenshots--sha "docs/html.md"))
+       (:content ,(octocat-screenshots--base64 octocat-screenshots--html)))
       ("repo-head" ("dir=main:docs/themes.org")
        (:data (:repository (:object (:history (:totalCount 2 :nodes [,(octocat-screenshots--history-node
                                                                        (nth 2 octocat-screenshots--commits))]))
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/themes.org"))))))
-      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "docs/themes.org") 0 8)) ()
-       ,(octocat-screenshots--base64 octocat-screenshots--org))
-      (,(format "tree-dir-%s" (substring (octocat-screenshots--sha "root") 0 8)) ()
+      ("blob" (,(octocat-screenshots--sha "docs/themes.org"))
+       (:content ,(octocat-screenshots--base64 octocat-screenshots--org)))
+      ("tree-dir" (,(format "trees/%s" (octocat-screenshots--sha "root")))
        (:sha ,(octocat-screenshots--sha "root") :tree ,octocat-screenshots--root :truncated :false))
-      (,(format "tree-dir-%s" (substring (octocat-screenshots--sha "src") 0 8)) ()
+      ("tree-dir" (,(format "trees/%s" (octocat-screenshots--sha "src")))
        (:sha ,(octocat-screenshots--sha "src") :tree ,octocat-screenshots--src :truncated :false))
       ("tree-commits" ("p0=.github") ,(octocat-screenshots--last-commits 7 5 4 1 9 5 2 2 8 0))
       ("tree-commits" ("p0=src/build.rs") ,(octocat-screenshots--last-commits 1 1 6 4 3 1))
       ("blame" ("path=docs/guide.md")
        ,(octocat-screenshots--blame '(1 5 5) '(6 6 2) '(7 9 7) '(10 18 9)))
-      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "README.md") 0 8)) ()
-       ,(octocat-screenshots--base64 octocat-screenshots--readme))
+      ("blob" (,(octocat-screenshots--sha "README.md"))
+       (:content ,(octocat-screenshots--base64 octocat-screenshots--readme)))
 
       ;; Pull requests
       ("counts" ("pullRequests(states:OPEN)")
@@ -1239,8 +1238,8 @@ FIELDS, a plist, override the rest."
       ("commit" (,(concat "commits/" octocat-screenshots--commit)) ,octocat-screenshots--commit-rest)
       ("commit" (,(concat "commits/" octocat-screenshots--head)) ,octocat-screenshots--commit-131-rest)
       ("commit-comments" (,(concat "commits/" octocat-screenshots--head)) [])
-      (,(format "tree-blob-%s" (substring (octocat-screenshots--sha "f7") 0 8)) ()
-       ,(base64-encode-string octocat-screenshots--footnote-popup))
+      ("blob" (,(octocat-screenshots--sha "f7"))
+       (:content ,(base64-encode-string octocat-screenshots--footnote-popup)))
       ("checks" ("check-runs")
        (:total_count 4
         :check_runs [,(octocat-screenshots--check-run 27100200310 "lint" "success" (* 6 h) 2)

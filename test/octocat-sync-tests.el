@@ -278,6 +278,25 @@ retry, and never once cancelled."
       (should (equal outdated '("(thing 1)")))
       (should (plist-get (octocat-sync-read '(thing 1)) :outdated)))))
 
+(ert-deftest octocat-sync-test-gh-calls ()
+  "A :gh call is named after its resource or mutation.
+A mutation's answers nil without :parse, which reads the JSON it prints."
+  (octocat-sync-tests--with-sync
+    (let (calls answers)
+      (cl-letf (((symbol-function 'octocat--run-gh)
+                 (lambda (name args parse callback)
+                   (push (cons name args) calls)
+                   (funcall callback (funcall parse "{\"n\":1}")))))
+        (octocat-sync-define-resource thing-gh (n) :gh (list "view" (format "%d" n)))
+        (octocat-sync-define-mutation plain () :gh '("close"))
+        (octocat-sync-define-mutation read () :gh '("comment") :parse (lambda (j) (gethash "n" j)))
+        (octocat-sync-request '(thing-gh 7))
+        (octocat-sync-submit '(plain) (lambda (r) (push r answers)))
+        (octocat-sync-submit '(read) (lambda (r) (push r answers))))
+      (should (equal (reverse calls) '(("thing-gh" "view" "7") ("plain" "close") ("read" "comment"))))
+      (should (equal (gethash "n" (plist-get (octocat-sync-read '(thing-gh 7)) :data)) 1))
+      (should (equal answers '(1 nil))))))
+
 (ert-deftest octocat-sync-test-outdate-by-name ()
   "Patterns match the resources they name, or any with `_' as the name."
   (let ((db (octocat-sync--create (sqlite-open nil))))

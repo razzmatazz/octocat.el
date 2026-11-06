@@ -329,15 +329,11 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
 
 (ert-deftest octocat-timeline-test-edit-values-send ()
   "Editing labels adds and removes them in one `gh ... edit'."
-  (let (args)
-    (cl-letf (((symbol-function 'octocat--run-gh)
-               (lambda (_name a &rest _) (setq args a))))
-      (funcall (plist-get (funcall (gethash 'edit-values octocat-sync--mutations)
-                                   "pr" "o/r" 5 "label" '("bug" "ui") '("wip"))
-                          :send)
-               #'ignore))
-    (should (equal args '("pr" "edit" "5" "--repo" "o/r"
-                          "--add-label" "bug,ui" "--remove-label" "wip")))))
+  (should (equal (plist-get (funcall (gethash 'edit-values octocat-sync--mutations)
+                                     "pr" "o/r" 5 "label" '("bug" "ui") '("wip"))
+                            :gh)
+                 '("pr" "edit" "5" "--repo" "o/r"
+                   "--add-label" "bug,ui" "--remove-label" "wip"))))
 
 (ert-deftest octocat-timeline-test-edit-values-diff ()
   "Picking assignees submits only who was added or removed, without the @."
