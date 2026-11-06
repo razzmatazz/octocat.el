@@ -289,12 +289,15 @@ A mutation's answers nil without :parse, which reads the JSON it prints."
         (octocat-sync-define-resource thing-gh (n) :gh (list "view" (format "%d" n)))
         (octocat-sync-define-mutation plain () :gh '("close"))
         (octocat-sync-define-mutation read () :gh '("comment") :parse (lambda (j) (gethash "n" j)))
+        (octocat-sync-define-mutation raw () :gh '("create") :raw t :parse #'upcase)
         (octocat-sync-request '(thing-gh 7))
         (octocat-sync-submit '(plain) (lambda (r) (push r answers)))
-        (octocat-sync-submit '(read) (lambda (r) (push r answers))))
-      (should (equal (reverse calls) '(("thing-gh" "view" "7") ("plain" "close") ("read" "comment"))))
+        (octocat-sync-submit '(read) (lambda (r) (push r answers)))
+        (octocat-sync-submit '(raw) (lambda (r) (push r answers))))
+      (should (equal (reverse calls) '(("thing-gh" "view" "7") ("plain" "close")
+                                       ("read" "comment") ("raw" "create"))))
       (should (equal (gethash "n" (plist-get (octocat-sync-read '(thing-gh 7)) :data)) 1))
-      (should (equal answers '(1 nil))))))
+      (should (equal answers '("{\"N\":1}" 1 nil))))))
 
 (ert-deftest octocat-sync-test-outdate-by-name ()
   "Patterns match the resources they name, or any with `_' as the name."
@@ -304,6 +307,17 @@ A mutation's answers nil without :parse, which reads the JSON it prints."
     (should (equal (sort (octocat-sync--outdate db '((thing _) (viewer)) 2.0) #'string<)
                    '("(thing 1)" "(thing 2)" "(viewer)")))
     (should (equal (octocat-sync--outdate db '((_ "thing")) 3.0) '("(other \"thing\")")))))
+
+(ert-deftest octocat-sync-test-more-signals ()
+  "A further page whose fetch signals as it starts fails, leaving nothing loading."
+  (octocat-sync-tests--with-sync
+    (let (result)
+      (octocat-sync--write octocat-sync--db "(thing 1)"
+                           (octocat-sync-tests--table "nodes" [] "cursor" "c1") 1.0)
+      (octocat-sync-more '(thing 1) (lambda (_cursor _done) (error "Boom"))
+                         (lambda (r) (setq result r)))
+      (should (equal result '(error . "Boom")))
+      (should-not (plist-get (octocat-sync-read '(thing 1)) :loading)))))
 
 (ert-deftest octocat-sync-test-more ()
   "A further page is appended to a list resource, its items stored as entities."

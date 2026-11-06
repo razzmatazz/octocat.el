@@ -624,11 +624,9 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
 
 (octocat-sync-define-mutation create-issue (repo title body)
   :label "Creating issue…"
-  :send (lambda (done)
-          (octocat--run-gh "issue-create"
-                           (list "issue" "create" "--repo" repo
-                                 "--title" title "--body" body)
-                           #'octocat-model--issue-parse-created done))
+  :gh (list "issue" "create" "--repo" repo "--title" title "--body" body)
+  :raw t
+  :parse #'octocat-model--issue-parse-created
   :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
                             (repo-summary ,repo))))
 
@@ -835,11 +833,13 @@ of its \"id\" and \"commit\", or nil."
   (octocat--table "id" (gethash "id" node) "commit" (octocat--get node "commit" "oid")))
 
 (octocat-sync-define-resource pr-review-threads (repo number)
-  :fetch (lambda (done)
-           (octocat--gh-graphql "pr-review-threads" repo octocat-model--review-threads-query
-                                `(("number" . ,number))
-                                #'octocat-model--review-parse-threads done
-                                '("--paginate" "--slurp"))))
+  :graphql octocat-model--review-threads-query
+  :repo repo
+  :vars `(("number" . ,number))
+  ;; The pages, slurped into an array, not one answer.
+  :args '("--paginate" "--slurp")
+  :raw t
+  :parse #'octocat-model--review-parse-threads)
 
 ;; Each change to a comment is a mutation whose edits of the
 ;; `pr-review-threads' show it at once, and write GitHub's answer.  The
@@ -1554,12 +1554,9 @@ returned."
   ;; job page refetches it as the job runs, see `octocat-job--page'.
   ;; Its data is the raw text as "log", see `octocat--job-parse-log'.
   :poll nil
-  :fetch (lambda (done)
-           (octocat--run-gh "job-log"
-                            (list "run" "view" "--log" "--job" (number-to-string job-id)
-                                  "--repo" repo)
-                            (lambda (raw) (octocat--table "log" raw))
-                            done)))
+  :gh (list "run" "view" "--log" "--job" (number-to-string job-id) "--repo" repo)
+  :raw t
+  :parse (lambda (raw) (octocat--table "log" raw)))
 
 (defun octocat--fetch-run (repo run-id callback)
   "Fetch detail for run RUN-ID in REPO asynchronously.
@@ -1915,33 +1912,27 @@ are written in does not matter.  A file longer than
               (push job jobs))))))
     (vconcat (nreverse jobs))))
 
+(defun octocat-model--workflow-file-args (repo path ref)
+  "Return the `gh' arguments printing the workflow file PATH of REPO at REF."
+  (list "api" "-X" "GET"
+        (format "repos/%s/contents/%s" repo
+                (mapconcat #'url-hexify-string (split-string path "/") "/"))
+        "-f" (concat "ref=" ref)
+        "-H" "Accept: application/vnd.github.raw"))
+
 (octocat-sync-define-resource workflow-jobs (repo path sha)
   ;; A file at a commit never changes.
-  :max-age (* 30 24 60 60)
-  :fetch (lambda (done)
-           (octocat--run-gh
-            "workflow-file"
-            (list "api" "-X" "GET"
-                  (format "repos/%s/contents/%s" repo
-                          (mapconcat #'url-hexify-string (split-string path "/") "/"))
-                  "-f" (concat "ref=" sha)
-                  "-H" "Accept: application/vnd.github.raw")
-            #'octocat-model--workflow-yaml-jobs
-            done)))
+  :max-age octocat-model--fixed-max-age
+  :gh (octocat-model--workflow-file-args repo path sha)
+  :raw t
+  :parse #'octocat-model--workflow-yaml-jobs)
 
 (octocat-sync-define-resource workflow-dispatch (repo path ref)
   :max-age 300
   :poll 300
-  :fetch (lambda (done)
-           (octocat--run-gh
-            "workflow-file"
-            (list "api" "-X" "GET"
-                  (format "repos/%s/contents/%s" repo
-                          (mapconcat #'url-hexify-string (split-string path "/") "/"))
-                  "-f" (concat "ref=" ref)
-                  "-H" "Accept: application/vnd.github.raw")
-            #'octocat-model--workflow-dispatch-spec
-            done)))
+  :gh (octocat-model--workflow-file-args repo path ref)
+  :raw t
+  :parse #'octocat-model--workflow-dispatch-spec)
 
 (defun octocat-model--workflow-parse-dispatched (output)
   "Return the ID of the run GitHub started, from OUTPUT, or nil.
@@ -1955,17 +1946,15 @@ nothing."
   :label "Starting workflow…"
   :slot 'dispatch
   :resources (lambda () `((workflow ,repo ,id)))
-  :send (lambda (done)
-          (octocat--run-gh "workflow-dispatch"
-                           (append (list "api" "--method" "POST"
-                                         (format "repos/%s/actions/workflows/%s/dispatches"
-                                                 repo id)
-                                         "-f" (concat "ref=" ref)
-                                         "-F" "return_run_details=true")
-                                   (mapcan (pcase-lambda (`(,name . ,value))
-                                             (list "-f" (format "inputs[%s]=%s" name value)))
-                                           inputs))
-                           #'octocat-model--workflow-parse-dispatched done))
+  :gh (append (list "api" "--method" "POST"
+                    (format "repos/%s/actions/workflows/%s/dispatches" repo id)
+                    "-f" (concat "ref=" ref)
+                    "-F" "return_run_details=true")
+              (mapcan (pcase-lambda (`(,name . ,value))
+                        (list "-f" (format "inputs[%s]=%s" name value)))
+                      inputs))
+  :raw t
+  :parse #'octocat-model--workflow-parse-dispatched
   :invalidates (lambda () `((runs ,repo _ _))))
 
 (octocat-sync-define-resource workflow (repo id)

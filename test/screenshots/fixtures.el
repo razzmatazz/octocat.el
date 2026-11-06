@@ -1109,6 +1109,48 @@ FIELDS, a plist, override the rest."
     :files ,octocat-screenshots--pr-128-files)
   "The comparison of main and pull request #128's head, as the REST API returns it.")
 
+(defconst octocat-screenshots--ci-yml
+  "name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      toolchain:
+        description: Rust toolchain to build with
+        type: choice
+        default: stable
+        options: [stable, beta, nightly]
+      sites:
+        description: Example sites to build, comma-separated
+        required: true
+      bench:
+        description: Also run the benchmarks
+        type: boolean
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo clippy -- -D warnings
+  test:
+    needs: lint
+    strategy:
+      matrix:
+        toolchain: [stable, beta]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test
+  docs:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo doc --no-deps
+"
+  "The workflow file of acme/rocket's CI.")
+
 (defvar octocat-screenshots-fixtures
   (let ((d octocat-screenshots--d) (h octocat-screenshots--h))
     `(;; Dashboard
@@ -1309,46 +1351,8 @@ FIELDS, a plist, override the rest."
         :html_url "https://github.com/acme/rocket/actions/workflows/ci.yml"
         :badge_url "https://github.com/acme/rocket/workflows/CI/badge.svg"
         :created_at "2025-02-11T09:00:00Z" :updated_at ,(octocat-screenshots--ago (* 30 d))))
-      ("workflow-file" ("contents/.github/workflows/ci.yml")
-       "name: CI
-on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
-    inputs:
-      toolchain:
-        description: Rust toolchain to build with
-        type: choice
-        default: stable
-        options: [stable, beta, nightly]
-      sites:
-        description: Example sites to build, comma-separated
-        required: true
-      bench:
-        description: Also run the benchmarks
-        type: boolean
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: cargo clippy -- -D warnings
-  test:
-    needs: lint
-    strategy:
-      matrix:
-        toolchain: [stable, beta]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: cargo test
-  docs:
-    needs: [test]
-    runs-on: ubuntu-latest
-    steps:
-      - run: cargo doc --no-deps
-")
+      ("workflow-jobs" ("contents/.github/workflows/ci.yml") ,octocat-screenshots--ci-yml)
+      ("workflow-dispatch" ("contents/.github/workflows/ci.yml") ,octocat-screenshots--ci-yml)
 
       ;; People
       ("user-profile" ("users/srivera") ,octocat-screenshots--srivera)

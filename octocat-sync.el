@@ -515,12 +515,14 @@ fetches the resource and calls DONE with the parsed tree, its shared
 records wrapped in `octocat-sync-entity', or with (error . MESSAGE).
 In place of :fetch, :gh is the arguments of a `gh' call printing JSON,
 or :graphql a GraphQL query, run with :repo, when non-nil, as $owner
-and $name, and with :vars, as for `octocat--gh-graphql'.  Either way
-:parse, optional, makes the tree of the JSON, read as
-`octocat-sync--parse' does, of a query the answer's \"data\".
-:entity, optional, is the key of the resource's main entity: until the
-resource is first fetched, a snapshot carries that entity's fields, as
-another resource stored them, in :partial.  :invalidates, optional, is
+and $name, :vars, and :args, more `gh api' options such as
+\"--paginate\", as for `octocat--gh-graphql'.  Either way :parse,
+optional, makes the tree of the JSON, read as `octocat-sync--parse'
+does, of a query the answer's \"data\"; with :raw non-nil, of the
+output as `gh' prints it.  :entity, optional, is the key of the
+resource's main entity: until the resource is first fetched, a
+snapshot carries that entity's fields, as another resource stored them,
+in :partial.  :invalidates, optional, is
 a function returning the specs, `_' matching anything, of the lists
 that a change to that entity may move it in or out of: a fetch that
 changes it outdates them.  :max-age, optional, is how
@@ -542,15 +544,17 @@ least :max-age."
 (defun octocat-sync--gh (name props parse done)
   "Make the `gh' call of PROPS, its :gh or :graphql, as call NAME; call DONE.
 DONE gets PARSE of the JSON it prints, read as `octocat-sync--parse'
-does, of a query the answer's \"data\"; PARSE `ignore' reads none."
+does, of a query the answer's \"data\"; with :raw, of what it prints.
+PARSE `ignore' reads none."
   (let* ((query (plist-get props :graphql))
          (read  (lambda (output)
-                  (unless (eq parse #'ignore)
-                    (let ((json (octocat-sync--parse (string-trim output))))
-                      (funcall parse (if query (gethash "data" json) json)))))))
+                  (cond ((eq parse #'ignore) nil)
+                        ((plist-get props :raw) (funcall parse output))
+                        (t (let ((json (octocat-sync--parse (string-trim output))))
+                             (funcall parse (if query (gethash "data" json) json))))))))
     (if query
         (octocat--gh-graphql name (plist-get props :repo) query (plist-get props :vars)
-                             read done)
+                             read done (plist-get props :args))
       (octocat--run-gh name (plist-get props :gh) read done))))
 
 (defun octocat-sync--fetch (spec done)
@@ -793,31 +797,26 @@ first again."
          (cursor (and tree (gethash "cursor" tree))))
     (if (or (null cursor) (octocat-sync--loading-p key))
         (when on-done (funcall on-done '(error . "Nothing more to load yet")))
-      (let ((token (list key nil (float-time) 'more)))
-        (puthash key token octocat-sync--fetches)
-        (octocat-sync--set-loading key t)
-        (let ((octocat--gh-owner token)
-              (octocat--gh-reason 'more))
-          (funcall more cursor
-                   (lambda (result)
-                     (if (not (eq (gethash key octocat-sync--fetches) token))
-                         ;; Taken over by a forced request: a fetch of the
-                         ;; first pages again, which answers instead.
-                         (when on-done (funcall on-done nil))
-                       (remhash key octocat-sync--fetches)
-                       (octocat-sync--set-loading key nil)
-                       (unless (eq (car-safe result) 'error)
-                         ;; The stored nodes are refs already; the new ones
-                         ;; are split out as any fetch's.
-                         (puthash "nodes"
-                                  (vconcat (gethash "nodes" tree) (gethash "nodes" result))
-                                  tree)
-                         (puthash "cursor" (gethash "cursor" result) tree)
-                         (octocat-sync--notify
-                          (cl-adjoin key (octocat-sync--write db key tree (float-time))
-                                     :test #'equal)))
-                       (when on-done
-                         (funcall on-done (and (eq (car-safe result) 'error) result)))))))))))
+      (octocat-sync--run
+       key 'more nil
+       (lambda (done)
+         (octocat-sync--set-loading key t)
+         (funcall more cursor done))
+       (lambda (result)
+         (octocat-sync--drop-fetch key)
+         (octocat-sync--set-loading key nil)
+         (unless (eq (car-safe result) 'error)
+           ;; The stored nodes are refs already; the new ones are split
+           ;; out as any fetch's.
+           (puthash "nodes" (vconcat (gethash "nodes" tree) (gethash "nodes" result)) tree)
+           (puthash "cursor" (gethash "cursor" result) tree)
+           (octocat-sync--notify
+            (cl-adjoin key (octocat-sync--write db key tree (float-time)) :test #'equal)))
+         (when on-done
+           (funcall on-done (and (eq (car-safe result) 'error) result))))
+       ;; Taken over by a forced request: a fetch of the first pages
+       ;; again, which answers instead.
+       (lambda () (when on-done (funcall on-done nil)))))))
 
 (defun octocat-sync-prefetch (specs)
   "Fetch SPECS at low priority, in place of the prefetches still queued.
@@ -915,24 +914,32 @@ another fetch, or nil.  For `octocat-doctor'."
                 ((octocat-sync--quiet-p key) 'quiet)
                 ((octocat-sync--loading-p key) 'loading)))))
 
-(defun octocat-sync--start (key spec reason)
-  "Start fetching SPEC, whose key is KEY, for REASON, see `octocat--gh-reason'.
-A fetch that signals as it starts fails like any other, so it can't
-leave KEY loading for good."
+(defun octocat-sync--run (key reason counted fetch answer &optional dropped)
+  "Run FETCH, a function of DONE, as resource KEY's fetch for REASON.
+Its token, see `octocat-sync--fetches', counts against
+`octocat-sync-max-requests' when COUNTED.  ANSWER gets the result, or
+\(error . MESSAGE) when FETCH signals as it starts, so it can't leave
+KEY loading for good.  An answer after a forced request took the fetch
+over calls DROPPED, if given, instead."
   (let ((answered nil)
-        (token (list key t (float-time) reason)))
+        (token (list key counted (float-time) reason)))
     (puthash key token octocat-sync--fetches)
-    (condition-case err
-        (let ((octocat--gh-owner token)
-              (octocat--gh-reason reason))
-          (octocat-sync--fetch spec
-                               (lambda (result)
-                                 (setq answered t)
-                                 (when (eq (gethash key octocat-sync--fetches) token)
-                                   (octocat-sync--done key result)))))
-      (error (cond (answered (signal (car err) (cdr err)))
-                   ((eq (gethash key octocat-sync--fetches) token)
-                    (octocat-sync--done key (cons 'error (error-message-string err)))))))))
+    (cl-flet ((reply (result)
+                (cond ((eq (gethash key octocat-sync--fetches) token) (funcall answer result))
+                      (dropped (funcall dropped)))))
+      (condition-case err
+          (let ((octocat--gh-owner token)
+                (octocat--gh-reason reason))
+            (funcall fetch (lambda (result) (setq answered t) (reply result))))
+        (error (if answered
+                   (signal (car err) (cdr err))
+                 (reply (cons 'error (error-message-string err)))))))))
+
+(defun octocat-sync--start (key spec reason)
+  "Start fetching SPEC, whose key is KEY, for REASON, see `octocat--gh-reason'."
+  (octocat-sync--run key reason t
+                     (lambda (done) (octocat-sync--fetch spec done))
+                     (lambda (result) (octocat-sync--done key result))))
 
 (defun octocat-sync--pump ()
   "Start queued fetches while fewer than `octocat-sync-max-requests' run.
