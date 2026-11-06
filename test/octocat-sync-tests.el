@@ -278,6 +278,15 @@ retry, and never once cancelled."
       (should (equal outdated '("(thing 1)")))
       (should (plist-get (octocat-sync-read '(thing 1)) :outdated)))))
 
+(ert-deftest octocat-sync-test-outdate-by-name ()
+  "Patterns match the resources they name, or any with `_' as the name."
+  (let ((db (octocat-sync--create (sqlite-open nil))))
+    (dolist (key '("(thing 1)" "(thing 2)" "(thing-x 1)" "(viewer)" "(other \"thing\")"))
+      (octocat-sync--write db key (octocat-sync-tests--table "n" 1) 1.0))
+    (should (equal (sort (octocat-sync--outdate db '((thing _) (viewer)) 2.0) #'string<)
+                   '("(thing 1)" "(thing 2)" "(viewer)")))
+    (should (equal (octocat-sync--outdate db '((_ "thing")) 3.0) '("(other \"thing\")")))))
+
 (ert-deftest octocat-sync-test-more ()
   "A further page is appended to a list resource, its items stored as entities."
   (octocat-sync-tests--with-sync
@@ -623,13 +632,6 @@ dropped."
     (should-not (octocat-sync-poll-slowdown 10 t 'low nil))
     (should-not (octocat-sync-poll-slowdown 10 t 'mains t))))
 
-(ert-deftest octocat-sync-test-poll-status ()
-  "Runs, jobs and checks under way refetch fast, and never once completed."
-  (should (eql (octocat-sync-poll-status "in_progress") octocat-sync-poll-active))
-  (should (eql (octocat-sync-poll-status "completed" "QUEUED") octocat-sync-poll-active))
-  (should-not (octocat-sync-poll-status "completed" "COMPLETED"))
-  (should-not (octocat-sync-poll-status nil)))
-
 (ert-deftest octocat-sync-test-poll-quiet ()
   "A due resource refetches quietly, after prefetches; a page request shows it."
   (octocat-sync-tests--with-sync
@@ -705,7 +707,9 @@ dropped."
     (let ((octocat-sync-poll-interval 60)
           (calls 0))
       (octocat-sync-define-resource run (n)
-        :poll (lambda (data) (cl-incf calls) (octocat-sync-poll-status (gethash "status" data)))
+        :poll (lambda (data)
+                (cl-incf calls)
+                (and (equal (gethash "status" data) "in_progress") octocat-sync-poll-active))
         :fetch (lambda (done) (push (cons n done) pending)))
       (octocat-sync-define-resource old (n)
         :max-age 3600

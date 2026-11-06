@@ -1549,6 +1549,14 @@ or (error . MSG)."
 
 ;;;; Actions
 
+(defun octocat-model--poll-status (&rest statuses)
+  "Return the :poll interval of a run, a job or a check of status STATUSES.
+While any is under way, they are refetched every
+`octocat-sync-poll-active' seconds; once all are completed, never."
+  (and (seq-some (lambda (s) (and (stringp s) (not (equal (downcase s) "completed"))))
+                 statuses)
+       octocat-sync-poll-active))
+
 (defun octocat-model--parse-annotations (output)
   "Return the check-run annotations in OUTPUT, a vector, \\=[] when unreadable."
   (condition-case nil
@@ -1578,7 +1586,7 @@ returned."
                     "artifacts" (if (eq (car-safe artifacts) 'error) [] artifacts))))
 
 (octocat-sync-define-resource job (repo run-id job-id)
-  :poll (lambda (data) (octocat-sync-poll-status (octocat--get data "job" "status")))
+  :poll (lambda (data) (octocat-model--poll-status (octocat--get data "job" "status")))
   :fetch (lambda (done)
            ;; Three calls at once, answered in RESULTS as they come.
            (let* ((results (make-vector 3 'pending))
@@ -1677,7 +1685,7 @@ vector: a shape the store can hold as JSON."
   ;; Annotations come as the run's jobs finish.
   :invalidates (lambda () `((runs ,repo _ _) (workflow ,repo _ _)
                             (run-annotations ,repo ,run-id)))
-  :poll (lambda (data) (octocat-sync-poll-status (octocat--get data "item" "status")))
+  :poll (lambda (data) (octocat-model--poll-status (octocat--get data "item" "status")))
   :fetch (lambda (done)
            (octocat--fetch-run
             repo run-id
@@ -2048,7 +2056,7 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
   :poll (lambda (data)
           (if (seq-empty-p data)
               octocat-sync-poll-interval
-            (apply #'octocat-sync-poll-status
+            (apply #'octocat-model--poll-status
                    (mapcar (lambda (c) (gethash "status" c)) data))))
   :gh (list "api" (format "repos/%s/commits/%s/check-runs?per_page=100" repo sha))
   :parse (lambda (r)

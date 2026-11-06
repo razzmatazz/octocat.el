@@ -485,11 +485,19 @@ refetches it; the rest are refetched when next opened."
   "Mark the resources of DB matching any of PATTERNS outdated as of NOW.
 Return their keys.  Their data stays, but the next open refetches them."
   (let (keys)
-    (pcase-dolist (`(,key) (sqlite-select db "SELECT key FROM resource"))
-      (let ((spec (car (read-from-string key))))
-        (when (and (consp spec)
-                   (seq-some (lambda (p) (octocat-sync--spec-match-p p spec)) patterns))
-          (push key keys))))
+    ;; Only the keys of the resources PATTERNS name are read.
+    (dolist (name (delete-dups (mapcar #'car patterns)))
+      (pcase-dolist (`(,key)
+                     (if (eq name '_)
+                         (sqlite-select db "SELECT key FROM resource")
+                       (sqlite-select db "SELECT key FROM resource
+                                          WHERE key = ?1 OR substr(key, 1, length(?2)) = ?2"
+                                      (list (format "(%s)" name) (format "(%s " name)))))
+        (let ((spec (car (read-from-string key))))
+          (when (and (consp spec)
+                     (seq-some (lambda (p) (octocat-sync--spec-match-p p spec)) patterns))
+            (push key keys)))))
+    (setq keys (delete-dups keys))
     (dolist (key keys)
       (sqlite-execute db "UPDATE resource SET invalidated_at = ? WHERE key = ?" (list now key)))
     keys))
@@ -899,14 +907,6 @@ another fetch, or nil.  For `octocat-doctor'."
           (cond ((assoc key octocat-sync--polls) 'queued)
                 ((gethash key octocat-sync--quiet) 'quiet)
                 ((gethash key octocat-sync--loading) 'loading)))))
-
-(defun octocat-sync-poll-status (&rest statuses)
-  "Return the :poll interval of a run, a job or a check of status STATUSES.
-While any is under way, they are refetched every
-`octocat-sync-poll-active' seconds; once all are completed, never."
-  (and (seq-some (lambda (s) (and (stringp s) (not (equal (downcase s) "completed"))))
-                 statuses)
-       octocat-sync-poll-active))
 
 (defun octocat-sync--start (key spec reason)
   "Start fetching SPEC, whose key is KEY, for REASON, see `octocat--gh-reason'.

@@ -183,6 +183,13 @@
 
 ;;;; Actions
 
+(ert-deftest octocat-model-test-poll-status ()
+  "Runs, jobs and checks under way refetch fast, and never once completed."
+  (should (eql (octocat-model--poll-status "in_progress") octocat-sync-poll-active))
+  (should (eql (octocat-model--poll-status "completed" "QUEUED") octocat-sync-poll-active))
+  (should-not (octocat-model--poll-status "completed" "COMPLETED"))
+  (should-not (octocat-model--poll-status nil)))
+
 (ert-deftest octocat-model-test-job-tree ()
   "A job's annotations and artifacts may fail; the job itself may not."
   (let ((tree (octocat-model--job-tree (json-parse-string "{\"id\":1}") '(error . "no") [])))
