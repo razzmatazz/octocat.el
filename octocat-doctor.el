@@ -128,12 +128,14 @@
      (format "  Resources   %d, %s of data, %d failed, %d outdated\n"
              count (file-size-human-readable chars) errors outdated)
      (format "  Entities    %d\n" (caar (sqlite-select db "SELECT count(*) FROM entity")))
-     (format "  Loading     %d, of which %d timed refetches\n"
-             (hash-table-count octocat-sync--loading) (hash-table-count octocat-sync--quiet))
-     (format "  Queued      %d page requests, %d prefetches, %d timed refetches\n"
-             (length octocat-sync--queue) (length octocat-sync--prefetches)
-             (length octocat-sync--polls))
-     (format "  Running     %d of at most %d\n" octocat-sync--running octocat-sync-max-requests)
+     (let ((keys (octocat-sync--loading-keys)))
+       (format "  Loading     %d, of which %d timed refetches\n"
+               (length keys) (seq-count #'octocat-sync--quiet-p keys)))
+     (apply #'format "  Queued      %d page requests, %d prefetches, %d timed refetches\n"
+            (mapcar (lambda (reason)
+                      (seq-count (lambda (e) (eq (nth 2 e) reason)) octocat-sync--queue))
+                    '(page prefetch poll)))
+     (format "  Running     %d of at most %d\n" (octocat-sync--running) octocat-sync-max-requests)
      (format "  Offline     %s\n" (if octocat-sync--offline "yes" "no"))
      (format "  Fresh for   %s s\n" octocat-sync-fresh-for)
      "\nLargest resources\n"

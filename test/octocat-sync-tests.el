@@ -134,7 +134,8 @@
   "An unfetched resource whose entity a list stored reads as :partial."
   (let* ((octocat-sync--db (octocat-sync-tests--db))
          (octocat-sync--resources (make-hash-table :test #'eq))
-         (octocat-sync--loading (make-hash-table :test #'equal)))
+         (octocat-sync--queue nil)
+         (octocat-sync--fetches (make-hash-table :test #'equal)))
     (octocat-sync-define-resource issue (repo number)
       :entity (octocat-model-item-key 'issue repo number))
     (octocat-sync--write octocat-sync--db "list"
@@ -155,22 +156,20 @@
                      "f00")))
     (should-not (plist-get (octocat-sync-read '(issue "o/r" 13)) :partial))))
 
+(defun octocat-sync-tests--queued (reason)
+  "Return the keys of the fetches queued for REASON, oldest first."
+  (mapcar #'car (seq-filter (lambda (e) (eq (nth 2 e) reason)) octocat-sync--queue)))
+
 (defmacro octocat-sync-tests--with-sync (&rest body)
   "Run BODY against a fresh in-memory store and empty queues.
 Resource `thing' (N) is defined; its fetches are pushed to `pending' as
 (N . DONE), and every notification to `notified'."
   (declare (indent 0))
   `(let* ((octocat-sync--db (octocat-sync-tests--db))
-          (octocat-sync--loading (make-hash-table :test #'equal))
           (octocat-sync--fetches (make-hash-table :test #'equal))
           (octocat-sync--queue nil)
-          (octocat-sync--prefetches nil)
-          (octocat-sync--prefetching nil)
-          (octocat-sync--polls nil)
-          (octocat-sync--quiet (make-hash-table :test #'equal))
           (octocat-sync--poll-intervals (make-hash-table :test #'equal))
           (octocat-sync--pending nil)
-          (octocat-sync--running 0)
           (octocat-sync--resources (make-hash-table :test #'eq))
           (octocat-sync--mutations (make-hash-table :test #'eq))
           (octocat-sync-change-functions nil)
@@ -199,8 +198,8 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
       (octocat-sync-request '(thing 1))
       (should (= (length pending) 3))
       (octocat-sync-request '(thing 1) t)
-      (should (= octocat-sync--running 2))
-      (should (equal octocat-sync--queue '(("(thing 1)" thing 1)))))))
+      (should (= (octocat-sync--running) 2))
+      (should (equal octocat-sync--queue '(("(thing 1)" (thing 1) page)))))))
 
 (ert-deftest octocat-sync-test-get-and-cancel ()
   "A get calls back once its fetch lands, at once while a failure waits to
@@ -348,8 +347,8 @@ A mutation's answers nil without :parse, which reads the JSON it prints."
             (sqlite-execute other "BEGIN EXCLUSIVE")
             (octocat-sync-request '(thing 1))
             (funcall (cdr (pop pending)) (octocat-sync-tests--table "n" 1))
-            (should (= octocat-sync--running 0))
-            (should-not (gethash "(thing 1)" octocat-sync--loading))
+            (should (= (octocat-sync--running) 0))
+            (should-not (octocat-sync--loading-p "(thing 1)"))
             (sqlite-execute other "ROLLBACK")
             (should-not (plist-get (octocat-sync-read '(thing 1)) :data))))
       (delete-file file))))
@@ -360,7 +359,7 @@ A mutation's answers nil without :parse, which reads the JSON it prints."
     (octocat-sync-define-resource broken ()
       :fetch (lambda (_done) (error "Boom")))
     (octocat-sync-request '(broken))
-    (should (= octocat-sync--running 0))
+    (should (= (octocat-sync--running) 0))
     (let ((snap (octocat-sync-read '(broken))))
       (should-not (plist-get snap :loading))
       (should (equal (plist-get snap :error) "Boom")))))
@@ -374,16 +373,16 @@ A mutation's answers nil without :parse, which reads the JSON it prints."
       ;; A new rest of point replaces the queued (thing 2), not the running one.
       (octocat-sync-prefetch '((thing 3)))
       (should-not (plist-get (octocat-sync-read '(thing 2)) :loading))
-      (should (equal (mapcar #'car octocat-sync--prefetches) '("(thing 3)")))
+      (should (equal (octocat-sync-tests--queued 'prefetch) '("(thing 3)")))
       ;; Opening a queued prefetch makes it a page request, at once.
       (octocat-sync-request '(thing 3))
       (should (equal (mapcar #'car pending) '(3 1)))
-      (should-not octocat-sync--prefetches)
+      (should-not (octocat-sync-tests--queued 'prefetch))
       (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
-      (should-not octocat-sync--prefetching)
+      (should-not (gethash "(thing 1)" octocat-sync--fetches))
       ;; Fresh: nothing to prefetch.
       (octocat-sync-prefetch '((thing 1)))
-      (should-not octocat-sync--prefetches))))
+      (should-not (octocat-sync-tests--queued 'prefetch)))))
 
 (ert-deftest octocat-sync-test-mutation ()
   "An optimistic change shows on linked resources at once, and is written on success."
@@ -599,7 +598,7 @@ The resource keeps the error, and the fetch's slot is free again."
             (should-not (process-live-p (car old)))
             (should (= (length (funcall live)) 1))
             (should (plist-get (octocat-sync-read '(hung 3)) :loading))
-            (should (= octocat-sync--running 1))
+            (should (= (octocat-sync--running) 1))
             (octocat-sync-request '(hung 3) t)
             (mapc #'kill-process (funcall live))
             (accept-process-output nil 0.1)))
@@ -608,7 +607,7 @@ The resource keeps the error, and the fetch's slot is free again."
         (let ((snap (octocat-sync-read '(hung 2))))
           (should-not (plist-get snap :loading))
           (should (string-search "not found" (plist-get snap :error))))
-        (should (= octocat-sync--running 0))))))
+        (should (= (octocat-sync--running) 0))))))
 
 (ert-deftest octocat-sync-test-force-takes-over ()
   "A forced request fetches anew once the fetch running seems stuck.
@@ -627,7 +626,7 @@ dropped."
         (let ((octocat-sync-stuck-after 0))
           (octocat-sync-request '(thing 1) t))
         (should (= (length pending) 2))
-        (should (= octocat-sync--running 1))
+        (should (= (octocat-sync--running) 1))
         (funcall stale (octocat-sync-tests--table "n" "old"))
         (should (plist-get (octocat-sync-read '(thing 1)) :loading))
         (should-not (plist-get (octocat-sync-read '(thing 1)) :data))
@@ -635,7 +634,7 @@ dropped."
         (let ((snap (octocat-sync-read '(thing 1))))
           (should-not (plist-get snap :loading))
           (should (equal (gethash "n" (plist-get snap :data)) "new")))
-        (should (= octocat-sync--running 0))))))
+        (should (= (octocat-sync--running) 0))))))
 
 ;;;; Timed refetches
 
@@ -666,7 +665,7 @@ dropped."
       (octocat-sync-poll '((thing 1) (thing 2)) 1 t)
       ;; Only the one fetched over a minute ago, and not reported as loading.
       (should (equal (mapcar #'car pending) '(1)))
-      (should (gethash "(thing 1)" octocat-sync--quiet))
+      (should (octocat-sync--quiet-p "(thing 1)"))
       (should-not loading)
       ;; Four times slower: not due.
       (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
@@ -679,12 +678,29 @@ dropped."
       (octocat-sync-prefetch '((thing 3)))
       (setq loading nil)
       (octocat-sync-poll '((thing 1)) 1 t)
-      (should (equal (mapcar #'car octocat-sync--polls) '("(thing 1)")))
+      (should (equal (octocat-sync-tests--queued 'poll) '("(thing 1)")))
       (should-not loading)
       (octocat-sync-request '(thing 1))
       (should (equal (car loading) '("(thing 1)" . t)))
-      (should-not octocat-sync--polls)
+      (should-not (octocat-sync-tests--queued 'poll))
       (should (equal (mapcar #'car pending) '(1 3))))))
+
+(ert-deftest octocat-sync-test-poll-raised-while-running ()
+  "A timed refetch already running shows as loading once a page asks for it."
+  (octocat-sync-tests--with-sync
+    (let* ((octocat-sync-poll-interval 60)
+           (loading nil)
+           (octocat-sync-loading-functions
+            (list (lambda (key on) (push (cons key on) loading)))))
+      (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1)
+                           (- (float-time) 100))
+      (octocat-sync-poll '((thing 1)) 1 t)
+      (should (equal (mapcar #'car pending) '(1)))
+      (should (octocat-sync--quiet-p "(thing 1)"))
+      (octocat-sync-request '(thing 1))
+      (should (equal loading '(("(thing 1)" . t))))
+      (should-not (octocat-sync--quiet-p "(thing 1)"))
+      (should (= (length pending) 1)))))
 
 (ert-deftest octocat-sync-test-poll-drops-buried ()
   "A queued timed refetch of a page no longer on screen is dropped."
@@ -694,11 +710,11 @@ dropped."
                            (- (float-time) 100))
       (octocat-sync-prefetch '((thing 2)))
       (octocat-sync-poll '((thing 1)) 1 t)
-      (should (assoc "(thing 1)" octocat-sync--polls))
+      (should (member "(thing 1)" (octocat-sync-tests--queued 'poll)))
       (octocat-sync-poll nil 1 t)
-      (should-not octocat-sync--polls)
+      (should-not (octocat-sync-tests--queued 'poll))
       (should-not (plist-get (octocat-sync-read '(thing 1)) :loading))
-      (should-not (gethash "(thing 1)" octocat-sync--quiet)))))
+      (should-not (octocat-sync--quiet-p "(thing 1)")))))
 
 (ert-deftest octocat-sync-test-poll-catch-up ()
   "A catch-up is a page request; a resource of no :poll, or off, never refetches."
@@ -712,7 +728,7 @@ dropped."
       (octocat-sync--write octocat-sync--db "(fixed 2)" (octocat-sync-tests--table "n" 2) old)
       (octocat-sync-poll '((thing 1) (fixed 2)) 1 nil)
       (should (equal (mapcar #'car pending) '(1)))
-      (should-not (gethash "(thing 1)" octocat-sync--quiet))
+      (should-not (octocat-sync--quiet-p "(thing 1)"))
       (let ((octocat-sync-poll-interval nil))
         (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
         (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1) old)

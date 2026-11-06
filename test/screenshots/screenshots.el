@@ -183,7 +183,7 @@ it is pressed."
     (while (and (< still 15) (< (cl-incf tries) 400))
       (accept-process-output nil 0.02)
       (let ((text (with-current-buffer buffer (buffer-string))))
-        (if (and (equal text last) (zerop (hash-table-count octocat-sync--loading)))
+        (if (and (equal text last) (null (octocat-sync--loading-keys)))
             (cl-incf still)
           (setq still 0 last text))))))
 

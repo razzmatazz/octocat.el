@@ -15,8 +15,8 @@
 (ert-deftest octocat-doctor-test-store ()
   "The store's lines count its resources and name the largest."
   (let ((db (octocat-sync--create (sqlite-open nil)))
-        (octocat-sync--loading (make-hash-table :test #'equal))
-        (octocat-sync--quiet (make-hash-table :test #'equal)))
+        (octocat-sync--queue nil)
+        (octocat-sync--fetches (make-hash-table :test #'equal)))
     (octocat-sync--write db "(thing 1)" (let ((h (make-hash-table :test #'equal)))
                                           (puthash "n" 1 h)
                                           h)

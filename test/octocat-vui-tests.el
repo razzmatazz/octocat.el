@@ -340,10 +340,8 @@
 Opening fetches, a new tick forces a refetch, and killing the page
 unsubscribes it."
   (let* ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
-         (octocat-sync--loading (make-hash-table :test #'equal))
          (octocat-sync--queue nil)
-         (octocat-sync--prefetches nil)
-         (octocat-sync--running 0)
+         (octocat-sync--fetches (make-hash-table :test #'equal))
          (octocat-sync--resources (make-hash-table :test #'eq))
          (octocat-sync-change-functions (list #'octocat-vui--on-sync-change))
          (octocat-sync-loading-functions (list #'octocat-vui--on-sync-loading))
@@ -423,11 +421,8 @@ unsubscribes it."
 (ert-deftest octocat-vui-test-list-stored-candidates ()
   "Stored candidates are given at once and refreshed behind; none stored waits."
   (let ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
-        (octocat-sync--loading (make-hash-table :test #'equal))
         (octocat-sync--queue nil)
-        (octocat-sync--prefetches nil)
-        (octocat-sync--prefetching nil)
-        (octocat-sync--running 0)
+        (octocat-sync--fetches (make-hash-table :test #'equal))
         (octocat-sync--waiters nil)
         (fetches 0)
         deliver got)
