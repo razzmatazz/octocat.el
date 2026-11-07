@@ -418,6 +418,39 @@ unsubscribes it."
       (when (get-buffer "*octocat-vui-test*")
         (kill-buffer "*octocat-vui-test*")))))
 
+(defvar octocat-vui-tests--fail nil
+  "Non-nil makes `octocat-vui-tests--failing' signal.")
+
+(vui-defcomponent octocat-vui-tests--failing ()
+  "A part that fails while `octocat-vui-tests--fail' is set."
+  :render
+  (if octocat-vui-tests--fail (error "Boom") (vui-text "fine")))
+
+(vui-defcomponent octocat-vui-tests--guarded ()
+  "The failing part in a boundary, with a line after it."
+  :render
+  (vui-vstack (octocat-vui-error-boundary (vui-component 'octocat-vui-tests--failing))
+              (vui-text "after")))
+
+(ert-deftest octocat-vui-test-error-boundary ()
+  "A failing part shows as an error line until a refresh draws it again."
+  (let ((vui-render-delay nil)
+        (octocat-vui-tests--fail t))
+    (unwind-protect
+        (progn
+          (vui-mount (vui-component 'octocat-vui-tests--guarded) "*octocat-vui-test*")
+          (with-current-buffer "*octocat-vui-test*"
+            (should (equal (buffer-string) "  Error: Boom; g to retry\nafter"))
+            (setq octocat-vui-tests--fail nil)
+            (vui-rerender (vui-get-instance))
+            (should (string-prefix-p "  Error: Boom" (buffer-string)))
+            (setq-local revert-buffer-function
+                        (lambda (&rest _) (vui-rerender (vui-get-instance))))
+            (octocat-vui-refresh)
+            (should (equal (buffer-string) "fine\nafter"))))
+      (when (get-buffer "*octocat-vui-test*")
+        (kill-buffer "*octocat-vui-test*")))))
+
 (ert-deftest octocat-vui-test-list-stored-candidates ()
   "Stored candidates are given at once and refreshed behind; none stored waits."
   (let ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))

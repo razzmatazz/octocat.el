@@ -1139,11 +1139,12 @@ everything, keeping what is shown until the fresh data replaces it."
         (lambda (_)
           (apply #'vui-vstack
                  (append (if-let* ((workflow-id (gethash "workflowDatabaseId" data)))
-                             (list (vui-component 'octocat-run--jobs
-                                     :repo repo :run-id run-id :jobs jobs
-                                     :workflow-id workflow-id
-                                     :sha (octocat--nonempty (gethash "headSha" data))
-                                     :view view :width width :tick tick))
+                             (list (octocat-vui-error-boundary
+                                    (vui-component 'octocat-run--jobs
+                                      :repo repo :run-id run-id :jobs jobs
+                                      :workflow-id workflow-id
+                                      :sha (octocat--nonempty (gethash "headSha" data))
+                                      :view view :width width :tick tick)))
                            (octocat-run--jobs-section repo run-id jobs nil view width))
                          (when-let* ((section (octocat-job-artifacts
                                                repo (or (plist-get arts :data) []))))
@@ -1632,9 +1633,10 @@ run being started, shown in the button's place.  TICK is the page's."
              (t
               ;; Closed at once: the run is shown under way in the
               ;; button's place, and the form comes back if it fails.
-              (vui-set-state :open nil)
-              (vui-set-state :shown 0)
-              (vui-set-state :tried nil)
+              (vui-batch
+               (vui-set-state :open nil)
+               (vui-set-state :shown 0)
+               (vui-set-state :tried nil))
               (octocat-sync-submit
                `(dispatch-workflow ,repo ,id ,shown-ref ,current)
                (lambda (result)

@@ -109,6 +109,8 @@ and what \"load more\" added stay.  A page refreshed by itself, as
 after an action, keeps its view: only this command resets it."
   (interactive)
   (cl-incf octocat-vui--view-generation)
+  (when (vui-get-instance)
+    (vui-reset-error-boundary))
   (octocat-image-reset)
   (octocat-markdown-reset-details)
   (revert-buffer))
@@ -635,6 +637,16 @@ part to come, unless the fetch failed: then the error shows, as
     ('error (vui-text (concat "  " (octocat-vui-error-text snap)) :face 'error))
     (_ (funcall skeleton (plist-get snap :partial)))))
 
+(defun octocat-vui-error-boundary (&rest children)
+  "Return CHILDREN, shown as an error line if a component in them fails.
+The rest of the page still draws.  The error stays until the next
+`octocat-vui-refresh'."
+  (vui-error-boundary
+   :fallback (lambda (err)
+               (vui-text (format "  Error: %s; g to retry" (error-message-string err))
+                 :face 'error))
+   :children children))
+
 (defun octocat-vui-use-detail (spec tick)
   "Return the snapshot of SPEC, an issue's or PR's page resource.
 As `octocat-vui-use-resource', for TICK too, but :data is the item, its
@@ -943,9 +955,10 @@ line RET was pressed on, where the rest starts."
   :render
   (let* ((_ (octocat-vui-use-view-reset
              (vui-async-callback ()
-               (vui-set-state :shown nil)
-               (vui-set-state :open nil)
-               (vui-set-state :closing nil))))
+               (vui-batch
+                (vui-set-state :shown nil)
+                (vui-set-state :open nil)
+                (vui-set-state :closing nil)))))
          (folds   (and limit (> total limit)))
          (visible (if folds (min total (or shown limit)) total))
          (done    (>= visible total))
@@ -976,9 +989,10 @@ line RET was pressed on, where the rest starts."
         (setq now (octocat-vui--unfold-next now total limit))
         (if (> now limit)
             (vui-set-state :shown now)
-          (vui-set-state :shown nil)
-          (vui-set-state :open nil)
-          (vui-set-state :closing nil)
+          (vui-batch
+           (vui-set-state :shown nil)
+           (vui-set-state :open nil)
+           (vui-set-state :closing nil))
           :stop)))
     (vui-fragment
      (funcall render visible)
