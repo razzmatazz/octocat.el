@@ -599,8 +599,7 @@ The marks are kept in a variable, as the page keeps them in its state."
             "\n"))
   (goto-char (point-min))
   (setq-local octocat-vui-tests--marks nil
-              octocat-vui-list--set-marks-function
-              (lambda (marks) (setq octocat-vui-tests--marks marks))))
+              octocat-vui--page '(octocat-vui-search-list nil nil)))
 
 (defmacro octocat-vui-tests--with-marks (&rest body)
   "Run BODY in a list of three rows, its marks in `octocat-vui-tests--marks'."
@@ -609,6 +608,11 @@ The marks are kept in a variable, as the page keeps them in its state."
      (octocat-vui-tests--marks-buffer)
      (cl-letf (((symbol-function 'octocat-vui-list-marks)
                 (lambda () octocat-vui-tests--marks))
+               ((symbol-function 'vui-get-instance) #'ignore)
+               ((symbol-function 'vui-set-state)
+                (lambda (key value _instance)
+                  (should (eq key :marks))
+                  (setq octocat-vui-tests--marks value)))
                ((symbol-function 'message) #'ignore))
        ,@body)))
 

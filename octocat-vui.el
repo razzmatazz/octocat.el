@@ -1798,10 +1798,6 @@ for no counts.  A new TICK fetches them again."
                      :face 'octocat-dimmed)))
      (vui-newline))))
 
-(defvar-local octocat-vui-list--set-marks-function nil
-  "Function of a list of item numbers that makes them the page's marks.
-A `vui-async-callback' the page sets as it mounts.")
-
 (vui-defcomponent octocat-vui-search-list (repo kind query row-fn line-fn compact tick
                                                 extra-fn)
   "List page of the KIND items of REPO, `issues' or `pulls', matching QUERY.
@@ -1825,11 +1821,6 @@ starts the results afresh."
   (let ((busy (alist-get 'batch (plist-get (octocat-vui-use-resource
                                             (list 'counts kind repo) tick)
                                            :mutating))))
-    ;; The mark commands, run outside the page, set its marks with this.
-    (vui-use-effect ()
-      (setq octocat-vui-list--set-marks-function
-            (vui-async-callback (marks) (vui-set-state :marks marks)))
-      nil)
     (vui-vstack
      (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick)
      (vui-fragment
@@ -2349,9 +2340,9 @@ A [clear] button shows when it differs from the default."
 
 (defun octocat-vui-list--set-marks (marked)
   "Mark the items numbered in MARKED, alone; say how many there are."
-  (unless octocat-vui-list--set-marks-function
+  (unless (eq (car octocat-vui--page) 'octocat-vui-search-list)
     (user-error "Octocat: Nothing to mark on this page"))
-  (funcall octocat-vui-list--set-marks-function marked)
+  (vui-set-state :marks marked (vui-get-instance))
   (message "Octocat: %s marked" (if marked (length marked) "None")))
 
 (defun octocat-vui-list--with-marks (marked items mark)
