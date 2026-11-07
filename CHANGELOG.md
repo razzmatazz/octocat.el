@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* An image in markdown may be ¾ of the window tall, not 20 lines (`octocat-image-max-lines`)
 * A run page whose Jobs section fails to draw shows the error there, the rest intact
 * `C-c C-f` finds a file on disk in the local clone, its prompt at the file shown
 * `M-x octocat-here` opens the file or directory you're in, on your pushed branch (`C-u`: pick)

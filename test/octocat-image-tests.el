@@ -43,6 +43,14 @@
   ;; Never negative, though the image should not be wider than its columns.
   (should (= (octocat-image--fill-margin 300 19 10) 0)))
 
+(ert-deftest octocat-image-test-max-height ()
+  "An image is at most so many lines, or a share of the window but never under the floor."
+  ;; Lines of 20 pixels.
+  (should (= (octocat-image--max-height 10 1000 20) 200))
+  (should (= (octocat-image--max-height 0.75 1000 20) 750))
+  ;; In a window 10 lines high, still `octocat-image--min-lines'.
+  (should (= (octocat-image--max-height 0.75 200 20) (* octocat-image--min-lines 20))))
+
 (ert-deftest octocat-image-test-own-size ()
   "An image is drawn at its own size, only shrunk to fit, never enlarged."
   (cl-letf (((symbol-function 'create-image)

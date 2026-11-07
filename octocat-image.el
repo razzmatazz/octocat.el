@@ -57,12 +57,17 @@
 ;; Only in builds that can show images, the only ones that call it.
 (declare-function image-size "ext:image.c" (spec &optional pixels frame))
 
-(defcustom octocat-image-max-lines 20
-  "The most lines of text an image may be as tall as."
-  :type 'natnum
+(defcustom octocat-image-max-lines 0.75
+  "The most lines of text an image may be as tall as.
+A float is a share of the window's height instead: an image taller than
+the window could only be scrolled past whole."
+  :type '(choice (natnum :tag "Lines") (float :tag "Share of the window"))
   :group 'octocat-markdown)
 
-(defconst octocat-image--max-bytes (* 20 1024 1024)
+(defconst octocat-image--min-lines 20
+  "The fewest lines an image may be as tall as, however short the window.")
+
+(defconst octocat-image--max-bytes(* 20 1024 1024)
   "Larger responses are not shown.")
 
 (defconst octocat-image--max-hops 3
@@ -197,18 +202,30 @@ where it reaches past BEG or END."
 A column is CHAR-WIDTH pixels wide."
   (max 0 (/ (- (* cols char-width) width) 2)))
 
+(defun octocat-image--max-height (max-lines window-height char-height)
+  "Return the most pixels an image may be tall, as `octocat-image-max-lines'.
+MAX-LINES is its value, WINDOW-HEIGHT the window's in pixels and
+CHAR-HEIGHT a line's."
+  (if (floatp max-lines)
+      ;; A short window would leave an image too small to make out.
+      (max (floor (* max-lines window-height))
+           (* octocat-image--min-lines char-height))
+    (* max-lines char-height)))
+
 (defun octocat-image--image (data plist)
-  "Return the image of DATA, sized to fit PLIST's :cols and :width.
+  "Return the image of DATA, sized to fit PLIST's :cols, :width and :max-height.
 With :fill, as in a table's row of images, it is centred in its :cols,
 so the text after it stays in its column."
   (let* ((cols  (plist-get plist :cols))
          (width (plist-get plist :width))
+         (max-height (plist-get plist :max-height))
          ;; At its own size: `image-scaling-factor' would blur it.
          (image (apply #'create-image data nil t :scale 1
-                       :max-height (* octocat-image-max-lines (frame-char-height))
-                       (when-let* ((max (delq nil (list width
-                                                        (and cols (* cols (frame-char-width)))))))
-                         (list :max-width (apply #'min max))))))
+                       (append
+                        (and max-height (list :max-height max-height))
+                        (when-let* ((max (delq nil (list width
+                                                         (and cols (* cols (frame-char-width)))))))
+                          (list :max-width (apply #'min max)))))))
     (when (and cols (plist-get plist :fill))
       (setf (image-property image :margin)
             (cons (octocat-image--fill-margin (car (image-size image t)) cols (frame-char-width))
@@ -225,7 +242,13 @@ so the text after it stays in its column."
 (defun octocat-image--fontify (beg end)
   "Show the fetched images marked from BEG to END; offer to fetch the others.
 For `jit-lock-functions'."
-  (when (display-images-p)
+  (when-let* (((display-images-p))
+              (max-height (octocat-image--max-height
+                           octocat-image-max-lines
+                           (window-body-height (or (get-buffer-window (current-buffer) t)
+                                                   (selected-window))
+                                               t)
+                           (frame-char-height))))
     (pcase-dolist (`(,b ,e ,plist) (octocat-image--spans beg end))
       (let* ((url  (plist-get plist :url))
              (data (and (octocat-image--fetchable-p plist)
@@ -240,7 +263,8 @@ For `jit-lock-functions'."
                 ;; The link's underline would be drawn under the image.
                 b e (list 'face nil
                           'octocat-spinner nil
-                          'display (octocat-image--image data plist)
+                          'display (octocat-image--image
+                                    data (append (list :max-height max-height) plist))
                           'keymap octocat-markdown-link-map
                           'help-echo (if (plist-get plist :file)
                                          "RET: open the image's file; C-c C-o: on GitHub"
