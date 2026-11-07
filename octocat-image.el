@@ -57,7 +57,7 @@
 ;; Only in builds that can show images, the only ones that call it.
 (declare-function image-size "ext:image.c" (spec &optional pixels frame))
 
-(defcustom octocat-image-max-lines 0.75
+(defcustom octocat-image-max-lines 0.5
   "The most lines of text an image may be as tall as.
 A float is a share of the window's height instead: an image taller than
 the window could only be scrolled past whole."

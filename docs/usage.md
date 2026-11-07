@@ -424,11 +424,11 @@ In a graphical frame, an image that has a line of a PR, issue, comment
 or README to itself, or shares it only with other images, as a row of
 badges does, can be shown there: `RET` (or a click) on its
 `[image: alt]` link fetches it and shows it in place of the link,
-scaled down to fit the window's width and, by default, three quarters
-of its height, but no fewer than 20 lines in a short window; set
+scaled down to fit the window's width and, by default, half its
+height, but no fewer than 20 lines in a short window; set
 `octocat-image-max-lines` to a number of lines, or another share of
-the window as a float.  `RET` on the image then opens it in the browser.  Nothing
-is downloaded until asked for, and a fetched image stays shown, across
+the window as a float.  `RET` on the image then opens it in the
+browser.  Nothing is downloaded until asked for, and a fetched image stays shown, across
 refreshes, for the rest of the session.  An HTML table of images, as
 pull requests use to set screenshots before and after a change side by
 side, keeps them side by side: each image fits its column, under its
