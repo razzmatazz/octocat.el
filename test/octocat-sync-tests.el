@@ -113,14 +113,17 @@
                    '("issue:o/r#12")))))
 
 (ert-deftest octocat-sync-test-schema ()
-  "An older schema is recreated; a newer one signals."
+  "An older or newer schema is recreated."
   (let ((db (sqlite-open nil)))
     (sqlite-execute db "CREATE TABLE resource (key TEXT)")
     (octocat-sync--create db)
     (sqlite-select db "SELECT hash FROM resource")
     (should (= (caar (sqlite-select db "PRAGMA user_version")) octocat-sync--schema))
+    (sqlite-execute db "INSERT INTO resource (key) VALUES ('r')")
     (sqlite-execute db "PRAGMA user_version = 99")
-    (should-error (octocat-sync--create db) :type 'user-error)))
+    (octocat-sync--create db)
+    (should (= (caar (sqlite-select db "PRAGMA user_version")) octocat-sync--schema))
+    (should-not (sqlite-select db "SELECT key FROM resource"))))
 
 (ert-deftest octocat-sync-test-null-becomes-nil ()
   "A `:null' from `json-parse-string' is stored and read back as nil."

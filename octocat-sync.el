@@ -138,14 +138,10 @@ then recreated, rather than read in the old shape.")
   "The open store, or nil before first use.")
 
 (defun octocat-sync--create (db)
-  "Create the tables of DB, dropping older ones.
-Signal a `user-error' when DB was made by a newer octocat."
+  "Create the tables of DB, dropping those of another schema, older or newer."
   (let ((version (caar (sqlite-select db "PRAGMA user_version"))))
-    (cond
-     ((> version octocat-sync--schema)
-      (user-error "Octocat: The sync store is from a newer octocat; restart Emacs"))
-     ((< version octocat-sync--schema)
-      ;; A cache, so there are no migrations.
+    ;; A cache, so there are no migrations.
+    (unless (= version octocat-sync--schema)
       (dolist (table '("link" "resource" "entity"))
         (sqlite-execute db (format "DROP TABLE IF EXISTS %s" table)))
       (sqlite-execute db "CREATE TABLE entity (
@@ -156,7 +152,7 @@ Signal a `user-error' when DB was made by a newer octocat."
       (sqlite-execute db "CREATE TABLE link (
   resource TEXT, entity TEXT, PRIMARY KEY (resource, entity))")
       (sqlite-execute db "CREATE INDEX link_entity ON link (entity)")
-      (sqlite-execute db (format "PRAGMA user_version = %d" octocat-sync--schema))))
+      (sqlite-execute db (format "PRAGMA user_version = %d" octocat-sync--schema)))
     db))
 
 (defun octocat-sync--file ()

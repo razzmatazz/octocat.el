@@ -127,7 +127,7 @@ resources not fetched for `octocat-sync-keep-for` (30 days), then the
 entities none of the rest link to; `M-x octocat-sync-collect` does it at
 once.  A change to how a resource's body is shaped bumps
 `octocat-sync--schema`, which recreates the store rather than read the
-old shape.
+old shape.  A store of any other schema, older or newer, is recreated.
 
 To add a resource or mutation, define it in `octocat-model.el`, in the
 section of its page, with `octocat-sync-define-resource` or
