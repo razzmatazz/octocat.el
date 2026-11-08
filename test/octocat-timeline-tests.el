@@ -294,7 +294,7 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
          running reopened closed)
     (octocat-sync-define-mutation post ()
       :label "Posting comment…"
-      :resources (lambda () '((issue "o/r" 1)))
+      :resources '((issue "o/r" 1))
       :send (lambda (done)
               (setq running (plist-get (octocat-sync-read '(issue "o/r" 1)) :mutating))
               (funcall done result)))

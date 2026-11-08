@@ -268,7 +268,7 @@ retry, and never once cancelled."
       (add-hook 'octocat-sync-invalidate-functions (lambda (keys) (setq outdated keys)))
       (octocat-sync-define-resource item ()
         :entity "issue:o/r#12"
-        :invalidates (lambda () '((thing _)))
+        :invalidates '((thing _))
         :fetch (lambda (done) (funcall done (octocat-sync-tests--issue title))))
       (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1) 1.0)
       (octocat-sync-request '(item) t)
@@ -408,10 +408,10 @@ A mutation's answers nil without :parse, which reads the JSON it prints."
       (add-hook 'octocat-sync-invalidate-functions (lambda (keys) (setq invalidated keys)))
       (octocat-sync-define-mutation rename (title)
         :label "Renaming…"
-        :resources (lambda () '((thing 1)))
-        :optimistic (lambda () `(("issue:o/r#12" ("title" . ,title))))
+        :resources '((thing 1))
+        :optimistic `(("issue:o/r#12" ("title" . ,title)))
         :send (lambda (done) (push done sent))
-        :invalidates (lambda () '((thing _))))
+        :invalidates '((thing _)))
       (octocat-sync--write octocat-sync--db "(list)"
                            (octocat-sync-tests--table
                             "nodes" (vector (octocat-sync-tests--issue "Crash")))
@@ -440,7 +440,7 @@ A mutation's answers nil without :parse, which reads the JSON it prints."
     (let ((sent nil))
       (octocat-sync-define-mutation rename (title)
         :label "Renaming…"
-        :optimistic (lambda () `(("issue:o/r#12" ("title" . ,title))))
+        :optimistic `(("issue:o/r#12" ("title" . ,title)))
         :send (lambda (done) (push done sent)))
       (octocat-sync--write octocat-sync--db "(list)"
                            (octocat-sync-tests--table
@@ -465,7 +465,7 @@ A mutation's answers nil without :parse, which reads the JSON it prints."
       (octocat-sync-define-mutation tag (n)
         :label "Tagging…"
         :send (lambda (done) (push (cons n done) sent))
-        :invalidates (lambda () '((thing _))))
+        :invalidates '((thing _)))
       (octocat-sync--write octocat-sync--db "(thing 2)" (octocat-sync-tests--table "n" 2) 1.0)
       (octocat-sync-submit-each '((tag 1) (tag 2)) "Tagging" '((thing 9))
                                 (lambda (a) (setq answers a)))
@@ -490,7 +490,7 @@ One on other resources, or on none, is sent at once."
     (let ((sent nil) (inhibit-message t))
       (octocat-sync-define-mutation act (n &rest specs)
         :label (format "Act %s…" n)
-        :resources (lambda () specs)
+        :resources specs
         :send (lambda (done) (push (cons n done) sent)))
       (cl-flet ((answer (n result) (funcall (cdr (assoc n sent)) result)))
         (octocat-sync-submit '(act 1 (thing 1)))
@@ -514,7 +514,7 @@ One on other resources, or on none, is sent at once."
     (let ((sent nil) (answers nil) (inhibit-message t))
       (octocat-sync-define-mutation act (n)
         :label "Acting…"
-        :resources (lambda () '((thing 1)))
+        :resources '((thing 1))
         :send (lambda (done)
                 (if (= n 2) (error "Boom") (push (cons n done) sent))))
       (octocat-sync-submit '(act 1))
@@ -538,7 +538,7 @@ items as pages see them and as stored."
        (add-hook 'octocat-sync-invalidate-functions (lambda (keys) (setq invalidated keys)))
        (octocat-sync-define-mutation add (n)
          :label "Adding…"
-         :resources (lambda () '((thing 1)))
+         ;; Its resources are those it edits.
          :edits (lambda (answered answer)
                   (list (cons '(thing 1)
                               (lambda (data)

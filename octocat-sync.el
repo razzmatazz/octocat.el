@@ -518,10 +518,9 @@ does, of a query the answer's \"data\"; with :raw non-nil, of the
 output as `gh' prints it.  :entity, optional, is the key of the
 resource's main entity: until the resource is first fetched, a
 snapshot carries that entity's fields, as another resource stored them,
-in :partial.  :invalidates, optional, is
-a function returning the specs, `_' matching anything, of the lists
-that a change to that entity may move it in or out of: a fetch that
-changes it outdates them.  :max-age, optional, is how
+in :partial.  :invalidates, optional, is the specs, `_' matching
+anything, of the lists that a change to that entity may move it in or
+out of: a fetch that changes it outdates them.  :max-age, optional, is how
 many seconds a fetch stays good for data that rarely changes, such as a
 commit's: within it, opening doesn't refetch, but `g' does.  :poll,
 optional, is the seconds between refetches while a page on screen
@@ -991,8 +990,7 @@ none is queued, and only when no other prefetch or timed refetch runs."
     ;; gained or lost it.  A first fetch has nothing to compare.
     (when (and entity (eql fetched 1) (not (eq (car-safe result) 'error))
                (not (equal before (funcall fields))))
-      (octocat-sync--invalidate
-       db (and (plist-get props :invalidates) (funcall (plist-get props :invalidates))))))
+      (octocat-sync--invalidate db (plist-get props :invalidates))))
   (let ((waiting (seq-filter (lambda (w) (equal (car w) key)) octocat-sync--waiters)))
     (when waiting
       (setq octocat-sync--waiters (seq-difference octocat-sync--waiters waiting #'eq))
@@ -1028,16 +1026,16 @@ START is the function sending it while it waits its turn, see
 
 (defmacro octocat-sync-define-mutation (name args &rest props)
   "Define the mutation NAME, whose spec is (NAME . ARGS).
-PROPS are evaluated with ARGS bound:
+PROPS are evaluated with ARGS bound, when it is submitted:
 :label        what it is doing, such as \"Closing issue…\";
 :slot         where a page shows that, such as `action' (the default)
               for under a timeline, `inline' for one its :edits
               already show in place, or `merge' for the merge box;
-:resources    a function returning the specs of the resources it acts
-              on: their snapshots' :mutating has (SLOT . LABEL) while
-              it runs;
-:optimistic   optional, a function returning a list of (ENTITY-KEY .
-              FIELDS), FIELDS an alist of the values it will set;
+:resources    the specs of the resources it acts on, besides those
+              its :edits change: their snapshots' :mutating has
+              (SLOT . LABEL) while it runs;
+:optimistic   optional, a list of (ENTITY-KEY . FIELDS), FIELDS an
+              alist of the values it will set;
 :edits        optional, a function of ANSWERED and ANSWER returning a
               list of (SPEC . FUNCTION): FUNCTION returns the stored
               body of resource SPEC, entities left as refs, changed; it
@@ -1049,8 +1047,8 @@ PROPS are evaluated with ARGS bound:
               place :gh or :graphql, with :repo, :vars and :parse, as
               for `octocat-sync-define-resource', the answer nil
               without :parse;
-:invalidates  optional, a function returning the specs, `_' matching
-              anything, of resources it makes outdated."
+:invalidates  optional, the specs, `_' matching anything, of resources
+              it makes outdated."
   (declare (indent 2) (debug (&define name lambda-list &rest [keywordp form])))
   `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--mutations))
 
@@ -1093,18 +1091,17 @@ a cons, collects the specs it outdates instead of outdating them."
                            (error "Octocat: Unknown mutation `%s'" (car spec)))
                        (cdr spec)))
          (db    (octocat-sync--db))
-         (specs (append (and (plist-get props :resources) (funcall (plist-get props :resources)))
-                        (plist-get batch :resources)))
+         (edits (and (plist-get props :edits) (funcall (plist-get props :edits) nil nil)))
+         (specs (seq-uniq (append (plist-get props :resources) (mapcar #'car edits)
+                                  (plist-get batch :resources))))
          (mutation
           (list :changes (mapcar (lambda (change)
                                    (let ((fields (make-hash-table :test #'equal)))
                                      (pcase-dolist (`(,k . ,v) (cdr change))
                                        (puthash k v fields))
                                      (cons (car change) fields)))
-                                 (and (plist-get props :optimistic)
-                                      (funcall (plist-get props :optimistic))))
-                :edits (and (plist-get props :edits)
-                            (octocat-sync--keyed (funcall (plist-get props :edits) nil nil)))
+                                 (plist-get props :optimistic))
+                :edits (octocat-sync--keyed edits)
                 :resources (mapcar #'octocat-sync-spec-key specs)
                 :specs specs
                 :label (or (plist-get batch :label) (plist-get props :label))
@@ -1112,8 +1109,7 @@ a cons, collects the specs it outdates instead of outdating them."
                 :start nil))
          (answer
           (lambda (result)
-            (let ((outdated (and (plist-get props :invalidates)
-                                 (funcall (plist-get props :invalidates))))
+            (let ((outdated (plist-get props :invalidates))
                   (held     (plist-get batch :outdated)))
               (when held
                 (setcar held (append outdated (car held))))

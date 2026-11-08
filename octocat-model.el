@@ -41,9 +41,26 @@
 ;; Builders for the entities several pages share.  Fields keep the names
 ;; of GitHub's GraphQL API, which `gh ... --json' also uses.
 
-(defun octocat-model-item-key (type repo number)
-  "Return the key of issue or PR (TYPE `issue' or `pr') NUMBER of REPO."
-  (format "%s:%s#%d" type (downcase repo) number))
+(defun octocat-model--item-type (kind)
+  "Return the entity type, `pr' or `issue', of KIND.
+KIND is any name the pages give it: \"pr\" or \"issue\" as `gh' has
+them, `pr' or `issue', or `pulls' or `issues' as the lists have them."
+  (if (member kind '("pr" pr pulls)) 'pr 'issue))
+
+(defun octocat-model--list-kind (kind)
+  "Return KIND, as `octocat-model--item-type' takes it, as the lists name it."
+  (if (eq (octocat-model--item-type kind) 'pr) 'pulls 'issues))
+
+(defun octocat-model-item-key (kind repo number)
+  "Return the key of issue or PR NUMBER of REPO.
+KIND is as `octocat-model--item-type' takes it."
+  (format "%s:%s#%d" (octocat-model--item-type kind) (downcase repo) number))
+
+(defun octocat-model--item-lists (kind repo)
+  "Return the specs of the lists and counts of the KIND items of REPO.
+What opening, closing or merging one of them changes."
+  (let ((kind (octocat-model--list-kind kind)))
+    `((list-items ,kind ,repo _ _) (counts ,kind ,repo) (repo-summary ,repo))))
 
 (defun octocat-model-user (user)
   "Return the `user' entity of USER, a table with a \"login\", or USER.
@@ -313,7 +330,7 @@ cons \\=(error . MSG).  One API call."
 (defun octocat-model-list-tree (kind repo page)
   "Return PAGE, a page of KIND items of REPO, as a list resource's tree.
 PAGE is as `octocat--parse-list-items' returns; each item is an entity."
-  (let ((type (if (eq kind 'pulls) 'pr 'issue)))
+  (let ((type (octocat-model--item-type kind)))
     (octocat--table "nodes" (vconcat (mapcar (lambda (item) (octocat-model-item type repo item))
                                              (plist-get page :items)))
                     "cursor" (plist-get page :cursor))))
@@ -413,7 +430,12 @@ Only the edits of a pending mutation set it, so it is never stored.")
 
 (defun octocat-model-detail-spec (kind repo number)
   "Return the spec of the page resource of issue or PR (KIND) NUMBER of REPO."
-  (list (if (equal kind "pr") 'pr 'issue) repo number))
+  (list (octocat-model--item-type kind) repo number))
+
+(defun octocat-model--detail-edit (kind repo number fn)
+  "Return the :edits of the page resource of issue or PR (KIND) NUMBER of REPO.
+FN gets its data and returns it changed."
+  (list (cons (octocat-model-detail-spec kind repo number) fn)))
 
 ;; The login a comment being posted shows as its author.
 (octocat-sync-define-resource viewer ()
@@ -473,33 +495,24 @@ what is being done to it, such as \"saving…\"."
 (octocat-sync-define-mutation set-state (kind verb repo number)
   :label (format "%s %s…" (if (equal verb "close") "Closing" "Reopening")
                  (if (equal kind "pr") "pull request" "issue"))
-  :resources (lambda () (list (octocat-model-detail-spec kind repo number)))
-  :optimistic (lambda ()
-                `((,(octocat-model-item-key (if (equal kind "pr") 'pr 'issue) repo number)
-                   ("state" . ,(if (equal verb "close") "CLOSED" "OPEN")))))
+  :resources (list (octocat-model-detail-spec kind repo number))
+  :optimistic `((,(octocat-model-item-key kind repo number)
+                 ("state" . ,(if (equal verb "close") "CLOSED" "OPEN"))))
   :gh (list kind verb (number-to-string number) "--repo" repo)
   ;; The lists it moves in or out of, their counts, and the new event.
-  :invalidates (lambda ()
-                 (let ((kind (if (equal kind "pr") 'pulls 'issues)))
-                   `((timeline-events ,repo ,number)
-                     (list-items ,kind ,repo _ _)
-                     (counts ,kind ,repo)
-                     (repo-summary ,repo)))))
+  :invalidates `((timeline-events ,repo ,number) ,@(octocat-model--item-lists kind repo)))
 
 (octocat-sync-define-mutation set-title (kind repo number title)
   :label "Renaming…"
-  :resources (lambda () (list (octocat-model-detail-spec kind repo number)))
-  :optimistic (lambda ()
-                `((,(octocat-model-item-key (if (equal kind "pr") 'pr 'issue) repo number)
-                   ("title" . ,title))))
+  :resources (list (octocat-model-detail-spec kind repo number))
+  :optimistic `((,(octocat-model-item-key kind repo number) ("title" . ,title)))
   :gh (list kind "edit" (number-to-string number) "--repo" repo "--title" title)
   ;; It adds a "changed the title" event.
-  :invalidates (lambda () `((timeline-events ,repo ,number))))
+  :invalidates `((timeline-events ,repo ,number)))
 
 (octocat-sync-define-mutation comment (kind repo number body)
   :label "Posting comment…"
   :slot 'inline
-  :resources (lambda () (list (octocat-model-detail-spec kind repo number)))
   ;; GitHub answers with the comment, which takes the place of the one
   ;; shown, so it is never gone in between.
   :edits (lambda (answered answer)
@@ -510,51 +523,46 @@ what is being done to it, such as \"saving…\"."
                      body
                      (octocat--get (plist-get (octocat-sync-read '(viewer)) :data) "login")
                      (format-time-string "%Y-%m-%dT%H:%M:%SZ" nil t)))))
-             (list (cons (octocat-model-detail-spec kind repo number)
-                         (lambda (data) (octocat-model--put-comment data comment))))))
+             (octocat-model--detail-edit
+              kind repo number (lambda (data) (octocat-model--put-comment data comment)))))
   :gh (list "api" (format "repos/%s/issues/%d/comments" repo number) "-f" (concat "body=" body))
   :parse #'identity
   ;; The comment count, on the entity.
-  :invalidates (lambda () (list (octocat-model-detail-spec kind repo number))))
+  :invalidates (list (octocat-model-detail-spec kind repo number)))
 
 (octocat-sync-define-mutation edit-body (kind repo number body)
   :label "Saving description…"
   :slot 'inline
-  :resources (lambda () (list (octocat-model-detail-spec kind repo number)))
-  :optimistic (lambda ()
-                `((,(octocat-model-item-key (if (equal kind "pr") 'pr 'issue) repo number)
-                   ("body" . ,body))))
+  :optimistic `((,(octocat-model-item-key kind repo number) ("body" . ,body)))
   ;; Only the spinner: the body is the entity's.
   :edits (lambda (answered _)
            (unless answered
-             (list (cons (octocat-model-detail-spec kind repo number)
-                         (lambda (data)
-                           (puthash octocat-model-pending "saving…" data)
-                           data)))))
+             (octocat-model--detail-edit
+              kind repo number (lambda (data)
+                                 (puthash octocat-model-pending "saving…" data)
+                                 data))))
   :gh (list kind "edit" (number-to-string number) "--repo" repo "--body" body))
 
 (octocat-sync-define-mutation edit-comment (kind repo number comment-id body)
   :label "Saving comment…"
   :slot 'inline
-  :resources (lambda () (list (octocat-model-detail-spec kind repo number)))
   :edits (lambda (answered _)
-           (list (cons (octocat-model-detail-spec kind repo number)
-                       (lambda (data)
-                         (octocat-model--set-comment-body
-                          data comment-id body (unless answered "saving…"))))))
+           (octocat-model--detail-edit
+            kind repo number (lambda (data)
+                               (octocat-model--set-comment-body
+                                data comment-id body (unless answered "saving…")))))
   :gh (list "api" (format "repos/%s/issues/comments/%s" repo comment-id)
             "--method" "PATCH" "-f" (format "body=%s" body)))
 
 (octocat-sync-define-mutation edit-values (kind repo number flag add remove)
   :label (format "Saving %ss…" flag)
-  :resources (lambda () (list (octocat-model-detail-spec kind repo number)))
+  :resources (list (octocat-model-detail-spec kind repo number))
   :gh (append (list kind "edit" (number-to-string number) "--repo" repo)
               (and add (list (concat "--add-" flag) (string-join add ",")))
               (and remove (list (concat "--remove-" flag) (string-join remove ","))))
-  :invalidates (lambda ()
-                 `(,(octocat-model-detail-spec kind repo number)
-                   (timeline-events ,repo ,number)
-                   (list-items ,(if (equal kind "pr") 'pulls 'issues) ,repo _ _))))
+  :invalidates `(,(octocat-model-detail-spec kind repo number)
+                 (timeline-events ,repo ,number)
+                 (list-items ,(octocat-model--list-kind kind) ,repo _ _)))
 
 ;; Kept long: only you change them, and `react' keeps them up to date.
 (octocat-sync-define-resource viewer-reactions (subject)
@@ -592,15 +600,12 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
   :label (if add "Reacting…" "Taking reaction back…")
   ;; The changed count is all a page shows of it.
   :slot 'reaction
-  :resources (lambda () (list (octocat-model-detail-spec kind repo number)
-                              `(viewer-reactions ,subject)))
-  :optimistic (lambda ()
-                (let ((item (octocat-model-detail-read
-                             (octocat-model-detail-spec kind repo number))))
-                  (when (equal (octocat--get item "id") subject)
-                    `((,(octocat-model-item-key (if (equal kind "pr") 'pr 'issue) repo number)
-                       ("reactionGroups" . ,(octocat--toggle-reaction
-                                             (gethash "reactionGroups" item) content add)))))))
+  :optimistic (let ((item (octocat-model-detail-read
+                           (octocat-model-detail-spec kind repo number))))
+                (when (equal (octocat--get item "id") subject)
+                  `((,(octocat-model-item-key kind repo number)
+                     ("reactionGroups" . ,(octocat--toggle-reaction
+                                           (gethash "reactionGroups" item) content add))))))
   :edits (lambda (_answered _)
            (list (cons (octocat-model-detail-spec kind repo number)
                        (lambda (data) (octocat-model--react-comment data subject content add)))
@@ -627,13 +632,11 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
   :gh (list "issue" "create" "--repo" repo "--title" title "--body" body)
   :raw t
   :parse #'octocat-model--issue-parse-created
-  :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
-                            (repo-summary ,repo))))
+  :invalidates (octocat-model--item-lists 'issue repo))
 
 (octocat-sync-define-resource issue (repo number)
   :entity (octocat-model-item-key 'issue repo number)
-  :invalidates (lambda () `((list-items issues ,repo _ _) (counts issues ,repo)
-                            (repo-summary ,repo)))
+  :invalidates (octocat-model--item-lists 'issue repo)
   :gh (list "issue" "view" (number-to-string number) "--repo" repo
             "--json" (concat "id,number,title,author,state,body,"
                              "createdAt,closedAt,"
@@ -666,16 +669,15 @@ none.  DELETE non-nil deletes the head branch as well."
 (octocat-sync-define-mutation merge-pr (repo number method text delete)
   :label "Merging pull request…"
   :slot 'merge
-  :resources (lambda () `((pr ,repo ,number)))
+  :resources `((pr ,repo ,number))
   :gh (octocat-model--pr-merge-args repo number method text delete)
-  :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number)
-                            (list-items pulls ,repo _ _) (counts pulls ,repo)
-                            (repo-summary ,repo))))
+  :invalidates `((pr ,repo ,number) (timeline-events ,repo ,number)
+                 ,@(octocat-model--item-lists 'pr repo)))
 
 (octocat-sync-define-mutation approve-runs (repo number ids)
   :label "Approving workflows…"
   :slot 'approve
-  :resources (lambda () `((pr ,repo ,number)))
+  :resources `((pr ,repo ,number))
   ;; One request per run; a failure is reported once all were tried.
   :send (lambda (done)
           (let (failed)
@@ -692,18 +694,17 @@ none.  DELETE non-nil deletes the head branch as well."
                                                  (setq failed (cdr result)))
                                                (next (cdr ids)))))))
               (next ids))))
-  :invalidates (lambda () `((pr ,repo ,number) (awaiting-runs ,repo _))))
+  :invalidates `((pr ,repo ,number) (awaiting-runs ,repo _)))
 
 (octocat-sync-define-mutation set-draft (repo number draft)
   :label (if draft "Converting to draft…" "Marking ready for review…")
   :slot 'merge
-  :resources (lambda () `((pr ,repo ,number)))
-  :optimistic (lambda ()
-                `((,(octocat-model-item-key 'pr repo number) ("isDraft" . ,(if draft t :false)))))
+  :resources `((pr ,repo ,number))
+  :optimistic `((,(octocat-model-item-key 'pr repo number) ("isDraft" . ,(if draft t :false))))
   :gh (append (list "pr" "ready" (number-to-string number) "--repo" repo)
               (and draft (list "--undo")))
   ;; It adds an event, and may change what the merge box allows.
-  :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number))))
+  :invalidates `((pr ,repo ,number) (timeline-events ,repo ,number)))
 
 
 (defconst octocat-model--pr-parts
@@ -714,8 +715,7 @@ lists do not share.")
 
 (octocat-sync-define-resource pr (repo number)
   :entity (octocat-model-item-key 'pr repo number)
-  :invalidates (lambda () `((list-items pulls ,repo _ _) (counts pulls ,repo)
-                            (repo-summary ,repo)))
+  :invalidates (octocat-model--item-lists 'pr repo)
   :gh (list "pr" "view" (number-to-string number) "--repo" repo
             "--json" (concat "id,number,title,author,state,body,"
                              "createdAt,mergedAt,closedAt,"
@@ -918,27 +918,29 @@ thread left with no comment is dropped."
   "Return the spec of the review threads of PR NUMBER of REPO."
   `(pr-review-threads ,repo ,number))
 
+(defun octocat-model--threads-edit (repo number fn)
+  "Return the :edits of the review threads of PR NUMBER of REPO.
+FN gets their data and returns it changed."
+  (list (cons (octocat-model-review-threads-spec repo number) fn)))
+
 (octocat-sync-define-mutation review-draft-add (repo number pr-id review-id commit range body login)
   :label "Saving draft…"
   :slot 'inline
-  :resources (lambda () (list (octocat-model-review-threads-spec repo number)))
   ;; GitHub answers with the pending review's id and the new thread.
   :edits (lambda (answered answer)
-           (list (cons (octocat-model-review-threads-spec repo number)
-                       (lambda (data)
-                         (when answered
-                           (unless review-id
-                             (octocat-model--review-set-pending
-                              data (octocat--table "id" (car answer) "commit" commit))))
-                         (let ((thread (if answered
-                                           (cdr answer)
-                                         (octocat-model--review-new-thread
-                                          range (octocat-model--review-draft body login)))))
-                           (when data
-                             (puthash "threads"
-                                      (vconcat (gethash "threads" data) (vector thread))
-                                      data)))
-                         data))))
+           (octocat-model--threads-edit
+            repo number
+            (lambda (data)
+              (when (and answered (not review-id))
+                (octocat-model--review-set-pending
+                 data (octocat--table "id" (car answer) "commit" commit)))
+              (let ((thread (if answered
+                                (cdr answer)
+                              (octocat-model--review-new-thread
+                               range (octocat-model--review-draft body login)))))
+                (when data
+                  (puthash "threads" (vconcat (gethash "threads" data) (vector thread)) data)))
+              data)))
   :send (lambda (done)
           (octocat-model--with-review
            pr-id review-id commit
@@ -980,16 +982,16 @@ thread left with no comment is dropped."
     (repo number pr-id review-id commit thread-id body login)
   :label "Saving draft…"
   :slot 'inline
-  :resources (lambda () (list (octocat-model-review-threads-spec repo number)))
   :edits (lambda (answered answer)
-           (list (cons (octocat-model-review-threads-spec repo number)
-                       (lambda (data)
-                         (when (and answered (not review-id))
-                           (octocat-model--review-set-pending
-                            data (octocat--table "id" (car answer) "commit" commit)))
-                         (octocat-model--review-add-reply
-                          data thread-id
-                          (if answered (cdr answer) (octocat-model--review-draft body login)))))))
+           (octocat-model--threads-edit
+            repo number
+            (lambda (data)
+              (when (and answered (not review-id))
+                (octocat-model--review-set-pending
+                 data (octocat--table "id" (car answer) "commit" commit)))
+              (octocat-model--review-add-reply
+               data thread-id
+               (if answered (cdr answer) (octocat-model--review-draft body login))))))
   :send (lambda (done)
           (octocat-model--with-review
            pr-id review-id commit
@@ -1010,31 +1012,30 @@ thread left with no comment is dropped."
 (octocat-sync-define-mutation review-reply-now (repo number thread-id comment-id body login)
   :label "Posting reply…"
   :slot 'inline
-  :resources (lambda () (list (octocat-model-review-threads-spec repo number)))
   :edits (lambda (answered _)
            (unless answered
              (let ((c (octocat-model--review-draft body login)))
                (puthash "state" "SUBMITTED" c)
-               (list (cons (octocat-model-review-threads-spec repo number)
-                           (lambda (data) (octocat-model--review-add-reply data thread-id c)))))))
+               (octocat-model--threads-edit
+                repo number (lambda (data) (octocat-model--review-add-reply data thread-id c))))))
   :gh (list "api" (format "repos/%s/pulls/%d/comments/%d/replies" repo number comment-id)
             "-f" (concat "body=" body))
-  :invalidates (lambda () (list (octocat-model-review-threads-spec repo number))))
+  :invalidates (list (octocat-model-review-threads-spec repo number)))
 
 (octocat-sync-define-mutation review-comment-edit (repo number node-id body)
   :label "Saving comment…"
   :slot 'inline
-  :resources (lambda () (list (octocat-model-review-threads-spec repo number)))
   :edits (lambda (_answered _)
-           (list (cons (octocat-model-review-threads-spec repo number)
-                       (lambda (data)
-                         (octocat-model--review-map-comments
-                          data (lambda (c)
-                                 (if (not (equal (gethash "id" c) node-id))
-                                     c
-                                   (let ((c (copy-hash-table c)))
-                                     (puthash "body" body c)
-                                     c))))))))
+           (octocat-model--threads-edit
+            repo number
+            (lambda (data)
+              (octocat-model--review-map-comments
+               data (lambda (c)
+                      (if (not (equal (gethash "id" c) node-id))
+                          c
+                        (let ((c (copy-hash-table c)))
+                          (puthash "body" body c)
+                          c)))))))
   :graphql (concat "mutation($id:ID!,$body:String!){updatePullRequestReviewComment("
                    "input:{pullRequestReviewCommentId:$id,body:$body}){"
                    "pullRequestReviewComment{id}}}")
@@ -1043,12 +1044,12 @@ thread left with no comment is dropped."
 (octocat-sync-define-mutation review-comment-delete (repo number node-id)
   :label "Deleting comment…"
   :slot 'inline
-  :resources (lambda () (list (octocat-model-review-threads-spec repo number)))
   :edits (lambda (_answered _)
-           (list (cons (octocat-model-review-threads-spec repo number)
-                       (lambda (data)
-                         (octocat-model--review-map-comments
-                          data (lambda (c) (unless (equal (gethash "id" c) node-id) c)))))))
+           (octocat-model--threads-edit
+            repo number
+            (lambda (data)
+              (octocat-model--review-map-comments
+               data (lambda (c) (unless (equal (gethash "id" c) node-id) c))))))
   :graphql (concat "mutation($id:ID!){deletePullRequestReviewComment(input:{id:$id}){"
                    "clientMutationId}}")
   :vars `(("id" . ,node-id)))
@@ -1056,17 +1057,17 @@ thread left with no comment is dropped."
 (octocat-sync-define-mutation review-thread-resolve (repo number thread-id resolve)
   :label (if resolve "Resolving…" "Unresolving…")
   :slot 'inline
-  :resources (lambda () (list (octocat-model-review-threads-spec repo number)))
   :edits (lambda (answered answer)
-           (list (cons (octocat-model-review-threads-spec repo number)
-                       (lambda (data)
-                         (octocat-model--review-map-threads
-                          data (lambda (thread)
-                                 (cond ((not (equal (gethash "id" thread) thread-id)) thread)
-                                       (answered answer)
-                                       (t (let ((thread (copy-hash-table thread)))
-                                            (puthash "isResolved" (and resolve t) thread)
-                                            thread)))))))))
+           (octocat-model--threads-edit
+            repo number
+            (lambda (data)
+              (octocat-model--review-map-threads
+               data (lambda (thread)
+                      (cond ((not (equal (gethash "id" thread) thread-id)) thread)
+                            (answered answer)
+                            (t (let ((thread (copy-hash-table thread)))
+                                 (puthash "isResolved" (and resolve t) thread)
+                                 thread))))))))
   :send (lambda (done)
           (let ((field (if resolve "resolveReviewThread" "unresolveReviewThread")))
             (octocat-model--review-graphql
@@ -1087,10 +1088,8 @@ thread left with no comment is dropped."
 (octocat-sync-define-mutation review-discard (repo number review-id)
   :label "Discarding review…"
   :slot 'inline
-  :resources (lambda () (list (octocat-model-review-threads-spec repo number)))
   :edits (lambda (_answered _)
-           (list (cons (octocat-model-review-threads-spec repo number)
-                       #'octocat-model--review-drop-drafts)))
+           (octocat-model--threads-edit repo number #'octocat-model--review-drop-drafts))
   :graphql (concat "mutation($id:ID!){deletePullRequestReview(input:{pullRequestReviewId:$id}){"
                    "clientMutationId}}")
   :vars `(("id" . ,review-id)))
@@ -1110,21 +1109,22 @@ An empty BODY is left out, as `gh' rejects an empty --body."
 (octocat-sync-define-mutation review-pr (repo number flag body &optional review-id)
   :label "Submitting review…"
   :slot 'review
-  :resources (lambda () `((pr ,repo ,number) ,(octocat-model-review-threads-spec repo number)))
+  :resources `((pr ,repo ,number) ,(octocat-model-review-threads-spec repo number))
   ;; The drafts are no longer drafts.
   :edits (lambda (_answered _)
            (when review-id
-             (list (cons (octocat-model-review-threads-spec repo number)
-                         (lambda (data)
-                           (octocat-model--review-set-pending
-                            (octocat-model--review-map-comments
-                             data (lambda (c)
-                                    (if (not (equal (gethash "state" c) "PENDING"))
-                                        c
-                                      (let ((c (copy-hash-table c)))
-                                        (puthash "state" "SUBMITTED" c)
-                                        c))))
-                            nil))))))
+             (octocat-model--threads-edit
+              repo number
+              (lambda (data)
+                (octocat-model--review-set-pending
+                 (octocat-model--review-map-comments
+                  data (lambda (c)
+                         (if (not (equal (gethash "state" c) "PENDING"))
+                             c
+                           (let ((c (copy-hash-table c)))
+                             (puthash "state" "SUBMITTED" c)
+                             c))))
+                 nil)))))
   ;; `gh pr review' fails while you have a pending review: it is
   ;; submitted through GraphQL instead.
   :send (lambda (done)
@@ -1143,8 +1143,8 @@ An empty BODY is left out, as `gh' rejects an empty --body."
                              #'ignore done)))
   ;; The review joins the timeline, may add review comments and may
   ;; change the merge box.
-  :invalidates (lambda () `((pr ,repo ,number) (timeline-events ,repo ,number)
-                            ,(octocat-model-review-threads-spec repo number))))
+  :invalidates `((pr ,repo ,number) (timeline-events ,repo ,number)
+                 ,(octocat-model-review-threads-spec repo number)))
 
 ;;;; Commits and compares
 
@@ -1614,8 +1614,7 @@ vector: a shape the store can hold as JSON."
 (octocat-sync-define-resource run (repo run-id)
   :entity (format "run:%s/%s" (downcase repo) run-id)
   ;; Annotations come as the run's jobs finish.
-  :invalidates (lambda () `((runs ,repo _ _) (workflow ,repo _ _)
-                            (run-annotations ,repo ,run-id)))
+  :invalidates `((runs ,repo _ _) (workflow ,repo _ _) (run-annotations ,repo ,run-id))
   :poll (lambda (data) (octocat-model--poll-status (octocat--get data "item" "status")))
   :fetch (lambda (done)
            (octocat--fetch-run
@@ -1945,7 +1944,7 @@ nothing."
 (octocat-sync-define-mutation dispatch-workflow (repo id ref inputs)
   :label "Starting workflow…"
   :slot 'dispatch
-  :resources (lambda () `((workflow ,repo ,id)))
+  :resources `((workflow ,repo ,id))
   :gh (append (list "api" "--method" "POST"
                     (format "repos/%s/actions/workflows/%s/dispatches" repo id)
                     "-f" (concat "ref=" ref)
@@ -1955,7 +1954,7 @@ nothing."
                       inputs))
   :raw t
   :parse #'octocat-model--workflow-parse-dispatched
-  :invalidates (lambda () `((runs ,repo _ _))))
+  :invalidates `((runs ,repo _ _)))
 
 (octocat-sync-define-resource workflow (repo id)
   :gh (list "api" (format "repos/%s/actions/workflows/%s" repo id)))
