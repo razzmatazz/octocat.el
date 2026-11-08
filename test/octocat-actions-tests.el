@@ -368,6 +368,19 @@ jobs:
     (should (equal (octocat-workflow--input-label (aref inputs 1) 12) "Version t… *")))
   (should (eq (gethash "dispatch" (octocat-model--workflow-dispatch-spec "on: push\n")) :false)))
 
+(ert-deftest octocat-workflow-test-dispatch-spec-typed ()
+  "Booleans and numbers in a workflow file are read as the text they are."
+  (let ((in (aref (gethash "inputs" (octocat-model--workflow-dispatch-spec "on:
+  workflow_dispatch:
+    inputs:
+      n: {type: choice, options: [1, 2], default: 2, required: false}
+      dry: {type: boolean, default: false}
+"))
+                  0)))
+    (should (equal (gethash "options" in) ["1" "2"]))
+    (should (equal (gethash "default" in) "2"))
+    (should (eq (gethash "required" in) :false))))
+
 (ert-deftest octocat-workflow-test-input-values-and-errors ()
   "Unset inputs take their default; required, number and choice are checked."
   (let* ((inputs (append (gethash "inputs" (octocat-model--workflow-dispatch-spec

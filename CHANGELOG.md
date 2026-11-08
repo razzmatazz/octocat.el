@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Octocat now needs the yaml package, to read workflow files
 * An older octocat recreates a sync store made by a newer one, instead of refusing to start
 * An image in markdown may be half the window tall by default, not ¾
 * An image in markdown may be ¾ of the window tall, not 20 lines (`octocat-image-max-lines`)

@@ -45,6 +45,8 @@ You need:
   Homebrew and MacPorts directories; set `octocat-gh-program` to its
   file name if it is elsewhere.
 - **[vui.el](https://melpa.org/#/vui)**, from MELPA.
+- **[yaml.el](https://elpa.gnu.org/packages/yaml.html)**, from GNU ELPA
+  or MELPA, to read workflow files.
 
 Then clone this repository and load it:
 

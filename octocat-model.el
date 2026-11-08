@@ -35,6 +35,7 @@
 (require 'subr-x)
 (require 'octocat-core)
 (require 'octocat-sync)
+(require 'yaml)
 
 ;;;; Entities
 ;;
@@ -1659,165 +1660,40 @@ vector: a shape the store can hold as JSON."
                                            runs))))
 
 
-;; GitHub's API doesn't say what a `workflow_dispatch' trigger asks:
-;; it is read from the workflow's file, at the branch it is to run on.
-;; Elisp has no YAML reader, so `octocat-model--workflow-yaml-parse' reads
-;; the little of YAML that triggers are written in, and only the `on'
-;; block is given to it.
+;; A workflow's file says what GitHub's API doesn't: what a
+;; `workflow_dispatch' trigger asks, read at the branch it is to run on,
+;; and which jobs of a run wait for which, read at the run's commit for
+;; the run page's job graph (see "Jobs" under "Runs").
 
-(defun octocat-model--workflow-yaml-uncomment (line)
-  "Return LINE without its comment and trailing blanks.
-A comment starts at a `#' outside quotes, first or after a blank."
-  (let ((i 0) (n (length line)) quote end)
-    (while (and (< i n) (not end))
-      (let ((c (aref line i)))
-        (cond (quote (when (eq c quote) (setq quote nil)))
-              ((memq c '(?\" ?\')) (setq quote c))
-              ((and (eq c ?#) (or (zerop i) (memq (aref line (1- i)) '(?\s ?\t))))
-               (setq end i))))
-      (setq i (1+ i)))
-    (string-trim-right (substring line 0 end))))
+(defconst octocat-model--workflow-max-file-size (* 512 1024)
+  "The longest workflow file read; a longer one has no triggers or jobs.")
 
-(defun octocat-model--workflow-yaml-item-p (text)
-  "Return non-nil if TEXT, a trimmed line, is an item of a block sequence."
-  (or (equal text "-") (string-prefix-p "- " text)))
+(defun octocat-model--workflow-parse (yaml)
+  "Return workflow file YAML as an alist, or nil when it can't be read.
+An empty value is nil, a false one `:false'.  A file longer than
+`octocat-model--workflow-max-file-size' is not read."
+  (let ((doc (and (<= (length yaml) octocat-model--workflow-max-file-size)
+                  (condition-case nil
+                      (yaml-parse-string yaml :object-type 'alist :object-key-type 'string
+                                         :sequence-type 'array :null-object nil)
+                    (error nil)))))
+    (and (consp doc) doc)))
 
-(defun octocat-model--workflow-yaml-key (text)
-  "Return (KEY . REST) if TEXT, a trimmed line, is a mapping entry.
-REST is what follows the colon, \"\" when nothing does."
-  (when (string-match (concat "\\`\\(\"[^\"]*\"\\|'[^']*'\\|[^\"' ][^:]*?\\)"
-                              "[ \t]*:\\(?:[ \t]+\\(.*\\)\\)?\\'")
-                      text)
-    (cons (octocat-model--workflow-yaml-scalar (match-string 1 text))
-          (or (match-string 2 text) ""))))
-
-(defun octocat-model--workflow-yaml-split (text)
-  "Return TEXT, the inside of a flow collection, split at its top commas."
-  (let ((i 0) (start 0) (depth 0) quote parts)
-    (while (< i (length text))
-      (let ((c (aref text i)))
-        (cond (quote (when (eq c quote) (setq quote nil)))
-              ((memq c '(?\" ?\')) (setq quote c))
-              ((memq c '(?\[ ?\{)) (setq depth (1+ depth)))
-              ((memq c '(?\] ?\})) (setq depth (1- depth)))
-              ((and (eq c ?,) (zerop depth))
-               (push (substring text start i) parts)
-               (setq start (1+ i)))))
-      (setq i (1+ i)))
-    (push (substring text start) parts)
-    (seq-remove #'string-empty-p (mapcar #'string-trim (nreverse parts)))))
-
-(defun octocat-model--workflow-yaml-scalar (text)
-  "Return TEXT, a value on one line, as `octocat-model--workflow-yaml-parse' does."
-  (cond
-   ((member text '("" "~" "null" "Null" "NULL")) nil)
-   ((string-match "\\`\"\\(.*\\)\"\\'" text)
-    (condition-case nil (read text) (error (match-string 1 text))))
-   ((string-match "\\`'\\(.*\\)'\\'" text)
-    (string-replace "''" "'" (match-string 1 text)))
-   ((string-match "\\`\\[\\(.*\\)\\]\\'" text)
-    (vconcat (mapcar #'octocat-model--workflow-yaml-scalar
-                     (octocat-model--workflow-yaml-split (match-string 1 text)))))
-   ((string-match "\\`{\\(.*\\)}\\'" text)
-    (delq nil (mapcar (lambda (part)
-                        (when-let* ((pair (octocat-model--workflow-yaml-key part)))
-                          (cons (car pair) (octocat-model--workflow-yaml-scalar (cdr pair)))))
-                      (octocat-model--workflow-yaml-split (match-string 1 text)))))
-   (t text)))
-
-(defun octocat-model--workflow-yaml-parse (text)
-  "Return TEXT, YAML, as Lisp.
-A mapping is an alist of (KEY . VALUE), in order, a sequence a vector,
-a scalar a string, and an empty value nil.  It reads block mappings
-and sequences, flow ones on one line, quoted and plain scalars and
-block scalars (`|', `>'): what triggers are written in.  Anchors, tags
-and values over several lines otherwise are not read."
-  (let* ((lines (vconcat
-                 (mapcar (lambda (raw)
-                           (let ((s (octocat-model--workflow-yaml-uncomment raw)))
-                             ;; (INDENT TEXT RAW); INDENT nil for a blank line
-                             (list (and (not (string-blank-p s))
-                                        (- (length s) (length (string-trim-left s))))
-                                   (string-trim s) raw)))
-                         (split-string text "\n"))))
-         (i 0))
-    (cl-labels
-        ((indent ()
-           (while (and (< i (length lines)) (null (car (aref lines i))))
-             (setq i (1+ i)))
-           (and (< i (length lines)) (car (aref lines i))))
-         (line () (nth 1 (aref lines i)))
-         (node (min)
-           (let ((ind (indent)))
-             (cond ((or (null ind) (< ind min)) nil)
-                   ((octocat-model--workflow-yaml-item-p (line)) (items ind))
-                   (t (pairs ind)))))
-         (items (ind)
-           (let (out)
-             (while (and (eql (indent) ind) (octocat-model--workflow-yaml-item-p (line)))
-               (let ((rest (string-trim-left (substring (line) 1))))
-                 (cond ((string-empty-p rest)
-                        (setq i (1+ i))
-                        (push (node (1+ ind)) out))
-                       ((octocat-model--workflow-yaml-key rest)
-                        ;; "- key: value" starts a mapping at key's column.
-                        (aset lines i (list (+ ind (- (length (line)) (length rest))) rest nil))
-                        (push (pairs (car (aref lines i))) out))
-                       (t (setq i (1+ i))
-                          (push (octocat-model--workflow-yaml-scalar rest) out)))))
-             (vconcat (nreverse out))))
-         (pairs (ind)
-           (let (out)
-             (while (and (eql (indent) ind) (octocat-model--workflow-yaml-key (line)))
-               (pcase-let ((`(,key . ,rest) (octocat-model--workflow-yaml-key (line))))
-                 (setq i (1+ i))
-                 (push (cons key
-                             (cond ((string-match-p "\\`[|>][-+0-9]*\\'" rest)
-                                    (block ind (eq (aref rest 0) ?>)))
-                                   ((not (string-empty-p rest))
-                                    (octocat-model--workflow-yaml-scalar rest))
-                                   ;; A sequence may sit at its key's indent.
-                                   ((and (eql (indent) ind)
-                                         (octocat-model--workflow-yaml-item-p (line)))
-                                    (items ind))
-                                   (t (node (1+ ind)))))
-                       out)))
-             (nreverse out)))
-         (block (ind folded)
-           (let (raws)
-             (while (and (< i (length lines))
-                         (let ((raw (nth 2 (aref lines i))))
-                           (and raw (or (string-blank-p raw)
-                                        (> (- (length raw) (length (string-trim-left raw)))
-                                           ind)))))
-               (push (nth 2 (aref lines i)) raws)
-               (setq i (1+ i)))
-             (let* ((raws (nreverse raws))
-                    (cut  (apply #'min most-positive-fixnum
-                                 (mapcar (lambda (r) (- (length r) (length (string-trim-left r))))
-                                         (seq-remove #'string-blank-p raws)))))
-               (string-trim-right
-                (string-join (mapcar (lambda (r) (if (string-blank-p r) "" (substring r cut)))
-                                     raws)
-                             (if folded " " "\n")))))))
-      (node 0))))
+(defun octocat-model--workflow-scalar (value)
+  "Return VALUE, a scalar of a workflow file, as a string, or nil.
+A boolean or number is written back as text, as GitHub passes it."
+  (pcase value
+    ('t "true")
+    (:false "false")
+    ((pred numberp) (number-to-string value))
+    ((pred stringp) value)))
 
 (defun octocat-model--workflow-yaml-on (yaml)
   "Return the triggers of workflow file YAML, its `on' value, as Lisp.
-Only the `on' block is read, so what the jobs are written in does not
-matter.  YAML 1.1 reads a bare `on' as true, so `true' is taken too."
-  (let ((lines (split-string yaml "\n")) block)
-    (while (and lines (not (string-match-p "\\`\\(on\\|\"on\"\\|'on'\\|true\\)[ \t]*:"
-                                           (car lines))))
-      (setq lines (cdr lines)))
-    (when lines
-      (push (car lines) block)
-      (setq lines (cdr lines))
-      (while (and lines (let ((l (octocat-model--workflow-yaml-uncomment (car lines))))
-                          (or (string-empty-p l) (memq (aref l 0) '(?\s ?\t ?-)))))
-        (push (car lines) block)
-        (setq lines (cdr lines)))
-      (cdar (octocat-model--workflow-yaml-parse (string-join (nreverse block) "\n"))))))
+A tool writing YAML 1.1, which reads a bare `on' as true, may have
+written the key as `true', so that is taken too."
+  (let ((doc (octocat-model--workflow-parse yaml)))
+    (cdr (or (assoc "on" doc) (assoc "true" doc)))))
 
 (defun octocat-model--workflow-dispatch-spec (yaml)
   "Return what running workflow file YAML by hand asks, as a hash-table.
@@ -1835,81 +1711,46 @@ when given, \"description\" and \"default\", strings."
     (puthash "inputs"
              (vconcat
               (mapcar (pcase-lambda (`(,name . ,props))
-                        (let ((in  (make-hash-table :test #'equal))
-                              (get (lambda (k) (and (consp props) (cdr (assoc k props))))))
+                        (let* ((in  (make-hash-table :test #'equal))
+                               (raw (lambda (k) (and (consp props) (cdr (assoc k props)))))
+                               (get (lambda (k) (octocat-model--workflow-scalar
+                                                 (funcall raw k)))))
                           (puthash "name" name in)
                           (puthash "type" (or (funcall get "type") "string") in)
-                          (puthash "required"
-                                   (if (member (funcall get "required") '("true" "True" "TRUE"))
-                                       t :false)
+                          (puthash "required" (if (eq (funcall raw "required") t) t :false) in)
+                          (puthash "options"
+                                   (vconcat (delq nil (mapcar #'octocat-model--workflow-scalar
+                                                              (funcall raw "options"))))
                                    in)
-                          (puthash "options" (vconcat (funcall get "options")) in)
+                          ;; A block scalar ends in a newline.
                           (dolist (k '("description" "default"))
-                            (when (stringp (funcall get k))
-                              (puthash k (funcall get k) in)))
+                            (when-let* ((v (funcall get k)))
+                              (puthash k (string-trim-right v "\n+") in)))
                           in))
                       (and (consp inputs) inputs)))
              spec)
     spec))
 
-;; GitHub's API doesn't say which jobs of a run wait for which: their
-;; `needs' is read from the workflow's file, at the run's commit, for
-;; the run page's job graph (see "Jobs" under "Runs").
-
-(defconst octocat-model--workflow-max-file-size (* 512 1024)
-  "The longest workflow file read for its jobs; a longer one has none.")
-
 (defun octocat-model--workflow-yaml-jobs (yaml)
   "Return the jobs of workflow file YAML as a vector of hash-tables.
 Each has the job's \"id\", its \"name\" when it has one, and \"needs\",
-a vector of the ids of the jobs it waits for.  Only those two keys of
-each job are given to `octocat-model--workflow-yaml-parse', so what its steps
-are written in does not matter.  A file longer than
-`octocat-model--workflow-max-file-size' is not read."
-  (let* ((lines (and (<= (length yaml) octocat-model--workflow-max-file-size)
-                     (mapcar (lambda (l) (string-trim-right l "[ \t\r]+"))
-                             (split-string yaml "\n"))))
-         (indent (lambda (l) (- (length l) (length (string-trim-left l)))))
-         (blank-p (lambda (l) (string-empty-p (octocat-model--workflow-yaml-uncomment l))))
-         jobs)
-    (while (and lines (not (string-match-p "\\`jobs[ \t]*:[ \t]*\\(#.*\\)?\\'" (car lines))))
-      (setq lines (cdr lines)))
-    (setq lines (cdr lines))
-    ;; The jobs' block: what follows `jobs:', up to the next top-level key.
-    (let* ((block (cl-loop for l in lines
-                           until (and (not (funcall blank-p l)) (zerop (funcall indent l)))
-                           unless (funcall blank-p l) collect l))
-           (job-ind (and block (funcall indent (car block)))))
-      (while block
-        (let ((id (car (octocat-model--workflow-yaml-key (string-trim (car block)))))
-              body)
-          (setq block (cdr block))
-          (while (and block (> (funcall indent (car block)) job-ind))
-            (push (car block) body)
-            (setq block (cdr block)))
-          (setq body (nreverse body))
-          (when (stringp id)
-            (let* ((key-ind (and body (funcall indent (car body))))
-                   (kept (cl-loop with keep = nil
-                                  for l in body
-                                  for ind = (funcall indent l)
-                                  do (when (= ind key-ind)
-                                       (setq keep (string-match-p
-                                                   "\\`\\(name\\|needs\\)[ \t]*:"
-                                                   (string-trim-left l))))
-                                  when keep collect (substring l (min key-ind (length l)))))
-                   (props (and kept (octocat-model--workflow-yaml-parse (string-join kept "\n"))))
-                   (needs (cdr (assoc "needs" props)))
-                   (name (cdr (assoc "name" props)))
-                   (job (make-hash-table :test #'equal)))
-              (puthash "id" id job)
-              (when (stringp name) (puthash "name" name job))
-              (puthash "needs" (vconcat (seq-filter #'stringp (if (stringp needs)
-                                                                  (list needs)
-                                                                (append needs nil))))
-                       job)
-              (push job jobs))))))
-    (vconcat (nreverse jobs))))
+a vector of the ids of the jobs it waits for."
+  (let ((jobs (cdr (assoc "jobs" (octocat-model--workflow-parse yaml)))))
+    (vconcat
+     (cl-loop for (id . props) in (and (consp jobs) jobs)
+              when (stringp id)
+              collect (let* ((get   (lambda (k) (and (consp props) (cdr (assoc k props)))))
+                             (needs (funcall get "needs"))
+                             (name  (octocat-model--workflow-scalar (funcall get "name")))
+                             (job   (octocat--table "id" id)))
+                        (when name (puthash "name" name job))
+                        (puthash "needs"
+                                 (vconcat (delq nil (mapcar #'octocat-model--workflow-scalar
+                                                            (if (vectorp needs)
+                                                                needs
+                                                              (list needs)))))
+                                 job)
+                        job)))))
 
 (defun octocat-model--workflow-file-args (repo path ref)
   "Return the `gh' arguments printing the workflow file PATH of REPO at REF."

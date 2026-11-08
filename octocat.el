@@ -7,7 +7,7 @@
 ;; Assisted-by: Claude:claude-opus-5-5
 ;; Assisted-by: Claude:claude-sonnet-5-5
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (consult "1.0") (vui "0.1"))
+;; Package-Requires: ((emacs "29.1") (consult "1.0") (vui "0.1") (yaml "1.0.0"))
 ;; Keywords: tools, vc, github
 ;; URL: https://github.com/razzmatazz/octocat.el
 
