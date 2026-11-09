@@ -1,8 +1,8 @@
 # What to ask of vui.el upstream
 
 Places where octocat works around vui.el, and what upstream could
-offer instead.  Each was checked against vui master bcb1b76
-(2026-11-05), and all are filed.  File a new one at
+offer instead.  Each was checked against vui master 9e9ffa2
+(2026-11-08, MELPA 20261108.720), and all are filed.  File a new one at
 https://github.com/d12frosted/vui.el/issues, each with a repro run
 against vui master first: its code moves fast, and a fix can leave the
 code that looked at fault in place
@@ -73,3 +73,19 @@ octocat wants any page's title row kept in view.
   own.
 - **Filed:** https://github.com/d12frosted/vui.el/issues/305, as a
   question, leaving the API and how it maps onto Emacs to upstream.
+- **Landed:** `vui-region` takes `:sticky` and `:sticky-face`, pinning
+  the region's first line in each window's `header-line-format`
+  parameter, the innermost part winning (vui #308, #309).  It cannot
+  replace the workaround yet:
+  - it pins the whole line: octocat pins only its `octocat-page-title`
+    text, led by the `octocat-page-status` text of a later line;
+  - the pin replaces the buffer's header line, octocat's notice, which
+    shows only while nothing is pinned; octocat shows both;
+  - the header line stays while the buffer has a sticky part, blank at
+    the page's top; upstream keeps it so text doesn't jump, and is open
+    to an option;
+  - `:sticky-face` spans the text only, so the underline stops short of
+    the window's right edge.
+- **Ask next:** an option to show no header line while nothing is
+  pinned, the buffer's header line before the pin, and a function or
+  text property choosing what of the line is pinned.
