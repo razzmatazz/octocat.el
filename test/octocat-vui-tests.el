@@ -275,7 +275,12 @@
             (should-not (window-parameter win 'header-line-format))
             (set-window-parameter win 'header-line-format "other")
             (octocat-vui--sticky-update win 7)
-            (should (equal (window-parameter win 'header-line-format) "other")))
+            (should (equal (window-parameter win 'header-line-format) "other"))
+            ;; A restored window state holds a copy of the pin.
+            (set-window-parameter win 'header-line-format
+                                  (copy-tree octocat-vui--sticky-format))
+            (octocat-vui--sticky-update win 1)
+            (should-not (window-parameter win 'header-line-format)))
         (set-window-parameter win 'header-line-format nil)
         (set-window-buffer win old)))))
 
@@ -290,7 +295,8 @@
           (let ((inhibit-read-only t))
             (insert "Title\nline 2\n"))
           (set-window-buffer win page)
-          (set-window-parameter win 'header-line-format octocat-vui--sticky-format)
+          (set-window-parameter win 'header-line-format
+                                (copy-tree octocat-vui--sticky-format))
           (octocat-vui--sticky-unpin (window-frame win))
           (should-not (window-parameter win 'header-line-format)))
       (set-window-parameter win 'header-line-format nil)

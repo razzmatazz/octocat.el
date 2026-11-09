@@ -373,9 +373,10 @@ Never signals: redisplay evaluates it."
 (defun octocat-vui--sticky-update (window &optional start)
   "Pin the page's title in WINDOW's header line when START is past it.
 START defaults to WINDOW's start.  A header line other than the pinned
-title, set by another package, is left alone."
+title, set by another package, is left alone.  The title's is told by
+`equal': a window state saved with its parameters gives back a copy."
   (let ((param (window-parameter window 'header-line-format)))
-    (when (or (null param) (eq param octocat-vui--sticky-format))
+    (when (or (null param) (equal param octocat-vui--sticky-format))
       (with-current-buffer (window-buffer window)
         (set-window-parameter
          window 'header-line-format
@@ -389,7 +390,7 @@ title, set by another package, is left alone."
 The pin is the window's: a page opened from a scrolled one would
 otherwise keep it, above the new page's own title."
   (dolist (win (window-list frame 'never))
-    (when (eq (window-parameter win 'header-line-format) octocat-vui--sticky-format)
+    (when (equal (window-parameter win 'header-line-format) octocat-vui--sticky-format)
       (octocat-vui--sticky-update win))))
 
 (defvar-local octocat-vui--resource-ticks nil
