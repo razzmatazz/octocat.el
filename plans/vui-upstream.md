@@ -86,6 +86,12 @@ octocat wants any page's title row kept in view.
     to an option;
   - `:sticky-face` spans the text only, so the underline stops short of
     the window's right edge.
-- **Ask next:** an option to show no header line while nothing is
-  pinned, the buffer's header line before the pin, and a function or
-  text property choosing what of the line is pinned.
+- **Asked:** https://github.com/d12frosted/vui.el/issues/305#issuecomment-6734635010,
+  as suggestions, the maintainer's call either way: an option to show
+  no header line while nothing is pinned, and `:sticky` taking a
+  function returning the text to pin.  Without them, octocat lays out
+  its pages to fit `:sticky` as it is.
+- **Octocat's step:** move the notice out of the header line onto the
+  title row, right-aligned, all on one line: the title is shortened
+  when both don't fit, so the notice stays whole.  The pinned copy
+  then carries it, and octocat sets no header line of its own.
