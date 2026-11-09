@@ -69,14 +69,15 @@ Optional extras:
 (add-hook 'octocat-page-mode-hook (lambda () (setq-local line-spacing 0.1)))
 ```
 
-| Command | Opens |
-|---------|-------|
-| `M-x octocat` / `octocat-dashboard` | Your dashboard |
-| `M-x octocat-repo` | The repository of the current Git clone |
-| `M-x octocat-here` | The file or directory you're in, at your pushed branch |
-| `M-x octocat-pr` | The pull request of its checked-out branch, if it has one |
-| `M-x octocat-pr-list` / `octocat-issue-list` | Its pull requests / issues |
-| `M-x octocat-actions` | Its workflow runs |
+| Command | Action |
+|---------|--------|
+| `M-x octocat` / `octocat-dashboard` | Open your dashboard |
+| `M-x octocat-repo` | Open the repository of the current Git clone |
+| `M-x octocat-here` | Open the file or directory you're in, at your pushed branch |
+| `M-x octocat-pr` | Open the pull request of its checked-out branch, if it has one |
+| `M-x octocat-pr-list` / `octocat-issue-list` | Open its pull requests / issues |
+| `M-x octocat-actions` | Open its workflow runs |
+| `M-x octocat-copy-url` | Copy the URL of the thing at point (`C-u`: its short reference, as `owner/repo#12`) |
 
 [Using octocat.el](docs/usage.md) walks through every page.
 
@@ -90,7 +91,6 @@ Optional extras:
 | `g` / `gr` | Refresh the page |
 | `m` / `u` / `U` | Mark / unmark the PR or issue at point, or those in the region / unmark all |
 | `C-c C-o` | Open the thing at point on GitHub |
-| `M-x octocat-copy-url` | Copy its URL instead (`C-u`: its short reference, as `owner/repo#12`) |
 | `C-c C-j` | Jump to a PR, issue, commit, workflow or file (`C-u`: another repo or user) |
 | `C-c C-v` | Another view, cycling where there are several: raw markdown or org, blame, a commit's patch, a run's jobs as a graph, compact lists, review comments in diffs |
 | `C-c C-a` | Comment on a PR or issue |
