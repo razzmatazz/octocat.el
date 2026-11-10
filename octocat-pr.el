@@ -906,6 +906,14 @@ GitHub does.  See `octocat-vui-tab-row' for WIDTH."
                  (lambda () (octocat-pr-diff-open repo number)))))
    width))
 
+(defun octocat-pr--pin (repo number snap)
+  "Return the pin of a page of PR NUMBER of REPO, SNAP its data's snapshot.
+See `octocat-vui-page'."
+  (if-let* ((pr (or (plist-get snap :data) (plist-get snap :partial))))
+      (octocat-vui-detail-pin repo pr (octocat-vui--state-label (or (gethash "state" pr) "OPEN")
+                                                                (gethash "isDraft" pr)))
+    (octocat-vui-pin (format "%s#%d" repo number))))
+
 (defun octocat-pr--header (repo pr bg width &optional tab stack)
   "Return the vnodes above the body: repo, title, branches, labels, tabs.
 PR is the hash-table of the pull request in REPO.  BG is as for
@@ -1018,51 +1026,53 @@ again."
                           (octocat-timeline-entries
                            (octocat-pr--items repo pr events bg)
                            raw (octocat--markdown-width))))))
-    (octocat-vui-resource-view
-     snap
-     :skeleton (lambda (partial)
-                 (if partial
-                     ;; The list fetched the PR: its header paints at once.
-                     (apply #'vui-vstack
-                            (append (delq nil (octocat-pr--header repo partial bg
-                                                                  (octocat--markdown-width)
-                                                                  nil stack))
-                                    (list (vui-text (octocat-vui-post-skeleton width)))))
-                   (vui-text (octocat-vui-detail-skeleton repo number width
-                                                          octocat-pr--tab-labels))))
-     :render
-     (lambda (_)
-       (let ((on-visit-check
-              (lambda ()
-                (octocat-checks-open repo (or (octocat-pr--head-sha pr) "")
-                                     (octocat--nonempty (gethash "headRefName" pr))))))
-         (apply #'vui-vstack
-                (append
-                 (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width) nil stack))
-                 entries
-                 ;; Under the timeline, as they add to it; the checks and
-                 ;; merge are about the PR as a whole.
-                 (octocat-timeline-buttons-or-action
-                  (list '("+ Add a comment" "RET: write a comment" octocat-pr-add-comment)
-                        (pcase (gethash "state" pr)
-                          ("OPEN"   '("Close pull request" "RET: close this pull request"
-                                      octocat-pr-close))
-                          ("CLOSED" '("Reopen pull request" "RET: reopen this pull request"
-                                      octocat-pr-reopen))))
-                  (alist-get 'action mutating))
-                 (list (vui-newline))
-                 ;; Before the merge box: what stops the stack is read
-                 ;; before its buttons.
-                 (when-let* ((section (octocat-pr--stack-section
-                                       repo pr stack (octocat--markdown-width))))
-                   (append section (list (vui-newline))))
-                 ;; An open PR's checks are in its merge box, as on GitHub.
-                 (or (octocat-pr--merge-section pr (octocat--markdown-width) on-visit-check
-                                                (alist-get 'merge mutating)
-                                                awaiting (alist-get 'approve mutating))
-                     (octocat-checks-block
-                      (or (octocat--get pr "statusCheckRollup") [])
-                      on-visit-check (octocat--markdown-width))))))))))
+    (octocat-vui-page
+     (octocat-pr--pin repo number snap)
+     (octocat-vui-resource-view
+      snap
+      :skeleton (lambda (partial)
+                  (if partial
+                      ;; The list fetched the PR: its header paints at once.
+                      (apply #'vui-vstack
+                             (append (delq nil (octocat-pr--header repo partial bg
+                                                                   (octocat--markdown-width)
+                                                                   nil stack))
+                                     (list (vui-text (octocat-vui-post-skeleton width)))))
+                    (vui-text (octocat-vui-detail-skeleton repo number width
+                                                           octocat-pr--tab-labels))))
+      :render
+      (lambda (_)
+        (let ((on-visit-check
+               (lambda ()
+                 (octocat-checks-open repo (or (octocat-pr--head-sha pr) "")
+                                      (octocat--nonempty (gethash "headRefName" pr))))))
+          (apply #'vui-vstack
+                 (append
+                  (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width) nil stack))
+                  entries
+                  ;; Under the timeline, as they add to it; the checks and
+                  ;; merge are about the PR as a whole.
+                  (octocat-timeline-buttons-or-action
+                   (list '("+ Add a comment" "RET: write a comment" octocat-pr-add-comment)
+                         (pcase (gethash "state" pr)
+                           ("OPEN"   '("Close pull request" "RET: close this pull request"
+                                       octocat-pr-close))
+                           ("CLOSED" '("Reopen pull request" "RET: reopen this pull request"
+                                       octocat-pr-reopen))))
+                   (alist-get 'action mutating))
+                  (list (vui-newline))
+                  ;; Before the merge box: what stops the stack is read
+                  ;; before its buttons.
+                  (when-let* ((section (octocat-pr--stack-section
+                                        repo pr stack (octocat--markdown-width))))
+                    (append section (list (vui-newline))))
+                  ;; An open PR's checks are in its merge box, as on GitHub.
+                  (or (octocat-pr--merge-section pr (octocat--markdown-width) on-visit-check
+                                                 (alist-get 'merge mutating)
+                                                 awaiting (alist-get 'approve mutating))
+                      (octocat-checks-block
+                       (or (octocat--get pr "statusCheckRollup") [])
+                       on-visit-check (octocat--markdown-width)))))))))))
 
 
 (vui-defcomponent octocat-pr-commits--page (repo number tick)
@@ -1080,23 +1090,25 @@ A new TICK fetches them again."
                                         (puthash "merge" t c))
                                       c)
                                     (octocat-pr--commits pr))))))
-    (octocat-vui-resource-view
-     snap
-     :skeleton (lambda (_)
-                 (vui-text (octocat-vui-detail-skeleton repo number (octocat-vui-window-width)
-                                                        octocat-pr--tab-labels)))
-     :render
-     (lambda (_)
-       (let* ((author-w  (octocat-vui--author-width commits))
-              (subject-w (octocat-vui--subject-width commits width author-w))
-              (date-w    (octocat-vui--date-width commits)))
-         (apply #'vui-vstack
-                (append
-                 (delq nil (octocat-pr--header repo pr (octocat--label-background) width
-                                               'commits stack))
-                 (mapcar (lambda (c)
-                           (octocat-vui--commit-row repo c nil author-w subject-w date-w))
-                         commits))))))))
+    (octocat-vui-page
+     (octocat-pr--pin repo number snap)
+     (octocat-vui-resource-view
+      snap
+      :skeleton (lambda (_)
+                  (vui-text (octocat-vui-detail-skeleton repo number (octocat-vui-window-width)
+                                                         octocat-pr--tab-labels)))
+      :render
+      (lambda (_)
+        (let* ((author-w  (octocat-vui--author-width commits))
+               (subject-w (octocat-vui--subject-width commits width author-w))
+               (date-w    (octocat-vui--date-width commits)))
+          (apply #'vui-vstack
+                 (append
+                  (delq nil (octocat-pr--header repo pr (octocat--label-background) width
+                                                'commits stack))
+                  (mapcar (lambda (c)
+                            (octocat-vui--commit-row repo c nil author-w subject-w date-w))
+                          commits)))))))))
 
 
 ;;;; Major mode
@@ -1631,36 +1643,38 @@ everything again."
          (review   (and data (gethash "pending" data)))
          (pending  (and review (cons (gethash "id" review)
                                      (octocat-pr-diff--pending-count data)))))
-    (vui-vstack
-     ;; The same header as the conversation, so the pages read as tabs.
-     (cond
-      ((or (plist-get pr :data) (plist-get pr :partial))
-       (apply #'vui-vstack
-              (delq nil (octocat-pr--header
-                         repo (or (plist-get pr :data) (plist-get pr :partial))
-                         (octocat--label-background) tab-w 'files stack))))
-      ((and (plist-get pr :error) (not (plist-get pr :loading)))
-       (vui-vstack
-        (vui-text (octocat-vui-error-text pr) :face 'error)
-        (octocat-pr--tabs 'files repo number tab-w)))
-      (t (vui-vstack
-          (vui-text (format "%s#%d  diff" repo number)
-            :face 'octocat-dimmed)
-          (octocat-pr--tabs 'files repo number tab-w))))
-     (pcase (octocat-vui-snapshot-status files)
-       ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
-       ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
-       (_ (octocat-diff-files-section repo (plist-get files :data) by-path
-                                      hide-comments raw (octocat--markdown-width) nil at
-                                      (octocat--get (plist-get pr :data) "changedFiles")
-                                      revs)))
-     (vui-newline)
-     (octocat-diff-comments-section "Review Comments" (plist-put (copy-sequence threads)
-                                                                 :data comments)
-                                    raw (octocat--markdown-width))
-     (if-let* ((reviewing (alist-get 'review (plist-get pr :mutating))))
-         (vui-text (concat "  " (octocat-spinner) " " reviewing) :face 'bold)
-       (octocat-pr-diff--buttons pending)))))
+    (octocat-vui-page
+     (octocat-pr--pin repo number pr)
+     (vui-vstack
+      ;; The same header as the conversation, so the pages read as tabs.
+      (cond
+       ((or (plist-get pr :data) (plist-get pr :partial))
+        (apply #'vui-vstack
+               (delq nil (octocat-pr--header
+                          repo (or (plist-get pr :data) (plist-get pr :partial))
+                          (octocat--label-background) tab-w 'files stack))))
+       ((and (plist-get pr :error) (not (plist-get pr :loading)))
+        (vui-vstack
+         (vui-text (octocat-vui-error-text pr) :face 'error)
+         (octocat-pr--tabs 'files repo number tab-w)))
+       (t (vui-vstack
+           (vui-text (format "%s#%d  diff" repo number)
+             :face 'octocat-dimmed)
+           (octocat-pr--tabs 'files repo number tab-w))))
+      (pcase (octocat-vui-snapshot-status files)
+        ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
+        ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
+        (_ (octocat-diff-files-section repo (plist-get files :data) by-path
+                                       hide-comments raw (octocat--markdown-width) nil at
+                                       (octocat--get (plist-get pr :data) "changedFiles")
+                                       revs)))
+      (vui-newline)
+      (octocat-diff-comments-section "Review Comments" (plist-put (copy-sequence threads)
+                                                                  :data comments)
+                                     raw (octocat--markdown-width))
+      (if-let* ((reviewing (alist-get 'review (plist-get pr :mutating))))
+          (vui-text (concat "  " (octocat-spinner) " " reviewing) :face 'bold)
+        (octocat-pr-diff--buttons pending))))))
 
 
 ;;;;; Major mode

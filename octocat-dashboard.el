@@ -349,43 +349,45 @@ until the fresh data arrives; a new TICK fetches them all again."
     ;; Each limit is its own resource: keep the shorter feed while the
     ;; longer one loads.
     (when (plist-get feed :data) (setcar shown (append (plist-get feed :data) nil)))
-    (vui-vstack
-     (vui-text "GitHub Dashboard" :face 'octocat-repo)
-     (vui-newline)
-     (octocat--dashboard-items-section "Pull Requests" 'pulls prs width bg)
-     (vui-newline)
-     (octocat--dashboard-items-section "Issues" 'issues issues width bg)
-     (vui-newline)
-     (octocat--dashboard-section
-      "Recent Repositories"
-      (if (plist-get repos :data) (append (plist-get repos :data) nil) 'pending)
-      (and (eq (octocat-vui-snapshot-status repos) 'error) (octocat-vui-error-text repos))
-      "(no repositories)"
-      (lambda (data)
-        (vui-list data #'octocat--dashboard-repo-row
-                  (lambda (r) (gethash "nameWithOwner" r)))))
-     (vui-newline)
-     (octocat--dashboard-section
-      "Feed"
-      (if (or (car shown) (plist-get feed :data)) (car shown) 'pending)
-      (and (null (car shown)) (eq (octocat-vui-snapshot-status feed) 'error)
-           (octocat-vui-error-text feed))
-      "(no recent activity)"
-      (lambda (data)
-        (vui-fragment
-         (octocat-vui-reveal-list data #'octocat--dashboard-feed-row
-                                  (lambda (ev) (gethash "id" ev)))
-         (when (or (>= (length data) feed-limit)
-                   ;; Keep the button in place while a further page
-                   ;; loads (the limit has already grown).
-                   (and (plist-get feed :loading)
-                        (> feed-limit octocat-feed-limit)))
-           (octocat-vui-load-more-button
-            'load-more-feed octocat-feed-limit
-            "RET / +: load more feed events"
-            #'octocat-feed-load-more
-            (and (plist-get feed :loading) (< (length data) feed-limit))
-            nil (octocat-vui-line-skeleton)))))))))
+    (octocat-vui-page
+     (propertize "GitHub Dashboard" 'face 'octocat-repo)
+     (vui-vstack
+      (vui-text "GitHub Dashboard" :face 'octocat-repo)
+      (vui-newline)
+      (octocat--dashboard-items-section "Pull Requests" 'pulls prs width bg)
+      (vui-newline)
+      (octocat--dashboard-items-section "Issues" 'issues issues width bg)
+      (vui-newline)
+      (octocat--dashboard-section
+       "Recent Repositories"
+       (if (plist-get repos :data) (append (plist-get repos :data) nil) 'pending)
+       (and (eq (octocat-vui-snapshot-status repos) 'error) (octocat-vui-error-text repos))
+       "(no repositories)"
+       (lambda (data)
+         (vui-list data #'octocat--dashboard-repo-row
+                   (lambda (r) (gethash "nameWithOwner" r)))))
+      (vui-newline)
+      (octocat--dashboard-section
+       "Feed"
+       (if (or (car shown) (plist-get feed :data)) (car shown) 'pending)
+       (and (null (car shown)) (eq (octocat-vui-snapshot-status feed) 'error)
+            (octocat-vui-error-text feed))
+       "(no recent activity)"
+       (lambda (data)
+         (vui-fragment
+          (octocat-vui-reveal-list data #'octocat--dashboard-feed-row
+                                   (lambda (ev) (gethash "id" ev)))
+          (when (or (>= (length data) feed-limit)
+                    ;; Keep the button in place while a further page
+                    ;; loads (the limit has already grown).
+                    (and (plist-get feed :loading)
+                         (> feed-limit octocat-feed-limit)))
+            (octocat-vui-load-more-button
+             'load-more-feed octocat-feed-limit
+             "RET / +: load more feed events"
+             #'octocat-feed-load-more
+             (and (plist-get feed :loading) (< (length data) feed-limit))
+             nil (octocat-vui-line-skeleton))))))))))
 
 
 ;;;; Dashboard refresh

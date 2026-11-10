@@ -113,14 +113,11 @@ under \"user\", and the counts."
                                                    "public repos")))))
     (delq nil
           (list
-           ;; The sticky title, see `octocat-vui-sticky-title': the
-           ;; avatar shares its line.
-           (propertize
-            (concat (propertize (concat "@" login) 'face 'octocat-repo)
-                    (when name (concat "  " (propertize name 'face 'octocat-pr-author)))
-                    (when (equal type "Organization")
-                      (propertize "  (organization)" 'face 'octocat-dimmed)))
-            'octocat-page-title t)
+           ;; The page's pin too, see `octocat-user--root'.
+           (concat (propertize (concat "@" login) 'face 'octocat-repo)
+                   (when name (concat "  " (propertize name 'face 'octocat-pr-author)))
+                   (when (equal type "Organization")
+                     (propertize "  (organization)" 'face 'octocat-dimmed)))
            bio
            (and details (mapconcat #'identity details "  ·  "))
            (and counts (mapconcat #'identity counts "  ·  "))))))
@@ -282,16 +279,22 @@ width changes."
 A new TICK fetches everything again."
   :render
   (let* ((snap    (octocat-vui-use-resource (list 'user-profile login) tick))
-         (handle  (vui-text (propertize (concat "@" login) 'face 'octocat-repo))))
-    (vui-vstack
-     (when (eq (octocat-vui-snapshot-status snap) 'error) handle)
-     (octocat-vui-resource-view
-      snap
-      :skeleton (lambda (_) (vui-vstack handle (vui-text (octocat-vui-skeleton '((24) (40) (18))))))
-      :render (lambda (profile) (vui-component 'octocat-user--header :profile profile)))
-     (vui-newline)
-     (vui-component 'octocat-user--pinned-section :login login :tick tick)
-     (vui-component 'octocat-user--repos-section :login login :tick tick))))
+         (handle  (vui-text (propertize (concat "@" login) 'face 'octocat-repo)))
+         (profile (plist-get snap :data)))
+    (octocat-vui-page
+     (if profile
+         (car (octocat-user--profile-lines profile))
+       (propertize (concat "@" login) 'face 'octocat-repo))
+     (vui-vstack
+      (when (eq (octocat-vui-snapshot-status snap) 'error) handle)
+      (octocat-vui-resource-view
+       snap
+       :skeleton (lambda (_)
+                   (vui-vstack handle (vui-text (octocat-vui-skeleton '((24) (40) (18))))))
+       :render (lambda (profile) (vui-component 'octocat-user--header :profile profile)))
+      (vui-newline)
+      (vui-component 'octocat-user--pinned-section :login login :tick tick)
+      (vui-component 'octocat-user--repos-section :login login :tick tick)))))
 
 
 ;;;; Major mode

@@ -68,6 +68,7 @@
 
 (defvar octocat-vui--state-width)  ; defconst under "Row builders"
 (defvar octocat-vui--mark-width)   ; likewise
+(defvar vui-sticky-keep-header-line) ; a vui before 2026-11-10 has none
 
 (defvar octocat-page-mode-map
   (let ((map (make-sparse-keymap)))
@@ -95,8 +96,8 @@ as a page's refresh, stays in its own mode."
   (octocat-markdown-copy-setup)
   (octocat-markdown--ensure-invisibility)
   (add-hook 'post-command-hook #'octocat-vui--prefetch-schedule nil t)
-  (add-hook 'window-scroll-functions #'octocat-vui--sticky-update nil t)
-  (add-hook 'window-buffer-change-functions #'octocat-vui--sticky-unpin))
+  ;; No blank header line at a page's top, see `octocat-vui-page'.
+  (setq-local vui-sticky-keep-header-line nil))
 
 (defvar-local octocat-vui--view-generation 0
   "Bumped by each `octocat-vui-refresh', see `octocat-vui-use-view-reset'.")
@@ -280,24 +281,31 @@ in the mode line, as a passing notice would resize the window."
               (car (split-string (plist-get snap :error) "\n" t))))))
 
 (defun octocat-vui--show-notice (buf)
-  "Put in BUF's header line the notice for the snapshots of its page."
+  "Put in BUF's header line the notice for the snapshots of its page.
+A new one renders the page again, for the pinned title it leads (see
+`octocat-vui-page'): later, as this runs in an effect of a render."
   (when (buffer-live-p buf)
     (with-current-buffer buf
-      (let ((notice (octocat-vui-header-notice
-                     (and octocat-vui--snapshots
-                          (hash-table-values octocat-vui--snapshots)))))
-        (setq header-line-format
-              (and notice (propertize notice 'face 'octocat-dimmed)))))))
+      (let* ((notice (octocat-vui-header-notice
+                      (and octocat-vui--snapshots
+                           (hash-table-values octocat-vui--snapshots))))
+             (line   (and notice (propertize notice 'face 'octocat-dimmed))))
+        (unless (equal line header-line-format)
+          (setq header-line-format line)
+          (run-at-time 0 nil (lambda ()
+                               (when (buffer-live-p buf)
+                                 (with-current-buffer buf
+                                   (octocat-vui-update-page))))))))))
 
 
 ;;;; Sticky title
 ;;
 ;; A page's title row, its first line, is pinned in the header line of
-;; each window scrolled past it, as Info pins its breadcrumb.  It is set
-;; as the window's `header-line-format' parameter, so each window
-;; showing the page pins or not by itself; a window still showing the
-;; row has no header line, so the copy takes the screen line the row
-;; leaves, and nothing below it moves.
+;; each window scrolled past it, as Info pins its breadcrumb.  The page
+;; wraps itself in `octocat-vui-page', a sticky `vui-region', with the
+;; text to pin; vui pins it per window, and shows the header line only
+;; while something is pinned (`vui-sticky-keep-header-line'), so the
+;; top of a page has none.
 
 (defcustom octocat-sticky-title t
   "Whether a page scrolled past its title row shows that row in the header line."
@@ -311,79 +319,50 @@ An underline in the colour of `octocat-dimmed' parts it from the text
 below; an underline set here replaces it."
   :group 'octocat)
 
-(defconst octocat-vui--sticky-format '(:eval (octocat-vui--sticky-header-line))
-  "The `header-line-format' window parameter of a window pinning its page's title.")
+(defun octocat-vui-pin (&rest parts)
+  "Return PARTS, strings, as a page's title to pin, see `octocat-vui-page'.
+Nil and empty ones are left out; the rest are two spaces apart."
+  (string-join (delq nil (mapcar #'octocat--nonempty parts)) "  "))
 
-(defun octocat-vui-sticky-title-end ()
-  "Return the end of the current page's title row: its first line."
-  (save-excursion
-    (goto-char (point-min))
-    (line-end-position)))
+(defun octocat-vui-crumbs-pin (repo &rest crumbs)
+  "Return REPO, then CRUMBS, strings, joined to pin as `octocat-vui-crumbs' does.
+Nil ones are left out."
+  (mapconcat #'identity (cons (propertize repo 'face 'octocat-repo) (delq nil crumbs))
+             (propertize " › " 'face 'octocat-dimmed)))
 
-(defun octocat-vui-sticky-status ()
-  "Return the current page's status, as its title row is pinned with, or nil.
-That is the text with an `octocat-page-status' property in the page's
-first lines, as the state heading a PR's fields."
-  (let* ((limit (save-excursion (goto-char (point-min)) (forward-line 4) (point)))
-         (start (text-property-any (point-min) limit 'octocat-page-status t)))
-    (and start
-         (string-trim
-          (buffer-substring start (next-single-property-change
-                                   start 'octocat-page-status nil limit))))))
-
-(defun octocat-vui-sticky-title ()
-  "Return the current page's title row, as pinned in the header line.
-That is its first line, or the text on it with an `octocat-page-title'
-property, as the user page's name beside its avatar, led by the page's
-status (`octocat-vui-sticky-status'), which scrolls away under it.
-Links on it are plain text, as it is not in the buffer: a click on it
-goes to the top."
-  (let* ((bol   (point-min))
-         (eol   (octocat-vui-sticky-title-end))
-         (start (or (text-property-any bol eol 'octocat-page-title t) bol))
-         (end   (if (get-text-property start 'octocat-page-title)
-                    (next-single-property-change start 'octocat-page-title nil eol)
-                  eol))
-         (status (octocat-vui-sticky-status))
-         (title (concat (if (octocat--nonempty status) (concat status "  ") "")
-                        (buffer-substring start end)))
-         (map   (make-sparse-keymap))
-         (keep  (length title)))
-    ;; Trim only the plain space after it: a pill's padding is faced.
-    (while (and (> keep 0)
-                (memq (aref title (1- keep)) '(?\s ?\t))
-                (not (get-text-property (1- keep) 'face title)))
-      (setq keep (1- keep)))
+(defun octocat-vui--pin-line (pin notice)
+  "Return the header line pinning PIN, after NOTICE when non-nil.
+It ends with a stretch space to the right edge, so the face
+`octocat-sticky-title' spans the window.  Links in PIN are plain text,
+as it is not in the buffer: a click on it goes to the top."
+  (let ((line (concat (if (octocat--nonempty notice) (concat notice "  ") "")
+                      pin
+                      (propertize " " 'display '(space :align-to right))))
+        (map  (make-sparse-keymap)))
     (define-key map [header-line mouse-1] #'octocat-vui-sticky-top)
     (remove-list-of-text-properties
-     0 (length title) '(keymap local-map mouse-face help-echo button category field)
-     title)
-    (propertize (substring title 0 keep) 'local-map map
-                'help-echo "mouse-1: back to the top")))
+     0 (length line) '(keymap local-map mouse-face help-echo button category field)
+     line)
+    (add-face-text-property 0 (length line) 'octocat-sticky-title t line)
+    ;; One colour, not each segment's own.
+    (when (memq (face-attribute 'octocat-sticky-title :underline nil t) '(nil unspecified))
+      (let ((color (or (face-foreground 'octocat-dimmed nil t) 'foreground-color)))
+        (add-face-text-property 0 (length line) (list :underline (list :color color :position t))
+                                nil line)))
+    (propertize line 'local-map map 'help-echo "mouse-1: back to the top")))
 
-(defun octocat-vui--sticky-header-line ()
-  "Return the header line of a window pinning its page's title.
-The page's own header line, its notice, comes first.  It starts with a
-stretch space past any line numbers, as the header line spans the
-fringe, so the copy lines up with the row it copies, and ends with one
-to the right edge, so the face `octocat-sticky-title' spans the window.
-Never signals: redisplay evaluates it."
-  (condition-case nil
-      (let* ((notice (and header-line-format (format-mode-line header-line-format)))
-             (line   (concat (propertize " " 'display
-                                         `(space :align-to ,(line-number-display-width 'columns)))
-                             (if (octocat--nonempty notice) (concat notice "  ") "")
-                             (string-replace "%" "%%" (octocat-vui-sticky-title))
-                             (propertize " " 'display '(space :align-to right)))))
-        (add-face-text-property 0 (length line) 'octocat-sticky-title t line)
-        ;; One colour, not each segment's own.
-        (when (memq (face-attribute 'octocat-sticky-title :underline nil t) '(nil unspecified))
-          (let ((color (or (face-foreground 'octocat-dimmed nil t) 'foreground-color)))
-            (add-face-text-property 0 (length line)
-                                    (list :underline (list :color color :position t))
-                                    nil line)))
-        line)
-    (error "")))
+(defun octocat-vui-page (pin page)
+  "Return PAGE, a vnode, pinning PIN once scrolled past its top.
+PIN, a string, says what the page is, as its first line does, led by
+its status, as an issue's state; `octocat-vui-pin' and
+`octocat-vui-crumbs-pin' build it.  Each window scrolled past the
+page's first line shows it in the header line, after the page's notice
+\(see `octocat-vui--show-notice').  The pin goes once the window starts
+past PAGE, so it must be the whole page."
+  (vui-region :sticky (and octocat-sticky-title (octocat--nonempty pin)
+                           (octocat-vui--pin-line
+                            pin (and (stringp header-line-format) header-line-format)))
+              page))
 
 (defun octocat-vui-sticky-top (event)
   "Go to the top of the page whose header line EVENT clicked."
@@ -392,29 +371,6 @@ Never signals: redisplay evaluates it."
     (with-selected-window win
       (goto-char (point-min))
       (set-window-start win (point-min)))))
-
-(defun octocat-vui--sticky-update (window &optional start)
-  "Pin the page's title in WINDOW's header line when START is past it.
-START defaults to WINDOW's start.  A header line other than the pinned
-title, set by another package, is left alone.  The title's is told by
-`equal': a window state saved with its parameters gives back a copy."
-  (let ((param (window-parameter window 'header-line-format)))
-    (when (or (null param) (equal param octocat-vui--sticky-format))
-      (with-current-buffer (window-buffer window)
-        (set-window-parameter
-         window 'header-line-format
-         (and octocat-sticky-title
-              (derived-mode-p 'octocat-page-mode)
-              (> (or start (window-start window)) (octocat-vui-sticky-title-end))
-              octocat-vui--sticky-format))))))
-
-(defun octocat-vui--sticky-unpin (frame)
-  "Pin or unpin the title of each pinning window of FRAME, for its buffer now.
-The pin is the window's: a page opened from a scrolled one would
-otherwise keep it, above the new page's own title."
-  (dolist (win (window-list frame 'never))
-    (when (equal (window-parameter win 'header-line-format) octocat-vui--sticky-format)
-      (octocat-vui--sticky-update win))))
 
 (defvar-local octocat-vui--resource-ticks nil
   "Resource key to the page tick it was last requested with, in this buffer.
@@ -1625,6 +1581,15 @@ That is `owner/repo@sha', as `owner/repo#N' is on an issue."
               (vui-text (concat "@" (substring sha 0 (min 7 (length sha))))
                 :face 'octocat-commit-sha)))
 
+(defun octocat-vui-commit-pin (repo sha &rest more)
+  "Return the pin of a page about commit SHA of REPO, then MORE.
+See `octocat-vui-pin'."
+  (apply #'octocat-vui-pin
+         (concat (propertize repo 'face 'octocat-repo)
+                 (propertize (concat "@" (substring sha 0 (min 7 (length sha))))
+                             'face 'octocat-commit-sha))
+         more))
+
 (defun octocat-vui--fit (text width)
   "Return TEXT cut with an ellipsis to WIDTH columns, at least 10.
 A cut TEXT carries its whole as `help-echo' and `octocat-full-text'."
@@ -1699,10 +1664,9 @@ The top row is REPO, Actions, then CRUMBS, the pages below Actions
 down to this one, as for `octocat-vui-crumbs', kept within WIDTH.
 Under it, STATE, a propertized string, heads the first of LINES, each a
 list of fields as for `octocat-vui-fields'; the others are lined up
-under it.  STATE leads the title row when it is pinned, see
-`octocat-vui-sticky-status'.  With no STATE, there is only the top row."
+under it; `octocat-vui-actions-pin' is the page's pin.  With no STATE,
+there is only the top row."
   (let* ((fields (delq nil (mapcar #'octocat-vui-fields lines)))
-         (state  (and state (propertize state 'octocat-page-status t)))
          (head   (and state (concat state "  "))))
     (cons
      (octocat-vui-crumbs repo (cons (octocat-vui-tab-crumb repo 'actions) crumbs) width)
@@ -1714,6 +1678,13 @@ under it.  STATE leads the title row when it is pinned, see
                                           (vui-text (make-string (string-width head) ?\s))
                                           node))
                             (cdr fields))))))))
+
+(defun octocat-vui-actions-pin (repo crumbs &optional state)
+  "Return the pin of the page of `octocat-vui-actions-header' REPO CRUMBS STATE."
+  (octocat-vui-pin state
+                   (apply #'octocat-vui-crumbs-pin repo
+                          (cadr (assq 'actions octocat--repo-tabs))
+                          (mapcar #'car crumbs))))
 
 (defun octocat-vui-fields (fields)
   "Return a vnode of FIELDS on one line, or nil when none has a value.
@@ -1763,6 +1734,14 @@ each label is padded so it reads without the outline, as in a terminal."
                          :help-echo help
                          :on-click on-click))))
                  segments)))
+
+(defun octocat-vui-segmented-pin (segments)
+  "Return SEGMENTS, as for `octocat-vui-segmented', as text to pin, or nil."
+  (and segments
+       (mapconcat (pcase-lambda (`(,label ,current . ,_))
+                    (propertize (concat " " label " ")
+                                'face (if current 'octocat-segment-current 'octocat-segment)))
+                  segments "")))
 
 (defun octocat-vui-underlined (width &rest nodes)
   "Return NODES on one line, underlined across WIDTH columns.
@@ -1859,19 +1838,21 @@ starts the results afresh."
   (let ((busy (alist-get 'batch (plist-get (octocat-vui-use-resource
                                             (list 'counts kind repo) tick)
                                            :mutating))))
-    (vui-vstack
-     (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick)
-     (vui-fragment
-      ;; Two rows either way, so marking the first item and unmarking
-      ;; the last does not move the list.
-      (if marks
-          (octocat-vui-list-apply-bar
-           kind repo (octocat-vui--search-spec kind repo query compact) marks busy)
-        (octocat-vui-list-filter-bar query)))
-     (vui-component 'octocat-vui--search-results
-       :key (list query (and compact t) tick)
-       :repo repo :kind kind :query query :row-fn row-fn
-       :line-fn line-fn :compact compact :tick tick :extra-fn extra-fn :marks marks))))
+    (octocat-vui-page
+     (octocat-vui-crumbs-pin repo (cadr (assq kind octocat--repo-tabs)))
+     (vui-vstack
+      (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick)
+      (vui-fragment
+       ;; Two rows either way, so marking the first item and unmarking
+       ;; the last does not move the list.
+       (if marks
+           (octocat-vui-list-apply-bar
+            kind repo (octocat-vui--search-spec kind repo query compact) marks busy)
+         (octocat-vui-list-filter-bar query)))
+      (vui-component 'octocat-vui--search-results
+        :key (list query (and compact t) tick)
+        :repo repo :kind kind :query query :row-fn row-fn
+        :line-fn line-fn :compact compact :tick tick :extra-fn extra-fn :marks marks)))))
 
 (defun octocat-vui--search-spec (kind repo query compact)
   "Return the spec of the KIND items of REPO matching QUERY, a page of them.
@@ -3044,8 +3025,8 @@ title and author, the `title' target of the page's edit command, on
 which RET calls ON-EDIT-TITLE; the title is cut to fit WIDTH, its whole
 shown on hover and by ElDoc.  Then the FIELDS one edits, as for
 `octocat-vui--field-lines', headed by STATE, its coloured state
-text (see `octocat-vui--state-label'), which leads the title row when it
-is pinned (see `octocat-vui-sticky-status').  Last, the cells of ITEM,
+text (see `octocat-vui--state-label'); `octocat-vui-detail-pin' is the
+page's pin.  Last, the cells of ITEM,
 then SHOWN, fields as for `octocat-vui--detail-fields'; not the
 date, which the opening timeline entry shows.  BG is as for
 `octocat-vui--cells'.  BRANCH, when non-nil, is shown first.
@@ -3081,12 +3062,22 @@ right after the title, on which RET calls ACTION."
        on-edit-title
        "RET: edit title"))
      (octocat-vui--field-lines
-      fields (concat (propertize state 'octocat-page-status t) "  ") width)
+      fields (concat state "  ") width)
      (octocat-vui--field-lines
       (cons (cons nil (octocat-vui--join-cells
                        cells (seq-difference '(:branch :review :ci :prs :comments) omit)))
             shown)
       nil width))))
+
+(defun octocat-vui-detail-pin (repo item state)
+  "Return the pin of the page of the issue or PR ITEM of REPO, in STATE.
+See `octocat-vui--detail-header'."
+  ;; The state is padded to line up the fields under it.
+  (octocat-vui-pin (string-trim state)
+                   (concat (propertize repo 'face 'octocat-repo)
+                           (propertize (format "#%d" (gethash "number" item))
+                                       'face 'octocat-pr-number))
+                   (gethash "title" item)))
 
 (defun octocat-vui--fit-title (title width)
   "Return TITLE cut with an ellipsis to WIDTH columns, at least 10.

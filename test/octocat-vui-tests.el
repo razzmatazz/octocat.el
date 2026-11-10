@@ -233,75 +233,39 @@
                              (octocat-vui-header-notice
                               (list (list :data h :error "x" :kind 'offline :fetched-at 0.0)))))))
 
-(ert-deftest octocat-vui-test-sticky-title ()
-  "The pinned title is the first line, or its `octocat-page-title' text, as plain text."
-  (with-temp-buffer
-    (insert (propertize "acme/rocket#1  Title" 'mouse-face 'highlight 'keymap 'x)
-            "  \nbody\n")
-    (let ((title (octocat-vui-sticky-title)))
-      (should (equal title "acme/rocket#1  Title"))
-      (should-not (get-text-property 0 'mouse-face title))
-      (should-not (get-text-property 0 'keymap title)))
-    (erase-buffer)
-    (insert "▀▀▀  " (propertize "@ann  Ann" 'octocat-page-title t) "\n▀▀▀  bio\n")
-    (should (equal (octocat-vui-sticky-title) "@ann  Ann"))
-    (erase-buffer)
-    (insert "a.el  " (propertize " Blame " 'face 'bold) "  \nbody\n")
-    (should (equal (octocat-vui-sticky-title) "a.el   Blame "))
-    (erase-buffer)
-    (insert "acme/rocket#1  Title\n"
-            (propertize "open  " 'octocat-page-status t) "  Labels none\n")
-    (should (equal (octocat-vui-sticky-status) "open"))
-    (should (equal (octocat-vui-sticky-title) "open  acme/rocket#1  Title"))))
+(ert-deftest octocat-vui-test-pin ()
+  "A pin joins its parts, leaving out nil and empty ones; crumbs as the row does."
+  (should (equal (octocat-vui-pin "open" nil "" "acme/rocket#1") "open  acme/rocket#1"))
+  (should (equal (octocat-vui-crumbs-pin "acme/rocket" "Actions" nil "CI")
+                 "acme/rocket › Actions › CI"))
+  (should (equal (octocat-vui-commit-pin "acme/rocket" "abcdef0123") "acme/rocket@abcdef0"))
+  (let ((pill (octocat-vui-segmented-pin '(("Diff" t "help" ignore) ("Patch" nil "help" ignore)))))
+    (should (equal pill " Diff  Patch "))
+    (should (eq (get-text-property 1 'face pill) 'octocat-segment-current))
+    (should (eq (get-text-property 7 'face pill) 'octocat-segment)))
+  (should-not (octocat-vui-segmented-pin nil)))
 
-(ert-deftest octocat-vui-test-sticky-update ()
-  "A window pins the title once scrolled past it, and leaves another header line be."
-  (with-temp-buffer
-    (octocat-page-mode)
-    (let ((inhibit-read-only t))
-      (insert "Title\nline 2\nline 3\n"))
-    (let ((win (selected-window))
-          (old (window-buffer (selected-window))))
-      (unwind-protect
-          (progn
-            (set-window-buffer win (current-buffer))
-            (octocat-vui--sticky-update win 1)
-            (should-not (window-parameter win 'header-line-format))
-            (octocat-vui--sticky-update win 7)
-            (should (eq (window-parameter win 'header-line-format)
-                        octocat-vui--sticky-format))
-            (let ((octocat-sticky-title nil))
-              (octocat-vui--sticky-update win 7))
-            (should-not (window-parameter win 'header-line-format))
-            (set-window-parameter win 'header-line-format "other")
-            (octocat-vui--sticky-update win 7)
-            (should (equal (window-parameter win 'header-line-format) "other"))
-            ;; A restored window state holds a copy of the pin.
-            (set-window-parameter win 'header-line-format
-                                  (copy-tree octocat-vui--sticky-format))
-            (octocat-vui--sticky-update win 1)
-            (should-not (window-parameter win 'header-line-format)))
-        (set-window-parameter win 'header-line-format nil)
-        (set-window-buffer win old)))))
+(ert-deftest octocat-vui-test-pin-line ()
+  "The pinned line follows the notice, is plain text, and a click on it goes to the top."
+  (let ((line (octocat-vui--pin-line
+               (concat (propertize "acme/rocket" 'mouse-face 'highlight 'keymap 'x) "#1")
+               "Offline")))
+    (should (string-prefix-p "Offline  acme/rocket#1" line))
+    (should-not (get-text-property 9 'mouse-face line))
+    (should-not (get-text-property 9 'keymap line))
+    (should (eq (lookup-key (get-text-property 9 'local-map line) [header-line mouse-1])
+                #'octocat-vui-sticky-top))
+    (should (equal (get-text-property (1- (length line)) 'display line)
+                   '(space :align-to right))))
+  (should (string-prefix-p "acme" (octocat-vui--pin-line "acme" nil))))
 
-(ert-deftest octocat-vui-test-sticky-unpin-on-new-page ()
-  "A page opened in a window pinning another page's title is not pinned."
-  (let ((win (selected-window))
-        (old (window-buffer (selected-window)))
-        (page (generate-new-buffer " *page*")))
-    (unwind-protect
-        (with-current-buffer page
-          (octocat-page-mode)
-          (let ((inhibit-read-only t))
-            (insert "Title\nline 2\n"))
-          (set-window-buffer win page)
-          (set-window-parameter win 'header-line-format
-                                (copy-tree octocat-vui--sticky-format))
-          (octocat-vui--sticky-unpin (window-frame win))
-          (should-not (window-parameter win 'header-line-format)))
-      (set-window-parameter win 'header-line-format nil)
-      (set-window-buffer win old)
-      (kill-buffer page))))
+(ert-deftest octocat-vui-test-page-pins ()
+  "A page is a sticky region pinning its title, unless `octocat-sticky-title' is nil."
+  (with-temp-buffer
+    (let ((page (octocat-vui-page "Title" (vui-text "Title"))))
+      (should (string-prefix-p "Title" (vui-vnode-region-sticky page))))
+    (let ((octocat-sticky-title nil))
+      (should-not (vui-vnode-region-sticky (octocat-vui-page "Title" (vui-text "Title")))))))
 
 (ert-deftest octocat-vui-test-error-text ()
   "A failure with no data reads by its kind."

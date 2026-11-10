@@ -639,17 +639,18 @@ resizes the window; a refetch stays in the mode line.
 from a snapshot, so a page gives only those pieces.
 
 A page's first line is its title row: once a window is scrolled past
-it, a copy is pinned in that window's header line, after any notice
-(`octocat-vui--sticky-update`).  So keep the row that says what the page
-is first.  When the line holds more, as the user page's avatar beside
-the name, give the title text an `octocat-page-title` property: only
-that is pinned.
+it, the page's pin, a string saying what the page is, shows in that
+window's header line, after any notice.  So keep the row that says what
+the page is first, and wrap the whole page in `octocat-vui-page` with
+its pin, as vui's `:sticky` region pins only while the window is inside
+it.  Build the pin with `octocat-vui-pin` from the same data as the row:
+only the title, not an avatar or buttons beside it.
 
 A page's status, such as an issue's or PR's state or a run's
-conclusion, is part of what it is, so it stays in view too: give it an
-`octocat-page-status` property, in the page's first few lines, and it
-leads the pinned copy (`octocat-vui-sticky-status`).  The state of
-`octocat-vui--detail-header` and `octocat-vui-actions-header` has it.
+conclusion, is part of what it is, so it stays in view too: it leads
+the pin.  `octocat-vui-detail-pin` and `octocat-vui-actions-pin` build
+the pins of the pages of `octocat-vui--detail-header` and
+`octocat-vui-actions-header`.
 
 Whatever stays pinned while the page scrolls under it, as this title,
 is parted from the content below by an underline across the window

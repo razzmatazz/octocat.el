@@ -1226,18 +1226,22 @@ across WIDTH."
 ;; PR diff's file component: commit comments have the same shape as PR
 ;; review comments.
 
-(defun octocat-commit--view-tabs (patch)
-  "Return the commit page's views as a pill, the one of PATCH filled in.
+(defun octocat-commit--view-segments (patch)
+  "Return the segments of the commit page's views, the one of PATCH current.
 `Diff' is the page, `Patch' the commit as `git format-patch' writes it;
-the hint of the other names the key that switches them."
+the hint of the other names the key that switches them.  See
+`octocat-vui-segmented'."
   (let ((key (substitute-command-keys "\\[octocat-commit-toggle-patch]")))
-    (octocat-vui-segmented
-     (list (list "Diff" (not patch)
-                 (propertize (format "RET, %s: show the diff" key) 'octocat-key-help t)
-                 #'octocat-commit-toggle-patch)
-           (list "Patch" patch
-                 (propertize (format "RET, %s: show the patch" key) 'octocat-key-help t)
-                 #'octocat-commit-toggle-patch)))))
+    (list (list "Diff" (not patch)
+                (propertize (format "RET, %s: show the diff" key) 'octocat-key-help t)
+                #'octocat-commit-toggle-patch)
+          (list "Patch" patch
+                (propertize (format "RET, %s: show the patch" key) 'octocat-key-help t)
+                #'octocat-commit-toggle-patch))))
+
+(defun octocat-commit--view-tabs (patch)
+  "Return the commit page's views as a pill, the one of PATCH filled in."
+  (octocat-vui-segmented (octocat-commit--view-segments patch)))
 
 (defun octocat-commit--top-line (repo sha patch width)
   "Return the top line of commit SHA of REPO, as the tree browser's.
@@ -1485,39 +1489,42 @@ fetches them again."
                      (and data (octocat-commit--message data))))
          (text     (vui-use-memo (data patch)
                      (and data patch (octocat-commit--patch-text data)))))
-    (vui-vstack
-     (octocat-commit--top-line repo (or (and data (gethash "sha" data)) sha) patch width)
-     (octocat-vui-resource-view
-      commit
-      :skeleton (lambda (_) (vui-text (octocat-commit--skeleton width)))
-      :render
-      (lambda (_)
-        (if text
-            (vui-text text)
-          (apply
-           #'vui-vstack
-           (append
-            (octocat-commit--fields repo data branch)
-            (delq nil
-                  (list (vui-newline)
-                        message
-                        (vui-newline)
-                        (when-let* ((section (octocat-commit--checks repo sha checks width)))
-                          (vui-fragment section (vui-newline)))
-                        (octocat-diff-files-section
-                         repo (or (gethash "files" data) []) by-path hide-comments raw md-width t
-                         at nil (cons (let ((parents (gethash "parents" data)))
-                                        (and (> (length parents) 0)
-                                             (gethash "sha" (aref parents 0))))
-                                      (gethash "sha" data)))
-                        ;; Most commits have none, so the section is left
-                        ;; out unless there are any, or they failed to load.
-                        (when (or (not (seq-empty-p (plist-get comments :data)))
-                                  (eq (octocat-vui-snapshot-status comments) 'error))
-                          (vui-fragment
-                           (vui-newline)
-                           (octocat-diff-comments-section
-                            "Comments" comments raw md-width)))))))))))))
+    (octocat-vui-page
+     (octocat-vui-commit-pin repo (or (and data (gethash "sha" data)) sha)
+                             (octocat-vui-segmented-pin (octocat-commit--view-segments patch)))
+     (vui-vstack
+      (octocat-commit--top-line repo (or (and data (gethash "sha" data)) sha) patch width)
+      (octocat-vui-resource-view
+       commit
+       :skeleton (lambda (_) (vui-text (octocat-commit--skeleton width)))
+       :render
+       (lambda (_)
+         (if text
+             (vui-text text)
+           (apply
+            #'vui-vstack
+            (append
+             (octocat-commit--fields repo data branch)
+             (delq nil
+                   (list (vui-newline)
+                         message
+                         (vui-newline)
+                         (when-let* ((section (octocat-commit--checks repo sha checks width)))
+                           (vui-fragment section (vui-newline)))
+                         (octocat-diff-files-section
+                          repo (or (gethash "files" data) []) by-path hide-comments raw md-width t
+                          at nil (cons (let ((parents (gethash "parents" data)))
+                                         (and (> (length parents) 0)
+                                              (gethash "sha" (aref parents 0))))
+                                       (gethash "sha" data)))
+                         ;; Most commits have none, so the section is left
+                         ;; out unless there are any, or they failed to load.
+                         (when (or (not (seq-empty-p (plist-get comments :data)))
+                                   (eq (octocat-vui-snapshot-status comments) 'error))
+                           (vui-fragment
+                            (vui-newline)
+                            (octocat-diff-comments-section
+                             "Comments" comments raw md-width))))))))))))))
 
 
 ;;;;; Major mode
@@ -1686,26 +1693,31 @@ fetches it again."
   :render
   (let* ((width    (octocat--markdown-width))
          (snap     (octocat-vui-use-resource (list 'compare repo base head) tick)))
-    (vui-vstack
-     (octocat-compare--top-row repo base dots head (plist-get snap :data))
-     (octocat-vui-resource-view
-      snap
-      :skeleton (lambda (_)
-                  (vui-text (octocat-vui-skeleton
-                             '(nil (26) ("  " 7 "  " 40) ("  " 7 "  " 34) nil
-                                   (12) ("  " 40) ("  " 28))
-                             (octocat-vui-window-width))))
-      :render
-      (lambda (data)
-        (apply #'vui-vstack
-               (append
-                (mapcar (lambda (line) (vui-text line :face 'octocat-dimmed))
-                        (octocat-compare--summary data dots))
-                (list (vui-newline))
-                (octocat-compare--commits repo (or (gethash "commits" data) []) width)
-                (list (octocat-diff-files-section
-                       repo (or (gethash "files" data) []) nil nil raw width t at nil
-                       (cons (octocat--get data "merge_base_commit" "sha") head))))))))))
+    (octocat-vui-page
+     (octocat-vui-pin (propertize repo 'face 'octocat-repo)
+                      (concat (octocat-compare--ref-label base)
+                              (propertize dots 'face 'octocat-dimmed)
+                              (octocat-compare--ref-label head)))
+     (vui-vstack
+      (octocat-compare--top-row repo base dots head (plist-get snap :data))
+      (octocat-vui-resource-view
+       snap
+       :skeleton (lambda (_)
+                   (vui-text (octocat-vui-skeleton
+                              '(nil (26) ("  " 7 "  " 40) ("  " 7 "  " 34) nil
+                                    (12) ("  " 40) ("  " 28))
+                              (octocat-vui-window-width))))
+       :render
+       (lambda (data)
+         (apply #'vui-vstack
+                (append
+                 (mapcar (lambda (line) (vui-text line :face 'octocat-dimmed))
+                         (octocat-compare--summary data dots))
+                 (list (vui-newline))
+                 (octocat-compare--commits repo (or (gethash "commits" data) []) width)
+                 (list (octocat-diff-files-section
+                        repo (or (gethash "files" data) []) nil nil raw width t at nil
+                        (cons (octocat--get data "merge_base_commit" "sha") head)))))))))))
 
 
 ;;;;; Major mode

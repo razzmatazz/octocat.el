@@ -1155,6 +1155,18 @@ is plain."
                   (push (vui-text seg) nodes)))
     (nreverse nodes)))
 
+(defun octocat-repo--pin (repo label path current-branch &optional after)
+  "Return the pin of a page of PATH of REPO at the ref named LABEL.
+AFTER, a string or nil, follows it.  See `octocat-vui-page'; it reads
+as `octocat-repo-vui--top-line'."
+  (octocat-vui-pin (propertize repo 'face 'octocat-repo)
+                   (when-let* ((label (octocat--nonempty label)))
+                     (concat (propertize label 'face (if (equal label current-branch)
+                                                         'octocat-branch-current
+                                                       'octocat-branch))
+                             (and path ":/") path))
+                   after))
+
 (defun octocat-repo-vui--top-line (repo label path current-branch switch on-dir &rest after)
   "Return the top line of a page of PATH of REPO at the ref named LABEL.
 That is owner/repo  [LABEL ▾]:/PATH, repo opening the repository page,
@@ -1206,48 +1218,50 @@ one summary resource and the rest from the root's `repo-head' at REF."
         (with-current-buffer buf
           (setq octocat-repo--default-branch default-branch)))
       nil)
-    (vui-vstack
-     (apply #'vui-hstack :spacing 2
-            (octocat-vui-repo-heading repo)
-            (or (octocat-repo-vui--ref-picker
-                 (or shown default-branch) current-branch
-                 (octocat-repo--resettable-p ref (or tracked default-branch))
-                 (or tracked default-branch))
-                (vui-text (octocat-vui-skeleton '((8)))))
-            (octocat-vui-repo-tabs repo 'code tick))
-     (when local-dir
-       (vui-text
-           (concat (propertize "Local clone:" 'face 'octocat-dimmed)
-                   "  "
-                   (propertize local-dir 'face 'octocat-branch)
-                   (cond (current-branch
-                          (concat "  " (propertize current-branch 'face 'octocat-branch-current)))
-                         ((plist-get head-info :hash)
-                          (concat "  detached at "
-                                  (propertize (plist-get head-info :hash)
-                                              'face 'octocat-commit-sha)))))))
-     (when fork-parent
-       (octocat-vui-row
-        (concat "Forked from  " (propertize fork-parent 'face 'octocat-repo))
-        (lambda () (octocat-visit-repo fork-parent))
-        "RET: open parent repo view"
-        (octocat--web-url "%s" fork-parent)))
-     (vui-newline)
-     (when unpushed
-       (octocat-repo-vui--unpushed-section unpushed))
-     (octocat-repo-vui--head-line repo ref nil head-snap)
-     (if tree
-         (vui-component 'octocat-tree--dir
-           :key shown :repo repo :branch (or shown default-branch "HEAD") :sha tree
-           :commit (gethash "sha" (plist-get head-snap :data))
-           :on-dir (lambda (dir) (octocat-tree-open repo ref dir))
-           :on-browse (lambda () (octocat-tree-open repo ref)))
-       (vui-text (octocat-tree--skeleton)))
-     (if tree
-         (vui-component 'octocat-repo-vui--docs-section
-           :key shown :repo repo :ref (or shown default-branch "HEAD")
-           :tree tree :raw raw)
-       (octocat-repo-vui--docs-skeleton)))))
+    (octocat-vui-page
+     (octocat-repo--pin repo (or shown default-branch) nil current-branch)
+     (vui-vstack
+      (apply #'vui-hstack :spacing 2
+             (octocat-vui-repo-heading repo)
+             (or (octocat-repo-vui--ref-picker
+                  (or shown default-branch) current-branch
+                  (octocat-repo--resettable-p ref (or tracked default-branch))
+                  (or tracked default-branch))
+                 (vui-text (octocat-vui-skeleton '((8)))))
+             (octocat-vui-repo-tabs repo 'code tick))
+      (when local-dir
+        (vui-text
+            (concat (propertize "Local clone:" 'face 'octocat-dimmed)
+                    "  "
+                    (propertize local-dir 'face 'octocat-branch)
+                    (cond (current-branch
+                           (concat "  " (propertize current-branch 'face 'octocat-branch-current)))
+                          ((plist-get head-info :hash)
+                           (concat "  detached at "
+                                   (propertize (plist-get head-info :hash)
+                                               'face 'octocat-commit-sha)))))))
+      (when fork-parent
+        (octocat-vui-row
+         (concat "Forked from  " (propertize fork-parent 'face 'octocat-repo))
+         (lambda () (octocat-visit-repo fork-parent))
+         "RET: open parent repo view"
+         (octocat--web-url "%s" fork-parent)))
+      (vui-newline)
+      (when unpushed
+        (octocat-repo-vui--unpushed-section unpushed))
+      (octocat-repo-vui--head-line repo ref nil head-snap)
+      (if tree
+          (vui-component 'octocat-tree--dir
+            :key shown :repo repo :branch (or shown default-branch "HEAD") :sha tree
+            :commit (gethash "sha" (plist-get head-snap :data))
+            :on-dir (lambda (dir) (octocat-tree-open repo ref dir))
+            :on-browse (lambda () (octocat-tree-open repo ref)))
+        (vui-text (octocat-tree--skeleton)))
+      (if tree
+          (vui-component 'octocat-repo-vui--docs-section
+            :key shown :repo repo :ref (or shown default-branch "HEAD")
+            :tree tree :raw raw)
+        (octocat-repo-vui--docs-skeleton))))))
 
 (vui-defcomponent octocat-repo-vui--tree-page (repo ref tracked reveal focus tick)
   "Root component of the tree browser: the whole tree of REF of REPO.
@@ -1271,23 +1285,25 @@ branch."
         (with-current-buffer buf
           (setq octocat-repo--default-branch default-branch)))
       nil)
-    (vui-vstack
-     (octocat-repo-vui--top-line
-      repo (or ref tracked default-branch) reveal current-branch nil
-      (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir)))
-      (and (octocat-repo--resettable-p ref (or tracked default-branch))
-           (octocat-repo-vui--reset-button (or tracked default-branch))))
-     (vui-newline)
-     (octocat-repo-vui--head-line repo ref nil head-snap)
-     (if root
-         ;; Each ref, and each opening from elsewhere, starts the tree
-         ;; afresh.
-         (vui-component 'octocat-tree--subtree
-           :key (list shown reveal)
-           :repo repo :branch (or shown default-branch "HEAD")
-           :sha (gethash "tree" root) :commit (gethash "sha" root)
-           :depth 0 :path "" :reveal reveal :focus focus)
-       (vui-text (octocat-tree--skeleton))))))
+    (octocat-vui-page
+     (octocat-repo--pin repo (or ref tracked default-branch) reveal current-branch)
+     (vui-vstack
+      (octocat-repo-vui--top-line
+       repo (or ref tracked default-branch) reveal current-branch nil
+       (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir)))
+       (and (octocat-repo--resettable-p ref (or tracked default-branch))
+            (octocat-repo-vui--reset-button (or tracked default-branch))))
+      (vui-newline)
+      (octocat-repo-vui--head-line repo ref nil head-snap)
+      (if root
+          ;; Each ref, and each opening from elsewhere, starts the tree
+          ;; afresh.
+          (vui-component 'octocat-tree--subtree
+            :key (list shown reveal)
+            :repo repo :branch (or shown default-branch "HEAD")
+            :sha (gethash "tree" root) :commit (gethash "sha" root)
+            :depth 0 :path "" :reveal reveal :focus focus)
+        (vui-text (octocat-tree--skeleton)))))))
 
 (defun octocat-repo--file-text (repo ref path content raw width)
   "Return file PATH's CONTENT as the file viewer is to show it.
@@ -1545,23 +1561,28 @@ RAW shows markdown as is.  In the code view, LINES are as for
       ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
       (_        (vui-text (string-remove-suffix "\n" (or text "")))))))
 
-(defun octocat-repo-vui--view-tabs (path raw blame)
-  "Return the views of file PATH as a pill, as GitHub's, or nil.
-The view shown, of RAW and BLAME, is filled in; the others show
-theirs, their hint naming the key that cycles them.  See
-`octocat-file--views'."
+(defun octocat-repo-vui--view-segments (path raw blame)
+  "Return the views of file PATH as segments of a pill, or nil.
+The view shown, of RAW and BLAME, is current; the others show theirs,
+their hint naming the key that cycles them.  See `octocat-file--views'
+and `octocat-vui-segmented'."
   (when-let* ((views (octocat-file--views path)))
     (let ((shown (octocat-file--view path raw blame))
           (key   (substitute-command-keys "\\[octocat-file-cycle-view]")))
-      (octocat-vui-segmented
-       (mapcar (lambda (view)
-                 (let ((label (capitalize (symbol-name view))))
-                   (list label (eq view shown)
-                         (propertize (format "RET: show the %s  %s: next view"
-                                             (downcase label) key)
-                                     'octocat-key-help t)
-                         (lambda () (octocat-file-show-view view)))))
-               views)))))
+      (mapcar (lambda (view)
+                (let ((label (capitalize (symbol-name view))))
+                  (list label (eq view shown)
+                        (propertize (format "RET: show the %s  %s: next view"
+                                            (downcase label) key)
+                                    'octocat-key-help t)
+                        (lambda () (octocat-file-show-view view)))))
+              views))))
+
+(defun octocat-repo-vui--view-tabs (path raw blame)
+  "Return the views of file PATH as a pill, as GitHub's, or nil.
+See `octocat-repo-vui--view-segments' for RAW and BLAME."
+  (when-let* ((segments (octocat-repo-vui--view-segments path raw blame)))
+    (octocat-vui-segmented segments)))
 
 (vui-defcomponent octocat-repo-vui--file-page (repo ref path raw blame lines tick)
   "Root component of the file viewer: file PATH of REPO at REF.
@@ -1593,33 +1614,37 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
          (blob           (and head (equal (gethash "kind" head) "blob")
                               (gethash "tree" head)))
          (notice         (and blob (not anyway) (octocat-repo--file-notice path head))))
-    (vui-vstack
-     (octocat-repo-vui--top-line
-      repo (or ref default-branch) path current-branch #'octocat-file-switch-branch
-      (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir)))
-      (octocat-repo-vui--view-tabs path raw blame))
-     (vui-newline)
-     (octocat-repo-vui--head-line repo ref path head-snap)
-     (cond (notice
-            (apply #'vui-hstack :spacing 2
-                   (vui-text notice :face 'octocat-dimmed)
-                   ;; Not a binary file: it would show as garbage.
-                   (unless (gethash "binary" head)
-                     (list (vui-button "[Show anyway]"
-                             :no-decoration t
-                             :help-echo "RET: fetch the file and show it as plain text"
-                             :on-click (lambda () (vui-set-state :anyway t)))))))
-           ((and blob blame)
-            (vui-component 'octocat-repo-vui--file-blame
-              :key blob :repo repo :path path :blob blob :commit (gethash "sha" head)
-              :lines lines))
-           (blob
-            (vui-component 'octocat-repo-vui--file-content
-              :key blob :repo repo :ref (or ref default-branch "HEAD")
-              :path path :blob blob :raw raw :lines lines))
-           ;; The head line says why there is none.
-           ((eq (octocat-vui-snapshot-status head-snap) 'pending)
-            (vui-text (octocat-tree--skeleton)))))))
+    (octocat-vui-page
+     (octocat-repo--pin repo (or ref default-branch) path current-branch
+                        (octocat-vui-segmented-pin
+                         (octocat-repo-vui--view-segments path raw blame)))
+     (vui-vstack
+      (octocat-repo-vui--top-line
+       repo (or ref default-branch) path current-branch #'octocat-file-switch-branch
+       (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir)))
+       (octocat-repo-vui--view-tabs path raw blame))
+      (vui-newline)
+      (octocat-repo-vui--head-line repo ref path head-snap)
+      (cond (notice
+             (apply #'vui-hstack :spacing 2
+                    (vui-text notice :face 'octocat-dimmed)
+                    ;; Not a binary file: it would show as garbage.
+                    (unless (gethash "binary" head)
+                      (list (vui-button "[Show anyway]"
+                              :no-decoration t
+                              :help-echo "RET: fetch the file and show it as plain text"
+                              :on-click (lambda () (vui-set-state :anyway t)))))))
+            ((and blob blame)
+             (vui-component 'octocat-repo-vui--file-blame
+               :key blob :repo repo :path path :blob blob :commit (gethash "sha" head)
+               :lines lines))
+            (blob
+             (vui-component 'octocat-repo-vui--file-content
+               :key blob :repo repo :ref (or ref default-branch "HEAD")
+               :path path :blob blob :raw raw :lines lines))
+            ;; The head line says why there is none.
+            ((eq (octocat-vui-snapshot-status head-snap) 'pending)
+             (vui-text (octocat-tree--skeleton))))))))
 
 (vui-defcomponent octocat-repo-vui--commits-page (repo ref tracked path tick)
   "Root component of the commits page: the history of REF of REPO.
@@ -1637,14 +1662,17 @@ touched it, as GitHub's History."
         (with-current-buffer buf
           (setq octocat-repo--default-branch default-branch)))
       nil)
-    (vui-vstack
-     ;; No tabs: only the repo root and the list pages show them.
-     (vui-component 'octocat-repo-vui--commits-section
-       :key (list (or ref tracked) path)
-       :repo repo :ref (or ref tracked) :path path
-       :default-branch (or tracked default-branch)
-       :current-branch (plist-get head-info :branch)
-       :head-info head-info :tick tick))))
+    (octocat-vui-page
+     (octocat-repo--pin repo (or ref tracked default-branch) path
+                        (plist-get head-info :branch))
+     (vui-vstack
+      ;; No tabs: only the repo root and the list pages show them.
+      (vui-component 'octocat-repo-vui--commits-section
+        :key (list (or ref tracked) path)
+        :repo repo :ref (or ref tracked) :path path
+        :default-branch (or tracked default-branch)
+        :current-branch (plist-get head-info :branch)
+        :head-info head-info :tick tick)))))
 
 
 ;;;; Major mode
