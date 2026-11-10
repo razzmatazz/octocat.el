@@ -2473,20 +2473,29 @@ shown instead of the actions."
           (vui-text "      ")
           (if busy
               (list (vui-text (concat (octocat-spinner) " " busy) :face 'octocat-dimmed))
-            (delq nil
-                  (mapcar (pcase-lambda (`(,flag . ,props))
-                            (when (memq kind (or (plist-get props :kinds) (list kind)))
-                              (vui-button (plist-get props :button)
-                                :no-decoration t
-                                :face 'octocat-dimmed
-                                :key flag
-                                :help-echo (format "RET: add or remove %s of the marked %s"
-                                                   (downcase (plist-get props :name))
-                                                   (octocat-vui-list--noun kind 2))
-                                :on-click (lambda ()
-                                            (octocat-vui-list--toggle-marked
-                                             flag kind repo spec marked)))))
-                          octocat-vui-list--toggles))))
+            (cons
+             (vui-button "[Mark as]"
+               :no-decoration t
+               :face 'octocat-dimmed
+               :key :state
+               :help-echo (format "RET: open or close the marked %s"
+                                  (octocat-vui-list--noun kind 2))
+               :on-click (lambda ()
+                           (octocat-vui-list--set-state-marked kind repo spec marked)))
+             (delq nil
+                   (mapcar (pcase-lambda (`(,flag . ,props))
+                             (when (memq kind (or (plist-get props :kinds) (list kind)))
+                               (vui-button (plist-get props :button)
+                                 :no-decoration t
+                                 :face 'octocat-dimmed
+                                 :key flag
+                                 :help-echo (format "RET: add or remove %s of the marked %s"
+                                                    (downcase (plist-get props :name))
+                                                    (octocat-vui-list--noun kind 2))
+                                 :on-click (lambda ()
+                                             (octocat-vui-list--toggle-marked
+                                              flag kind repo spec marked)))))
+                           octocat-vui-list--toggles)))))
    (vui-newline)))
 
 (defun octocat-vui-list--value-counts (items field key)
@@ -2553,9 +2562,7 @@ listed first, then those some have, marked –."
 FLAG is in `octocat-vui-list--toggles'.  SPEC is the list's resource,
 which holds the items' values.  The values picked are toggled on them
 all; with more than one item changing, ask first."
-  (when-let* ((busy (alist-get 'batch (plist-get (octocat-sync-read (list 'counts kind repo))
-                                                 :mutating))))
-    (user-error "Octocat: Wait for \"%s\" to finish" busy))
+  (octocat-vui-list--ensure-idle kind repo)
   (let* ((props    (cdr (assoc flag octocat-vui-list--toggles)))
          (name     (plist-get props :name))
          (field    (plist-get props :field))
@@ -2607,6 +2614,49 @@ all; with more than one item changing, ask first."
                              `(edit-values ,(if (eq kind 'pulls) "pr" "issue") ,repo ,number
                                            ,flag ,add ,remove))
                            changes))))))))))))
+
+(defun octocat-vui-list--ensure-idle (kind repo)
+  "Signal a `user-error' if an action on marked KIND items of REPO is running."
+  (when-let* ((busy (alist-get 'batch (plist-get (octocat-sync-read (list 'counts kind repo))
+                                                 :mutating))))
+    (user-error "Octocat: Wait for \"%s\" to finish" busy)))
+
+(defun octocat-vui-list--state-changes (items verb)
+  "Return the numbers of ITEMS for VERB, \"close\" or \"reopen\", to change.
+Closing takes the open ones, reopening the closed ones; a merged PR
+is neither."
+  (let ((from (if (equal verb "close") "OPEN" "CLOSED")))
+    (delq nil (mapcar (lambda (item)
+                        (and (equal (upcase (or (gethash "state" item) "")) from)
+                             (gethash "number" item)))
+                      items))))
+
+(defun octocat-vui-list--set-state-marked (kind repo spec marked)
+  "Open or close MARKED, the numbers of KIND items of REPO, after asking.
+As GitHub's \"Mark as\": the state picked is set on those not in it.
+SPEC is the list's resource, which holds the items' states."
+  (octocat-vui-list--ensure-idle kind repo)
+  (let* ((items   (seq-filter (lambda (item) (memql (gethash "number" item) marked))
+                              (append (gethash "nodes" (plist-get (octocat-sync-read spec)
+                                                                  :data))
+                                      nil)))
+         (state   (completing-read (format "Mark %d %s as: " (length items)
+                                           (octocat-vui-list--noun kind (length items)))
+                                   '("Closed" "Open") nil t nil nil "Closed"))
+         (verb    (if (equal state "Open") "reopen" "close"))
+         (numbers (octocat-vui-list--state-changes items verb))
+         (noun    (octocat-vui-list--noun kind (length numbers))))
+    (cond ((null numbers)
+           (message "Octocat: The marked %s are all %s already"
+                    (octocat-vui-list--noun kind 2) (downcase state)))
+          ((y-or-n-p (format "%s %s %s? " (capitalize verb) noun
+                             (mapconcat (lambda (n) (format "#%d" n)) numbers ", ")))
+           (octocat-vui-list--send-each
+            kind repo
+            (if (equal verb "close") "Closing" "Reopening")
+            (if (equal verb "close") "Closed" "Reopened")
+            (mapcar (lambda (n) `(set-state ,(if (eq kind 'pulls) "pr" "issue") ,verb ,repo ,n))
+                    numbers))))))
 
 (defun octocat-vui-list--send-each (kind repo doing done specs)
   "Send SPECS, mutations of KIND items of REPO, one after another.

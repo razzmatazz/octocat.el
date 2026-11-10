@@ -763,6 +763,16 @@ The marks are kept in a variable, as the page keeps them in its state."
       (should (equal (octocat-vui-list--toggle-changes assigned '("a") "assignees" "login")
                      '((2 ("a") nil)))))))
 
+(ert-deftest octocat-vui-test-state-changes ()
+  "Marking as closed takes the open items; as open, the closed ones, never merged."
+  (let ((items (mapcar (pcase-lambda (`(,number ,state))
+                         (let ((item (octocat-vui-tests--labelled number)))
+                           (puthash "state" state item)
+                           item))
+                       '((1 "OPEN") (2 "closed") (3 "MERGED") (4 "open")))))
+    (should (equal (octocat-vui-list--state-changes items "close") '(1 4)))
+    (should (equal (octocat-vui-list--state-changes items "reopen") '(2)))))
+
 (ert-deftest octocat-vui-test-mark-without-page ()
   "Marking where no list page has mounted says so."
   (with-temp-buffer

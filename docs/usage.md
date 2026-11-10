@@ -184,9 +184,11 @@ A marked row shows `✓` and is highlighted.  An item that leaves the
 list, after a new query or once closed, is unmarked.
 
 While items are marked, a **Marked** bar replaces the filters and acts
-on them: **[Label]**, **[Assign]** and, for PRs, **[Request review]**
-add or remove labels, assignees and requested reviewers on all of them
-at once.
+on them.  **[Mark as]** closes or reopens them, as GitHub's "Mark as":
+it asks for Open or Closed, then confirms the items that change, as
+those already in that state are left alone.  **[Label]**, **[Assign]**
+and, for PRs, **[Request review]** add or remove labels, assignees and
+requested reviewers on all of them at once.
 
 ## Actions (`M-x octocat-run-list`, `M-x octocat-workflow-list`)
 

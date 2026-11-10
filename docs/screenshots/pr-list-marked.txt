@@ -1,7 +1,7 @@
 acme/rocket › Pull requests  6 open · 14 closed · 108 merged
 
 Marked  2 PRs  [Unmark all]
-        [Label]  [Assign]  [Request review]
+        [Mark as]  [Label]  [Assign]  [Request review]
 
   open    Incremental bui…  ≡ 2/2  ● 2/4   performance   enhancement   ✉ 4  assigned to @srivera +1
           #133 opened 3 hours ago by @srivera · Review required
