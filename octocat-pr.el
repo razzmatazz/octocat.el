@@ -1739,8 +1739,8 @@ See `octocat-pr-diff-open'."
   (interactive)
   (unless octocat-vui-list--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
-  (let ((repo octocat-vui-list--repo)
-        (bg   (octocat--label-background)))
+  ;; The rows read the label background as drawn, to follow a theme change.
+  (let ((repo octocat-vui-list--repo))
     (octocat-vui-refresh-page 'octocat-vui-search-list repo
                               (list :repo repo
                                     :kind 'pulls
@@ -1748,13 +1748,14 @@ See `octocat-pr-diff-open'."
                                     :compact (octocat-vui-list-compact-p)
                                     :row-fn (lambda (pr width compact no-state stacks marked)
                                               (octocat-vui--pr-row
-                                               repo pr width bg compact no-state
+                                               repo pr width (octocat--label-background)
+                                               compact no-state
                                                (octocat-pr--stacks-label
                                                 stacks (gethash "number" pr))
                                                marked))
                                     :line-fn (lambda (pr no-state stacks)
                                                (octocat-vui--pr-compact-line
-                                                repo pr bg no-state nil
+                                                repo pr (octocat--label-background) no-state nil
                                                 (octocat-pr--stacks-label
                                                  stacks (gethash "number" pr))))
                                     :extra-fn (lambda (tick)

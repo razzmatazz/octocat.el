@@ -357,8 +357,8 @@ the background, in place: what is unfolded stays so."
   (interactive)
   (unless octocat-vui-list--repo
     (user-error "Octocat: Buffer is not associated with a repository"))
-  (let ((repo octocat-vui-list--repo)
-        (bg   (octocat--label-background)))
+  ;; The rows read the label background as drawn, to follow a theme change.
+  (let ((repo octocat-vui-list--repo))
     (octocat-vui-refresh-page 'octocat-vui-search-list repo
                               (list :repo repo
                                     :kind 'issues
@@ -366,10 +366,12 @@ the background, in place: what is unfolded stays so."
                                     :compact (octocat-vui-list-compact-p)
                                     :row-fn (lambda (issue width compact no-state _ marked)
                                               (octocat-vui--issue-row
-                                               repo issue width bg compact no-state marked))
+                                               repo issue width (octocat--label-background)
+                                               compact no-state marked))
                                     :line-fn (lambda (issue no-state _)
                                                (octocat-vui--issue-compact-line
-                                                repo issue bg no-state))))))
+                                                repo issue (octocat--label-background)
+                                                no-state))))))
 
 (defvar octocat-issue-list-mode-map
   (let ((map (make-sparse-keymap)))

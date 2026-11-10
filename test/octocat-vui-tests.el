@@ -391,6 +391,35 @@ unsubscribes it."
             (should (= (hash-table-count octocat-vui--subscriptions) 0)))
         (when (buffer-live-p buf) (kill-buffer buf))))))
 
+(vui-defcomponent octocat-vui-tests--counter ()
+  "Counts its renders in `octocat-vui-tests--renders'."
+  :render
+  (progn (cl-incf octocat-vui-tests--renders)
+         (vui-text "x")))
+
+(ert-deftest octocat-vui-test-theme-change-rerenders ()
+  "A theme change re-renders each page once, when `load-theme' is done."
+  (let ((octocat-vui-tests--renders 0)
+        (vui-render-delay nil)
+        (octocat-vui--theme-timer nil)
+        (buf (get-buffer-create "*octocat-vui-test*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf (octocat-page-mode))
+          (vui-mount (vui-component 'octocat-vui-tests--counter) "*octocat-vui-test*")
+          (should (= octocat-vui-tests--renders 1))
+          ;; `load-theme' disables the old theme, then enables the new.
+          (octocat-vui--on-theme-change 'old)
+          (octocat-vui--on-theme-change 'new)
+          (should (= octocat-vui-tests--renders 1))
+          (should (timerp octocat-vui--theme-timer))
+          (timer-event-handler octocat-vui--theme-timer)
+          (should (= octocat-vui-tests--renders 2))
+          (should-not octocat-vui--theme-timer))
+      (when (timerp octocat-vui--theme-timer)
+        (cancel-timer octocat-vui--theme-timer))
+      (kill-buffer buf))))
+
 (vui-defcomponent octocat-vui-tests--form ()
   "Two fields whose RET moves on, and a button."
   :render

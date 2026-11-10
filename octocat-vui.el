@@ -228,7 +228,30 @@ Called as a page mounts, so the lower modules never name vui."
   (add-hook 'octocat-sync-loading-functions #'octocat-vui--on-sync-loading)
   (add-hook 'octocat-sync-invalidate-functions #'octocat-vui--on-sync-invalidate)
   (add-hook 'octocat-sync-pending-functions #'octocat-vui--on-sync-pending)
-  (add-hook 'octocat-image-loading-functions #'octocat-vui--image-loading))
+  (add-hook 'octocat-image-loading-functions #'octocat-vui--image-loading)
+  (add-hook 'enable-theme-functions #'octocat-vui--on-theme-change)
+  (add-hook 'disable-theme-functions #'octocat-vui--on-theme-change))
+
+(defvar octocat-vui--theme-timer nil
+  "The pending re-render of the pages after a theme change, or nil.")
+
+(defun octocat-vui--on-theme-change (&optional _theme)
+  "Re-render the pages once the theme has changed, for their label colours.
+Faces follow a theme by themselves, but a label's colour is blended with
+the background as it is drawn, see `octocat--label-background'.  From a
+timer, so `load-theme', which disables the old theme then enables the
+new, re-renders once."
+  (unless (timerp octocat-vui--theme-timer)
+    (setq octocat-vui--theme-timer
+          (run-at-time 0 nil #'octocat-vui--rerender-pages))))
+
+(defun octocat-vui--rerender-pages ()
+  "Re-render every octocat page, keeping its state."
+  (setq octocat-vui--theme-timer nil)
+  (dolist (buf (buffer-list))
+    (when-let* ((root (and (with-current-buffer buf (derived-mode-p 'octocat-page-mode))
+                           (vui-get-instance buf))))
+      (vui-rerender root))))
 
 (defun octocat-vui--on-sync-invalidate (keys)
   "Refetch the resources of KEYS that are on a page; the rest wait to be opened."
