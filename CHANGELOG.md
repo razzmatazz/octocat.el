@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A pull request's stack is a section of its own, before the merge box
+* "Merging can be performed automatically" now sits under "No conflicts", as on GitHub
+* The merge box on a pull request leaves a blank line between its rows
 * Label colours follow a theme change at once, without refreshing the page
 * State colours follow GitHub: merged purple, closed issues purple or grey, cancelled grey
 * Octocat now needs the yaml package, to read workflow files

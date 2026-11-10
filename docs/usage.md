@@ -275,7 +275,8 @@ data, so it fetches nothing more.
 A PR in a [stack](https://github.com/github/gh-stack) shows its place
 in it after its title, `≡ 2/3` (counting from the bottom).  On its page,
 `RET` on that picks another PR of the stack, and the stack is listed
-under the merge box, with what stops it merging.
+in a section of its own before the merge box, with what stops it
+merging.
 
 ### Inline editing
 

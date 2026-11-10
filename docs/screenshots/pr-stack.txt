@@ -14,20 +14,26 @@ Conversation  [Commits (1)]  [Files changed (4)]
 │
 [+ Add a comment]   [Close pull request]
 
+≡ Stack #134  into main  ✗ Unable to merge as stack
+  #133  Incremental builds: skip pages whose inputs are unchanged
+  #130  Fix: `rocket serve` drops changes saved twice in a second  ✗ has conflicts
+
 Merge
   ✗ Review required
     At least 1 approving review is required by reviewers with write access.
+
   ✓ All checks have passed
     4 successful checks
     ✓ lint           CI  2m00s  1 day ago
     ✓ test (stable)  CI  6m00s  1 day ago
     ✓ test (beta)    CI  7m00s  1 day ago
     ✓ docs           CI  3m00s  1 day ago
+
+  ● 1 workflow awaiting approval
+    This workflow requires approval from a maintainer.
+    [Approve workflows to run]
+
   ✓ No conflicts with base branch
+    Merging can be performed automatically.
 
-  Merging can be performed automatically.
   [Merge pull request]   Still in progress? [Convert to draft]
-
-  ≡ Stack #134 · into main · ✗ Unable to merge as stack
-    #133  Incremental builds: skip pages whose inputs are unchanged
-    #130  Fix: `rocket serve` drops changes saved twice in a second  ✗ has conflicts

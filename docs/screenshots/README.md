@@ -166,7 +166,8 @@ conversation unfolds it.
 [As text](pr-diff-review.txt)
 <!-- /screenshot -->
 
-A pull request in a stack, the stack listed under the merge box:
+A pull request in a stack, the stack listed before the merge box, and a
+workflow run awaiting a maintainer's approval:
 
 <!-- screenshot: (pr "acme/rocket" 133) :name "pr-stack" -->
 ![pr-stack](pr-stack.png)

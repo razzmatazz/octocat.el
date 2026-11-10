@@ -42,13 +42,15 @@ Conversation  [Commits (7)]  [Files changed (3)]
 Merge
   ✓ Changes approved
     1 approving review
+
   ✓ All checks have passed
     4 successful checks
     ✓ lint           CI  2m00s  1 day ago
     ✓ test (stable)  CI  6m00s  1 day ago
     ✓ test (beta)    CI  7m00s  1 day ago
     ✓ docs           CI  3m00s  1 day ago
-  ✓ No conflicts with base branch
 
-  Merging can be performed automatically.
+  ✓ No conflicts with base branch
+    Merging can be performed automatically.
+
   [Merge pull request]   Still in progress? [Convert to draft]

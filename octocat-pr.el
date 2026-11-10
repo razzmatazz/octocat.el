@@ -318,8 +318,19 @@ workflow runs, with the button approving them under it."
                    (format "Merge the latest changes from %s into this branch."
                            (or (gethash "baseRefName" pr) "the base branch"))))
             ((equal (octocat--get pr "mergeable") "MERGEABLE")
-             (list 'ok "No conflicts with base branch"))
-            (t (list 'wait "Checking for the ability to merge automatically…")))))))
+             (list 'ok "No conflicts with base branch"
+                   (and (not (eq (gethash "isDraft" pr) t))
+                        (not (octocat-pr--blocked-p pr))
+                        "Merging can be performed automatically.")))
+            (t (list 'wait "Checking for the ability to merge automatically…")))
+           ;; Blocked by reviews or branch protection, not by conflicts.
+           (and (octocat-pr--blocked-p pr)
+                (not (octocat-pr--conflicts-p pr))
+                (list 'fail "Merging is blocked"))))))
+
+(defun octocat-pr--blocked-p (pr)
+  "Return non-nil when PR's merge is blocked, as by a required review."
+  (equal (octocat--get pr "mergeStateStatus") "BLOCKED"))
 
 (defun octocat-pr--conflicts-p (pr)
   "Return non-nil when PR conflicts with its base branch."
@@ -343,13 +354,17 @@ buttons.  AWAITING are the workflow runs awaiting approval, under the
 checks with a button approving them; APPROVING, a label, shows that
 under way in its place."
   (when (equal (gethash "state" pr) "OPEN")
-    (let ((draft  (eq (gethash "isDraft" pr) t))
-          (checks (or (octocat--get pr "statusCheckRollup") [])))
+    (let* ((draft  (eq (gethash "isDraft" pr) t))
+           (checks (or (octocat--get pr "statusCheckRollup") []))
+           (rows   (octocat-pr--merge-rows pr awaiting))
+           (first  (car rows)))
       (append
        (list (octocat-vui-section-heading "Merge" width))
        (mapcan (lambda (row)
                  (pcase-let ((`(,kind ,title ,subtitle ,below) row))
                    (append
+                    ;; A blank line between rows, else they run together.
+                    (and (not (eq row first)) (list (vui-newline)))
                     (delq nil
                           (list (vui-text (concat "  " (octocat-pr--merge-icon kind) " " title))
                                 (and subtitle
@@ -358,7 +373,7 @@ under way in its place."
                                      (octocat-checks-rows checks on-visit-check "    "))))
                     (and (eq below 'approval)
                          (octocat-pr--approval-row awaiting approving)))))
-               (octocat-pr--merge-rows pr awaiting))
+               rows)
        (list (vui-newline))
        (cond
         (merging
@@ -372,20 +387,13 @@ under way in its place."
               octocat-pr-ready "Draft pull requests cannot be merged."))
            'tight)))
         (t
-         (append
-          (unless (octocat-pr--conflicts-p pr)
-            (list
-             (if (equal (octocat--get pr "mergeStateStatus") "BLOCKED")
-                 (vui-text "  Merging is blocked" :face 'octocat-ci-failure)
-               (vui-text "  Merging can be performed automatically."
-                 :face 'octocat-merge-ready))))
-          (octocat-timeline-buttons
-           (list (and (not (octocat-pr--conflicts-p pr))
-                      '("Merge pull request" "RET: merge this pull request"
-                        octocat-pr-merge))
-                 '("Convert to draft" "RET: convert this pull request to a draft"
-                   octocat-pr-convert-to-draft "Still in progress?"))
-           'tight))))))))
+         (octocat-timeline-buttons
+          (list (and (not (octocat-pr--conflicts-p pr))
+                     '("Merge pull request" "RET: merge this pull request"
+                       octocat-pr-merge))
+                '("Convert to draft" "RET: convert this pull request to a draft"
+                  octocat-pr-convert-to-draft "Still in progress?"))
+          'tight)))))))
 
 (defun octocat-pr--approval-row (awaiting approving)
   "Return the indented button approving each workflow run in AWAITING.
@@ -738,48 +746,39 @@ stops it; their rows say why.  Nil when NUMBER is not in STACK."
                                                with)
                                        ", ")
                           into)
-                (format "It merges into %s." into)))))))
+                ;; Its section's heading already names INTO.
+                nil))))))
 
 (defun octocat-pr--stack-section (repo pr stack width)
   "Return the vnodes of STACK, which PR of REPO is in, or nil when it is empty.
-An open PR's are a part of its merge box, under its buttons: whether
-the stack can merge up to PR, then the stack's pull requests, each that
-stops it saying why after its title.  Another's
-are a section of their own, its heading underlined across WIDTH.  The
-pull requests are listed top first, each opening its page but PR's own,
-in bold; their titles are cut to fit WIDTH."
+A section of its own, its heading underlined across WIDTH.  An open
+PR's heading ends saying whether the stack can merge up to PR, and each
+pull request that stops it says why after its title.  The pull requests
+are listed top first, each opening its page but PR's own, in bold;
+their titles are cut to fit WIDTH."
   (when-let* ((prs (octocat-pr--stack-entries stack)))
     (let* ((number (gethash "number" pr))
-           (open   (equal (gethash "state" pr) "OPEN"))
-           (indent (if open "  " ""))
-           (name   (concat (propertize (format "≡ Stack #%d" (gethash "number" stack))
-                                       'face 'bold)
-                           (propertize " · into " 'face 'octocat-dimmed)
-                           (propertize (or (octocat--get stack "baseRefName") "")
-                                       'face 'octocat-branch)))
-           (row    (and open (octocat-pr--stack-merge-row number stack)))
-           (with   (and open (octocat-pr--stack-merging stack number))))
+           (row    (and (equal (gethash "state" pr) "OPEN")
+                        (octocat-pr--stack-merge-row number stack)))
+           (with   (and row (octocat-pr--stack-merging stack number))))
       (append
-       (if open
-           (pcase-let ((`(,kind ,title ,subtitle) row))
-             (delq nil
-                   (list (vui-newline)
-                         ;; Whether it can merge ends the stack's line.
-                         (vui-text (concat indent name
-                                           (if row
-                                               (concat (propertize " · " 'face 'octocat-dimmed)
-                                                       (octocat-pr--merge-icon kind) " " title)
-                                             "")))
-                         (and subtitle
-                              (vui-text (concat "    " subtitle) :face 'octocat-dimmed)))))
-         (list (vui-newline) (octocat-vui-section-heading "Stack" width)
-               (vui-text name)))
+       (pcase-let ((`(,kind ,title ,subtitle) row))
+         (delq nil
+               (list (octocat-vui-section-heading
+                      (format "≡ Stack #%d" (gethash "number" stack)) width
+                      (vui-text (concat (propertize "into " 'face 'octocat-dimmed)
+                                        (propertize (or (octocat--get stack "baseRefName") "")
+                                                    'face 'octocat-branch)))
+                      ;; The verdict; the rows below say what stops it.
+                      (and row (vui-text (concat (octocat-pr--merge-icon kind) " " title))))
+                     (and subtitle
+                          (vui-text (concat "  " subtitle) :face 'octocat-dimmed)))))
        (mapcar
         (lambda (p)
           (let* ((n     (gethash "number" p))
-                 ;; Under "Stack"; a draft says so, as in a compact list.
+                 ;; A draft says so, as in a compact list.
                  (state (if (eq (gethash "isDraft" p) t) "(draft) " ""))
-                 (head  (concat indent "  "
+                 (head  (concat "  "
                                 (propertize (format "#%d  " n) 'face 'octocat-pr-number)
                                 (propertize state 'face 'octocat-dimmed)))
                  (why   (and (memq p with) (octocat-pr--stack-blocker p)))
@@ -1052,14 +1051,18 @@ again."
                                       octocat-pr-reopen))))
                   (alist-get 'action mutating))
                  (list (vui-newline))
+                 ;; Before the merge box: what stops the stack is read
+                 ;; before its buttons.
+                 (when-let* ((section (octocat-pr--stack-section
+                                       repo pr stack (octocat--markdown-width))))
+                   (append section (list (vui-newline))))
                  ;; An open PR's checks are in its merge box, as on GitHub.
                  (or (octocat-pr--merge-section pr (octocat--markdown-width) on-visit-check
                                                 (alist-get 'merge mutating)
                                                 awaiting (alist-get 'approve mutating))
                      (octocat-checks-block
                       (or (octocat--get pr "statusCheckRollup") [])
-                      on-visit-check (octocat--markdown-width)))
-                 (octocat-pr--stack-section repo pr stack (octocat--markdown-width)))))))))
+                      on-visit-check (octocat--markdown-width))))))))))
 
 
 (vui-defcomponent octocat-pr-commits--page (repo number tick)

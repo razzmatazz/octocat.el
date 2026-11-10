@@ -70,11 +70,10 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
                                         '(16 "OPEN" t "MERGEABLE")))
          (pr    (json-parse-string "{\"number\":15,\"state\":\"OPEN\"}")))
     (should (equal (octocat-pr-test--text (octocat-pr--stack-section "o/r" pr stack 80))
-                   '("" "  ≡ Stack #17 · into main · ✓ Ready to merge as stack"
-                     "    It merges into main."
-                     "    #16  (draft) Layer 16"
-                     "    #15  Layer 15"
-                     "    #14  Layer 14")))
+                   '("≡ Stack #17  into main  ✓ Ready to merge as stack"
+                     "  #16  (draft) Layer 16"
+                     "  #15  Layer 15"
+                     "  #14  Layer 14")))
     (should (equal (octocat-pr--stack-label stack 15) "≡ 2/3"))
     (should-not (octocat-pr--stack-label stack 99))
     (should (equal (octocat-pr--stack-choices stack 15)
@@ -102,10 +101,10 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
                                            '(15 "OPEN" :false "CONFLICTING")
                                            '(16 "OPEN" :false "CONFLICTING"))
                    80))
-                 '("" "  ≡ Stack #17 · into main · ✗ Unable to merge as stack"
-                   "    #16  Layer 16"
-                   "    #15  Layer 15  ✗ has conflicts"
-                   "    #14  (draft) Layer 14  ✗ is a draft")))
+                 '("≡ Stack #17  into main  ✗ Unable to merge as stack"
+                   "  #16  Layer 16"
+                   "  #15  Layer 15  ✗ has conflicts"
+                   "  #14  (draft) Layer 14  ✗ is a draft")))
   ;; A pull request in no stack shows none.
   (let ((none (octocat-model--pr-parse-stack
                (octocat--get (octocat-sync--parse
@@ -187,7 +186,21 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
                  '((ok "Changes approved" "1 approving review")
                    (wait "Some checks haven't completed yet"
                          "1 in progress, 1 skipped, 1 successful checks" checks)
-                   (ok "No conflicts with base branch")))))
+                   (ok "No conflicts with base branch"
+                       "Merging can be performed automatically.")))))
+
+(ert-deftest octocat-pr-test-merge-rows-blocked ()
+  "A blocked PR without conflicts gets a row saying so, and no promise of merging."
+  (should (equal (octocat-pr--merge-rows
+                  (octocat-pr-test--pr "{\"mergeable\":\"MERGEABLE\",
+                                         \"mergeStateStatus\":\"BLOCKED\"}"))
+                 '((ok "No conflicts with base branch" nil)
+                   (fail "Merging is blocked"))))
+  (should (equal (octocat-pr--merge-rows
+                  (octocat-pr-test--pr "{\"mergeable\":\"CONFLICTING\",
+                                         \"mergeStateStatus\":\"BLOCKED\"}"))
+                 '((fail "This branch has conflicts that must be resolved"
+                         "Use the web editor or the command line to resolve conflicts.")))))
 
 (ert-deftest octocat-pr-test-merge-rows-awaiting ()
   "Workflow runs awaiting approval get a row of their own after the checks."
@@ -196,7 +209,8 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
     (should (equal (octocat-pr--merge-rows pr (list run))
                    '((wait "1 workflow awaiting approval"
                            "This workflow requires approval from a maintainer." approval)
-                     (ok "No conflicts with base branch"))))
+                     (ok "No conflicts with base branch"
+                         "Merging can be performed automatically."))))
     (should (equal (cadr (car (octocat-pr--merge-rows pr (list run run))))
                    "2 workflows awaiting approval"))))
 

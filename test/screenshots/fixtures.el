@@ -1232,6 +1232,10 @@ jobs:
       ("pr" ("127") ,octocat-screenshots--pr-127)
       ("timeline-events" ("issues/127/") [[]])
       ("timeline-events" ("issues/128/") ,octocat-screenshots--pr-128-events)
+      ("awaiting-runs" (,(concat "head_sha=" (octocat-screenshots--sha "pr-133-1")))
+       (:total_count 1
+        :workflow_runs [(:id 9100200311 :name "Deploy preview" :status "action_required"
+                         :head_sha ,(octocat-screenshots--sha "pr-133-1"))]))
       ("awaiting-runs" () (:total_count 0 :workflow_runs []))
       ("pr" ("133") ,octocat-screenshots--pr-133)
       ("timeline-events" ("issues/133/") [[]])
