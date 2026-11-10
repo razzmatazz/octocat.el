@@ -236,6 +236,22 @@ A LABEL of (:key KEY) calls the command KEY is bound to in BUFFER;
             (write-region (x-export-frames frame 'png) nil file nil 0)))
       (delete-frame frame t))))
 
+(defun octocat-screenshots--window-text (win start end)
+  "Return the text from START to END as WIN shows it.
+That is with the strings of overlays only WIN shows, as a pinned
+blame commit, in place of the text they cover."
+  (let ((pos start) parts)
+    (dolist (ov (sort (seq-filter (lambda (ov)
+                                    (and (eq (overlay-get ov 'window) win)
+                                         (stringp (overlay-get ov 'display))))
+                                  (overlays-in start end))
+                      (lambda (a b) (< (overlay-start a) (overlay-start b)))))
+      (push (buffer-substring-no-properties pos (overlay-start ov)) parts)
+      (push (substring-no-properties (overlay-get ov 'display)) parts)
+      (setq pos (overlay-end ov)))
+    (push (buffer-substring-no-properties pos end) parts)
+    (apply #'concat (nreverse parts))))
+
 (defun octocat-screenshots--scrolled (buffer text png)
   "Return BUFFER as a window scrolled to the line showing TEXT shows it.
 That is its header line, then `octocat-screenshots-scroll-height' lines.
@@ -277,10 +293,10 @@ With PNG, a file name, save the window there too, when graphic."
                                 "\n")
                       "")
                     (with-current-buffer buffer
-                      (buffer-substring-no-properties
-                       start (save-excursion (goto-char start)
-                                             (forward-line height)
-                                             (point)))))))
+                      (octocat-screenshots--window-text
+                       win start (save-excursion (goto-char start)
+                                                 (forward-line height)
+                                                 (point)))))))
       (set-window-parameter win 'header-line-format nil)
       (if frame (delete-frame frame t) (set-window-buffer win old)))))
 

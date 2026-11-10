@@ -136,6 +136,12 @@ Read by `octocat-repo--sync-checkout' on each refresh; a page with no
 (defvar-local octocat-tree--file-blame nil
   "Non-nil when the file viewer shows the blame, see `octocat-file-cycle-view'.")
 
+(defvar-local octocat-repo--blame-pins nil
+  "The overlays pinning a blame's commit, see `octocat-repo--blame-pin'.")
+
+(defvar-local octocat-repo--blame-sliding nil
+  "Non-nil while the blame column slides, which a pin would cover.")
+
 
 ;;;; Repo detection
 
@@ -1344,9 +1350,10 @@ RANGES are as `octocat-model--repo-parse-blame' gives them.  The first line
 of each range is headed by its commit, see `octocat-repo--blame-margin',
 in `octocat-repo--blame-width' columns; every line is numbered, and the
 last of a range is underlined to column EDGE, parting it from the next.
-RET on a range's margin opens its commit, and \\[octocat-browse] browses
-it.  RANGES nil, while they load, puts grey bars at the head of every
-few lines instead."
+The blank margin of each other line has that head in `octocat-blame-head',
+for `octocat-repo--blame-pin'.  RET on a range's margin opens its commit,
+and \\[octocat-browse] browses it.  RANGES nil, while they load, puts
+grey bars at the head of every few lines instead."
   (let* ((lines   (vconcat (split-string text "\n")))
          (num-w   (length (number-to-string (length lines))))
          (margin  octocat-repo--blame-width)
@@ -1377,6 +1384,7 @@ few lines instead."
          (let* ((commit (gethash "commit" range))
                 (sha    (or (gethash "sha" commit) ""))
                 (last   (min (gethash "end" range) (length lines)))
+                (head   (octocat-repo--blame-margin commit margin))
                 (map    (let ((m (make-sparse-keymap)))
                           (define-key m (kbd "RET")
                                       (lambda () (interactive)
@@ -1384,15 +1392,23 @@ few lines instead."
                           m)))
            (cl-loop for n from (gethash "start" range) to (gethash "end" range)
                     while (<= n (length lines))
-                    do (let ((s (funcall
-                                 line n
-                                 (propertize (if (= n (gethash "start" range))
-                                                 (octocat-repo--blame-margin commit margin)
-                                               blank)
-                                             'keymap map
-                                             'octocat-url (octocat--web-url "%s/commit/%s"
-                                                                            repo sha)))))
-                         (when (and (= n last) (< n (length lines)))
+                    do (let* ((ruled (and (= n last) (< n (length lines))))
+                              (s (funcall
+                                  line n
+                                  (propertize (if (= n (gethash "start" range))
+                                                  head
+                                                (propertize
+                                                 blank 'octocat-blame-head
+                                                 (if ruled
+                                                     (let ((h (copy-sequence head)))
+                                                       (add-face-text-property
+                                                        0 (length h) 'octocat-blame-rule t h)
+                                                       h)
+                                                   head)))
+                                              'keymap map
+                                              'octocat-url (octocat--web-url "%s/commit/%s"
+                                                                             repo sha)))))
+                         (when ruled
                            (setq s (concat s (propertize " " 'display
                                                          `(space :align-to ,edge)
                                                          'octocat-markdown-copy 'drop)))
@@ -1400,6 +1416,45 @@ few lines instead."
                          (push s out)))))
        ranges))
     (string-join (nreverse out) "\n")))
+
+(defun octocat-repo--blame-pin (window &optional start)
+  "Show in WINDOW the commit of the blame run its top line is in.
+When the run's head is above the window, scrolled past, the top line's
+blank margin shows it, from its `octocat-blame-head'.  START defaults to
+WINDOW's start; the pin is WINDOW's, as each window's top differs."
+  (setq octocat-repo--blame-pins
+        (seq-remove (lambda (ov)
+                      (when (or (eq (overlay-get ov 'window) window)
+                                (not (window-live-p (overlay-get ov 'window)))
+                                (not (overlay-buffer ov)))
+                        (delete-overlay ov)
+                        t))
+                    octocat-repo--blame-pins))
+  (unless octocat-repo--blame-sliding
+    (let* ((bol  (save-excursion (goto-char (or start (window-start window)))
+                                 (line-beginning-position)))
+           (head (get-text-property bol 'octocat-blame-head)))
+      (when head
+        (let ((ov (make-overlay bol (next-single-property-change
+                                     bol 'octocat-blame-head nil (point-max)))))
+          (overlay-put ov 'window window)
+          (overlay-put ov 'display head)
+          (overlay-put ov 'evaporate t)
+          (push ov octocat-repo--blame-pins))))))
+
+(defun octocat-repo--blame-pin-all (buf)
+  "Pin the blame's commit in each window showing BUF."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (dolist (win (get-buffer-window-list buf nil t))
+        (octocat-repo--blame-pin win)))))
+
+(defun octocat-repo--blame-unpin (buf)
+  "Take the blame's pins out of BUF."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (mapc #'delete-overlay octocat-repo--blame-pins)
+      (setq octocat-repo--blame-pins nil))))
 
 (defun octocat-repo--mark-lines (text lines)
   "Return TEXT, a file's lines, each with its number in `octocat-file-line'.
@@ -1449,6 +1504,15 @@ LINES are as for `octocat-repo--mark-lines'."
     (vui-use-effect (lines ready)
       (when (and lines ready) (octocat--goto-line-target buf))
       nil)
+    ;; Each render puts in new text, which the pins must follow.
+    (vui-use-effect (text)
+      (add-hook 'window-scroll-functions #'octocat-repo--blame-pin nil t)
+      (octocat-repo--blame-pin-all buf)
+      (lambda ()
+        (when (buffer-live-p buf)
+          (with-current-buffer buf
+            (remove-hook 'window-scroll-functions #'octocat-repo--blame-pin t)))
+        (octocat-repo--blame-unpin buf)))
     (cond ((eq (octocat-vui-snapshot-status file) 'error)
            (vui-text (octocat-vui-error-text file) :face 'error))
           ((eq (octocat-vui-snapshot-status snap) 'error)
@@ -1846,10 +1910,21 @@ cap widens by its column, so the code keeps its width."
     (cond ((eq view (octocat-file--view octocat-tree--file-path octocat--markdown-raw
                                         octocat-tree--file-blame)))
           (octocat-tree--file-blame
-           (octocat-vui-slide buf 'octocat-blame 'out show))
-          (t (funcall show)
-             (when (eq view 'blame)
-               (octocat-vui-slide buf 'octocat-blame 'in))))))
+           (octocat-repo--blame-unpin buf)
+           (setq octocat-repo--blame-sliding t)
+           (octocat-vui-slide buf 'octocat-blame 'out
+                              (lambda ()
+                                (setq octocat-repo--blame-sliding nil)
+                                (funcall show))))
+          ((eq view 'blame)
+           ;; The pin waits for the column, which it would cover.
+           (setq octocat-repo--blame-sliding t)
+           (funcall show)
+           (octocat-vui-slide buf 'octocat-blame 'in
+                              (lambda ()
+                                (setq octocat-repo--blame-sliding nil)
+                                (octocat-repo--blame-pin-all buf))))
+          (t (funcall show)))))
 
 (defun octocat-file-cycle-view ()
   "Show the file the next way, as GitHub's Preview, Code and Blame.

@@ -897,6 +897,47 @@ the margin as wide whatever the window."
     ;; Copying leaves the blame column out, keeping only the code.
     (should (equal (octocat-markdown-copy-text text) "a\nb\nc"))))
 
+(ert-deftest octocat-tree-test-blame-pin ()
+  "A window scrolled past a run's head shows its commit on the top line,
+that window only, and none once the head is in view again."
+  (let* ((range (lambda (start end subject)
+                  (let ((h (make-hash-table :test #'equal))
+                        (c (make-hash-table :test #'equal))
+                        (m (make-hash-table :test #'equal)))
+                    (puthash "message" subject m)
+                    (puthash "sha" "a1" c)
+                    (puthash "commit" m c)
+                    (puthash "start" start h)
+                    (puthash "end" end h)
+                    (puthash "commit" c h)
+                    h)))
+         (text  (octocat-repo--blame-text
+                 "owner/repo" "a\nb\nc\nd"
+                 (vector (funcall range 1 3 "Add letters") (funcall range 4 4 "Add d"))
+                 70))
+         (pinned (lambda (win)
+                   (seq-keep (lambda (ov)
+                               (and (eq (overlay-get ov 'window) win)
+                                    (string-trim (substring-no-properties
+                                                  (overlay-get ov 'display)))))
+                             (overlays-in (point-min) (point-max))))))
+    (with-temp-buffer
+      (insert text)
+      (set-window-buffer (selected-window) (current-buffer))
+      (goto-char (point-min))
+      (forward-line 1)
+      (octocat-repo--blame-pin (selected-window) (point))
+      (should (equal (length (funcall pinned (selected-window))) 1))
+      (should (string-prefix-p "Add letters" (car (funcall pinned (selected-window)))))
+      (should (= (overlay-end (car octocat-repo--blame-pins))
+                 (+ (point) octocat-repo--blame-width)))
+      ;; Moving on replaces it, and a head in view needs none.
+      (forward-line 2)
+      (octocat-repo--blame-pin (selected-window) (point))
+      (should-not (funcall pinned (selected-window)))
+      (octocat-repo--blame-pin (selected-window) (point-min))
+      (should-not (funcall pinned (selected-window))))))
+
 (ert-deftest octocat-tree-test-older-last-commits ()
   "An older commit's last commits stand in, the newest at the same tree first."
   (let* ((table (lambda (sha)

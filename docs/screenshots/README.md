@@ -56,6 +56,15 @@ that last changed it, as GitHub's Blame.  `RET` on a commit opens it.
 [As text](file-blame.txt)
 <!-- /screenshot -->
 
+Scrolled past the head of a commit's lines: the top line shows that
+commit, so the lines at the top always say where they came from.
+
+<!-- screenshot: (tree--open-file-by-path "acme/rocket" "main" "docs/guide.md") :name "file-blame-scrolled" :press ((:key "C-c C-v") (:key "C-c C-v")) :scroll "3 A page is a Markdown" -->
+![file-blame-scrolled](file-blame-scrolled.png)
+
+[As text](file-blame-scrolled.txt)
+<!-- /screenshot -->
+
 A file opened from a link to its lines, `/blob/main/src/cache.rs#L12-L16`:
 the lines are highlighted, as on GitHub, and point is on the first.
 
