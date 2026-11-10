@@ -204,7 +204,8 @@
         (should (= (octocat--cap-width 140) 140))))))
 
 (ert-deftest octocat-search-test-state-face ()
-  "`gh search' gives lower-case states: open is green, closed is red."
+  "`gh search' gives lower-case states: open is green, a closed PR red.
+It gives no stateReason, so a closed issue is purple, as completed."
   (cl-flet ((face (fn state)
               (let ((c (funcall fn (json-parse-string
                                     (format "{\"number\":1,\"title\":\"t\",\"state\":\"%s\"}"
@@ -214,7 +215,8 @@
     (should (eq (face #'octocat--search-make-pr-candidate "closed") 'octocat-pr-state-closed))
     (should (eq (face #'octocat--search-make-pr-candidate "open") 'octocat-pr-state-open))
     (should (eq (face #'octocat--search-make-issue-candidate "open") 'octocat-pr-state-open))
-    (should (eq (face #'octocat--search-make-issue-candidate "closed") 'octocat-pr-state-closed))))
+    (should (eq (face #'octocat--search-make-issue-candidate "closed")
+                'octocat-issue-state-completed))))
 
 ;;; github.com links
 

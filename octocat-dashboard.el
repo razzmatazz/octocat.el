@@ -263,8 +263,10 @@ pages' two lines, cut to WIDTH; BG is as for `octocat--label-face'."
      (propertize
       (mapconcat #'identity
                  (octocat-vui--item-lines
-                  (octocat-vui--state-label (gethash "state" item)
-                                            (gethash "isDraft" item))
+                  (if pr
+                      (octocat-vui--state-label (gethash "state" item)
+                                                (gethash "isDraft" item))
+                    (octocat-vui--issue-state-label item))
                   (octocat-vui--cells repo item bg)
                   width)
                  "\n")

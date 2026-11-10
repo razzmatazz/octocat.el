@@ -101,9 +101,10 @@ A word of the input that is one, or its plural, lists that type first.")
          (title  (or (octocat--nonempty (gethash "title" issue)) ""))
          (state  (or (octocat--nonempty (gethash "state" issue)) "OPEN"))
          (author (octocat--author-login issue))
+         ;; `gh search' has no stateReason: closed shows as completed.
          (state-face (if (equal (upcase state) "OPEN")
                          'octocat-pr-state-open
-                       'octocat-pr-state-closed))
+                       'octocat-issue-state-completed))
          (display
           (format "%-8s #%-5d  %-42s  %s  %s"
                   (octocat--search-label 'issue)

@@ -238,7 +238,7 @@ A table of \"open\", \"closed\" and, of pull requests, \"merged\"."
                        "comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{"
                        "state contexts{checkRunCountsByState{state count} "
                        "statusContextCountsByState{state count}}}}}}}"))
-    (issues . ,(concat "...on Issue{number title state createdAt author{login} "
+    (issues . ,(concat "...on Issue{number title state stateReason createdAt author{login} "
                        "labels(first:100){nodes{name color}} comments{totalCount} "
                        "assignees(first:100){nodes{login}} "
                        "closedByPullRequestsReferences(first:20){nodes{number repository{"
@@ -498,7 +498,9 @@ what is being done to it, such as \"saving…\"."
                  (if (equal kind "pr") "pull request" "issue"))
   :resources (list (octocat-model-detail-spec kind repo number))
   :optimistic `((,(octocat-model-item-key kind repo number)
-                 ("state" . ,(if (equal verb "close") "CLOSED" "OPEN"))))
+                 ("state" . ,(if (equal verb "close") "CLOSED" "OPEN"))
+                 ;; `gh issue close' closes as completed.
+                 ("stateReason" . ,(if (equal verb "close") "COMPLETED" "REOPENED"))))
   :gh (list kind verb (number-to-string number) "--repo" repo)
   ;; The lists it moves in or out of, their counts, and the new event.
   :invalidates `((timeline-events ,repo ,number) ,@(octocat-model--item-lists kind repo)))
@@ -639,7 +641,7 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
   :entity (octocat-model-item-key 'issue repo number)
   :invalidates (octocat-model--item-lists 'issue repo)
   :gh (list "issue" "view" (number-to-string number) "--repo" repo
-            "--json" (concat "id,number,title,author,state,body,"
+            "--json" (concat "id,number,title,author,state,stateReason,body,"
                              "createdAt,closedAt,"
                              "labels,comments,url,assignees,milestone,reactionGroups,"
                              "closedByPullRequestsReferences"))

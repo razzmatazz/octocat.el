@@ -2636,20 +2636,32 @@ such as \"Labelled\", how it went once the last is answered."
 (defconst octocat-vui--state-width 6
   "Display width of the state column (\"closed\", \"merged\") in PR and issue rows.")
 
-(defun octocat-vui--state-label (state &optional draft)
+(defun octocat-vui--state-label (state &optional draft reason)
   "Return the coloured, padded state text for a PR/issue STATE (any case).
-DRAFT is the JSON isDraft value; t shows an open pull request as \"draft\"."
+DRAFT is the JSON isDraft value; t shows an open pull request as \"draft\".
+REASON non-nil makes STATE an issue's, its stateReason, or t when
+unknown: closed is then purple, or grey if \"NOT_PLANNED\", as on GitHub."
   (let* ((state (downcase (or state "open")))
          (text  (cond ((equal state "merged") "merged")
                       ((equal state "closed") "closed")
                       ((eq draft t) "draft")
                       (t "open")))
          (face  (cond ((equal text "merged") 'octocat-pr-state-merged)
+                      ((and (equal text "closed") (equal reason "NOT_PLANNED"))
+                       'octocat-issue-state-not-planned)
+                      ((and (equal text "closed") reason)
+                       'octocat-issue-state-completed)
                       ((equal text "closed") 'octocat-pr-state-closed)
                       ((equal text "draft")  'octocat-dimmed)
                       (t                     'octocat-pr-state-open))))
     (propertize (format (format "%%-%ds" octocat-vui--state-width) text)
                 'face face)))
+
+(defun octocat-vui--issue-state-label (issue)
+  "Return `octocat-vui--state-label' of ISSUE, a hash-table."
+  (let ((reason (gethash "stateReason" issue)))
+    (octocat-vui--state-label (gethash "state" issue) nil
+                              (if (stringp reason) reason t))))
 
 ;; PR and issue rows are two lines, each cut to the window width, laid
 ;; out as GitHub's: the title, its checks and its labels, with the PRs
@@ -2902,7 +2914,7 @@ BG is as for `octocat-vui--cells'; WIDTH is as for
 BG is as for `octocat-vui--cells'; WIDTH is as for
 `octocat-vui--compact-line'."
   (octocat-vui--compact-line
-   (unless no-state (octocat-vui--state-label (gethash "state" issue)))
+   (unless no-state (octocat-vui--issue-state-label issue))
    (octocat-vui--number issue) (octocat-vui--cells repo issue bg) width))
 
 (defun octocat-vui--pr-row (repo pr width bg &optional compact no-state stack marked)
@@ -2931,7 +2943,7 @@ BG is as for `octocat-vui--cells'; COMPACT draws it on one line,
 without the state when NO-STATE is non-nil.  MARKED is as for
 `octocat-vui--item-row'."
   (octocat-vui--item-row
-   (octocat-vui--state-label (gethash "state" issue))
+   (octocat-vui--issue-state-label issue)
    (plist-put (octocat-vui--cells repo issue bg)
               :number (octocat-vui--number issue))
    width

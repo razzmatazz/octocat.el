@@ -52,6 +52,22 @@
   (should (equal (substring-no-properties (octocat-vui--state-label "OPEN" t)) "draft "))
   (should (equal (substring-no-properties (octocat-vui--state-label "OPEN" :false)) "open  ")))
 
+(ert-deftest octocat-repo-test-state-label-faces ()
+  "A closed PR is red; a closed issue purple, or grey when not planned."
+  (cl-flet ((face (issue-p state &optional reason)
+              (get-text-property
+               0 'face
+               (if issue-p
+                   (octocat-vui--issue-state-label
+                    (octocat--table "state" state "stateReason" (or reason :null)))
+                 (octocat-vui--state-label state)))))
+    (should (eq (face nil "CLOSED") 'octocat-pr-state-closed))
+    (should (eq (face nil "MERGED") 'octocat-pr-state-merged))
+    (should (eq (face t "CLOSED" "COMPLETED") 'octocat-issue-state-completed))
+    (should (eq (face t "CLOSED") 'octocat-issue-state-completed))
+    (should (eq (face t "CLOSED" "NOT_PLANNED") 'octocat-issue-state-not-planned))
+    (should (eq (face t "OPEN" "REOPENED") 'octocat-pr-state-open))))
+
 (defun octocat-repo-tests--commits (&rest shas)
   "Return commit hash-tables for SHAS."
   (mapcar (lambda (sha)

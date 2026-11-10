@@ -207,12 +207,14 @@ Uses bracket-checkbox glyphs to distinguish steps from job-level icons."
     (cond
      ((equal s "success")
       (propertize "[✓]" 'face 'octocat-ci-success))
-     ((member s '("failure" "timed_out" "startup_failure" "cancelled"))
+     ((member s '("failure" "timed_out" "startup_failure"))
       (propertize "[✗]" 'face 'octocat-ci-failure))
+     ((equal s "cancelled")
+      (propertize "[✗]" 'face 'octocat-ci-neutral))
      ((equal s "in_progress")
       (propertize "[●]" 'face 'octocat-ci-pending))
-     ((equal s "skipped")
-      (propertize "[-]" 'face 'octocat-dimmed))
+     ((member s '("skipped" "neutral"))
+      (propertize "[-]" 'face 'octocat-ci-neutral))
      (t
       (propertize "[ ]" 'face 'octocat-dimmed)))))
 
@@ -221,8 +223,10 @@ Uses bracket-checkbox glyphs to distinguish steps from job-level icons."
   (cond
    ((equal status "success")
     'octocat-ci-success)
-   ((member status '("failure" "timed_out" "startup_failure" "cancelled"))
+   ((member status '("failure" "timed_out" "startup_failure"))
     'octocat-ci-failure)
+   ((member status '("cancelled" "skipped" "neutral"))
+    'octocat-ci-neutral)
    (t 'octocat-ci-pending)))
 
 (defun octocat--annotation-face (level)

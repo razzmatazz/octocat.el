@@ -13,6 +13,17 @@
 (require 'cl-lib)
 (require 'octocat)
 
+(ert-deftest octocat-job-test-status-faces ()
+  "Cancelled, skipped and neutral are grey, as on GitHub, not red or yellow."
+  (cl-flet ((face (s) (get-text-property 0 'face s)))
+    (should (eq (face (octocat--run-icon "completed" "failure")) 'octocat-ci-failure))
+    (should (eq (face (octocat--run-icon "completed" "cancelled")) 'octocat-ci-neutral))
+    (should (eq (face (octocat--run-icon "completed" "skipped")) 'octocat-ci-neutral))
+    (should (eq (face (octocat--run-icon "queued" "")) 'octocat-ci-pending))
+    (should (eq (face (octocat--job-step-icon "completed" "cancelled")) 'octocat-ci-neutral))
+    (should (eq (octocat--job-status-face "skipped") 'octocat-ci-neutral))
+    (should (eq (octocat--job-status-face "failure") 'octocat-ci-failure))))
+
 (ert-deftest octocat-job-test-log-line-bom ()
   "A byte-order mark before the timestamp does not hide a group start."
   (let ((entry (octocat--job-parse-log-line

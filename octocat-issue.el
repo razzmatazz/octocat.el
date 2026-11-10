@@ -238,21 +238,20 @@ The first line is the title, the rest the body."
 (defun octocat-issue--header (repo issue bg width)
   "Return the vnodes above the timeline: repo, title and labels of ISSUE in REPO.
 BG is as for `octocat--label-face'; the title is cut to fit WIDTH."
-  (let ((state (or (gethash "state" issue) "OPEN")))
-    (append
-     (octocat-vui--detail-header
-      repo issue (octocat-vui--state-label state)
-      #'octocat-issue-edit-title bg width
-      (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
-                  (cl-list* :line ", " (octocat-vui--login-items (gethash "assignees" issue))))
-            (cons (octocat-timeline-edit-field "issue" repo issue "label")
-                  (cl-list* :line " " (octocat-vui--label-items (gethash "labels" issue) bg))))
-      (list (cons "Milestone" (octocat-vui--milestone issue))
-            (cons "Fixed by"  (octocat-vui--numbers
-                               repo (gethash "closedByPullRequestsReferences" issue)
-                               (apply-partially #'octocat-open 'pr))))
-      nil '(:comments))
-     (list (vui-newline)))))
+  (append
+   (octocat-vui--detail-header
+    repo issue (octocat-vui--issue-state-label issue)
+    #'octocat-issue-edit-title bg width
+    (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
+                (cl-list* :line ", " (octocat-vui--login-items (gethash "assignees" issue))))
+          (cons (octocat-timeline-edit-field "issue" repo issue "label")
+                (cl-list* :line " " (octocat-vui--label-items (gethash "labels" issue) bg))))
+    (list (cons "Milestone" (octocat-vui--milestone issue))
+          (cons "Fixed by"  (octocat-vui--numbers
+                             repo (gethash "closedByPullRequestsReferences" issue)
+                             (apply-partially #'octocat-open 'pr))))
+    nil '(:comments))
+   (list (vui-newline))))
 
 (vui-defcomponent octocat-issue--page (repo number raw tick)
   "Issue NUMBER of REPO as a timeline; RAW shows markdown bodies verbatim.

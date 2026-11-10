@@ -108,6 +108,11 @@ lines, runs on past it."
   "Face for a pending CI status."
   :group 'octocat)
 
+(defface octocat-ci-neutral
+  '((t :inherit octocat-dimmed))
+  "Face for a cancelled, skipped or neutral CI status, grey as on GitHub."
+  :group 'octocat)
+
 (defface octocat-pr-number
   '((t :inherit font-lock-constant-face))
   "Face for a PR number."
@@ -319,8 +324,22 @@ with a floor of 1."
   :group 'octocat)
 
 (defface octocat-pr-state-merged
-  '((t :inherit font-lock-builtin-face))
-  "Face for a merged PR state badge."
+  '((((class color) (background dark)) :foreground "#a371f7")
+    (((class color) (background light)) :foreground "#8250df")
+    (t :inherit font-lock-builtin-face))
+  "Face for a merged PR state badge, purple as on GitHub.
+Not `font-lock-builtin-face' alone: themes such as doom's make it the
+green of `success', the open state's."
+  :group 'octocat)
+
+(defface octocat-issue-state-completed
+  '((t :inherit octocat-pr-state-merged))
+  "Face for the state of an issue closed as completed, purple as on GitHub."
+  :group 'octocat)
+
+(defface octocat-issue-state-not-planned
+  '((t :inherit octocat-dimmed))
+  "Face for the state of an issue closed as not planned, grey as on GitHub."
   :group 'octocat)
 
 (defconst octocat--commit-symbol "○"
@@ -770,8 +789,12 @@ STATUS takes priority over CONCLUSION for in-progress detection."
       (propertize "●" 'face 'octocat-ci-pending))
      ((equal co "success")
       (propertize "✓" 'face 'octocat-ci-success))
-     ((member co '("failure" "timed_out" "startup_failure" "cancelled"))
+     ((member co '("failure" "timed_out" "startup_failure"))
       (propertize "✗" 'face 'octocat-ci-failure))
+     ((equal co "cancelled")
+      (propertize "✗" 'face 'octocat-ci-neutral))
+     ((member co '("skipped" "neutral"))
+      (propertize "-" 'face 'octocat-ci-neutral))
      (t
       (propertize "●" 'face 'octocat-ci-pending)))))
 

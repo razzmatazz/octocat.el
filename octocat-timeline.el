@@ -161,7 +161,10 @@ known, so a merge or close still shows up, without who did it."
     (and (stringp time) (not (string-empty-p time))
          (list (list :time time :kind 'event :actor ""
                      :text (if (eq time merged) "merged this" "closed this")
-                     :state (if (eq time merged) "merged" "closed"))))))
+                     :state (if (eq time merged)
+                                "merged"
+                              (octocat-timeline--close-state
+                               (octocat--get obj "stateReason"))))))))
 
 (defun octocat-timeline-items (obj post-verb events bg &optional extra)
   "Return the timeline items of OBJ merged with EVENTS, oldest first.
@@ -211,7 +214,10 @@ PR's reviews and commits."
                                             :rename (and (equal name "renamed")
                                                          (cons (octocat--get event "rename" "from")
                                                                (octocat--get event "rename" "to")))
-                                            :state name))))
+                                            :state (if (equal name "closed")
+                                                       (octocat-timeline--close-state
+                                                        (octocat--get event "state_reason"))
+                                                     name)))))
                              events))
              (octocat-timeline--state-fallback obj)))))
     ;; The post leads even when something predates it, like a PR's first
@@ -399,7 +405,17 @@ The text lines up with the author's handle in the heading above it.")
     ((or "closed" "changes_requested") 'octocat-pr-state-closed)
     ((or "approved" "reopened")        'octocat-pr-state-open)
     ("merged"                          'octocat-pr-state-merged)
+    ("completed"                       'octocat-issue-state-completed)
+    ("not_planned"                     'octocat-issue-state-not-planned)
     (_                                 'octocat-dimmed)))
+
+(defun octocat-timeline--close-state (reason)
+  "Return the state of a close entry for REASON, an issue's stateReason or nil.
+A PR's close has none, and stays \"closed\"."
+  (pcase (and (stringp reason) (downcase reason))
+    ("completed"   "completed")
+    ("not_planned" "not_planned")
+    (_             "closed")))
 
 (defun octocat-timeline--entry-string (item raw width)
   "Return the text of timeline ITEM, without a final newline.
