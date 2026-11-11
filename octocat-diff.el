@@ -868,18 +868,10 @@ has no lines changed.  A rename alone has no diff to explain."
         ((eql changes 0) "binary or empty")
         (t "diff too large to show")))
 
-(defun octocat-diff--url-path (path)
-  "Return PATH URL-encoded part by part, keeping its slashes."
-  (mapconcat #'url-hexify-string (split-string path "/") "/"))
-
 (defun octocat-diff--merge-base (repo base head callback)
   "Call CALLBACK with the merge base of BASE and HEAD in REPO, or (error . MSG)."
-  (octocat--run-gh
-   "merge-base"
-   (list "api" (format "repos/%s/compare/%s...%s?per_page=1" repo
-                       (octocat-diff--url-path base) (octocat-diff--url-path head))
-         "--jq" ".merge_base_commit.sha")
-   #'string-trim callback))
+  (octocat-sync-get (list 'merge-base repo base head)
+                    (octocat--then (lambda (data) (gethash "sha" data)) callback)))
 
 (defun octocat-diff--fetch-text (repo ref path callback)
   "Call CALLBACK with the content of PATH at REF in REPO, or (error . MSG).
@@ -889,53 +881,76 @@ Without REF, the file is not on that side, and its content is empty."
     (octocat-sync-get (list 'file-text repo ref path)
                       (octocat--then (lambda (data) (gethash "text" data)) callback))))
 
-(defun octocat-diff--show-large (old-path path old new)
-  "Show the diff of OLD, the text of OLD-PATH, and NEW, that of PATH."
-  (let ((a   (make-temp-file "octocat-a-" nil nil old))
-        (b   (make-temp-file "octocat-b-" nil nil new))
-        (buf (get-buffer-create (format "*octocat diff %s*" path))))
+(defun octocat-diff--large-set (buf thunk)
+  "Empty BUF, a large file's diff buffer, and call THUNK in it to fill it.
+Nothing is done once BUF is killed."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (funcall thunk))
+      (goto-char (point-min)))))
+
+(defun octocat-diff--show-large (buf old-path path old new)
+  "Show in BUF the diff of OLD, the text of OLD-PATH, and NEW, that of PATH."
+  (let ((a (make-temp-file "octocat-a-" nil nil old))
+        (b (make-temp-file "octocat-b-" nil nil new)))
     (unwind-protect
-        (with-current-buffer buf
-          (let ((inhibit-read-only t))
-            (erase-buffer)
-            (call-process diff-command nil t nil "-u"
-                          "--label" (concat "a/" old-path) "--label" (concat "b/" path)
-                          a b))
-          (diff-mode)
-          (setq buffer-read-only t)
-          (goto-char (point-min)))
+        (octocat-diff--large-set
+         buf (lambda ()
+               (call-process diff-command nil t nil "-u"
+                             "--label" (concat "a/" old-path) "--label" (concat "b/" path)
+                             a b)))
       (delete-file a)
-      (delete-file b))
-    (pop-to-buffer buf)))
+      (delete-file b))))
 
 (defun octocat-diff-open-large (repo file revs)
   "Diff FILE of REPO, whose diff GitHub won't send, in a buffer of its own.
-Asks first, as both versions of the file are fetched whole.  REVS is
-\=(OLD . NEW), the commits compared; OLD may instead be a function
-that calls its callback with the commit, or with (error . MSG)."
+Asks first, as both versions of the file are fetched whole.  The buffer
+shows at once, and the diff once both are in.  REVS is \=(OLD . NEW),
+the commits compared; OLD may instead be a function that calls its
+callback with the commit, or with (error . MSG)."
   (let* ((path     (gethash "filename" file))
          (old-path (or (octocat--nonempty (gethash "previous_filename" file)) path))
          (status   (gethash "status" file))
-         (fail     (lambda (r) (message "Octocat: %s" (cdr r)))))
+         (buf      (get-buffer-create (format "*octocat diff %s*" path)))
+         old new failed
+         (fail     (lambda (r)
+                     (unless failed
+                       (setq failed t)
+                       (octocat-diff--large-set
+                        buf (lambda () (insert (propertize (cdr r) 'face 'error) "\n"))))))
+         (done     (lambda ()
+                     (when (and old new (not failed))
+                       (octocat-diff--show-large buf old-path path old new)))))
     (when (y-or-n-p (format "Fetch both versions of %s and diff them? " path))
-      (message "Octocat: Fetching %s..." path)
+      (with-current-buffer buf
+        (diff-mode)
+        (setq buffer-read-only t))
+      (octocat-diff--large-set
+       buf (lambda () (insert (propertize (format "Fetching both versions of %s…\n" path)
+                                          'face 'octocat-dimmed))))
+      (pop-to-buffer buf)
+      ;; The new side needs no merge base: fetched alongside it.
+      (octocat-diff--fetch-text
+       repo (and (not (equal status "removed")) (cdr revs)) path
+       (lambda (b)
+         (if (eq (car-safe b) 'error)
+             (funcall fail b)
+           (setq new b)
+           (funcall done))))
       (funcall
        (if (functionp (car revs)) (car revs) (lambda (k) (funcall k (car revs))))
-       (lambda (old)
-         (if (eq (car-safe old) 'error)
-             (funcall fail old)
+       (lambda (rev)
+         (if (eq (car-safe rev) 'error)
+             (funcall fail rev)
            (octocat-diff--fetch-text
-            repo (and (not (equal status "added")) old) old-path
+            repo (and (not (equal status "added")) rev) old-path
             (lambda (a)
               (if (eq (car-safe a) 'error)
                   (funcall fail a)
-                (octocat-diff--fetch-text
-                 repo (and (not (equal status "removed")) (cdr revs)) path
-                 (lambda (b)
-                   (if (eq (car-safe b) 'error)
-                       (funcall fail b)
-                     (message nil)
-                     (octocat-diff--show-large old-path path a b)))))))))))))
+                (setq old a)
+                (funcall done))))))))))
 
 (vui-defcomponent octocat-diff--image (repo sha width last)
   "The image of blob SHA of REPO, no wider than WIDTH columns.

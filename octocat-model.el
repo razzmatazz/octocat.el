@@ -1555,13 +1555,24 @@ Calls CALLBACK once with a hash-table of path to commit, see
            (octocat-model--tree-fetch-all-files
             repo sha (octocat--then #'octocat-model--file-table done))))
 
+(defun octocat-model--url-path (path)
+  "Return PATH URL-encoded part by part, keeping its slashes."
+  (mapconcat #'url-hexify-string (split-string path "/") "/"))
+
 (defun octocat-model--file-args (repo path ref)
   "Return the `gh' arguments printing file PATH of REPO at REF."
   (list "api" "-X" "GET"
-        (format "repos/%s/contents/%s" repo
-                (mapconcat #'url-hexify-string (split-string path "/") "/"))
+        (format "repos/%s/contents/%s" repo (octocat-model--url-path path))
         "-f" (concat "ref=" ref)
         "-H" "Accept: application/vnd.github.raw"))
+
+;; The merge base of BASE and HEAD, as "sha".  Not kept: BASE is a branch.
+(octocat-sync-define-resource merge-base (repo base head)
+  :gh (list "api" (format "repos/%s/compare/%s...%s?per_page=1" repo
+                          (octocat-model--url-path base) (octocat-model--url-path head))
+            "--jq" ".merge_base_commit.sha")
+  :raw t
+  :parse (lambda (raw) (octocat--table "sha" (string-trim raw))))
 
 ;; The text of file PATH at REF, as "text".
 (octocat-sync-define-resource file-text (repo ref path)

@@ -418,6 +418,47 @@ Return the buffer, current, once point has moved there."
       (search-forward "big.txt")
       (should-not (get-text-property (point) 'help-echo)))))
 
+(defun octocat-diff-tests--open-large (old-rev body)
+  "Open the large diff of big.txt from OLD-REV to \"head\", fetching nothing.
+Call BODY with its buffer and a function returning the callback of the
+fetch of REF; the buffer is killed after."
+  (let ((file    (json-parse-string "{\"filename\":\"big.txt\",\"status\":\"modified\"}"))
+        fetches)
+    (cl-letf (((symbol-function 'y-or-n-p) #'always)
+              ((symbol-function 'pop-to-buffer) #'ignore)
+              ((symbol-function 'octocat-diff--fetch-text)
+               (lambda (_repo ref _path k) (push (cons ref k) fetches))))
+      (octocat-diff-open-large "o/r" file (cons old-rev "head"))
+      (let ((buf (get-buffer "*octocat diff big.txt*")))
+        (unwind-protect
+            (funcall body buf (lambda (ref) (cdr (assoc ref fetches))))
+          (kill-buffer buf))))))
+
+(ert-deftest octocat-diff-test-open-large ()
+  "The buffer shows at once; the new side is fetched before the merge base lands."
+  (let (base-k)
+    (octocat-diff-tests--open-large
+     (lambda (k) (setq base-k k))
+     (lambda (buf fetched)
+       (should (string-search "Fetching both versions"
+                              (with-current-buffer buf (buffer-string))))
+       (should (funcall fetched "head"))
+       (should-not (funcall fetched "base"))
+       (funcall base-k "base")
+       (funcall (funcall fetched "head") "a\nnew\n")
+       (funcall (funcall fetched "base") "a\nold\n")
+       (with-current-buffer buf
+         (should (derived-mode-p 'diff-mode))
+         (should (string-search "-old\n+new" (buffer-string))))))))
+
+(ert-deftest octocat-diff-test-open-large-error ()
+  "A failed fetch shows its error in the buffer, and the other side is ignored."
+  (octocat-diff-tests--open-large
+   (lambda (k) (funcall k '(error . "No merge base")))
+   (lambda (buf fetched)
+     (funcall (funcall fetched "head") "new\n")
+     (should (equal (with-current-buffer buf (buffer-string)) "No merge base\n")))))
+
 (ert-deftest octocat-diff-test-files-at ()
   "The file a link names is unfolded, its lines highlighted and scrolled to.
 Only that file; a hash naming none changes nothing."
