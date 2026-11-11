@@ -68,24 +68,6 @@
     (should (eq (face t "CLOSED" "NOT_PLANNED") 'octocat-issue-state-not-planned))
     (should (eq (face t "OPEN" "REOPENED") 'octocat-pr-state-open))))
 
-(defun octocat-repo-tests--commits (&rest shas)
-  "Return commit hash-tables for SHAS."
-  (mapcar (lambda (sha)
-            (let ((c (make-hash-table :test #'equal)))
-              (puthash "sha" sha c)
-              c))
-          shas))
-
-(ert-deftest octocat-repo-test-commits-merge ()
-  "The longest list from the same head wins; another head is dropped."
-  (let ((fresh  (octocat-repo-tests--commits "c" "b"))
-        (longer (octocat-repo-tests--commits "c" "b" "a"))
-        (stale  (octocat-repo-tests--commits "b" "a" "z")))
-    (should (eq (octocat-repo--commits-merge fresh longer) longer))
-    (should (eq (octocat-repo--commits-merge fresh stale) fresh))
-    (should (eq (octocat-repo--commits-merge longer fresh nil) longer))
-    (should-not (octocat-repo--commits-merge nil fresh))))
-
 (ert-deftest octocat-repo-test-branch-candidates ()
   "The default branch comes first, then the pushed local one, each noted."
   (should (equal (octocat--branch-candidates '("a" "main" "feat") "main" "feat")
@@ -1192,8 +1174,9 @@ It does not fold, however long."
     (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n")
     (octocat-tree-tests--store
      '(commits "owner/repo" "dev" "docs/GUIDE.md")
-     (vconcat (octocat-model--repo-parse-history
-               "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":3,\"edges\":[{\"cursor\":\"c 0\",\"node\":{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}}]}}}}}")))
+     (octocat-model--commits-tree (octocat-model--repo-parse-history
+                                   "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":3,\"edges\":[{\"cursor\":\"c 0\",\"node\":{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}}]}}}}}")
+                                  octocat-repo-commits-page-size))
     (save-current-buffer
       (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md")
       (let ((file (current-buffer)))

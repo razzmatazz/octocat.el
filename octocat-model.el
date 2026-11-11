@@ -1209,23 +1209,42 @@ Unlike a branch or tag, it names the same commit for good."
           "Commit{history(first:$limit,after:$after,path:$path){totalCount edges{cursor "
           "node{oid messageHeadline authoredDate committedDate author{name email user{"
           "login}} parents(first:2){nodes{oid}}}}}}}}}")
-  "GraphQL query behind `octocat-model-repo-list-commits'.
+  "GraphQL query behind `octocat-model--repo-list-commits'.
 Only what a row shows: the REST commits endpoint sends ~15 times as much.")
 
-(defun octocat-model-repo-list-commits (repo ref path callback &optional after)
+(defun octocat-model--repo-list-commits (repo ref path callback &optional after limit)
   "Fetch a page of the commits of REPO, from REF back.
 REF is a branch or SHA; nil means the head of the default branch.  PATH,
 when non-nil, keeps only the commits that touched it.
 AFTER, a commit's \"cursor\", fetches the page after that commit.  A
-page holds `octocat-repo-commits-page-size' commits.  Calls CALLBACK with
-a list of commits from `octocat-model--repo-parse-history', or a cons
-\\=(error . MSG)."
-  (octocat--gh-graphql "commits" repo octocat-model--repo-history-query
-                       `(("ref" . ,(or ref "HEAD"))
-                         ("limit" . ,octocat-repo-commits-page-size)
-                         ("after" . ,after)
-                         ("path" . ,path))
-                       #'octocat-model--repo-parse-history callback))
+page holds LIMIT commits, by default `octocat-repo-commits-page-size'.
+Calls CALLBACK with the page as `octocat-model--commits-tree' makes it,
+or a cons \\=(error . MSG)."
+  (let ((limit (or limit octocat-repo-commits-page-size)))
+    (octocat--gh-graphql "commits" repo octocat-model--repo-history-query
+                         `(("ref" . ,(or ref "HEAD"))
+                           ("limit" . ,limit)
+                           ("after" . ,after)
+                           ("path" . ,path))
+                         (lambda (json)
+                           (octocat-model--commits-tree
+                            (octocat-model--repo-parse-history json) limit))
+                         callback)))
+
+(defun octocat-model--commits-tree (commits limit)
+  "Return COMMITS, a page of up to LIMIT, as the `commits' resource's tree.
+\"nodes\" are the commits, \"cursor\" the last one's, nil when the page
+came back short, at the end of the history."
+  (octocat--table "nodes" (vconcat commits)
+                  "cursor" (and (>= (length commits) limit)
+                                (gethash "cursor" (car (last commits))))))
+
+(defun octocat-model-commits-more (repo path head)
+  "Return the MORE function of `octocat-sync-more' for the commits of REPO.
+They are those that touched PATH, or all when nil.  The pages are
+fetched from HEAD, the SHA of the first commit shown, so the history
+they page through cannot shift under them."
+  (lambda (after done) (octocat-model--repo-list-commits repo head path done after)))
 
 (defun octocat-model--repo-history-commit (node)
   "Return the commit NODE of a GraphQL history shaped as REST has it.
@@ -1471,7 +1490,12 @@ Calls CALLBACK once with a hash-table of path to commit, see
 
 (octocat-sync-define-resource commits (repo ref path)
   :fetch (lambda (done)
-           (octocat-model-repo-list-commits repo ref path (octocat--then #'vconcat done))))
+           ;; As many as "load more" stored, so a refetch keeps them.
+           (let ((data (plist-get (octocat-sync-read (list 'commits repo ref path)) :data)))
+             (octocat-model--repo-list-commits
+              repo ref path done nil
+              (min 100 (max octocat-repo-commits-page-size
+                            (length (and data (gethash "nodes" data)))))))))
 
 (defun octocat-model-tree-load-files (repo ref callback)
   "Call CALLBACK with every file of REPO at REF, nil for the default branch.

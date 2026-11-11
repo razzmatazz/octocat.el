@@ -397,18 +397,6 @@ format, so README.md beats README.txt, README and README.org."
                                                       (funcall rank b)))))))))
          octocat-repo--doc-kinds)))
 
-(defun octocat-repo--commits-merge (base &rest others)
-  "Return the longest of BASE and OTHERS with the head commit of BASE.
-Each is a commit list from the top of a history.  A history is fixed by
-its head SHA, so lists with the same head are prefixes of one another
-and the longest knows the most; one with another head is out of date."
-  (let ((head (and base (gethash "sha" (car base)))))
-    (seq-reduce (lambda (best l)
-                  (if (and l (equal (gethash "sha" (car l)) head)
-                           (> (length l) (length best)))
-                      l
-                    best))
-                others base)))
 
 (defun octocat-repo-vui--unpushed-row (commit)
   "Return a line for COMMIT, a plist from `octocat-repo--parse-unpushed'.
@@ -931,27 +919,22 @@ whose directories show their own commits, how many commits there are,
 and a button back to DEFAULT-BRANCH when REF is another.
 HEAD-INFO is the plist from `octocat--head-info', used to highlight
 the local HEAD commit.  The
-first page is a sync resource; \"load more\" fetches a page at a time,
-pinned to the head shown."
-  ;; MORE is (:items LIST :done BOOL): the commits after the last load
-  ;; more, DONE when that page came back short (end of history).
-  :state ((limit octocat-repo-commits-page-size) (more nil) (fetching nil))
+commits are a sync resource; \"load more\" appends the page after the
+last to it (see `octocat-sync-more'), pinned to the head shown."
+  :state ((fetching nil))
   :render
-  (let* ((size    octocat-repo-commits-page-size)
-         (snap    (octocat-vui-use-resource (list 'commits repo ref path) tick))
-         (first   (append (plist-get snap :data) nil))
-         (more-items (plist-get more :items))
-         (commits (octocat-repo--commits-merge first more-items))
+  (let* ((spec    (list 'commits repo ref path))
+         (snap    (octocat-vui-use-resource spec tick))
+         (data    (plist-get snap :data))
+         (commits (append (and data (gethash "nodes" data)) nil))
          (status  (octocat-vui-snapshot-status snap))
-         (done    (or (and (plist-get more :done) (eq commits more-items))
-                      (/= 0 (% (length commits) size))))
          (label   (or ref default-branch)))
     (octocat-vui-use-mode-line-loading fetching)
     (vui-vstack
      (octocat-repo-vui--top-line
       repo label path current-branch nil
       (lambda (dir) (octocat-commit-list-open repo ref (octocat--nonempty dir)))
-      (when-let* ((total (and first (gethash "total" (car first)))))
+      (when-let* ((total (and commits (gethash "total" (car commits)))))
         (vui-text (format "%d commit%s" total (if (= total 1) "" "s"))
           :face 'octocat-dimmed))
       (and (octocat-repo--resettable-p ref default-branch)
@@ -961,53 +944,37 @@ pinned to the head shown."
        ('pending (vui-text (octocat-vui-line-skeleton)))
        ('error   (vui-text (octocat-vui-error-text snap) :face 'octocat-dimmed))
        ('ready
-        (let ((shown (seq-take commits limit)))
-          (vui-fragment
-           (if (null shown)
-               (vui-text "(no commits)" :face 'octocat-dimmed)
-             ;; Columns from all loaded commits, so they hold as more show.
-             ;; A path's history skips the parents between: no graph.
-             (let* ((lanes     (and (null path) (octocat-vui--commit-lanes commits)))
-                    ;; Beyond the symbol's own column.
-                    (lanes-w   (if lanes
-                                   (1- (string-width (car (car (hash-table-values lanes)))))
-                                 0))
-                    (author-w  (octocat-vui--author-width commits))
-                    (subject-w (octocat-vui--subject-width
-                                commits (- (octocat-vui-window-width) lanes-w) author-w))
-                    (date-w    (octocat-vui--date-width commits)))
-               (octocat-vui-reveal-list
-                shown
-                (lambda (c)
-                  (octocat-vui--commit-row repo c head-info author-w subject-w date-w
-                                           (and lanes (gethash (gethash "sha" c) lanes))))
-                (lambda (c) (gethash "sha" c)))))
-           (when (and shown (or (> (length commits) limit) (not done)))
-             (octocat-vui-load-more-button
-              'load-more-commits size
-              "RET: load more commits"
-              (lambda ()
-                (octocat-repo-vui--load-more-commits repo path commits (+ limit size)))
-              fetching 0 (octocat-vui-line-skeleton))))))))))
-
-(defun octocat-repo-vui--load-more-commits (repo path commits limit)
-  "Show LIMIT of COMMITS of REPO that touched PATH, fetching more when short.
-Called from the load-more button of `octocat-repo-vui--commits-section'.
-The page is fetched at the head of COMMITS, after the last of them, so
-the history it pages through cannot shift under it."
-  (vui-set-state :limit limit)
-  (when (< (length commits) limit)
-    (let ((on-page
-           (vui-async-callback (r)
-             (vui-set-state :fetching nil)
-             (if (eq (car-safe r) 'error)
-                 (message "octocat: %s" (cdr r))
-               (vui-set-state
-                :more (list :items (append commits r)
-                            :done (< (length r) octocat-repo-commits-page-size)))))))
-      (vui-set-state :fetching t)
-      (octocat-model-repo-list-commits repo (gethash "sha" (car commits)) path on-page
-                                       (gethash "cursor" (car (last commits)))))))
+        (vui-fragment
+         (if (null commits)
+             (vui-text "(no commits)" :face 'octocat-dimmed)
+           ;; A path's history skips the parents between: no graph.
+           (let* ((lanes     (and (null path) (octocat-vui--commit-lanes commits)))
+                  ;; Beyond the symbol's own column.
+                  (lanes-w   (if lanes
+                                 (1- (string-width (car (car (hash-table-values lanes)))))
+                               0))
+                  (author-w  (octocat-vui--author-width commits))
+                  (subject-w (octocat-vui--subject-width
+                              commits (- (octocat-vui-window-width) lanes-w) author-w))
+                  (date-w    (octocat-vui--date-width commits)))
+             (octocat-vui-reveal-list
+              commits
+              (lambda (c)
+                (octocat-vui--commit-row repo c head-info author-w subject-w date-w
+                                         (and lanes (gethash (gethash "sha" c) lanes))))
+              (lambda (c) (gethash "sha" c)))))
+         (when (and commits (gethash "cursor" data))
+           (octocat-vui-load-more-button
+            'load-more-commits octocat-repo-commits-page-size
+            "RET: load more commits"
+            (lambda ()
+              (vui-set-state :fetching t)
+              (octocat-sync-more
+               spec (octocat-model-commits-more repo path (gethash "sha" (car commits)))
+               (vui-async-callback (r)
+                 (vui-set-state :fetching nil)
+                 (when r (message "Octocat: %s" (cdr r))))))
+            fetching 0 (octocat-vui-line-skeleton)))))))))
 
 (defun octocat-repo-vui--head-row (repo ref path commit width)
   "Return the line atop the files: COMMIT, of PATH at REF.

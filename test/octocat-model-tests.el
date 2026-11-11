@@ -281,6 +281,15 @@
   (should-error (octocat-model--repo-parse-history
                  "{\"data\":{\"repository\":{\"object\":null}}}")))
 
+(ert-deftest octocat-model-test-commits-tree ()
+  "A full page has the last commit's cursor; a short one, at the end, none."
+  (let ((commits (octocat-model--repo-parse-history
+                  "{\"data\":{\"repository\":{\"object\":{\"history\":{\"edges\":[{\"cursor\":\"c 0\",\"node\":{\"oid\":\"abc\"}},{\"cursor\":\"c 1\",\"node\":{\"oid\":\"def\"}}]}}}}}")))
+    (should (equal (gethash "cursor" (octocat-model--commits-tree commits 2)) "c 1"))
+    (should (= (length (gethash "nodes" (octocat-model--commits-tree commits 2))) 2))
+    (should-not (gethash "cursor" (octocat-model--commits-tree commits 3)))
+    (should-not (gethash "cursor" (octocat-model--commits-tree nil 2)))))
+
 (ert-deftest octocat-model-test-repo-parse-head ()
   "A directory at a ref has its last commit, its tree and its history count."
   (let ((head (octocat-model--repo-parse-head

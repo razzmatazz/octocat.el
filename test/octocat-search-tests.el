@@ -169,8 +169,9 @@ item once."
                                                  h))
                            (- now 1))
       (octocat-sync--write octocat-sync--db "(commits \"o/r\" nil nil)"
-                           (vector (octocat-search-tests--commit "aaa111" "Crash on start")
-                                   (octocat-search-tests--commit "bbb222" "Unrelated"))
+                           (octocat--table
+                            "nodes" (vector (octocat-search-tests--commit "aaa111" "Crash on start")
+                                            (octocat-search-tests--commit "bbb222" "Unrelated")))
                            (- now 2))
       (cl-letf (((symbol-function 'octocat-model--tree-fetch-all-files)
                  (lambda (_repo _sha callback) (funcall callback '(error . "no files"))))
@@ -253,7 +254,8 @@ the file before the commit mentioning it, which it would follow."
   (octocat-search-tests--with-store
     (let (loaded)
       (octocat-sync--write octocat-sync--db "(commits \"o/r\" nil nil)"
-                           (vector (octocat-search-tests--commit "aaa111" "Fix xz.c"))
+                           (octocat--table
+                            "nodes" (vector (octocat-search-tests--commit "aaa111" "Fix xz.c")))
                            (float-time))
       (cl-letf (((symbol-function 'octocat-model-tree-load-files)
                  (lambda (_repo ref callback)

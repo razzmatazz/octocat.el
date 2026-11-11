@@ -294,7 +294,7 @@ pages, and the items of the `object-search' results fetched within
           (seq-doseq (item data) (add (nth 2 spec) item at))))
       (pcase-dolist (`(,spec ,data ,at) (octocat-sync-stored 'commits))
         (when (equal (downcase (nth 1 spec)) repo)
-          (seq-doseq (item data) (add "commits" item at))))
+          (seq-doseq (item (gethash "nodes" data)) (add "commits" item at))))
       (pcase-dolist (`(,spec ,data ,at) (octocat-sync-stored 'commit))
         (when (and (equal (downcase (nth 1 spec)) repo) (hash-table-p data))
           (add "commits" data at))))
