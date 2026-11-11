@@ -723,6 +723,25 @@ spinners stand still on one frame.
 
 ## Never block the UI on the network
 
+Every key answers at once; a `gh` call may take seconds.
+
+- **No synchronous network calls** (`call-process`, `process-lines`,
+  `shell-command-to-string` on `gh`): Emacs freezes until they answer.
+- **Fetch through `octocat-sync`**: a resource in `octocat-model.el`,
+  not `octocat--run-gh` from a page or command.  It is then stored,
+  shared and shown at once next time.
+
+### Reading: have it before it is asked for
+
+A command must not fetch, then act on the answer.  The page reads what
+its commands need as resources while it renders, so the command acts at
+once.  If it may still be missing, show the UI at once with a sensible
+default, and update it quietly as the data lands; show `…` or a
+skeleton only where there is no default.  Never pop up a buffer seconds
+after the key.
+
+### Writing: show the action at once
+
 A command that writes to GitHub (merge, comment, state change) must not
 leave the user waiting on `gh`: on a slow network or a slow GitHub that
 can take many seconds.  Validate what can be checked locally, then close
