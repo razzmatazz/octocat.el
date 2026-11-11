@@ -10,7 +10,11 @@ are the reads left.
 
 Each step is a commit of its own, most frequent wait first.
 
-## 1. Merge options
+Two kinds of wait: fetching before a buffer shows, and a page's fetches
+chained one after another (0.5–0.8 s each).  The commit, compare, PR,
+PR diff, issue, run, job, user, dashboard and list pages have neither.
+
+## 1. Merge options (done)
 
 `octocat-pr-merge` says "Fetching merge options…" and opens the dialog
 once `gh repo view` answers (`octocat-pr.el`), on every merge.
@@ -34,7 +38,7 @@ once `gh repo view` answers (`octocat-pr.el`), on every merge.
   is refused by `gh pr merge`: its error shows as any mutation's, and
   the message typed is kept.
 
-## 2. Diffing a file too large for the page
+## 2. Diffing a file too large for the page (done)
 
 `octocat-diff-open-large` asks, then fetches the merge base, the old
 text and the new one in turn, and pops up a buffer when all three are
@@ -46,7 +50,48 @@ in, perhaps after the user moved on.
   with `octocat-sync-get` each time: the base is a branch, so it is not
   kept.  `octocat-diff--url-path` goes with its call.
 
-## 3. Small fixes to waits that stay
+## 3. Links open at once
+
+`octocat-browse-url` waits on GitHub before it shows anything, on links
+users follow all the time.  A link should open its page at once,
+assuming what it names exists; the page shows an error if not.
+
+- `tree/`, `blob/` and `commits/` links (`octocat--open-ref-path`,
+  `octocat-core.el`): a ref may have slashes, so with more than one
+  segment GitHub is asked which leading ones name a ref, on every link,
+  with no message.  Split locally instead: a SHA first segment is the
+  ref; else the longest leading segments that name a branch in the
+  stored `branches`.  When neither decides, open the page at once
+  anyway: it reads the split as a resource while it renders, a skeleton
+  until it lands, an error if no ref matches.
+- `issues/N` links and `#N` references (`octocat--markdown-open-ref`):
+  an issue number may be a PR's, so GitHub is asked which.  Open at once
+  as what the store has it as; else as an issue, whose page turns into
+  the PR's if GitHub says it is one.
+
+## 4. A file's content in one round trip
+
+The file page reads `repo-head` for the blob's SHA, then `blob`: two
+requests in turn before a first visit shows the file.  Fetch the text
+by ref and path (`file-text`) alongside `repo-head`, and show whichever
+gives it first.  A later visit shows it at once from the store, as now.
+
+## 5. A folder link in one round trip
+
+A `tree/REF/a/b/c` link reveals c: `repo-head`, then `tree-dir` of the
+root, then of a, b and c in turn, each needing its parent's listing for
+its SHA: five requests in turn.  One GraphQL query can list every level
+at once, an `object(expression:"REF:a")` alias each, stored as each
+`tree-dir`.
+
+## 6. The repository page's README
+
+`repo-head`, then the root's `tree-dir`, then the README's `blob`:
+three in turn.  Have `repo-head` list the root's entries too, so the
+README is fetched second.  Less often waited on: a visited repo shows
+from the store.
+
+## 7. Small fixes to waits that stay
 
 These wait once in a while and have no sensible default, so they keep
 fetching, then acting.  Each acts only if the user is still where they
@@ -65,27 +110,30 @@ pressed the key (`octocat--still-selected-p`).
 - The filter and value prompts (`octocat-vui-list--stored`) wait on a
   repo's first use; they check already.
 
-## 4. Direct calls left
+## 8. Direct calls left
 
 Through `octocat--run-gh`, outside the model.  The first two run as a
-page draws its images, not from a key: they move for step 5's rule.
+page draws its images, not from a key: they move for step 9's rule.
 
 - `octocat-tree--fetch-blob-sha` (`octocat-repo.el`): a file's blob at a
-  ref, for its page.  A resource, kept for good at a SHA.
+  ref, for an image on its page, then the blob: two requests in turn
+  per image.  A resource, kept for good at a SHA.
 - `octocat-tree--proxied-url` (`octocat-repo.el`): GitHub's rendering of
   a file, read for its images' signed URLs, cached in a table of its own
   that never expires, though signed URLs do.  A resource, kept a short
   while.
 - `octocat--fetch-artifact` (`octocat-actions.el`): a download the user
   asked for, written to disk.  An effect, not data: it stays.
-- `octocat-pr` (`octocat.el`): stays, see step 3.
+- `octocat-pr` (`octocat.el`): stays, see step 7.
 
-## 5. Keep it so
+## 9. Keep it so
 
 A test fails on a call to `octocat--run-gh` or `octocat--gh-graphql`
-outside `octocat-model.el`, `octocat-sync.el` and `octocat-core.el`,
-but for those named in it (the artifact download, `octocat-pr`).  It
-reads the files with Emacs's reader and walks the forms, not a regex.
+outside `octocat-model.el` and `octocat-sync.el`, but for those named in
+it (the artifact download, `octocat-pr`, and core's own `gh` runner).
+Core is not exempt: its link lookups (step 3) were missed for being
+there.  It reads the files with Emacs's reader and walks the forms, not
+a regex.
 
 ## Out of scope
 
@@ -97,3 +145,7 @@ in `octocat-diff--show-large` and `gh --version` in the doctor.
 Reading ahead what a rare key needs: the viewer's reactions to issue
 and PR comments, and the prompts' candidates.  It would cost a request
 on every page open for a wait that comes once in a while.
+
+A run's Jobs section orders its jobs by what each waits for, read from
+the workflow file: the run, its workflow, then the file, in turn.  The
+jobs show meanwhile; only their order waits.

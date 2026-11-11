@@ -750,6 +750,12 @@ when all of these hold:
   is still where they pressed the key (`octocat--still-selected-p`):
   never pop up a buffer after they moved on.
 
+A link opens its page at once, assuming what it names exists; the page
+shows an error if not, and settles what the link leaves open (which
+segments are the ref, issue or PR) as it loads.  A page fetches in
+parallel what it can: each fetch waiting on another's answer is a round
+trip more.
+
 ### Writing: show the action at once
 
 A command that writes to GitHub (merge, comment, state change) must not
