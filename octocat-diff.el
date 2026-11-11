@@ -1065,8 +1065,11 @@ patch, the heading is the place scrolled to."
     (mapcar (lambda (e) (cons (car e) (reverse (cdr e)))) table)))
 
 (defvar-local octocat-diff--at nil
-  "The lines a link to this page named, (diff HASH FROM TO), or nil.
-See `octocat--url-lines'.  The user's refresh drops them.")
+  "Where the page is to start, or nil.
+The lines a link to this page named, (diff HASH FROM TO), see
+`octocat--url-lines', or (path PATH DIR-P), the file or directory a
+switch of views kept, see `octocat-diff-show-view'.  The user's refresh
+drops them.")
 
 (defvar-local octocat-diff--hide-comments nil
   "Non-nil leaves the inline comments out of this page's diff.
@@ -1099,17 +1102,33 @@ HIDE is whether they are hidden; it names what pressing it does, as
                                     "hide the comments in the diff"))
     :on-click #'octocat-diff-toggle-comments))
 
+(defun octocat-diff--file-at (at files file)
+  "Return AT as `octocat-diff--file' takes it for FILE, one of FILES, or nil.
+AT is as `octocat-diff--at': a link's names FILE by its hash, and the
+path a switch of views kept names the first of FILES at or in it."
+  (let ((name (or (gethash "filename" file) "")))
+    (pcase at
+      (`(diff ,hash . ,_) (and (octocat--diff-path-hash-p hash name) at))
+      (`(path ,path . ,_)
+       (and (eq file (seq-find (lambda (f) (octocat-diff--under-p
+                                            (or (gethash "filename" f) "") path))
+                               files))
+            (list 'diff nil))))))
+
 (vui-defcomponent octocat-diff--files
-    (repo files by-path hide fits raw width underline at total revs view)
+    (repo all files filter by-path hide fits raw width underline at total revs view)
   "The Files section: FILES of REPO with the review comments BY-PATH, folded.
+FILES are those of ALL whose path holds FILTER, see
+`octocat-diff-filtered'; the heading has the buttons to set or clear it.
 They start unfolded when FITS, the whole diff fitting in the window.
 HIDE leaves the comments out.  RAW and WIDTH are as for
 `octocat-diff--comment-lines'; UNDERLINE underlines the heading across
 WIDTH, but for a page whose tab row heads the section.  The heading's
 \"Expand all\" button unfolds or folds every file, and its switch of the
 comments, there when the diff shows some, runs
-`octocat-diff-toggle-comments'.  AT, the lines a link named, is
-scrolled to, see `octocat-diff--file'; the user's refresh drops it.
+`octocat-diff-toggle-comments'.  AT, the lines a link named or the
+path a switch of views kept, is scrolled to, see `octocat-diff--file-at';
+the user's refresh drops it.
 TOTAL, how many files changed, says at the end how many GitHub left out.
 REVS is as for `octocat-diff-open-large', for the files too large to diff.
 VIEW, when non-nil, puts the pill of the views in place of the
@@ -1126,7 +1145,9 @@ heading, at the right edge of WIDTH, the buttons before it, see
                    (when octocat-diff--at
                      (setq octocat-diff--at nil)
                      (octocat-vui-update-page :at nil)))))))
-         (heading (format "Files (%d)" (length files)))
+         (heading (if filter
+                      (format "Files (%d of %d)" (length files) (length all))
+                    (format "Files (%d)" (length files))))
          ;; Only those the diff places: an outdated comment's line is gone.
          (placed  (vui-use-memo (files by-path)
                     (cl-loop for f across files
@@ -1138,11 +1159,14 @@ heading, at the right edge of WIDTH, the buttons before it, see
       (when at (octocat--goto-line-target buf))
       nil)
     (vui-vstack
-     (let ((after (and (cl-some (lambda (f) (stringp (gethash "patch" f))) files)
-                       (cons (octocat-vui-expand-all-button
-                              bulk (vui-async-callback (v) (vui-set-state :bulk v)))
-                             (and (> placed 0)
-                                  (list (octocat-diff--comments-switch hide placed)))))))
+     (let ((after (append
+                   (and (cl-some (lambda (f) (stringp (gethash "patch" f))) files)
+                        (cons (octocat-vui-expand-all-button
+                               bulk (vui-async-callback (v) (vui-set-state :bulk v)))
+                              (and (> placed 0)
+                                   (list (octocat-diff--comments-switch hide placed)))))
+                   (and (> (length all) 1)
+                        (octocat-diff--filter-buttons all filter)))))
        (cond
         ;; The buttons first, the views at the right edge.
         (view (apply #'vui-hstack :spacing 2
@@ -1151,47 +1175,50 @@ heading, at the right edge of WIDTH, the buttons before it, see
         (t (apply #'vui-hstack :spacing 2
                   (vui-text heading :face 'octocat-section-heading) after))))
      (if (zerop (length files))
-         (vui-text "  (no files changed)" :face 'octocat-dimmed)
+         (vui-text (if filter "  (no files match the filter)" "  (no files changed)")
+           :face 'octocat-dimmed)
        (vui-list (append files nil)
                  (lambda (f)
                    (octocat-diff--file repo f (and (not hide)
                                                    (cdr (assoc (gethash "filename" f) by-path)))
                                        bulk raw width
                                        (eq f (aref files (1- (length files))))
-                                       (and at (octocat--diff-path-hash-p
-                                                (nth 1 at) (or (gethash "filename" f) ""))
-                                            at)
+                                       (octocat-diff--file-at at files f)
                                        revs))
                  (lambda (f) (gethash "filename" f))))
-     (when (and total (> total (length files)))
+     (when (and total (not filter) (> total (length files)))
        (vui-text (format "  %d more files changed than GitHub's API lists"
                          (- total (length files)))
          :face 'octocat-dimmed)))))
 
 (defun octocat-diff-files-section (repo files by-path hide raw width
-                                        &optional underline at total revs view)
+                                        &optional underline at total revs view filter)
   "Return the vnode of the Files section: the heading and one entry per file.
 FILES is REPO's files vector and BY-PATH the review comments by file path,
-left out when HIDE.
+left out when HIDE.  Only the files whose path holds FILTER show, see
+`octocat-diff-filtered'.
 Files start folded, unless the whole diff fits in the window.  The
 comments are markdown, rendered unless RAW, to fit WIDTH columns.
-UNDERLINE underlines the heading across WIDTH.  AT is the lines a
-link named, see `octocat-diff--file'.  TOTAL is how many files changed,
+UNDERLINE underlines the heading across WIDTH.  AT is as
+`octocat-diff--at'.  TOTAL is how many files changed,
 when FILES may be fewer.  REVS, the commits compared, is as for
 `octocat-diff-open-large'.  VIEW is as for `octocat-diff--files'."
-  (vui-component 'octocat-diff--files
-    :repo repo
-    :files files
-    :by-path by-path
-    :hide hide
-    :raw raw
-    :width width
-    :underline underline
-    :at at
-    :total total
-    :revs revs
-    :view view
-    :fits (<= (octocat-diff--line-count files) (octocat-vui-window-height))))
+  (let ((shown (octocat-diff-filtered files filter)))
+    (vui-component 'octocat-diff--files
+      :repo repo
+      :all files
+      :files shown
+      :filter filter
+      :by-path by-path
+      :hide hide
+      :raw raw
+      :width width
+      :underline underline
+      :at at
+      :total total
+      :revs revs
+      :view view
+      :fits (<= (octocat-diff--line-count shown) (octocat-vui-window-height)))))
 
 (defun octocat-diff-comments-section (label comments raw width)
   "Return the vnode of the comments section headed LABEL, e.g. \"Comments\".
@@ -1250,12 +1277,51 @@ The hints name the key that cycles them.  See `octocat-vui-segmented'."
                       (lambda () (octocat-diff-show-view v)))))
             octocat-diff--views)))
 
+(defun octocat-diff--path-at-point ()
+  "Return the path of the changed file or the directory at point, or nil.
+That is in the view shown, see `octocat-diff--view'."
+  (pcase octocat-diff--view
+    ('tree  (octocat-tree--path-at-point))
+    ('patch (get-text-property (point) 'octocat-diff-path))
+    (_      (car (octocat-diff--line-anchor (point))))))
+
+(defun octocat-diff--under-p (file path)
+  "Return non-nil if FILE, a path, is PATH or in directory PATH."
+  (or (equal file path) (string-prefix-p (concat path "/") file)))
+
+(defun octocat-diff--goto-patch (path)
+  "Move point to the diff of the first file of the Patch at or under PATH.
+Return non-nil if one is there."
+  (let ((pos (point-min)) found)
+    (while (and (not found) pos (< pos (point-max)))
+      (let ((file (get-text-property pos 'octocat-diff-path)))
+        (if (and file (octocat-diff--under-p file path))
+            (setq found pos)
+          (setq pos (next-single-property-change pos 'octocat-diff-path)))))
+    (when found
+      (goto-char found)
+      (dolist (win (get-buffer-window-list (current-buffer) nil t))
+        (set-window-point win found)
+        (set-window-start win found))
+      t)))
+
 (defun octocat-diff-show-view (view)
-  "Show this page's changed files as VIEW, one of `octocat-diff--views'."
+  "Show this page's changed files as VIEW, one of `octocat-diff--views'.
+The file or directory at point is kept: the new view starts at it, or
+at the first file changed in it, its diff unfolded."
   (unless (local-variable-p 'octocat-diff--view)
     (user-error "Octocat: This page has no views"))
-  (setq octocat-diff--view view)
-  (octocat-vui-update-page :view view))
+  (let ((path  (octocat-diff--path-at-point))
+        (dir-p (and (eq octocat-diff--view 'tree) (eq (octocat-tree--type-at-point) 'dir)))
+        (buf   (current-buffer)))
+    (setq octocat-diff--view view)
+    (when path
+      (setq octocat-diff--at (list 'path path dir-p)))
+    (octocat-vui-update-page :view view :at octocat-diff--at)
+    (when path
+      (pcase view
+        ('patch (octocat-diff--goto-patch path))
+        ('diff (octocat-vui-pulse-change buf 'octocat-line-target #'identity t))))))
 
 (defun octocat-diff-cycle-view ()
   "Show the changed files the next way: as their diff, tree, then patch.
@@ -1280,24 +1346,27 @@ it differs stands in."
          (patch  (gethash "patch" file))
          (a      (if (equal status "added") "/dev/null" (concat "a/" old)))
          (b      (if (equal status "removed") "/dev/null" (concat "b/" new))))
-    (concat
-     (propertize (string-join
-                  (delq nil
-                        (list (format "diff --git a/%s b/%s" old new)
-                              (pcase status
-                                ("added" "new file mode 100644")
-                                ("removed" "deleted file mode 100644"))
-                              (and (equal status "renamed")
-                                   (format "rename from %s\nrename to %s" old new))))
-                  "\n")
-                 'face 'octocat-diff-file-name)
-     "\n"
-     (if (stringp patch)
-         (concat (propertize (format "--- %s\n+++ %s" a b) 'face 'octocat-diff-file-name)
-                 "\n"
-                 (mapconcat (lambda (l) (octocat--clip-line l octocat--max-line-length))
-                            (octocat-diff--lines patch new) "\n"))
-       (format "Binary files %s and %s differ" a b)))))
+    (propertize
+     (concat
+      (propertize (string-join
+                   (delq nil
+                         (list (format "diff --git a/%s b/%s" old new)
+                               (pcase status
+                                 ("added" "new file mode 100644")
+                                 ("removed" "deleted file mode 100644"))
+                               (and (equal status "renamed")
+                                    (format "rename from %s\nrename to %s" old new))))
+                   "\n")
+                  'face 'octocat-diff-file-name)
+      "\n"
+      (if (stringp patch)
+          (concat (propertize (format "--- %s\n+++ %s" a b) 'face 'octocat-diff-file-name)
+                  "\n"
+                  (mapconcat (lambda (l) (octocat--clip-line l octocat--max-line-length))
+                             (octocat-diff--lines patch new) "\n"))
+        (format "Binary files %s and %s differ" a b)))
+     ;; Which file it is, for a switch of views to keep.
+     'octocat-diff-path new)))
 
 (defun octocat-diff-patch-text (files)
   "Return the diff of FILES as git writes it, as GitHub's .diff.
@@ -1305,11 +1374,87 @@ Each file's diff in full, see `octocat-diff--patch-file'.  Not
 indented, so it copies out as a patch `git apply' applies."
   (mapconcat #'octocat-diff--patch-file files "\n"))
 
-(defun octocat-diff--tree-changes (files)
-  "Return how its tree is to show FILES, the \"files\" changed.
+;;;;; Filter
+;;
+;; As GitHub's "Filter changed files": the Diff and Patch views list only
+;; the files whose path holds the filter's text.
+
+(defvar-local octocat-diff--filter nil
+  "Text the paths of the files shown hold, or nil for all of them.
+See `octocat-diff-filtered'.")
+
+(defun octocat-diff-filtered (files filter)
+  "Return those of FILES with FILTER in their path, ignoring case, as a vector.
+All of them without FILTER."
+  (if (not (octocat--nonempty filter))
+      files
+    (vconcat (seq-filter (lambda (f)
+                           (string-search (downcase filter)
+                                          (downcase (or (gethash "filename" f) ""))))
+                         files))))
+
+(defun octocat-diff--filter-candidates (files)
+  "Return the paths to filter FILES by: their directories, then themselves.
+A directory ends in a slash, so it matches only the files in it."
+  (let (dirs)
+    (seq-doseq (f files)
+      (let ((dir (octocat-tree--parent (or (gethash "filename" f) ""))))
+        (while (not (string-empty-p dir))
+          (push (concat dir "/") dirs)
+          (setq dir (octocat-tree--parent dir)))))
+    (append (sort (delete-dups dirs) #'string<)
+            (mapcar (lambda (f) (gethash "filename" f)) files))))
+
+(defun octocat-diff--filter-default ()
+  "Return the filter to offer: the directory a switch of views kept, if any.
+For a file, its directory.  See `octocat-diff-show-view'."
+  (pcase octocat-diff--at
+    (`(path ,path ,dir-p)
+     (let ((dir (if dir-p path (octocat-tree--parent path))))
+       (and (octocat--nonempty dir) (concat dir "/"))))))
+
+(defun octocat-diff-set-filter (filter)
+  "Show only the changed files with FILTER in their path, or all for nil."
+  (setq octocat-diff--filter (octocat--nonempty filter))
+  (octocat-vui-update-page :filter octocat-diff--filter))
+
+(defun octocat-diff--ask-filter (files)
+  "Ask for the text to filter FILES by, and show only those with it in their path.
+Their directories and paths complete; the directory a switch of views
+kept is the default."
+  (let ((default (octocat-diff--filter-default)))
+    (octocat-diff-set-filter
+     (completing-read (format-prompt "Filter changed files" default)
+                      (octocat-diff--filter-candidates files) nil nil nil nil default))))
+
+(defun octocat-diff--filter-buttons (files filter)
+  "Return the buttons filtering FILES, as a list: FILTER and its clearing, if set."
+  (if filter
+      (list (vui-text (format "Filter: %s" filter) :face 'octocat-dimmed)
+            (vui-button "[Clear filter]"
+              :no-decoration t
+              :face 'octocat-dimmed
+              :help-echo "RET: show all the changed files"
+              :on-click (lambda () (octocat-diff-set-filter nil))))
+    (list (vui-button "[Filter files]"
+            :no-decoration t
+            :face 'octocat-dimmed
+            :help-echo "RET: show only the files whose path holds some text"
+            :on-click (lambda () (octocat-diff--ask-filter files))))))
+
+(defun octocat-diff-filter-line (files filter)
+  "Return the row of the Patch view's filter of FILES, FILTER if set, or nil.
+Nil without FILTER: the Patch has no heading to hold its button."
+  (and filter
+       (apply #'vui-hstack :spacing 2 (octocat-diff--filter-buttons files filter))))
+
+(defun octocat-diff--tree-changes (repo ref files context)
+  "Return how the tree of REPO at REF is to show FILES, the \"files\" changed.
 See `octocat-tree--subtree'.  They are as in its diff, see
-`octocat-diff--file-icon' and `octocat-diff--counts'; RET on one shows
-its diff, see `octocat-diff--show-file'."
+`octocat-diff--file-icon' and `octocat-diff--counts'; RET on one opens
+it in the file viewer, on its Diff view, its change being the file's
+entry with CONTEXT, a plist of :revs and :label, see
+`octocat-tree--file-change'."
   (let ((changes (make-hash-table :test #'equal)))
     (seq-doseq (file files)
       (let ((status (or (gethash "status" file) "modified"))
@@ -1318,7 +1463,9 @@ its diff, see `octocat-diff--show-file'."
                  (list :mark    (concat (octocat-diff--file-icon status) " ")
                        :face    'octocat-diff-file-name
                        :after   (or (octocat-diff--counts file) "")
-                       :open    (lambda () (octocat-diff--show-file path))
+                       :open    (lambda ()
+                                  (octocat-tree--open-file-by-path
+                                   repo ref path nil (cons :file (cons file context))))
                        :removed (equal status "removed"))
                  changes)))
     changes))
@@ -1335,41 +1482,82 @@ It ends the heading of the changed files, see `octocat-diff--files',
 and the commit page's top line."
   (octocat-vui-segmented-right (octocat-diff--view-segments view) width))
 
-(defun octocat-diff--show-file (path)
-  "Show the Diff view at file PATH, its diff unfolded, as a link to it would.
-Its heading lights up, so the eye finds it after the switch."
-  (let ((at (list 'diff (secure-hash 'sha256 path))))
-    (setq octocat-diff--view 'diff
-          octocat-diff--at at)
-    (octocat-vui-update-page :view 'diff :at at)
-    (octocat-vui-pulse-change (current-buffer) 'octocat-line-target #'identity t)))
+(defun octocat-diff--focus (at)
+  "Return the path a switch of views kept, of AT, see `octocat-diff--at'."
+  (pcase at (`(path ,path . ,_) path)))
 
-(defun octocat-diff-tree (repo ref root files)
+(defun octocat-diff-tree (repo ref root files context at)
   "Return the Tree view of FILES, the \"files\" changed in REPO.
 That is the tree browser's tree at REF, the new side, its root tree
 ROOT, opened down to FILES, marked as in the diff.  See
-`octocat-diff--tree-changes'."
-  (vui-component 'octocat-diff--tree :repo repo :ref ref :root root :files files))
+`octocat-diff--tree-changes' for CONTEXT.  Point moves to the path a
+switch of views kept, of AT, see `octocat-diff--at'."
+  (vui-component 'octocat-diff--tree :repo repo :ref ref :root root :files files
+                 :context context :focus (octocat-diff--focus at)))
 
-(vui-defcomponent octocat-diff--tree (repo ref root files)
+(vui-defcomponent octocat-diff--tree (repo ref root files context focus)
   "The Tree view, see `octocat-diff-tree'."
   :render
-  (let ((changes (vui-use-memo (files) (octocat-diff--tree-changes files)))
+  (let ((changes (vui-use-memo (files context)
+                   (octocat-diff--tree-changes repo ref files context)))
         (dirs    (vui-use-memo (files) (octocat-diff--tree-dirs files))))
     (if root
         (vui-component 'octocat-tree--subtree
           :key (list ref root)
           :repo repo :branch ref :sha root :commit nil
-          :depth 0 :path "" :reveal dirs :focus nil :changes changes)
+          :depth 0 :path "" :reveal dirs :focus focus :changes changes)
       (vui-text (octocat-tree--skeleton)))))
 
-(vui-defcomponent octocat-diff-head-tree (repo head files)
+(vui-defcomponent octocat-diff-head-tree (repo head files context at)
   "The Tree view of FILES changed in REPO, at HEAD, a ref or commit.
 For a page whose data lacks HEAD's root tree, which this looks up.
-See `octocat-diff-tree'."
+See `octocat-diff-tree' for CONTEXT and AT."
   :render
   (let ((snap (octocat-vui-use-resource (list 'repo-head repo head nil) nil)))
-    (octocat-diff-tree repo head (octocat--get (plist-get snap :data) "tree") files)))
+    (octocat-diff-tree repo head (octocat--get (plist-get snap :data) "tree") files
+                       context at)))
+
+(defun octocat-diff--change-entry (repo file revs)
+  "Return the Diff view of FILE, a changed file of REPO, in the file viewer.
+It is unfolded, see `octocat-diff--file'; REVS is as there."
+  (octocat-diff--file repo file nil '(0 . t) nil (octocat--markdown-width) t nil revs))
+
+(vui-defcomponent octocat-diff-file-view (repo path change commit)
+  "The file viewer's Diff view of file PATH of REPO.
+That is CHANGE, see `octocat-tree--file-change', or without it the
+file's change in COMMIT, the last that touched it, nil while that is
+looked up.  A line above says what changed it."
+  :render
+  (cond
+   (change
+    (vui-vstack
+     (vui-text (plist-get change :label) :face 'octocat-dimmed)
+     (octocat-diff--change-entry repo (plist-get change :file) (plist-get change :revs))))
+   (commit (vui-component 'octocat-diff--last-change :repo repo :path path :commit commit))
+   (t (vui-text (octocat-tree--skeleton)))))
+
+(vui-defcomponent octocat-diff--last-change (repo path commit)
+  "The change to file PATH of REPO in COMMIT, its last, see `octocat-diff-file-view'."
+  :render
+  (let* ((snap   (octocat-vui-use-resource (list 'commit repo commit) nil))
+         (data   (plist-get snap :data))
+         (short  (substring commit 0 (min 7 (length commit))))
+         (file   (and data (seq-find (lambda (f) (equal (gethash "filename" f) path))
+                                     (gethash "files" data))))
+         (parent (let ((parents (and data (gethash "parents" data))))
+                   (and (> (length parents) 0) (gethash "sha" (aref parents 0))))))
+    (octocat-vui-resource-view
+     snap
+     :skeleton (lambda (_) (vui-text (octocat-tree--skeleton)))
+     :render
+     (lambda (_)
+       (if file
+           (vui-vstack
+            (vui-text (format "Changes in its last commit, %s" short) :face 'octocat-dimmed)
+            (octocat-diff--change-entry repo file (cons parent commit)))
+         ;; A merge's files are those of its first parent's side.
+         (vui-text (format "Not among the files GitHub lists for its last commit, %s" short)
+           :face 'octocat-dimmed))))))
 
 
 ;;;; Commit page
@@ -1542,11 +1730,12 @@ underlined across WIDTH columns."
 
 ;;;;; Patch
 
-(defun octocat-commit--patch-text (commit)
+(defun octocat-commit--patch-text (commit filter)
   "Return COMMIT as `git format-patch' writes it, as GitHub's .patch.
 Its header, message, then each file's diff, see
-`octocat-diff--patch-file'.  Not indented, so it copies out as a
-patch `git am' applies."
+`octocat-diff--patch-file', of the files whose path holds FILTER, see
+`octocat-diff-filtered'.  Not indented, so it copies out as a patch
+`git am' applies."
   (let* ((c       (gethash "commit" commit))
          (author  (and (hash-table-p c) (gethash "author" c)))
          (get     (lambda (k) (or (and (hash-table-p author)
@@ -1567,20 +1756,22 @@ patch `git am' applies."
      "\n\n"
      (if (string-empty-p body) "" (concat body "\n"))
      "---\n\n"
-     (mapconcat #'octocat-diff--patch-file (gethash "files" commit) "\n"))))
+     (mapconcat #'octocat-diff--patch-file
+                (octocat-diff-filtered (gethash "files" commit) filter) "\n"))))
 
 
 
 ;;;;; Page
 
-(vui-defcomponent octocat-commit--page (repo sha hide-comments raw view at tick)
+(vui-defcomponent octocat-commit--page (repo sha hide-comments raw view at filter tick)
   "Commit SHA of REPO: top line, then as `git show': who and when, the
 message, then checks, files and comments.  HIDE-COMMENTS leaves the
 inline comments out of the diff.  RAW shows markdown verbatim.  VIEW,
 of `octocat-diff--views', `tree' shows the repository's files at the
 commit instead, those it changed marked, see `octocat-diff-tree';
 `patch' the commit as a patch, see `octocat-commit--patch-text'.
-AT is the lines a link named, see `octocat-diff--file'.  The
+AT is as `octocat-diff--at'.  FILTER, if set, shows only the files
+whose path holds it, see `octocat-diff-filtered'.  The
 commit, its checks, its comments and the branch holding it are fetched
 independently; each shows what the store holds until then.  A new TICK
 fetches them again."
@@ -1596,10 +1787,11 @@ fetches them again."
                      (octocat-diff-by-path (plist-get comments :data))))
          (message  (vui-use-memo (data)
                      (and data (octocat-commit--message data))))
-         (text     (vui-use-memo (data view)
-                     (and data (eq view 'patch) (octocat-commit--patch-text data))))
+         (text     (vui-use-memo (data view filter)
+                     (and data (eq view 'patch) (octocat-commit--patch-text data filter))))
          (parent   (let ((parents (and data (gethash "parents" data))))
-                     (and (> (length parents) 0) (gethash "sha" (aref parents 0))))))
+                     (and (> (length parents) 0) (gethash "sha" (aref parents 0)))))
+         (revs     (cons parent (and data (gethash "sha" data)))))
     (octocat-vui-page
      (octocat-vui-commit-pin repo (or (and data (gethash "sha" data)) sha)
                              (octocat-vui-segmented-pin (octocat-diff--view-segments view)))
@@ -1611,13 +1803,20 @@ fetches them again."
        :render
        (lambda (_)
          (cond
-          (text (vui-text text))
+          (text (apply #'vui-vstack
+                       (delq nil (list (octocat-diff-filter-line
+                                        (or (gethash "files" data) []) filter)
+                                       (vui-text text)))))
           ((eq view 'tree)
            (vui-fragment
             (vui-newline)
             (octocat-diff-tree repo (gethash "sha" data)
                                (octocat--get data "commit" "tree" "sha")
-                               (or (gethash "files" data) []))))
+                               (or (gethash "files" data) [])
+                               (list :revs revs
+                                     :label (format "Changes in commit %s"
+                                                    (substring (gethash "sha" data) 0 7)))
+                               at)))
           (t
            (apply
             #'vui-vstack
@@ -1631,7 +1830,7 @@ fetches them again."
                            (vui-fragment section (vui-newline)))
                          (octocat-diff-files-section
                           repo (or (gethash "files" data) []) by-path hide-comments raw md-width t
-                          at nil (cons parent (gethash "sha" data)))
+                          at nil revs nil filter)
                          ;; Most commits have none, so the section is left
                          ;; out unless there are any, or they failed to load.
                          (when (or (not (seq-empty-p (plist-get comments :data)))
@@ -1686,7 +1885,8 @@ only on `g'."
                                   :hide-comments octocat-diff--hide-comments
                                   :raw octocat--markdown-raw
                                   :view octocat-diff--view
-                                  :at octocat-diff--at)))
+                                  :at octocat-diff--at
+                                  :filter octocat-diff--filter)))
 
 (defun octocat-commit-open (repo sha &optional at)
   "Show commit SHA of REPO in its own buffer, AT the lines a link named.
@@ -1700,7 +1900,8 @@ See `octocat-diff--file'."
     (setq octocat--commit-repo repo
           octocat--commit-sha  sha
           octocat-diff--hide-comments nil
-          octocat-diff--at at)
+          octocat-diff--at at
+          octocat-diff--filter nil)
     (octocat-commit-refresh)))
 
 (cl-defmethod octocat-open ((_kind (eql 'commit)) repo sha &optional at)
@@ -1804,21 +2005,25 @@ tabs of the views, VIEW the one shown, at the right edge of WIDTH, see
 
 ;;;;; Page
 
-(vui-defcomponent octocat-compare--page (repo base dots head raw view at tick)
+(vui-defcomponent octocat-compare--page (repo base dots head raw view at filter tick)
   "The comparison of BASE and HEAD of REPO: its commits, then its files.
 DOTS is as in `octocat--compare-refs'.  RAW shows markdown verbatim.
 VIEW, of `octocat-diff--views', `tree' shows the repository's files at
 HEAD instead, those changed marked, see `octocat-diff-head-tree';
-`patch' every file's diff, see `octocat-diff-patch-text'.  AT is the
-lines a link named, see `octocat-diff--file'.  A new TICK fetches it
-again."
+`patch' every file's diff, see `octocat-diff-patch-text'.  AT is as
+`octocat-diff--at'.  FILTER, if set, shows only the files whose path
+holds it, see `octocat-diff-filtered'.  A new TICK fetches it again."
   :render
   (let* ((width    (octocat--markdown-width))
          (snap     (octocat-vui-use-resource (list 'compare repo base head) tick))
          (data     (plist-get snap :data))
-         (text     (vui-use-memo (data view)
+         (text     (vui-use-memo (data view filter)
                      (and data (eq view 'patch)
-                          (octocat-diff-patch-text (or (gethash "files" data) []))))))
+                          (octocat-diff-patch-text
+                           (octocat-diff-filtered (or (gethash "files" data) []) filter)))))
+         (revs     (cons (octocat--get data "merge_base_commit" "sha") head))
+         (context  (list :revs revs
+                         :label (format "Changes in %s%s%s" base dots head))))
     (octocat-vui-page
      (octocat-vui-pin (propertize repo 'face 'octocat-repo)
                       (concat (octocat-compare--ref-label base)
@@ -1838,11 +2043,14 @@ again."
        (lambda (data)
          (let ((files (or (gethash "files" data) [])))
            (cond
-            (text (vui-text text))
+            (text (apply #'vui-vstack
+                         (delq nil (list (octocat-diff-filter-line files filter)
+                                         (vui-text text)))))
             ((eq view 'tree)
              (vui-fragment
               (vui-newline)
-              (vui-component 'octocat-diff-head-tree :repo repo :head head :files files)))
+              (vui-component 'octocat-diff-head-tree
+                :repo repo :head head :files files :context context :at at)))
             (t
              (apply #'vui-vstack
                     (append
@@ -1851,8 +2059,7 @@ again."
                      (list (vui-newline))
                      (octocat-compare--commits repo (or (gethash "commits" data) []) width)
                      (list (octocat-diff-files-section
-                            repo files nil nil raw width t at nil
-                            (cons (octocat--get data "merge_base_commit" "sha") head))))))))))))))
+                            repo files nil nil raw width t at nil revs nil filter)))))))))))))
 
 
 ;;;;; Major mode
@@ -1900,7 +2107,8 @@ again."
                                     :base base :dots dots :head head
                                     :raw octocat--markdown-raw
                                     :view octocat-diff--view
-                                    :at octocat-diff--at))))
+                                    :at octocat-diff--at
+                                    :filter octocat-diff--filter))))
 
 (defun octocat-compare-open (repo base dots head &optional at)
   "Show the comparison of BASE and HEAD of REPO in its own buffer.
@@ -1912,7 +2120,8 @@ AT is the lines a link named, see `octocat-diff--file'."
       (octocat-compare-mode))
     (setq octocat--compare-repo repo
           octocat--compare-refs (list base dots head)
-          octocat-diff--at at)
+          octocat-diff--at at
+          octocat-diff--filter nil)
     (octocat-compare-refresh)))
 
 (cl-defmethod octocat-open ((_kind (eql 'compare)) repo base dots head &optional at)

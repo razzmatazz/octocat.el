@@ -550,8 +550,77 @@ Only that file; a hash naming none changes nothing."
       (set-time-zone-rule nil))
     (should-not (octocat-commit--date commit "committer"))))
 
+(ert-deftest octocat-diff-test-tree-open-file ()
+  "RET on a changed file of a Tree opens it in the file viewer, with its change."
+  (let* ((files   (json-parse-string
+                   "[{\"filename\":\"src/a.el\",\"status\":\"modified\",\"patch\":\"@@\"}]"))
+         (changes (octocat-diff--tree-changes "owner/repo" "abc123" files
+                                              '(:revs ("p" . "abc123") :label "Changes")))
+         opened)
+    (cl-letf (((symbol-function 'octocat-tree--open-file-by-path)
+               (lambda (&rest args) (setq opened args))))
+      (funcall (plist-get (gethash "src/a.el" changes) :open)))
+    (should (equal (seq-take opened 4) '("owner/repo" "abc123" "src/a.el" nil)))
+    (should (eq (plist-get (nth 4 opened) :file) (aref files 0)))
+    (should (equal (plist-get (nth 4 opened) :revs) '("p" . "abc123")))
+    (should (equal (plist-get (nth 4 opened) :label) "Changes"))))
+
+(ert-deftest octocat-diff-test-filter ()
+  "The filter keeps the files whose path holds it, ignoring case."
+  (let ((files (json-parse-string
+                (concat "[{\"filename\":\"src/a.el\"},{\"filename\":\"test/src/b.el\"},"
+                        "{\"filename\":\"README.md\"}]"))))
+    (should (eq (octocat-diff-filtered files nil) files))
+    (should (eq (octocat-diff-filtered files "") files))
+    (should (equal (mapcar (lambda (f) (gethash "filename" f))
+                           (octocat-diff-filtered files "SRC/"))
+                   '("src/a.el" "test/src/b.el")))
+    (should (equal (octocat-diff--filter-candidates files)
+                   '("src/" "test/" "test/src/" "src/a.el" "test/src/b.el" "README.md")))))
+
+(ert-deftest octocat-diff-test-filter-default ()
+  "The filter offered is the directory a switch of views kept, or the file's."
+  (with-temp-buffer
+    (setq octocat-diff--at '(path "src/lib" t))
+    (should (equal (octocat-diff--filter-default) "src/lib/"))
+    (setq octocat-diff--at '(path "src/a.el" nil))
+    (should (equal (octocat-diff--filter-default) "src/"))
+    (setq octocat-diff--at '(path "a.el" nil))
+    (should-not (octocat-diff--filter-default))
+    (setq octocat-diff--at '(diff "hash"))
+    (should-not (octocat-diff--filter-default))))
+
+(ert-deftest octocat-diff-test-file-at ()
+  "A kept path names the first file at or in it; a link's hash its file."
+  (let* ((files (json-parse-string
+                 "[{\"filename\":\"a.el\"},{\"filename\":\"src/b.el\"},{\"filename\":\"src/c.el\"}]"))
+         (b     (aref files 1))
+         (c     (aref files 2)))
+    (should (equal (octocat-diff--file-at '(path "src" t) files b) '(diff nil)))
+    (should-not (octocat-diff--file-at '(path "src" t) files c))
+    (should (equal (octocat-diff--file-at '(path "src/c.el" nil) files c) '(diff nil)))
+    ;; Not a prefix of a name: "sr" is no directory of "src/b.el".
+    (should-not (octocat-diff--file-at '(path "sr" t) files b))
+    (let ((at (list 'diff (secure-hash 'sha256 "src/c.el") nil nil)))
+      (should (eq (octocat-diff--file-at at files c) at))
+      (should-not (octocat-diff--file-at at files b)))
+    (should-not (octocat-diff--file-at nil files b))))
+
+(ert-deftest octocat-diff-test-patch-path ()
+  "Each file of the Patch carries its path, for a switch of views to keep."
+  (let* ((files (json-parse-string
+                 (concat "[{\"filename\":\"a.el\",\"status\":\"modified\",\"patch\":\"@@ -1 +1 @@\"},"
+                         "{\"filename\":\"src/b.el\",\"status\":\"modified\","
+                         "\"patch\":\"@@ -1 +1 @@\"}]"))))
+    (with-temp-buffer
+      (insert (octocat-diff-patch-text files))
+      (goto-char (point-min))
+      (should (octocat-diff--goto-patch "src"))
+      (should (looking-at "diff --git a/src/b.el"))
+      (should-not (octocat-diff--goto-patch "lib")))))
+
 (ert-deftest octocat-commit-test-tree-changes ()
-  "A commit's files mark its tree as its diff does, RET on one showing its diff."
+  "A commit's files mark its tree as its diff does."
   (let* ((files   (json-parse-string
                    (concat "[{\"filename\":\"src/a.el\",\"status\":\"added\","
                            "\"additions\":3,\"deletions\":0,\"changes\":3,\"patch\":\"@@\"},"
@@ -559,7 +628,7 @@ Only that file; a hash naming none changes nothing."
                            "\"additions\":0,\"deletions\":2,\"changes\":2,\"patch\":\"@@\"},"
                            "{\"filename\":\"logo.png\",\"status\":\"modified\","
                            "\"changes\":0}]")))
-         (changes (octocat-diff--tree-changes files))
+         (changes (octocat-diff--tree-changes "owner/repo" "abc123" files nil))
          (added   (gethash "src/a.el" changes))
          (removed (gethash "old/b.el" changes)))
     (should (equal (substring-no-properties (plist-get added :mark)) "A "))
@@ -602,7 +671,7 @@ Only that file; a hash naming none changes nothing."
                           "{\"filename\":\"a.el\",\"status\":\"modified\","
                           "\"patch\":\"@@ -1 +1 @@\\n-old\\n+new\"},"
                           "{\"filename\":\"new.png\",\"status\":\"added\"}]}")))
-         (text   (substring-no-properties (octocat-commit--patch-text commit))))
+         (text   (substring-no-properties (octocat-commit--patch-text commit nil))))
     (should (equal text (concat "From abc123 Mon Sep 17 00:00:00 2001\n"
                                 "From: Ann <a@x>\n"
                                 "Date: Thu, 01 Oct 2026 10:00:00 +0000\n"

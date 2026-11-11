@@ -177,7 +177,8 @@ its commits in one.
 [As text](pr-diff-tree.txt)
 <!-- /screenshot -->
 
-`RET` on a changed file there shows its diff, unfolded and lit up:
+`RET` on a changed file there opens it in the file viewer, on its Diff
+view: what the PR changed in it.
 
 <!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-tree-file" :press ((:key "C-c C-v") (:key "RET" "main.rs")) -->
 ![pr-diff-tree-file](pr-diff-tree-file.png)

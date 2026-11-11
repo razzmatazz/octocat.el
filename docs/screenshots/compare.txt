@@ -9,7 +9,7 @@ Commits (7)
 ○ Note the template cache in the changelog            @srivera  1 day ago   d83176c
 ○ Invalidate a template when one it includes changes  @srivera  1 day ago   8ee9a2c
 
-Files (3)  [Expand all]
+Files (3)  [Expand all]  [Filter files]
 ▸ A src/cache.rs  +18 -0
 ▸ M src/build.rs  +5 -2
 ▸ M src/main.rs  +1 -0

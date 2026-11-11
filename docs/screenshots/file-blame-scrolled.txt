@@ -1,4 +1,4 @@
-acme/rocket  main:/docs/guide.md  Preview  Code  Blame
+acme/rocket  main:/docs/guide.md  Preview  Code  Blame  Diff
 Document the [build…  4 days ago │  3 A page is a Markdown file in `content/`, with a TOML header between
                                  │  4 `+++` lines that names its title and template.
                                  │  5

@@ -17,7 +17,7 @@ Checks (4)  CI: ✓
   ✓ test (beta)    GitHub Actions  7m00s  6 hours ago
   ✓ docs           GitHub Actions  3m00s  6 hours ago
 
-Files (5)  [Collapse all]
+Files (5)  [Collapse all]  [Filter files]
 ▾ A docs/assets/footnote-popup.png
 
 

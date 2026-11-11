@@ -47,7 +47,9 @@ a higher one, or a page opens a peer it cannot require, it calls
 `octocat-open` with the page's kind, such as `(octocat-open 'pr repo
 number)`: a generic function in `octocat-core` that each page module
 adds a `cl-defmethod` to for its kinds.  A key bound to a higher
-module's command names it quoted, as `'octocat-jump`, not `#'`.
+module's command names it quoted, as `'octocat-jump`, not `#'`; so
+does a page drawing a higher module's component, as the file viewer
+draws its Diff view, `'octocat-diff-file-view`.
 
 A lower module never names a higher one's function otherwise.  What it
 needs from above, the caller hands it:

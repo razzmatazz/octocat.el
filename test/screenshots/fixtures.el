@@ -1211,6 +1211,12 @@ jobs:
        (:data (:repository (:object (:history (:totalCount 87 :nodes [,(octocat-screenshots--history-node
                                                                         (nth 1 octocat-screenshots--commits))]))
                             :dir (:__typename "Tree" :oid ,(octocat-screenshots--sha "src"))))))
+      ;; The file `RET' opens from the PR's Tree, at its head; before
+      ;; the head's root, whose argument is a prefix of this one's.
+      ("repo-head" (,(format "dir=%s:src/main.rs" octocat-screenshots--pr-head))
+       (:data (:repository (:object (:history (:totalCount 9 :nodes [,(octocat-screenshots--history-node
+                                                                       (nth 1 octocat-screenshots--commits))]))
+                            :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "src/main.rs"))))))
       ("repo-head" (,(format "dir=%s:" octocat-screenshots--pr-head))
        (:data (:repository (:object (:history (:totalCount 98 :nodes [,(octocat-screenshots--history-node
                                                                         (nth 1 octocat-screenshots--commits))]))
@@ -1233,6 +1239,9 @@ jobs:
                                                     :node ,(octocat-screenshots--history-node
                                                             (car c) (cdr c))))
                                     octocat-screenshots--history))))))))
+      ("file-blob" (,(format "expr=%s:src/main.rs" octocat-screenshots--pr-head))
+       ,(octocat-screenshots--file-blob
+         "src/main.rs" "mod build;\nmod cache;\nmod markdown;\nmod serve;\nmod template;\n"))
       ("repo-head" ("dir=main:docs/guide.md")
        (:data (:repository (:object (:history (:totalCount 12 :nodes [,(octocat-screenshots--history-node
                                                                         (nth 2 octocat-screenshots--commits))]))

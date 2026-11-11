@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `[Filter files]` on a diff shows only the changed files whose path holds some text
+* Switching between Diff, Tree and Patch keeps the file or directory at point
+* The file viewer has a Diff view: the page's change, or the file's last commit's
+* `RET` on a file in a Tree view of changes opens it in the file viewer, on its diff
 * A tree indents each level of directories 4 spaces, not 2
 * A big directory in the tree browser lists its first 15 entries, with a button for the rest
 * A big directory in a Tree view of changes lists only those, with a button for the rest

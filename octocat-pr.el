@@ -1647,12 +1647,13 @@ The diff is from their merge base, looked up only when needed."
        (cons (lambda (k) (octocat-diff--merge-base repo base head k))
              head)))
 
-(vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw view at tick)
+(vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw view at filter tick)
   "The diff of pull request NUMBER of REPO, under the PR page's header.
 HIDE-COMMENTS leaves the review comments out of the diff, and RAW shows
 their markdown verbatim.  VIEW, of `octocat-diff--views', shows the
 files as a tree or a patch instead, from base to head, all commits in
-one.  AT is the lines a link named, see `octocat-diff--file'.  A review being
+one.  AT is as `octocat-diff--at'.  FILTER, if set, shows only the
+files whose path holds it, see `octocat-diff-filtered'.  A review being
 submitted shows in place of the submit button.  A new TICK fetches
 everything again."
   :render
@@ -1668,9 +1669,10 @@ everything again."
          (base     (octocat--get (plist-get pr :data) "baseRefName"))
          (head     (and data (gethash "head" data)))
          (revs     (vui-use-memo (base head) (octocat-pr-diff--revs repo base head)))
-         (text     (vui-use-memo ((plist-get files :data) view)
+         (text     (vui-use-memo ((plist-get files :data) view filter)
                      (and (eq view 'patch)
-                          (octocat-diff-patch-text (plist-get files :data)))))
+                          (octocat-diff-patch-text
+                           (octocat-diff-filtered (plist-get files :data) filter)))))
          (review   (and data (gethash "pending" data)))
          (pending  (and review (cons (gethash "id" review)
                                      (octocat-pr-diff--pending-count data)))))
@@ -1701,16 +1703,21 @@ everything again."
                (octocat-diff-views-heading view (octocat--markdown-width))
                (if head
                    (vui-component 'octocat-diff-head-tree
-                     :repo repo :head head :files (plist-get files :data))
+                     :repo repo :head head :files (plist-get files :data)
+                     :context (list :revs revs
+                                    :label (format "Changes in pull request #%d" number))
+                     :at at)
                  (vui-text (octocat-tree--skeleton)))))
              ('patch
-              (vui-vstack
-               (octocat-diff-views-heading view (octocat--markdown-width))
-               (vui-text text)))
+              (apply #'vui-vstack
+                     (delq nil
+                           (list (octocat-diff-views-heading view (octocat--markdown-width))
+                                 (octocat-diff-filter-line (plist-get files :data) filter)
+                                 (vui-text text)))))
              (_ (octocat-diff-files-section repo (plist-get files :data) by-path
                                             hide-comments raw (octocat--markdown-width) nil at
                                             (octocat--get (plist-get pr :data) "changedFiles")
-                                            revs (or view 'diff))))))
+                                            revs (or view 'diff) filter)))))
       (vui-newline)
       (octocat-diff-comments-section "Review Comments" (plist-put (copy-sequence threads)
                                                                   :data comments)
@@ -1770,7 +1777,8 @@ in place."
                                   :hide-comments octocat-diff--hide-comments
                                   :raw octocat--markdown-raw
                                   :view octocat-diff--view
-                                  :at octocat-diff--at)))
+                                  :at octocat-diff--at
+                                  :filter octocat-diff--filter)))
 
 (defun octocat-pr-diff-open (repo number &optional at)
   "Show the diff of pull request NUMBER of REPO in its own buffer.
@@ -1782,7 +1790,8 @@ AT is the lines a link named, see `octocat-diff--file'."
     (setq octocat--pr-diff-repo   repo
           octocat--pr-diff-number number
           octocat-diff--hide-comments nil
-          octocat-diff--at at)
+          octocat-diff--at at
+          octocat-diff--filter nil)
     (octocat-pr-diff-refresh)))
 
 (cl-defmethod octocat-open ((_kind (eql 'pr-diff)) repo number &optional at)

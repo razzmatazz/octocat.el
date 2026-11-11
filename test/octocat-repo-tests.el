@@ -725,7 +725,7 @@ A refresh asks GitHub again, which never answers."
             (should (equal (buffer-name) "*owner/repo@dev:docs/GUIDE.md*"))
             (should (derived-mode-p 'octocat-file-mode))
             (should (string-match-p
-                     (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md +Preview  Code  Blame \n\n"
+                     (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md +Preview  Code  Blame  Diff \n\n"
                              "○ Add the guide +abc1234 · .*  \\[3 commits\\] \n")
                      text))
             (should-not (string-match-p "reset" text))
@@ -901,7 +901,8 @@ The top line has a tab for each view, the one shown plain."
             (progn
               (should (eq (key-binding (kbd "C-c C-v")) #'octocat-file-cycle-view))
               (should (string-match-p "^Guide$" (buffer-string)))
-              (should (string-match-p ":/docs/GUIDE.md +Preview  Code  Blame $" (buffer-string)))
+              (should (string-match-p ":/docs/GUIDE.md +Preview  Code  Blame  Diff $"
+                                      (buffer-string)))
               (goto-char (point-min))
               (search-forward "Preview")
               (should (eq (get-text-property (point) 'face) 'octocat-segment-current))
@@ -925,10 +926,56 @@ The top line has a tab for each view, the one shown plain."
               (goto-char (point-min))
               (search-forward "Blame")
               (should (eq (get-text-property (1- (point)) 'face) 'octocat-segment-current))
+              ;; The Diff is the change of the file's last commit.
+              (octocat-tree-tests--store
+               '(commit "owner/repo" "abc1234def")
+               (octocat-tree-tests--json
+                (concat "{\"sha\":\"abc1234def\",\"parents\":[{\"sha\":\"p\"}],\"files\":["
+                        "{\"filename\":\"docs/GUIDE.md\",\"status\":\"modified\","
+                        "\"additions\":1,\"deletions\":1,\"changes\":2,"
+                        "\"patch\":\"@@ -1 +1 @@\\n-# Old\\n+# Guide\"}]}")))
               (octocat-file-cycle-view)
               (should (= (octocat--cap-width 1000) octocat-max-width))
+              (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+                (should (string-match-p "^Changes in its last commit, abc1234$" text))
+                (should (string-match-p "^-# Old$" text))
+                (should (string-match-p "^\\+# Guide$" text)))
+              (octocat-file-cycle-view)
               (should (string-match-p "^Guide$" (buffer-string))))
           (kill-buffer))))))
+
+(ert-deftest octocat-tree-test-file-change ()
+  "A file opened with its change starts on its Diff; a removed one has only that."
+  (octocat-tree-tests--with-file-page
+    (octocat-tree-tests--store-file "abc" "src/a.el" "(a)\n")
+    (let ((file (octocat-tree-tests--json
+                 (concat "{\"filename\":\"src/gone.el\",\"status\":\"removed\","
+                         "\"additions\":0,\"deletions\":1,\"changes\":1,"
+                         "\"patch\":\"@@ -1 +0,0 @@\\n-(gone)\"}"))))
+      (save-current-buffer
+        (octocat-tree--open-file-by-path "owner/repo" "abc" "src/gone.el" nil
+                                         (list :file file :label "Changes in commit abc"))
+        (unwind-protect
+            (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+              (should (string-match-p ":/src/gone.el +Diff \n\nChanges in commit abc\n" text))
+              (should (string-match-p "^-(gone)$" text))
+              (should-error (octocat-file-cycle-view) :type 'user-error))
+          (kill-buffer))))
+    (save-current-buffer
+      (octocat-tree--open-file-by-path
+       "owner/repo" "abc" "src/a.el" nil
+       (list :file (octocat-tree-tests--json
+                    (concat "{\"filename\":\"src/a.el\",\"status\":\"added\","
+                            "\"additions\":1,\"deletions\":0,\"changes\":1,"
+                            "\"patch\":\"@@ -0,0 +1 @@\\n+(a)\"}"))
+             :label "Changes in pull request #1"))
+      (unwind-protect
+          (progn
+            (should (string-match-p "Code  Blame  Diff $" (buffer-string)))
+            (should (string-match-p "^Changes in pull request #1$" (buffer-string)))
+            (octocat-file-cycle-view)
+            (should (string-match-p "^(a)$" (buffer-string))))
+        (kill-buffer)))))
 
 (ert-deftest octocat-tree-test-last-commit-text ()
   "A tree entry is followed by its last commit's subject and, at the right, its age."

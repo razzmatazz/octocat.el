@@ -17,7 +17,9 @@
 ;; for `octocat' and (pr-list "acme/rocket").  :press lists buttons to
 ;; press first, by their text, or rows to press RET on, by a text on
 ;; them, or (:key KEY) to call KEY's command, (:key KEY TEXT) to call it
-;; on the row showing TEXT, as `m' marking it.  :scroll TEXT shows the
+;; on the row showing TEXT, as `m' marking it.  A press that opens
+;; another page, as RET on a file of a Tree, goes on with that page,
+;; and it is the one shot.  :scroll TEXT shows the
 ;; page in a window `octocat-screenshots-scroll-height' lines high,
 ;; scrolled to the line showing TEXT: its header line comes first, in
 ;; the text too.  :name names its files,
@@ -190,7 +192,17 @@ it is pressed."
 (defun octocat-screenshots--press (buffer label)
   "Press the button whose text is LABEL in BUFFER, or RET on its row.
 A LABEL of (:key KEY) calls the command KEY is bound to in BUFFER;
-\(:key KEY TEXT) calls it with point on TEXT."
+\(:key KEY TEXT) calls it with point on TEXT.  Return the page shown
+after: another, when the press opened one, else BUFFER."
+  (octocat-screenshots--press-in buffer label)
+  (let ((shown (window-buffer (selected-window))))
+    (if (and (not (eq shown buffer))
+             (with-current-buffer shown (derived-mode-p 'octocat-page-mode)))
+        (progn (kill-buffer buffer) shown)
+      buffer)))
+
+(defun octocat-screenshots--press-in (buffer label)
+  "Press LABEL in BUFFER, see `octocat-screenshots--press'."
   (with-current-buffer buffer
     (goto-char (point-min))
     (let ((case-fold-search nil))
@@ -351,7 +363,7 @@ see `octocat-screenshots--scrolled'."
         (buffer (octocat-screenshots--open page)))
     (octocat-screenshots--settle buffer)
     (dolist (label press)
-      (octocat-screenshots--press buffer label)
+      (setq buffer (octocat-screenshots--press buffer label))
       (octocat-screenshots--settle buffer))
     (let ((text (if scroll
                     (replace-regexp-in-string

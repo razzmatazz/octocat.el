@@ -343,14 +343,24 @@ branch.  `RET` on a check opens the commit's checks.
 Its files show as diffs, a Markdown file's too; an image unfolds to the
 image on `RET`.  The Diff | Tree | Patch switch ending the top line
 shows the commit another way, and `C-c C-v` steps through the three.
+The switch keeps your place: on a file, or a directory in the Tree,
+the next view starts at it, or at the first file changed in it, its
+diff unfolded.
+
+`[Filter files]` after the Files heading lists only the files whose
+path holds the text you give, as GitHub's "Filter changed files": a
+directory, ending in `/`, keeps just the files in it.  It offers the
+directories and files changed, and first the directory you switched
+from the Tree on.  The Patch view lists the same files, and `[Clear
+filter]` shows them all again.
 
 Tree is the repository's files at the commit, as the tree browser
 lists them, opened down to every file the commit changed.  Those are
 marked as in the diff, `A`, `M`, `D` or `R` before the name and the
 lines added and removed after it; the files it left alone are dimmed,
 and a removed one is listed where it was.  `RET` on a directory opens
-or closes it; on a changed file, it shows the file's diff in the Diff
-view; on another file, it opens the file at the commit.
+or closes it; on a file, it opens the file at the commit, a changed
+one on its Diff view (see [Files](#files-octocat-file-mode)).
 
 Patch is the commit as GitHub's `.patch` link shows it: its header and
 message as `git format-patch` writes them, then every file's diff in
@@ -383,8 +393,9 @@ Files (5)  [Expand all]
 `RET` on a commit opens it, `C-c C-o` opens the comparison in a browser.
 As on the commit page, `C-c C-v` cycles three views, their pill at the
 right of the top line: the Diff above; the Tree, the repository's files
-at HEAD opened down to those changed, `RET` on one showing its diff;
-and the Patch, every file's diff as git writes it, to read or copy out.
+at HEAD opened down to those changed, `RET` on one opening it on its
+Diff view; and the Patch, every file's diff as git writes it, to read
+or copy out.  The files can be filtered as on the commit page.
 GitHub's API only compares from the merge base (`...`), so a two-dot
 link (`BASE..HEAD`) is shown as its three-dot comparison.  The two are
 the same when BASE is an ancestor of HEAD, as with two commits of one
@@ -406,8 +417,8 @@ relative image shows it in place.  Any other file is shown with the
 syntax highlighting of its major mode.
 
 The top line ends in a switch of the file's views, as GitHub's:
-Preview | Code | Blame for a Markdown or org file, Code | Blame for any
-other, drawn as one outlined pill with the view shown filled in.  `RET`
+Preview | Code | Blame | Diff for a Markdown or org file, Code | Blame |
+Diff for any other, drawn as one outlined pill with the view shown filled in.  `RET`
 on one shows it, and `C-c C-v` shows the next, in turn; hovering over a view names the key.  The blame shows each
 line, numbered, beside the commit that last changed it, with its
 subject and age at the head of each run of lines, and a faint rule
@@ -417,6 +428,12 @@ so the code keeps its width.  It slides in from the left
 edge and back out of it (not on low battery, nor in a file of more
 than 300 lines).  Like the file, it is
 stored by commit, so it opens at once the next time.
+
+The Diff is the file's change.  Opened from the Tree of a commit, a
+comparison or a PR's Files changed, it starts on the Diff, which shows
+what that page changed in the file, under a line naming it; a file the
+page removed has only the Diff.  Opened anywhere else, the Diff shows
+the change in the file's last commit, the one named above it.
 
 The top of the page is the tree browser's: `owner/repo  [main ▾]:/dir/file`,
 the branch picker and the path, whose directories open the tree browser

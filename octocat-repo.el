@@ -148,6 +148,16 @@ Read by `octocat-repo--sync-checkout' on each refresh; a page with no
 (defvar-local octocat-tree--file-blame nil
   "Non-nil when the file viewer shows the blame, see `octocat-file-cycle-view'.")
 
+(defvar-local octocat-tree--file-diff nil
+  "Non-nil when the file viewer shows the diff, see `octocat-file-cycle-view'.")
+
+(defvar-local octocat-tree--file-change nil
+  "The file's change on the page it was opened from, or nil.
+A plist: :file, the file's entry of the page's changed files, :revs,
+the commits compared, as `octocat-diff-open-large' takes them, and
+:label, what changed it.  Without it, the Diff view shows the change
+of the file's last commit.")
+
 (defvar-local octocat-repo--blame-pins nil
   "The overlays pinning a blame's commit, see `octocat-repo--blame-pin'.")
 
@@ -1621,13 +1631,13 @@ is.  In the code view, LINES are as for `octocat-repo--mark-lines'."
       ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
       (_        (vui-text (string-remove-suffix "\n" (or shown "")))))))
 
-(defun octocat-repo-vui--view-segments (path raw blame)
+(defun octocat-repo-vui--view-segments (path raw blame diff change)
   "Return the views of file PATH as segments of a pill, or nil.
-The view shown, of RAW and BLAME, is current; the others show theirs,
-their hint naming the key that cycles them.  See `octocat-file--views'
-and `octocat-vui-segmented'."
-  (when-let* ((views (octocat-file--views path)))
-    (let ((shown (octocat-file--view path raw blame))
+The view shown, of RAW, BLAME and DIFF, is current; the others show
+theirs, their hint naming the key that cycles them.  See
+`octocat-file--views' for CHANGE, and `octocat-vui-segmented'."
+  (when-let* ((views (octocat-file--views path change)))
+    (let ((shown (octocat-file--view path raw blame diff))
           (key   (substitute-command-keys "\\[octocat-file-cycle-view]")))
       (mapcar (lambda (view)
                 (let ((label (capitalize (symbol-name view))))
@@ -1638,22 +1648,27 @@ and `octocat-vui-segmented'."
                         (lambda () (octocat-file-show-view view)))))
               views))))
 
-(defun octocat-repo-vui--view-tabs (path raw blame width)
+(defun octocat-repo-vui--view-tabs (path raw blame diff change width)
   "Return the views of file PATH as a pill, as GitHub's, or nil.
 It ends at the right edge of WIDTH.  See `octocat-repo-vui--view-segments'
-for RAW and BLAME."
-  (when-let* ((segments (octocat-repo-vui--view-segments path raw blame)))
+for RAW, BLAME, DIFF and CHANGE."
+  (when-let* ((segments (octocat-repo-vui--view-segments path raw blame diff change)))
     (octocat-vui-segmented-right segments width)))
 
-(vui-defcomponent octocat-repo-vui--file-page (repo ref path raw blame lines tick)
+(vui-defcomponent octocat-repo-vui--file-page
+    (repo ref path raw blame diff change lines tick)
   "Root component of the file viewer: file PATH of REPO at REF.
 REF is a branch, tag or SHA, nil for the default branch.  Its top is
 the tree browser's, so one reads on from the other: the picker of REF
 and PATH, its directories RET-able, then the last commit of PATH,
 underlined above the content.  Picking another ref opens the file at it
 in its own buffer, see `octocat-file-switch-branch'.
-RAW shows markdown as is, and BLAME the source beside the commits that
-last changed it, see `octocat-file-cycle-view'.  A file too large to
+RAW shows markdown as is, BLAME the source beside the commits that
+last changed it, and DIFF its change, CHANGE if given, see
+`octocat-tree--file-change', else its last commit's; see
+`octocat-file-cycle-view'.  A file CHANGE removed has only its diff.
+The Diff view is `octocat-diff-file-view', of the diff pages above this
+module, which `octocat.el' loads.  A file too large to
 show unasked, see `octocat-repo--file-notice', has a button to show it
 ANYWAY.  LINES, (START . END), a link named: they are highlighted and
 scrolled to, until the user's refresh, see `octocat-vui-refresh'."
@@ -1679,19 +1694,26 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
                               (gethash "tree" head)))
          (file           (plist-get file-snap :data))
          (text           (and file (equal (gethash "oid" file) blob) (gethash "text" file)))
-         (notice         (and blob (not anyway) (octocat-repo--file-notice path head))))
+         (notice         (and blob (not anyway) (octocat-repo--file-notice path head)))
+         (removed        (octocat-file--removed-p change)))
     (octocat-vui-page
      (octocat-repo--pin repo (or ref default-branch) path current-branch
                         (octocat-vui-segmented-pin
-                         (octocat-repo-vui--view-segments path raw blame)))
+                         (octocat-repo-vui--view-segments path raw blame diff change)))
      (vui-vstack
       (octocat-repo-vui--top-line
        repo (or ref default-branch) path current-branch #'octocat-file-switch-branch
        (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir)))
-       (octocat-repo-vui--view-tabs path raw blame (octocat-vui-window-width)))
+       (octocat-repo-vui--view-tabs path raw blame diff change (octocat-vui-window-width)))
       (vui-newline)
-      (octocat-repo-vui--head-line repo ref path head-snap)
-      (cond (notice
+      ;; A removed file has no last commit at REF.
+      (unless removed
+        (octocat-repo-vui--head-line repo ref path head-snap))
+      (cond ((or diff removed)
+             (vui-component 'octocat-diff-file-view
+               :repo repo :path path :change change
+               :commit (and head (gethash "sha" head))))
+            (notice
              (apply #'vui-hstack :spacing 2
                     (vui-text notice :face 'octocat-dimmed)
                     ;; Not a binary file: it would show as garbage.
@@ -1882,11 +1904,14 @@ binding outranks the button's own."
         (or (and summary (gethash "default-branch" summary)) "HEAD"))
     branch))
 
-(defun octocat-tree--open-file-by-path (repo branch path &optional at)
+(defun octocat-tree--open-file-by-path (repo branch path &optional at change)
   "Open the file viewer of PATH in REPO at BRANCH.
 Each ref of a file has a buffer of its own, named after both.  AT,
 \(lines START END) as `octocat--url-lines' reads a link, highlights
-those lines and scrolls to them; a rendered file shows its code."
+those lines and scrolls to them; a rendered file shows its code.
+CHANGE, the file's on the page it is opened from, see
+`octocat-tree--file-change', opens it on its Diff view, unless an
+image, which has none."
   (let* ((branch (octocat-tree--file-ref repo branch))
          (buf    (get-buffer-create (format "*%s@%s:%s*" repo branch path))))
     (octocat-display-buffer buf)
@@ -1894,7 +1919,12 @@ those lines and scrolls to them; a rendered file shows its code."
       (octocat-file-mode))
     (setq octocat-tree--file-repo   repo
           octocat-tree--file-path   path
-          octocat-tree--file-branch branch)
+          octocat-tree--file-branch branch
+          octocat-tree--file-change change
+          octocat-tree--file-diff   (and (memq 'diff (octocat-file--views path change)) change t))
+    (when octocat-tree--file-diff
+      (setq octocat-tree--file-blame nil
+            octocat--cap-extra 0))
     (when at
       (setq octocat-tree--file-lines (cons (nth 1 at) (nth 2 at)))
       (when (octocat-repo--format path)
@@ -2001,19 +2031,28 @@ TYPE is `file' or `dir'."
          :path octocat-tree--file-path
          :raw octocat--markdown-raw
          :blame octocat-tree--file-blame
+         :diff octocat-tree--file-diff
+         :change octocat-tree--file-change
          :lines octocat-tree--file-lines)))
 
-(defun octocat-file--views (path)
-  "Return the views of file PATH, in the order `octocat-file-cycle-view' takes.
-They are GitHub's: `preview', for markdown and org, `code' and `blame'.
-An image has none."
-  (unless (octocat--image-file-p path)
-    (if (octocat-repo--format path) '(preview code blame) '(code blame))))
+(defun octocat-file--removed-p (change)
+  "Return non-nil if CHANGE, as `octocat-tree--file-change', removed the file."
+  (equal (and change (gethash "status" (plist-get change :file))) "removed"))
 
-(defun octocat-file--view (path raw blame)
-  "Return the view of file PATH shown with RAW and BLAME.
+(defun octocat-file--views (path &optional change)
+  "Return the views of file PATH, in the order `octocat-file-cycle-view' takes.
+They are GitHub's: `preview', for markdown and org, `code' and `blame',
+then `diff'.  An image has none; a file CHANGE removed only `diff'."
+  (cond ((octocat-file--removed-p change) '(diff))
+        ((octocat--image-file-p path) nil)
+        ((octocat-repo--format path) '(preview code blame diff))
+        (t '(code blame diff))))
+
+(defun octocat-file--view (path raw blame &optional diff)
+  "Return the view of file PATH shown with RAW, BLAME and DIFF.
 It is one of `octocat-file--views'."
-  (cond (blame 'blame)
+  (cond (diff 'diff)
+        (blame 'blame)
         ((and (not raw) (octocat-repo--format path)) 'preview)
         (t 'code)))
 
@@ -2026,14 +2065,16 @@ cap widens by its column, so the code keeps its width."
   (let ((buf  (current-buffer))
         (show (lambda ()
                 (setq octocat-tree--file-blame (eq view 'blame)
+                      octocat-tree--file-diff (eq view 'diff)
                       octocat--markdown-raw (eq view 'code)
                       octocat--cap-extra (if octocat-tree--file-blame
                                              (octocat-repo--blame-column-width)
                                            0))
                 (octocat-vui-update-page :raw octocat--markdown-raw
-                                         :blame octocat-tree--file-blame))))
+                                         :blame octocat-tree--file-blame
+                                         :diff octocat-tree--file-diff))))
     (cond ((eq view (octocat-file--view octocat-tree--file-path octocat--markdown-raw
-                                        octocat-tree--file-blame)))
+                                        octocat-tree--file-blame octocat-tree--file-diff)))
           (octocat-tree--file-blame
            (octocat-repo--blame-unpin buf)
            (setq octocat-repo--blame-sliding t)
@@ -2052,17 +2093,20 @@ cap widens by its column, so the code keeps its width."
           (t (funcall show)))))
 
 (defun octocat-file-cycle-view ()
-  "Show the file the next way, as GitHub's Preview, Code and Blame.
+  "Show the file the next way, as GitHub's Preview, Code and Blame, then Diff.
 Markdown and org go from rendered to raw to blame; other files from
 their source to blame.  The blame shows each line beside the commit
-that last changed it."
+that last changed it.  The diff is the file's change on the page it
+was opened from, or else in its last commit."
   (interactive)
   (unless (and (derived-mode-p 'octocat-file-mode) octocat-tree--file-path)
     (user-error "Octocat: Not in a file viewer buffer"))
-  (let* ((views (or (octocat-file--views octocat-tree--file-path)
+  (let* ((views (or (octocat-file--views octocat-tree--file-path octocat-tree--file-change)
                     (user-error "Octocat: An image has no other view")))
+         (_     (unless (cdr views)
+                  (user-error "Octocat: A removed file has only its diff")))
          (view  (octocat-file--view octocat-tree--file-path octocat--markdown-raw
-                                    octocat-tree--file-blame))
+                                    octocat-tree--file-blame octocat-tree--file-diff))
          (next  (or (cadr (memq view views)) (car views))))
     (message "File view: %s" (capitalize (symbol-name next)))
     (octocat-file-show-view next)))

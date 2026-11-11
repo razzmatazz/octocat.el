@@ -20,7 +20,7 @@ Checks (4)  CI: ✓
   ✓ test (beta)    GitHub Actions  7m00s  6 hours ago
   ✓ docs           GitHub Actions  3m00s  6 hours ago
 
-Files (3)  [Expand all]
+Files (3)  [Expand all]  [Filter files]
 ▸ A src/cache.rs  +18 -0
 ▸ M src/build.rs  +5 -2
 ▸ M src/main.rs  +1 -0
