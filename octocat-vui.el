@@ -330,14 +330,16 @@ Nil ones are left out."
   (mapconcat #'identity (cons (propertize repo 'face 'octocat-repo) (delq nil crumbs))
              (propertize " › " 'face 'octocat-dimmed)))
 
-(defun octocat-vui--pin-line (pin notice)
+(defun octocat-vui--pin-line (pin notice width)
   "Return the header line pinning PIN, after NOTICE when non-nil.
-It ends with a stretch space to the right edge, so the face
-`octocat-sticky-title' spans the window.  Links in PIN are plain text,
-as it is not in the buffer: a click on it goes to the top."
-  (let ((line (concat (if (octocat--nonempty notice) (concat notice "  ") "")
-                      pin
-                      (propertize " " 'display '(space :align-to right))))
+It is cut to WIDTH columns, the page's, and a stretch space then fills
+it to that column, so the face `octocat-sticky-title' spans the page.
+Links in PIN are plain text, as it is not in the buffer: a click on it
+goes to the top."
+  (let ((line (concat (truncate-string-to-width
+                       (concat (if (octocat--nonempty notice) (concat notice "  ") "") pin)
+                       width nil nil "…")
+                      (propertize " " 'display `(space :align-to ,width))))
         (map  (make-sparse-keymap)))
     (define-key map [header-line mouse-1] #'octocat-vui-sticky-top)
     (remove-list-of-text-properties
@@ -357,11 +359,12 @@ PIN, a string, says what the page is, as its first line does, led by
 its status, as an issue's state; `octocat-vui-pin' and
 `octocat-vui-crumbs-pin' build it.  Each window scrolled past the
 page's first line shows it in the header line, after the page's notice
-\(see `octocat-vui--show-notice').  The pin goes once the window starts
-past PAGE, so it must be the whole page."
+\(see `octocat-vui--show-notice'), cut to the page's width.  The pin
+goes once the window starts past PAGE, so it must be the whole page."
   (vui-region :sticky (and octocat-sticky-title (octocat--nonempty pin)
                            (octocat-vui--pin-line
-                            pin (and (stringp header-line-format) header-line-format)))
+                            pin (and (stringp header-line-format) header-line-format)
+                            (octocat-vui-window-width)))
               page))
 
 (defun octocat-vui-sticky-top (event)
@@ -3069,15 +3072,38 @@ right after the title, on which RET calls ACTION."
             shown)
       nil width))))
 
-(defun octocat-vui-detail-pin (repo item state)
-  "Return the pin of the page of the issue or PR ITEM of REPO, in STATE.
+(defun octocat-vui-detail-pin (item state width bg)
+  "Return the pin of the page of the issue or PR ITEM, in STATE.
+It fits WIDTH columns: the title is cut to fit, and ITEM's labels
+follow it, BG as for `octocat--label-face', as many as leave at least
+half the title that fits without them, a count standing for the rest.
 See `octocat-vui--detail-header'."
-  ;; The state is padded to line up the fields under it.
-  (octocat-vui-pin (string-trim state)
-                   (concat (propertize repo 'face 'octocat-repo)
-                           (propertize (format "#%d" (gethash "number" item))
-                                       'face 'octocat-pr-number))
-                   (gethash "title" item)))
+  (let* ((head   (octocat-vui-pin (string-trim state) ; padded to line up fields
+                                  (octocat-vui-number-pin (gethash "number" item))))
+         (title  (or (gethash "title" item) ""))
+         (room   (- width (string-width head) 2))
+         (full   (min (string-width title) room))
+         (chips  (mapcar (lambda (l) (octocat--format-label l bg))
+                         (append (octocat--get item "labels") nil)))
+         (tail   (seq-some
+                  (lambda (n)
+                    ;; Labels from the end give way to a count, then all go.
+                    (let ((tail (string-join
+                                 (append (take n chips)
+                                         (when (< n (length chips))
+                                           (list (propertize (format "+%d" (- (length chips) n))
+                                                             'face 'octocat-dimmed))))
+                                 " ")))
+                      (and (>= (* 2 (- room 2 (string-width tail))) full) tail)))
+                  (and chips (number-sequence (length chips) 0 -1)))))
+    (octocat-vui-pin head
+                     (truncate-string-to-width
+                      title (max 0 (- room (if tail (+ 2 (string-width tail)) 0))) nil nil "…")
+                     tail)))
+
+(defun octocat-vui-number-pin (number)
+  "Return NUMBER, an issue's or PR's, as its page's pin before the data comes."
+  (propertize (format "#%d" number) 'face 'octocat-pr-number))
 
 (defun octocat-vui--fit-title (title width)
   "Return TITLE cut with an ellipsis to WIDTH columns, at least 10.

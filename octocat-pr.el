@@ -906,13 +906,14 @@ GitHub does.  See `octocat-vui-tab-row' for WIDTH."
                  (lambda () (octocat-pr-diff-open repo number)))))
    width))
 
-(defun octocat-pr--pin (repo number snap)
-  "Return the pin of a page of PR NUMBER of REPO, SNAP its data's snapshot.
-See `octocat-vui-page'."
+(defun octocat-pr--pin (number snap width bg)
+  "Return the pin of a page of PR NUMBER, SNAP its data's snapshot.
+WIDTH and BG are as for `octocat-vui-detail-pin'.  See `octocat-vui-page'."
   (if-let* ((pr (or (plist-get snap :data) (plist-get snap :partial))))
-      (octocat-vui-detail-pin repo pr (octocat-vui--state-label (or (gethash "state" pr) "OPEN")
-                                                                (gethash "isDraft" pr)))
-    (octocat-vui-pin (format "%s#%d" repo number))))
+      (octocat-vui-detail-pin pr (octocat-vui--state-label (or (gethash "state" pr) "OPEN")
+                                                           (gethash "isDraft" pr))
+                              width bg)
+    (octocat-vui-number-pin number)))
 
 (defun octocat-pr--header (repo pr bg width &optional tab stack)
   "Return the vnodes above the body: repo, title, branches, labels, tabs.
@@ -1027,7 +1028,7 @@ again."
                            (octocat-pr--items repo pr events bg)
                            raw (octocat--markdown-width))))))
     (octocat-vui-page
-     (octocat-pr--pin repo number snap)
+     (octocat-pr--pin number snap width bg)
      (octocat-vui-resource-view
       snap
       :skeleton (lambda (partial)
@@ -1091,7 +1092,7 @@ A new TICK fetches them again."
                                       c)
                                     (octocat-pr--commits pr))))))
     (octocat-vui-page
-     (octocat-pr--pin repo number snap)
+     (octocat-pr--pin number snap width (octocat--label-background))
      (octocat-vui-resource-view
       snap
       :skeleton (lambda (_)
@@ -1644,7 +1645,7 @@ everything again."
          (pending  (and review (cons (gethash "id" review)
                                      (octocat-pr-diff--pending-count data)))))
     (octocat-vui-page
-     (octocat-pr--pin repo number pr)
+     (octocat-pr--pin number pr tab-w (octocat--label-background))
      (vui-vstack
       ;; The same header as the conversation, so the pages read as tabs.
       (cond

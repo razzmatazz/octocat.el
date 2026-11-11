@@ -226,6 +226,15 @@ An issue, and the pull request that will close it:
 [As text](issue.txt)
 <!-- /screenshot -->
 
+Scrolled down, its pinned title cut to fit, and as many labels as
+leave half of it, a count for the rest:
+
+<!-- screenshot: (issue "acme/rocket" 97) :name "issue-scrolled" :scroll "Confirmed.  Parsing" -->
+![issue-scrolled](issue-scrolled.png)
+
+[As text](issue-scrolled.txt)
+<!-- /screenshot -->
+
 ## Commit
 
 A commit: who wrote and committed it and when, as `git show` prints

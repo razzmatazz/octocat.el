@@ -249,15 +249,33 @@
   "The pinned line follows the notice, is plain text, and a click on it goes to the top."
   (let ((line (octocat-vui--pin-line
                (concat (propertize "acme/rocket" 'mouse-face 'highlight 'keymap 'x) "#1")
-               "Offline")))
+               "Offline" 80)))
     (should (string-prefix-p "Offline  acme/rocket#1" line))
     (should-not (get-text-property 9 'mouse-face line))
     (should-not (get-text-property 9 'keymap line))
     (should (eq (lookup-key (get-text-property 9 'local-map line) [header-line mouse-1])
                 #'octocat-vui-sticky-top))
     (should (equal (get-text-property (1- (length line)) 'display line)
-                   '(space :align-to right))))
-  (should (string-prefix-p "acme" (octocat-vui--pin-line "acme" nil))))
+                   '(space :align-to 80))))
+  (should (string-prefix-p "acme" (octocat-vui--pin-line "acme" nil 80)))
+  (should (equal (substring-no-properties (octocat-vui--pin-line "acme/rocket" nil 6))
+                 "acme/… ")))
+
+(ert-deftest octocat-vui-test-detail-pin ()
+  "A detail pin cuts its title to fit, and keeps labels while half of it shows."
+  (let* ((label (lambda (name) (octocat--table "name" name "color" "")))
+         (item  (octocat--table "number" 7 "title" (make-string 40 ?t)
+                                "labels" (vector (funcall label "bug") (funcall label "perf"))))
+         (pin   (lambda (width) (substring-no-properties
+                                 (octocat-vui-detail-pin item "open  " width nil)))))
+    (should (equal (funcall pin 80) (concat "open  #7  " (make-string 40 ?t) "  bug perf")))
+    ;; The title fits 40 columns without labels, else what is left past "open  #7  ".
+    (should (equal (funcall pin 50) (concat "open  #7  " (make-string 29 ?t) "…  bug perf")))
+    (should (equal (funcall pin 27) (concat "open  #7  " (make-string 8 ?t) "…  bug +1")))
+    (should (equal (funcall pin 20) (concat "open  #7  " (make-string 5 ?t) "…  +2")))
+    (should (equal (funcall pin 17) (concat "open  #7  " (make-string 6 ?t) "…")))
+    (puthash "labels" :null item)
+    (should (equal (funcall pin 80) (concat "open  #7  " (make-string 40 ?t))))))
 
 (ert-deftest octocat-vui-test-page-pins ()
   "A page is a sticky region pinning its title, unless `octocat-sticky-title' is nil."

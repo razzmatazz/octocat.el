@@ -482,7 +482,8 @@ A run of them in a row, to show the timeline folding it.")
       :baseRefName "main" :headRefName "template-cache" :headRepositoryOwner (:login "acme")
       :mergeable "MERGEABLE" :mergeStateStatus "CLEAN" :changedFiles 3
       :url "https://github.com/acme/rocket/pull/128"
-      :labels [,(assoc-default "performance" octocat-screenshots--label-colors)]
+      :labels [,(assoc-default "performance" octocat-screenshots--label-colors)
+               ,(assoc-default "enhancement" octocat-screenshots--label-colors)]
       :reviewDecision "APPROVED"
       :reactionGroups ,(octocat-screenshots--reactions "THUMBS_UP" 4 "ROCKET" 2)
       :body "Templates were parsed again for every page, which is most of the build time on large sites.  This keeps each parsed template in a cache keyed by its path and modification time.
@@ -724,7 +725,8 @@ You are @jlindqvist, asked to review it.")
       :author (:login "pnair" :name "Priya Nair" :is_bot :false) :state "OPEN"
       :createdAt ,(octocat-screenshots--ago (* 9 d)) :closedAt :null
       :url "https://github.com/acme/rocket/issues/97"
-      :labels [,(assoc-default "performance" octocat-screenshots--label-colors)]
+      :labels ,(vconcat (mapcar (lambda (n) (assoc-default n octocat-screenshots--label-colors))
+                                '("performance" "bug" "needs triage" "good first issue" "docs")))
       :assignees [(:login "srivera" :name "Sam Rivera")]
       :milestone (:number 4 :title "0.10" :description "" :dueOn :null)
       :closedByPullRequestsReferences [(:number 128 :url "https://github.com/acme/rocket/pull/128"

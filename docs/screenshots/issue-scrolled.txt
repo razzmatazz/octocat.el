@@ -1,0 +1,12 @@
+open  #97  Builds of large sites are slow: templates are par…   performance   bug   needs triage  +2
+│ Confirmed.  Parsing each template once per build should fix most of it; I'll take this.
+│
+○ @srivera added the  performance  label, self-assigned this and added this to the 0.10 milestone  1
+│ week ago
+│
+● @kwong commented  1 week ago  👍 2
+│ Same here with a 600-page blog: 5.5s.
+│
+○ @srivera mentioned this in #128 Cache parsed templates between builds  2 days ago
+│
+[+ Add a comment]   [Close issue]

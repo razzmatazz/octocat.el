@@ -1,6 +1,7 @@
 acme/rocket#128  Cache parsed templates between builds · @srivera
-open    Assignees @srivera · Labels  performance
+open    Assignees @srivera
         Reviewers @mchen (approved), @jlindqvist (pending)
+        Labels  performance   enhancement
         template-cache → main · Approved · Milestone 0.10 · Closes #97
 
 Conversation  [Commits (7)]  [Files changed (3)]

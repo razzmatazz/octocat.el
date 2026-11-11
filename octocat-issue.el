@@ -273,8 +273,8 @@ A new TICK fetches everything again."
          (shown    (or issue (plist-get snap :partial))))
     (octocat-vui-page
      (if shown
-         (octocat-vui-detail-pin repo shown (octocat-vui--issue-state-label shown))
-       (octocat-vui-pin (format "%s#%d" repo number)))
+         (octocat-vui-detail-pin shown (octocat-vui--issue-state-label shown) width bg)
+       (octocat-vui-number-pin number))
      (octocat-vui-resource-view
       snap
       :skeleton (lambda (partial)

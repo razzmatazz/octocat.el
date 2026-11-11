@@ -1,5 +1,6 @@
 acme/rocket#97  Builds of large sites are slow: templates are parsed for every page · @pnair
-open    Assignees @srivera · Labels  performance
+open    Assignees @srivera
+        Labels  performance   bug   needs triage   good first issue   docs
         #128 · Milestone 0.10 · Fixed by #128
 
 ● @pnair opened this issue  1 week ago  👍 7  👀 1
