@@ -27,7 +27,7 @@
                         "\"author\":{\"login\":\"alice\",\"is_bot\":false},"
                         "\"labels\":[],\"comments\":[{\"body\":\"me too\"}]}"))))
     (octocat-sync--write db "list"
-                         (octocat-model-list-tree
+                         (octocat-model--list-tree
                           'issues "o/r"
                           (list :items (list (json-parse-string
                                               "{\"number\":12,\"title\":\"Old\",\"commentCount\":0}"))))
@@ -85,6 +85,15 @@
     (should-not (gethash "default-branch" summary))
     (should-not (gethash "fork-parent" summary))
     (should (= (gethash "open-issues" summary) 0))))
+
+(ert-deftest octocat-model-test-search-query ()
+  "The query is scoped to the repo and kind; nil means open items."
+  (should (equal (octocat-model--search-query "o/r" 'pulls nil)
+                 "( is:open ) repo:o/r type:pr"))
+  (should (equal (octocat-model--search-query "o/r" 'issues "is:closed OR label:x")
+                 "( is:closed OR label:x ) repo:o/r type:issue"))
+  (should (equal (octocat-model--search-query "o/r" 'issues "  ")
+                 "repo:o/r type:issue")))
 
 (ert-deftest octocat-model-test-parse-list-items ()
   "Connections flatten to what the rows read; the cursor ends with the pages."
@@ -164,6 +173,21 @@
     (puthash "comments" (vconcat (mapcar #'json-parse-string comments)) data)
     data))
 
+(ert-deftest octocat-model-test-toggle-reaction ()
+  "A reaction is counted up, down to nothing, or added; the old groups stay."
+  (let* ((old (json-parse-string
+               "[{\"content\":\"HEART\",\"users\":{\"totalCount\":1}}]"))
+         (counts (lambda (groups)
+                   (let ((h (make-hash-table :test #'equal)))
+                     (puthash "reactionGroups" groups h)
+                     (octocat--reaction-counts h)))))
+    (should (equal (funcall counts (octocat-model--toggle-reaction old "HEART" t)) '(("❤️" . 2))))
+    (should-not (funcall counts (octocat-model--toggle-reaction old "HEART" nil)))
+    (should (equal (funcall counts (octocat-model--toggle-reaction old "EYES" t))
+                   '(("❤️" . 1) ("👀" . 1))))
+    (should (equal (funcall counts (octocat-model--toggle-reaction nil "EYES" t)) '(("👀" . 1))))
+    (should (equal (funcall counts old) '(("❤️" . 1))))))
+
 (ert-deftest octocat-model-test-put-comment ()
   "A comment is added at the end, or takes the place of one of its id."
   (let ((data (octocat-model-tests--page "{\"id\":\"C1\",\"body\":\"a\"}")))
@@ -179,9 +203,9 @@
                 "{\"url\":\"https://x/1#issuecomment-22\",\"body\":\"b\"}"))
          (old  (aref (gethash "comments" data) 0))
          (new  (gethash "comments"
-                        (octocat-model--set-comment-body data "11" "a2" "saving…"))))
+                        (octocat-model--set-comment-body data "11" "a2" "saving"))))
     (should (equal (gethash "body" (aref new 0)) "a2"))
-    (should (equal (gethash octocat-model-pending (aref new 0)) "saving…"))
+    (should (equal (gethash octocat-model-pending (aref new 0)) "saving"))
     (should (equal (gethash "body" (aref new 1)) "b"))
     (should (equal (gethash "body" old) "a"))))
 
@@ -227,20 +251,20 @@
 
 (ert-deftest octocat-model-test-pr-merge-args ()
   "Merge and squash pass the message split into subject and body; rebase none."
-  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Squash" "Fix (#7)\n\n* a\n* b" t)
+  (should (equal (octocat-model--pr-merge-args "o/r" 7 'squash "Fix (#7)\n\n* a\n* b" t)
                  '("pr" "merge" "7" "--repo" "o/r" "--squash"
                    "--subject" "Fix (#7)" "--body" "* a\n* b" "--delete-branch")))
-  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Merge" "Merge it" nil)
+  (should (equal (octocat-model--pr-merge-args "o/r" 7 'merge "Merge it" nil)
                  '("pr" "merge" "7" "--repo" "o/r" "--merge"
                    "--subject" "Merge it" "--body" "")))
-  (should (equal (octocat-model--pr-merge-args "o/r" 7 "Rebase" "ignored" nil)
+  (should (equal (octocat-model--pr-merge-args "o/r" 7 'rebase "ignored" nil)
                  '("pr" "merge" "7" "--repo" "o/r" "--rebase"))))
 
 (ert-deftest octocat-model-test-review-review-args ()
-  "A review passes its flag, and its body only when there is one."
-  (should (equal (octocat-model--review-args "o/r" 7 "--approve" "")
+  "A review passes its event's flag, and its body only when there is one."
+  (should (equal (octocat-model--review-args "o/r" 7 'approve "")
                  '("pr" "review" "7" "--repo" "o/r" "--approve")))
-  (should (equal (octocat-model--review-args "o/r" 7 "--comment" "LGTM")
+  (should (equal (octocat-model--review-args "o/r" 7 'comment "LGTM")
                  '("pr" "review" "7" "--repo" "o/r" "--comment" "--body" "LGTM"))))
 
 (ert-deftest octocat-model-test-review-parse-threads ()

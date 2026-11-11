@@ -1283,7 +1283,7 @@ tokens of QUERY that are no qualifier of `octocat-run-list--qualifiers'."
 (defun octocat-run-list-filter-branch ()
   "Filter by the branch of a run."
   (interactive)
-  (octocat-vui-list--edit-facet "branch:" "Branch" nil #'octocat--list-branches nil))
+  (octocat-vui-list--edit-facet "branch:" "Branch" nil (octocat-vui-list--stored 'branches) nil))
 
 (defun octocat-run-list-filter-status ()
   "Filter by the status or conclusion of a run."
@@ -1310,7 +1310,7 @@ tokens of QUERY that are no qualifier of `octocat-run-list--qualifiers'."
 (defun octocat-run-list-filter-actor ()
   "Filter by who triggered a run."
   (interactive)
-  (octocat-vui-list--edit-facet "actor:" "Actor" nil #'octocat--list-people nil))
+  (octocat-vui-list--edit-facet "actor:" "Actor" nil (octocat-vui-list--stored 'assignees) nil))
 
 (defun octocat-run-list--filter-setup ()
   "Give the current list buffer the filter of the run list."

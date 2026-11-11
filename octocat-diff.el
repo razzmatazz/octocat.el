@@ -538,11 +538,10 @@ its first file's lines.  See `octocat--diff-fragment'."
           (t     ""))))
 
 (defun octocat-diff--range (anchors)
-  "Return the range a comment on the lines of ANCHORS is on, a plist.
-It has :path, :line and :side, the last line's, and for more than one
-line :start-line and :start-side; or :path and :file for a file's
-heading alone.  A range across files or hunks signals a `user-error',
-as GitHub rejects one across hunks."
+  "Return the range a comment on the lines of ANCHORS is on.
+It is a plist, as `octocat-model--review-new-thread' takes it; a file's
+heading alone is the whole file.  A range across files or hunks signals
+a `user-error', as GitHub rejects one across hunks."
   (let ((first (car anchors))
         (last  (car (last anchors))))
     (cond
@@ -1660,7 +1659,7 @@ COMMITS is a REST commits vector of REPO."
 (defun octocat-compare--ref-label (ref)
   "Return REF for the top row: a SHA cut to 7 chars, whole on hover.
 Two full SHAs would push the counts onto another line."
-  (if (and (octocat-model-compare-sha-p ref) (> (length ref) 7))
+  (if (and (octocat--sha-p ref) (> (length ref) 7))
       (propertize (substring ref 0 7) 'face 'octocat-branch 'help-echo ref)
     (propertize ref 'face 'octocat-branch)))
 

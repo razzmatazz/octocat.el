@@ -476,7 +476,7 @@ unsubscribes it."
         (octocat-sync--waiters nil)
         (fetches 0)
         deliver got)
-    (cl-letf (((symbol-function 'octocat--list-people)
+    (cl-letf (((symbol-function 'octocat-model--list-people)
                (lambda (_repo callback) (cl-incf fetches) (setq deliver callback))))
       (let ((fetch (octocat-vui-list--stored 'assignees)))
         (funcall fetch "o/r" (lambda (r) (setq got r)))

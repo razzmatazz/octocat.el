@@ -28,10 +28,10 @@
              "{\"number\":7,\"title\":\"Fix\",\"headRefName\":\"fix\",
                \"headRepositoryOwner\":{\"login\":\"me\"},
                \"commits\":[{\"messageHeadline\":\"a\"},{\"messageHeadline\":\"b\"}]}")))
-    (should (equal (octocat-pr--merge-message "Merge" pr)
+    (should (equal (octocat-pr--merge-message 'merge pr)
                    "Merge pull request #7 from me/fix\n\nFix"))
-    (should (equal (octocat-pr--merge-message "Squash" pr) "Fix (#7)\n\n* a\n* b"))
-    (should (equal (octocat-pr--merge-message "Rebase" pr) ""))))
+    (should (equal (octocat-pr--merge-message 'squash pr) "Fix (#7)\n\n* a\n* b"))
+    (should (equal (octocat-pr--merge-message 'rebase pr) ""))))
 
 (defun octocat-pr-test--stack (&rest prs)
   "Return a stack of PRS, bottom first.
@@ -156,14 +156,14 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
                   (json-parse-string "{\"mergeCommitAllowed\":false,
                                        \"squashMergeAllowed\":true,
                                        \"rebaseMergeAllowed\":true}"))
-                 '("Squash" "Rebase"))))
+                 '(squash rebase))))
 
 (ert-deftest octocat-pr-test-merge-initial-method ()
   "The last method is kept while allowed; a lone method is always picked."
-  (should (equal (octocat-pr--merge-initial-method '("Merge" "Squash") "Squash") "Squash"))
-  (should-not (octocat-pr--merge-initial-method '("Merge" "Squash") "Rebase"))
-  (should-not (octocat-pr--merge-initial-method '("Merge" "Squash") nil))
-  (should (equal (octocat-pr--merge-initial-method '("Rebase") "Squash") "Rebase")))
+  (should (eq (octocat-pr--merge-initial-method '(merge squash) 'squash) 'squash))
+  (should-not (octocat-pr--merge-initial-method '(merge squash) 'rebase))
+  (should-not (octocat-pr--merge-initial-method '(merge squash) nil))
+  (should (eq (octocat-pr--merge-initial-method '(rebase) 'squash) 'rebase)))
 
 (ert-deftest octocat-pr-test-merge-refusal ()
   "Drafts and conflicts cannot be merged; a blocked PR is left to GitHub."
@@ -255,12 +255,10 @@ Fields that would take the first line past the width get one too."
 
 (ert-deftest octocat-pr-diff-test-review-data ()
   "Only an approval may be submitted without text, or a comment with drafts."
-  (should (plist-get (octocat-pr-diff--review-data "Approve") :allow-empty))
-  (should-not (plist-get (octocat-pr-diff--review-data "Comment") :allow-empty))
-  (should (plist-get (octocat-pr-diff--review-data "Comment" "R" 2) :allow-empty))
-  (should-not (plist-get (octocat-pr-diff--review-data "Request changes" "R" 2) :allow-empty))
-  (should (equal (plist-get (octocat-pr-diff--review-data "Request changes") :flag)
-                 "--request-changes")))
+  (should (plist-get (octocat-pr-diff--review-data 'approve) :allow-empty))
+  (should-not (plist-get (octocat-pr-diff--review-data 'comment) :allow-empty))
+  (should (plist-get (octocat-pr-diff--review-data 'comment "R" 2) :allow-empty))
+  (should-not (plist-get (octocat-pr-diff--review-data 'request-changes "R" 2) :allow-empty)))
 
 (ert-deftest octocat-pr-diff-test-thread-comments ()
   "GraphQL's threads become REST-shaped comments, replies pointing at the first.

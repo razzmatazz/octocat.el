@@ -125,7 +125,7 @@ On a field such as Labels: pick its values."
       (octocat-timeline-edit-values "issue" octocat--issue-repo octocat--issue-number target))
      ((hash-table-p target)
       (let* ((authored   (eq (gethash "viewerDidAuthor" target) t))
-             (comment-id (octocat--comment-numeric-id target))
+             (comment-id (octocat-model-comment-numeric-id target))
              (body       (octocat--nonempty (gethash "body" target))))
         (unless authored
           (user-error "Octocat: You can't edit someone else's comment"))

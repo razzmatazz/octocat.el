@@ -42,21 +42,6 @@
     (should-not (octocat--reactions-string (json-parse-string "{\"reactionGroups\":null}")))
     (should-not (octocat--reactions-string (json-parse-string "{}")))))
 
-(ert-deftest octocat-core-test-toggle-reaction ()
-  "A reaction is counted up, down to nothing, or added; the old groups stay."
-  (let* ((old (json-parse-string
-               "[{\"content\":\"HEART\",\"users\":{\"totalCount\":1}}]"))
-         (counts (lambda (groups)
-                   (let ((h (make-hash-table :test #'equal)))
-                     (puthash "reactionGroups" groups h)
-                     (octocat--reaction-counts h)))))
-    (should (equal (funcall counts (octocat--toggle-reaction old "HEART" t)) '(("❤️" . 2))))
-    (should-not (funcall counts (octocat--toggle-reaction old "HEART" nil)))
-    (should (equal (funcall counts (octocat--toggle-reaction old "EYES" t))
-                   '(("❤️" . 1) ("👀" . 1))))
-    (should (equal (funcall counts (octocat--toggle-reaction nil "EYES" t)) '(("👀" . 1))))
-    (should (equal (funcall counts old) '(("❤️" . 1))))))
-
 (ert-deftest octocat-core-test-settings ()
   "Settings survive a reload of the file; nil removes one."
   (let* ((dir (make-temp-file "octocat-settings" t))
@@ -167,15 +152,6 @@
     (should (equal (octocat--format-labels nil nil) ""))
     (should (equal (octocat--format-labels :null nil) ""))
     (should (equal (octocat--format-labels [] nil) ""))))
-
-(ert-deftest octocat-core-test-search-query ()
-  "The query is scoped to the repo and kind; nil means open items."
-  (should (equal (octocat--search-query "o/r" 'pulls nil)
-                 "( is:open ) repo:o/r type:pr"))
-  (should (equal (octocat--search-query "o/r" 'issues "is:closed OR label:x")
-                 "( is:closed OR label:x ) repo:o/r type:issue"))
-  (should (equal (octocat--search-query "o/r" 'issues "  ")
-                 "repo:o/r type:issue")))
 
 (ert-deftest octocat-core-test-checks-ci-status ()
   "A check's outcome is its conclusion or state, in any case."

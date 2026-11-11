@@ -152,7 +152,7 @@ On a field such as Labels: pick its values."
       (octocat-timeline-edit-values "pr" octocat--pr-repo octocat--pr-number target))
      ((hash-table-p target)
       (let* ((authored   (eq (gethash "viewerDidAuthor" target) t))
-             (comment-id (octocat--comment-numeric-id target))
+             (comment-id (octocat-model-comment-numeric-id target))
              (body       (octocat--nonempty (gethash "body" target))))
         (unless authored
           (user-error "Octocat: You can't edit someone else's comment"))
@@ -206,8 +206,12 @@ On a field such as Labels: pick its values."
 
 ;;;; Merge
 
+(defconst octocat-pr--merge-labels
+  '((merge . "Merge") (squash . "Squash") (rebase . "Rebase"))
+  "The label of each of `octocat-model-pr-merge-methods'.")
+
 (defun octocat-pr--merge-allowed (repo-info)
-  "Return the names of the merge methods allowed by REPO-INFO, a hash-table."
+  "Return the merge methods allowed by REPO-INFO, a hash-table."
   (delq nil (mapcar (lambda (m) (and (eq (gethash (nth 2 m) repo-info) t) (car m)))
                     octocat-model-pr-merge-methods)))
 
@@ -225,12 +229,12 @@ The first line is the subject; a rebase keeps the commits, so has none."
   (let ((number (gethash "number" pr))
         (title  (or (gethash "title" pr) "")))
     (pcase method
-      ("Merge"
+      ('merge
        (format "Merge pull request #%d from %s/%s\n\n%s" number
                (or (octocat--get pr "headRepositoryOwner" "login") "")
                (or (gethash "headRefName" pr) "")
                title))
-      ("Squash"
+      ('squash
        (concat (format "%s (#%d)" title number)
                (let ((commits (append (octocat--get pr "commits") nil)))
                  (and commits
@@ -416,7 +420,7 @@ APPROVING, a label or nil, shows the approval under way instead."
 DEFAULTS is an alist of each method's default message; DELETE whether
 to delete the head branch."
   (list :method method :methods methods :defaults defaults :delete delete
-        :allow-empty (member method '(nil "Rebase"))))
+        :allow-empty (memq method '(nil rebase))))
 
 (defun octocat-pr--merge-header (title data)
   "Return the merge dialog's two header lines for TITLE with user DATA.
@@ -427,9 +431,10 @@ a narrow window."
     (list
      (concat "  " title "    "
              (mapconcat (lambda (m)
-                          (if (equal m method)
-                              (propertize (format "(•) %s" m) 'face 'bold)
-                            (propertize (format "( ) %s" m) 'face 'octocat-dimmed)))
+                          (let ((label (alist-get m octocat-pr--merge-labels)))
+                            (if (eq m method)
+                                (propertize (format "(•) %s" label) 'face 'bold)
+                              (propertize (format "( ) %s" label) 'face 'octocat-dimmed))))
                         (plist-get data :methods) "  ")
              "    "
              (if (plist-get data :delete)
@@ -437,7 +442,7 @@ a narrow window."
                (propertize "[ ] Delete branch" 'face 'octocat-dimmed))
              (pcase method
                ('nil (propertize "    (pick a method)" 'face 'warning))
-               ("Rebase" (propertize "    (message unused)" 'face 'octocat-dimmed))))
+               ('rebase (propertize "    (message unused)" 'face 'octocat-dimmed))))
      (concat "  "
              (funcall key "C-c C-t") " method   "
              (funcall key "C-c C-d") " delete branch   "
@@ -1462,14 +1467,17 @@ pick between replying now and starting a review."
 
 ;;;;; Review submission
 
+(defconst octocat-pr-diff--review-labels
+  '((comment . "Comment") (approve . "Approve") (request-changes . "Request changes"))
+  "The label of each of `octocat-model-review-events'.")
+
 (defun octocat-pr-diff--review-data (event &optional review-id pending)
-  "Return the edit buffer's user data for an EVENT review.
+  "Return the edit buffer's user data for an EVENT review, or nil EVENT.
 REVIEW-ID is your pending review's, holding PENDING drafts.  Only an
 approval may be submitted without text, or a comment with drafts."
-  (let ((flag (cadr (assoc event octocat-model-review-events))))
-    (list :event event :flag flag :review-id review-id :pending pending
-          :allow-empty (or (equal flag "--approve")
-                           (and (equal flag "--comment") (natnump pending) (> pending 0))))))
+  (list :event event :review-id review-id :pending pending
+        :allow-empty (or (eq event 'approve)
+                         (and (eq event 'comment) (natnump pending) (> pending 0)))))
 
 (defun octocat-pr-diff--review-header (title event &optional pending)
   "Return the review dialog's header line for TITLE with EVENT chosen.
@@ -1481,9 +1489,10 @@ PENDING is how many drafts the review holds."
             "")
           "    "
           (mapconcat (lambda (e)
-                       (if (equal (car e) event)
-                           (propertize (format "(•) %s" (car e)) 'face 'bold)
-                         (propertize (format "( ) %s" (car e)) 'face 'octocat-dimmed)))
+                       (let ((label (alist-get (car e) octocat-pr-diff--review-labels)))
+                         (if (eq (car e) event)
+                             (propertize (format "(•) %s" label) 'face 'bold)
+                           (propertize (format "( ) %s" label) 'face 'octocat-dimmed))))
                      octocat-model-review-events "  ")
           "    "
           (propertize "C-c C-t" 'face 'help-key-binding) " decision   "
@@ -1495,21 +1504,21 @@ PENDING is how many drafts the review holds."
 
 (defun octocat-pr-diff--submit-review (body source on-success on-error)
   "Submit BODY as a review of the PR in SOURCE buffer.
-The review flag is read from the edit buffer's :flag user data; there
-is none until the user picks a decision.  The dialog closes at once,
-through ON-SUCCESS, and the PR's pages show the review under way until
-it is sent, so a slow GitHub does not block; ON-ERROR is called only
-for a missing decision."
-  (let ((flag (plist-get octocat-edit-user-data :flag))
+The review event is read from the edit buffer's :event user data;
+there is none until the user picks a decision.  The dialog closes at
+once, through ON-SUCCESS, and the PR's pages show the review under way
+until it is sent, so a slow GitHub does not block; ON-ERROR is called
+only for a missing decision."
+  (let ((event (plist-get octocat-edit-user-data :event))
         (review-id (plist-get octocat-edit-user-data :review-id)))
     (cond
-     ((not flag)
+     ((not event)
       (funcall on-error "Pick a decision with C-c C-t first"))
      ((and (string-empty-p body) (not (plist-get octocat-edit-user-data :allow-empty)))
       (funcall on-error "Write the review's text first"))
      (t
       (pcase-let ((`(,repo . ,number) (with-current-buffer source (octocat-pr--current))))
-        (octocat-sync-submit `(review-pr ,repo ,number ,flag ,body ,review-id)
+        (octocat-sync-submit `(review-pr ,repo ,number ,event ,body ,review-id)
                              (lambda (result)
                                (unless (eq (car-safe result) 'error)
                                  (message "Octocat: Reviewed PR #%d" number)))))

@@ -78,6 +78,11 @@ The rest expands on RET.  Nil never folds."
   :type '(choice (const :tag "Never fold" nil) integer)
   :group 'octocat)
 
+(defcustom octocat-repo-commits-page-size 25
+  "Number of commits the commits page shows, and loads, at a time."
+  :type 'integer
+  :group 'octocat)
+
 
 ;;;; Buffer-local state
 ;;
@@ -721,7 +726,7 @@ it is for browsing."
          (entries (octocat-tree--sorted-entries (plist-get result :data)))
          (last    (octocat-tree--use-last-commits repo (and entries commit) path sha)))
     (octocat-tree--use-focus
-     focus (mapcar (lambda (e) (octocat-model-tree-join path (gethash "path" e))) entries))
+     focus (mapcar (lambda (e) (file-name-concat path (gethash "path" e))) entries))
     (pcase (octocat-vui-snapshot-status result)
       ('pending (vui-text (octocat-tree--skeleton indent)))
       ('error   (vui-text (propertize (concat indent (octocat-vui-error-text result))
@@ -733,7 +738,7 @@ it is for browsing."
                        (vui-component 'octocat-tree--node
                          :repo repo :branch branch :entry entry :commit commit
                          :last (octocat-tree--last-of
-                                last (octocat-model-tree-join path (gethash "path" entry)))
+                                last (file-name-concat path (gethash "path" entry)))
                          :depth depth :parent path :reveal reveal :focus focus))
                      (lambda (entry) (gethash "path" entry))))))))
 
@@ -743,17 +748,17 @@ it is for browsing."
 LAST is the last commit that touched it, `loading' while it loads.  The other
 arguments are as for `octocat-tree--subtree'."
   :state ((expanded (octocat-tree--reveals-p
-                     (octocat-model-tree-join parent (or (gethash "path" entry) ""))
+                     (file-name-concat parent (or (gethash "path" entry) ""))
                      reveal)))
   :render
   (let* ((_ (octocat-vui-use-view-reset
              (vui-async-callback ()
                (vui-set-state :expanded (octocat-tree--reveals-p
-                                         (octocat-model-tree-join
+                                         (file-name-concat
                                           parent (or (gethash "path" entry) ""))
                                          reveal)))))
          (name   (or (gethash "path" entry) ""))
-         (path   (octocat-model-tree-join parent name))
+         (path   (file-name-concat parent name))
          (sha    (or (gethash "sha" entry) ""))
          (indent (make-string (* depth 2) ?\s))
          (width  (octocat-vui-window-width)))
@@ -923,7 +928,7 @@ commits are a sync resource; \"load more\" appends the page after the
 last to it (see `octocat-sync-more'), pinned to the head shown."
   :state ((fetching nil))
   :render
-  (let* ((spec    (list 'commits repo ref path))
+  (let* ((spec    (list 'commits repo ref path octocat-repo-commits-page-size))
          (snap    (octocat-vui-use-resource spec tick))
          (data    (plist-get snap :data))
          (commits (append (and data (gethash "nodes" data)) nil))
@@ -970,7 +975,8 @@ last to it (see `octocat-sync-more'), pinned to the head shown."
             (lambda ()
               (vui-set-state :fetching t)
               (octocat-sync-more
-               spec (octocat-model-commits-more repo path (gethash "sha" (car commits)))
+               spec (octocat-model-commits-more repo path (gethash "sha" (car commits))
+                                                octocat-repo-commits-page-size)
                (vui-async-callback (r)
                  (vui-set-state :fetching nil)
                  (when r (message "Octocat: %s" (cdr r))))))

@@ -46,8 +46,9 @@
 ;;   :state   event name or review state, picks the colour of the bullet
 ;;   :target  value of the `octocat-timeline-target' text property, which
 ;;            the edit and browse commands read at point
-;;   :pending what is being done to a box, such as "posting…", shown
-;;            behind a spinner in place of its date
+;;   :pending what is being done to a box, "posting" or "saving" (see
+;;            `octocat-model-pending'), shown behind a spinner in place
+;;            of its date
 ;;   :reactions  a box's reactions, from `octocat--reactions-string',
 ;;            shown after its date
 ;;   :on-visit  function to call when RET is pressed on a single line
@@ -427,7 +428,8 @@ under its actor.  The text carries ITEM's target in the
   (let* ((line  (memq (plist-get item :kind) '(event commit)))
          (actor (propertize (plist-get item :actor) 'face 'octocat-pr-author))
          (date  (if-let* ((pending (plist-get item :pending)))
-                    (concat (octocat-spinner) " " (propertize pending 'face 'octocat-dimmed))
+                    (concat (octocat-spinner) " "
+                            (propertize (concat pending "…") 'face 'octocat-dimmed))
                   (propertize (octocat--format-ts-relative (plist-get item :time))
                               'face 'octocat-dimmed)))
          (bullet (propertize (if line "○" "●")

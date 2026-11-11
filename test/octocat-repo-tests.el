@@ -87,7 +87,7 @@
         (octocat-sync--fetches (make-hash-table :test #'equal))
         (octocat-sync--waiters nil)
         got deliver)
-    (cl-letf (((symbol-function 'octocat--list-branches)
+    (cl-letf (((symbol-function 'octocat-model--list-branches)
                (lambda (_repo callback) (setq deliver callback))))
       ;; Stored long ago, so it is refetched.
       (octocat-sync--write octocat-sync--db (octocat-sync-spec-key '(branches "o/r"))
@@ -1173,7 +1173,7 @@ It does not fold, however long."
   (octocat-tree-tests--with-file-page
     (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n")
     (octocat-tree-tests--store
-     '(commits "owner/repo" "dev" "docs/GUIDE.md")
+     `(commits "owner/repo" "dev" "docs/GUIDE.md" ,octocat-repo-commits-page-size)
      (octocat-model--commits-tree (octocat-model--repo-parse-history
                                    "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":3,\"edges\":[{\"cursor\":\"c 0\",\"node\":{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}}]}}}}}")
                                   octocat-repo-commits-page-size))

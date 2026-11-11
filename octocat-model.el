@@ -250,6 +250,17 @@ Labels and assignees are all fetched, since the sync store keeps them
 on the item's entity, which must hold the whole set; the Marked bar
 toggles them.")
 
+(defun octocat-model--search-query (repo kind query)
+  "Return the GitHub search string for the KIND items of REPO matching QUERY.
+KIND is `issues' or `pulls'.  A nil QUERY means
+`octocat--default-list-query'.  QUERY is parenthesised, as gh does, so an
+OR in it cannot escape the repo scope."
+  (let ((query (string-trim (or query octocat--default-list-query)))
+        (scope (format "repo:%s type:%s" repo (if (eq kind 'pulls) "pr" "issue"))))
+    (if (string-empty-p query)
+        scope
+      (format "( %s ) %s" query scope))))
+
 (defun octocat-model--list-items-query (kind)
   "Return the GraphQL search query for a page of KIND list items."
   (format (concat "query($q:String!,$limit:Int!,$after:String){search(query:$q,"
@@ -322,13 +333,13 @@ CALLBACK is called with the plist from `octocat-model--parse-list-items', or a
 cons \\=(error . MSG).  One API call."
   (octocat--gh-graphql
    (symbol-name kind) nil (octocat-model--list-items-query kind)
-   `(("q" . ,(octocat--search-query repo kind query))
+   `(("q" . ,(octocat-model--search-query repo kind query))
      ("limit" . ,(or limit octocat-list-page-size))
      ("after" . ,after))
    #'octocat-model--parse-list-items
    callback))
 
-(defun octocat-model-list-tree (kind repo page)
+(defun octocat-model--list-tree (kind repo page)
   "Return PAGE, a page of KIND items of REPO, as a list resource's tree.
 PAGE is as `octocat-model--parse-list-items' returns; each item is an entity."
   (let ((type (octocat-model--item-type kind)))
@@ -342,7 +353,7 @@ They are the KIND items of REPO matching QUERY, LIMIT a page, as the
 `list-items' resource of the same arguments has them."
   (lambda (after done)
     (octocat-model--list-items
-     kind repo (octocat--then (lambda (page) (octocat-model-list-tree kind repo page)) done)
+     kind repo (octocat--then (lambda (page) (octocat-model--list-tree kind repo page)) done)
      query after limit)))
 
 (octocat-sync-define-resource list-items (kind repo query limit)
@@ -353,7 +364,7 @@ They are the KIND items of REPO matching QUERY, LIMIT a page, as the
                                   :data)))
              (octocat-model--list-items
               kind repo
-              (octocat--then (lambda (page) (octocat-model-list-tree kind repo page)) done)
+              (octocat--then (lambda (page) (octocat-model--list-tree kind repo page)) done)
               query nil (min 100 (max limit (length (and data (gethash "nodes" data)))))))))
 
 (octocat-sync-define-resource labels (repo)
@@ -361,9 +372,18 @@ They are the KIND items of REPO matching QUERY, LIMIT a page, as the
   :gh (list "label" "list" "--repo" repo "--limit" "200" "--json" "name,color")
   :parse (lambda (labels) (cl-map 'vector (lambda (l) (octocat-model-label repo l)) labels)))
 
+(defun octocat-model--list-people (repo callback)
+  "Fetch the logins that can be assigned in REPO and call CALLBACK.
+CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
+  (octocat--run-gh "people"
+                   (list "api" (format "repos/%s/assignees?per_page=100" repo)
+                         "--jq" ".[].login")
+                   (lambda (output) (split-string output "\n" t))
+                   callback))
+
 (octocat-sync-define-resource assignees (repo)
   :poll octocat-sync-poll-slow
-  :fetch (lambda (done) (octocat--list-people repo (octocat--then #'vconcat done))))
+  :fetch (lambda (done) (octocat-model--list-people repo (octocat--then #'vconcat done))))
 
 (defconst octocat-model--fixed-max-age (* 30 24 60 60)
   "Seconds to keep what a SHA names, which never changes.")
@@ -424,8 +444,18 @@ there."
                                (gethash "fullName" r)))
                    results)))
 
+(defun octocat-model--list-branches (repo callback)
+  "Fetch the branch names of REPO and call CALLBACK.
+CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
+  (octocat--run-gh "branches"
+                   (list "api" "--paginate"
+                         (format "repos/%s/branches?per_page=100" repo)
+                         "--jq" ".[].name")
+                   (lambda (output) (split-string output "\n" t))
+                   callback))
+
 (octocat-sync-define-resource branches (repo)
-  :fetch (lambda (done) (octocat--list-branches repo (octocat--then #'vconcat done))))
+  :fetch (lambda (done) (octocat-model--list-branches repo (octocat--then #'vconcat done))))
 
 ;;;; Issues and PRs
 
@@ -436,7 +466,8 @@ there."
 
 (defconst octocat-model-pending "octocatPending"
   "Key of what is being done to a comment, or to an item's opening post.
-Only the edits of a pending mutation set it, so it is never stored.")
+Its value is \"posting\" or \"saving\".  Only the edits of a pending
+mutation set it, so it is never stored.")
 
 (defun octocat-model-detail-spec (kind repo number)
   "Return the spec of the page resource of issue or PR (KIND) NUMBER of REPO."
@@ -460,7 +491,7 @@ NOW is an ISO 8601 time.  It has no id or URL until GitHub answers."
                   "body" body
                   "createdAt" now
                   "viewerDidAuthor" t
-                  octocat-model-pending "posting…"))
+                  octocat-model-pending "posting"))
 
 (defun octocat-model--rest-comment (comment)
   "Return COMMENT, from GitHub's REST API, in the fields `gh ... view' gives."
@@ -485,14 +516,23 @@ A comment of the same id, as a refetch may already have, is replaced."
              data)
     data))
 
+(defun octocat-model-comment-numeric-id (comment)
+  "Return the numeric REST id of COMMENT, a string, or nil.
+It is read from the comment's \"url\", which ends in
+\"#issuecomment-NNNNN\"."
+  (let ((url (and comment (gethash "url" comment))))
+    (when (and url (stringp url)
+               (string-match "#issuecomment-\\([0-9]+\\)\\'" url))
+      (match-string 1 url))))
+
 (defun octocat-model--set-comment-body (data comment-id body pending)
   "Return DATA, a page resource's body, with comment COMMENT-ID's BODY set.
-COMMENT-ID is the numeric REST id.  PENDING, if non-nil, is shown as
-what is being done to it, such as \"saving…\"."
+COMMENT-ID is the numeric REST id.  PENDING, if non-nil, is what is
+being done to it, as `octocat-model-pending' has it."
   (puthash "comments"
            (cl-map 'vector
                    (lambda (c)
-                     (if (not (equal (octocat--comment-numeric-id c) comment-id))
+                     (if (not (equal (octocat-model-comment-numeric-id c) comment-id))
                          c
                        (let ((c (copy-hash-table c)))
                          (puthash "body" body c)
@@ -551,7 +591,7 @@ what is being done to it, such as \"saving…\"."
            (unless answered
              (octocat-model--detail-edit
               kind repo number (lambda (data)
-                                 (puthash octocat-model-pending "saving…" data)
+                                 (puthash octocat-model-pending "saving" data)
                                  data))))
   :gh (list kind "edit" (number-to-string number) "--repo" repo "--body" body))
 
@@ -562,7 +602,7 @@ what is being done to it, such as \"saving…\"."
            (octocat-model--detail-edit
             kind repo number (lambda (data)
                                (octocat-model--set-comment-body
-                                data comment-id body (unless answered "saving…")))))
+                                data comment-id body (unless answered "saving")))))
   :gh (list "api" (format "repos/%s/issues/comments/%s" repo comment-id)
             "--method" "PATCH" "-f" (format "body=%s" body)))
 
@@ -590,6 +630,21 @@ what is being done to it, such as \"saving…\"."
                                                       (gethash "content" g)))
                                                (octocat--get data "node" "reactionGroups")))))))
 
+(defun octocat-model--toggle-reaction (groups content add)
+  "Return GROUPS, a \"reactionGroups\" vector, with one CONTENT more, or less.
+ADD non-nil adds one, else takes one away.  GROUPS is not changed."
+  (let* ((groups (append groups nil))
+         (old    (seq-find (lambda (g) (equal (octocat--get g "content") content)) groups))
+         (n      (max 0 (+ (or (octocat--get old "users" "totalCount") 0) (if add 1 -1))))
+         (new    (make-hash-table :test #'equal))
+         (users  (make-hash-table :test #'equal)))
+    (puthash "totalCount" n users)
+    (puthash "content" content new)
+    (puthash "users" users new)
+    (vconcat (if old
+                 (mapcar (lambda (g) (if (eq g old) new g)) groups)
+               (append groups (list new))))))
+
 (defun octocat-model--react-comment (data subject content add)
   "Return DATA, a page resource's body, with one CONTENT more on comment SUBJECT.
 SUBJECT is the comment's node id; ADD nil takes one away instead."
@@ -600,8 +655,8 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
                          c
                        (let ((c (copy-hash-table c)))
                          (puthash "reactionGroups"
-                                  (octocat--toggle-reaction (gethash "reactionGroups" c)
-                                                            content add)
+                                  (octocat-model--toggle-reaction
+                                   (gethash "reactionGroups" c) content add)
                                   c)
                          c)))
                    (gethash "comments" data))
@@ -616,7 +671,7 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
                            (octocat-model-detail-spec kind repo number))))
                 (when (equal (octocat--get item "id") subject)
                   `((,(octocat-model-item-key kind repo number)
-                     ("reactionGroups" . ,(octocat--toggle-reaction
+                     ("reactionGroups" . ,(octocat-model--toggle-reaction
                                            (gethash "reactionGroups" item) content add))))))
   :edits (lambda (_answered _)
            (list (cons (octocat-model-detail-spec kind repo number)
@@ -661,19 +716,20 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
 ;;;; Pull requests
 
 (defconst octocat-model-pr-merge-methods
-  '(("Merge"  "--merge"  "mergeCommitAllowed")
-    ("Squash" "--squash" "squashMergeAllowed")
-    ("Rebase" "--rebase" "rebaseMergeAllowed"))
-  "Merge methods: name, `gh pr merge' flag, and the repo field allowing it.")
+  '((merge  "--merge"  "mergeCommitAllowed")
+    (squash "--squash" "squashMergeAllowed")
+    (rebase "--rebase" "rebaseMergeAllowed"))
+  "Merge methods: the method, `gh pr merge' flag, and the repo field allowing it.")
 
 (defun octocat-model--pr-merge-args (repo number method text delete)
   "Return the `gh' arguments merging PR NUMBER of REPO by METHOD.
-TEXT is the commit message, its first line the subject; a rebase has
-none.  DELETE non-nil deletes the head branch as well."
+METHOD is one of `octocat-model-pr-merge-methods'.  TEXT is the commit
+message, its first line the subject; a rebase has none.  DELETE non-nil
+deletes the head branch as well."
   (let ((lines (split-string text "\n")))
     (append (list "pr" "merge" (number-to-string number) "--repo" repo
-                  (nth 1 (assoc method octocat-model-pr-merge-methods)))
-            (unless (equal method "Rebase")
+                  (nth 1 (assq method octocat-model-pr-merge-methods)))
+            (unless (eq method 'rebase)
               (list "--subject" (car lines)
                     "--body" (string-trim (mapconcat #'identity (cdr lines) "\n"))))
             (and delete (list "--delete-branch")))))
@@ -917,7 +973,11 @@ thread left with no comment is dropped."
   data)
 
 (defun octocat-model--review-new-thread (range comment)
-  "Return a thread on RANGE, see `octocat-diff--range', holding COMMENT."
+  "Return a thread on RANGE holding COMMENT.
+RANGE, the lines a review comment is on, is a plist of :path, :line and
+:side, the last line's, and for more than one line :start-line and
+:start-side; or of :path and :file t for the file as a whole.  The
+`review-draft-add' mutation takes it too."
   (octocat--table "comments" (octocat--table "nodes" (vector comment))
                   "path" (plist-get range :path)
                   "line" (plist-get range :line)
@@ -1107,18 +1167,20 @@ FN gets their data and returns it changed."
   :vars `(("id" . ,review-id)))
 
 (defconst octocat-model-review-events
-  '(("Comment"         "--comment"         "COMMENT")
-    ("Approve"         "--approve"         "APPROVE")
-    ("Request changes" "--request-changes" "REQUEST_CHANGES"))
-  "Review events offered on submit: their `gh pr review' flag and GraphQL event.")
+  '((comment         "--comment"         "COMMENT")
+    (approve         "--approve"         "APPROVE")
+    (request-changes "--request-changes" "REQUEST_CHANGES"))
+  "Review events: the event, its `gh pr review' flag and GraphQL name.")
 
-(defun octocat-model--review-args (repo number flag body)
-  "Return the `gh' arguments submitting a FLAG review of PR NUMBER of REPO.
-An empty BODY is left out, as `gh' rejects an empty --body."
-  (append (list "pr" "review" (number-to-string number) "--repo" repo flag)
+(defun octocat-model--review-args (repo number event body)
+  "Return the `gh' arguments submitting an EVENT review of PR NUMBER of REPO.
+EVENT is one of `octocat-model-review-events'.  An empty BODY is left
+out, as `gh' rejects an empty --body."
+  (append (list "pr" "review" (number-to-string number) "--repo" repo
+                (nth 1 (assq event octocat-model-review-events)))
           (unless (string-empty-p body) (list "--body" body))))
 
-(octocat-sync-define-mutation review-pr (repo number flag body &optional review-id)
+(octocat-sync-define-mutation review-pr (repo number event body &optional review-id)
   :label "Submitting review…"
   :slot 'review
   :resources `((pr ,repo ,number) ,(octocat-model-review-threads-spec repo number))
@@ -1147,11 +1209,10 @@ An empty BODY is left out, as `gh' rejects an empty --body."
                        "submitPullRequestReview(input:{pullRequestReviewId:$id,event:$event,"
                        "body:$body}){clientMutationId}}")
                `(("id" . ,review-id)
-                 ("event" . ,(nth 2 (seq-find (lambda (e) (equal (cadr e) flag))
-                                              octocat-model-review-events)))
+                 ("event" . ,(nth 2 (assq event octocat-model-review-events)))
                  ("body" . ,(and (not (string-empty-p body)) body)))
                #'ignore done)
-            (octocat--run-gh "review" (octocat-model--review-args repo number flag body)
+            (octocat--run-gh "review" (octocat-model--review-args repo number event body)
                              #'ignore done)))
   ;; The review joins the timeline, may add review comments and may
   ;; change the merge box.
@@ -1193,24 +1254,14 @@ commit, the commit being behind it or at its head, else :null."
   :vars `(("sha" . ,sha))
   :parse #'octocat-model--commit-parse-branch)
 
-(defun octocat-model-compare-sha-p (ref)
-  "Return non-nil when REF is a commit SHA, as a commit link's is.
-Unlike a branch or tag, it names the same commit for good."
-  (string-match-p "\\`[0-9a-f]\\{7,40\\}\\'" ref))
-
 (octocat-sync-define-resource compare (repo base head)
   ;; Comparing two commits never changes, as a commit doesn't; refs move.
-  :max-age (and (octocat-model-compare-sha-p base)
-                (octocat-model-compare-sha-p head)
+  :max-age (and (octocat--sha-p base)
+                (octocat--sha-p head)
                 octocat-model--fixed-max-age)
   :gh (list "api" (format "repos/%s/compare/%s...%s" repo base head)))
 
 ;;;; Repository code
-
-(defcustom octocat-repo-commits-page-size 25
-  "Number of commits the commits page shows, and loads, at a time."
-  :type 'integer
-  :group 'octocat)
 
 (defconst octocat-model--repo-history-query
   (concat "query($owner:String!,$name:String!,$ref:String!,$limit:Int!,$after:String,"
@@ -1221,24 +1272,22 @@ Unlike a branch or tag, it names the same commit for good."
   "GraphQL query behind `octocat-model--repo-list-commits'.
 Only what a row shows: the REST commits endpoint sends ~15 times as much.")
 
-(defun octocat-model--repo-list-commits (repo ref path callback &optional after limit)
-  "Fetch a page of the commits of REPO, from REF back.
+(defun octocat-model--repo-list-commits (repo ref path limit callback &optional after)
+  "Fetch a page of LIMIT commits of REPO, from REF back.
 REF is a branch or SHA; nil means the head of the default branch.  PATH,
 when non-nil, keeps only the commits that touched it.
-AFTER, a commit's \"cursor\", fetches the page after that commit.  A
-page holds LIMIT commits, by default `octocat-repo-commits-page-size'.
+AFTER, a commit's \"cursor\", fetches the page after that commit.
 Calls CALLBACK with the page as `octocat-model--commits-tree' makes it,
 or a cons \\=(error . MSG)."
-  (let ((limit (or limit octocat-repo-commits-page-size)))
-    (octocat--gh-graphql "commits" repo octocat-model--repo-history-query
-                         `(("ref" . ,(or ref "HEAD"))
-                           ("limit" . ,limit)
-                           ("after" . ,after)
-                           ("path" . ,path))
-                         (lambda (json)
-                           (octocat-model--commits-tree
-                            (octocat-model--repo-parse-history json) limit))
-                         callback)))
+  (octocat--gh-graphql "commits" repo octocat-model--repo-history-query
+                       `(("ref" . ,(or ref "HEAD"))
+                         ("limit" . ,limit)
+                         ("after" . ,after)
+                         ("path" . ,path))
+                       (lambda (json)
+                         (octocat-model--commits-tree
+                          (octocat-model--repo-parse-history json) limit))
+                       callback))
 
 (defun octocat-model--commits-tree (commits limit)
   "Return COMMITS, a page of up to LIMIT, as the `commits' resource's tree.
@@ -1248,12 +1297,12 @@ came back short, at the end of the history."
                   "cursor" (and (>= (length commits) limit)
                                 (gethash "cursor" (car (last commits))))))
 
-(defun octocat-model-commits-more (repo path head)
+(defun octocat-model-commits-more (repo path head limit)
   "Return the MORE function of `octocat-sync-more' for the commits of REPO.
-They are those that touched PATH, or all when nil.  The pages are
-fetched from HEAD, the SHA of the first commit shown, so the history
-they page through cannot shift under them."
-  (lambda (after done) (octocat-model--repo-list-commits repo head path done after)))
+They are those that touched PATH, or all when nil, LIMIT a page.  The
+pages are fetched from HEAD, the SHA of the first commit shown, so the
+history they page through cannot shift under them."
+  (lambda (after done) (octocat-model--repo-list-commits repo head path limit done after)))
 
 (defun octocat-model--repo-history-commit (node)
   "Return the commit NODE of a GraphQL history shaped as REST has it.
@@ -1476,7 +1525,7 @@ Calls CALLBACK once with a hash-table of path to commit, see
                     (funcall done entries)
                   (octocat-model--tree-fetch-last-commits
                    repo commit
-                   (mapcar (lambda (e) (octocat-model-tree-join dir (gethash "path" e)))
+                   (mapcar (lambda (e) (file-name-concat dir (gethash "path" e)))
                            entries)
                    done)))))))
 
@@ -1504,23 +1553,21 @@ Calls CALLBACK once with a hash-table of path to commit, see
 ;; The text of file PATH at REF, as "text".
 (octocat-sync-define-resource file-text (repo ref path)
   ;; A file at a commit never changes; at a branch it may.
-  :max-age (and (octocat-model-compare-sha-p ref) octocat-model--fixed-max-age)
+  :max-age (and (octocat--sha-p ref) octocat-model--fixed-max-age)
   :gh (octocat-model--file-args repo path ref)
   :raw t
   :parse (lambda (raw) (octocat--table "text" raw)))
 
-(defun octocat-model-tree-join (dir name)
-  "Return the path of NAME inside directory path DIR (\"\" for the root)."
-  (if (string-empty-p dir) name (concat dir "/" name)))
-
-(octocat-sync-define-resource commits (repo ref path)
+;; The commits of REF that touched PATH, LIMIT a page.
+(octocat-sync-define-resource commits (repo ref path limit)
   :fetch (lambda (done)
            ;; As many as "load more" stored, so a refetch keeps them.
-           (let ((data (plist-get (octocat-sync-read (list 'commits repo ref path)) :data)))
+           (let ((data (plist-get (octocat-sync-read (list 'commits repo ref path limit))
+                                  :data)))
              (octocat-model--repo-list-commits
-              repo ref path done nil
-              (min 100 (max octocat-repo-commits-page-size
-                            (length (and data (gethash "nodes" data)))))))))
+              repo ref path
+              (min 100 (max limit (length (and data (gethash "nodes" data)))))
+              done))))
 
 (defun octocat-model-tree-load-files (repo ref callback)
   "Call CALLBACK with every file of REPO at REF, nil for the default branch.

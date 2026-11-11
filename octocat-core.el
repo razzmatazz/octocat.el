@@ -686,15 +686,6 @@ An empty or null response is treated as an empty list."
         (json-parse-error
          (error "Failed to parse gh output: %s" (error-message-string err))))))))
 
-(defun octocat--comment-numeric-id (comment)
-  "Return the numeric REST comment ID string from COMMENT hash-table.
-The ID is parsed from the comment's \\\"url\\\" field, which ends in
-\\\"#issuecomment-NNNNN\\\".  Returns nil if the URL is absent or malformed."
-  (let ((url (and comment (gethash "url" comment))))
-    (when (and url (stringp url)
-               (string-match "#issuecomment-\\([0-9]+\\)\\'" url))
-      (match-string 1 url))))
-
 (defun octocat--get (obj &rest keys)
   "Return the value under KEYS in the nested hash-table OBJ, or nil.
 Missing keys, non-table intermediates and JSON null all give nil."
@@ -722,6 +713,11 @@ Treats the JSON null sentinel `:null' and empty strings as absent values."
        (stringp value)
        (not (string-empty-p value))
        value))
+
+(defun octocat--sha-p (ref)
+  "Return non-nil when REF is a commit SHA, as a commit link's is.
+Unlike a branch or tag, it names the same commit for good."
+  (string-match-p "\\`[0-9a-f]\\{7,40\\}\\'" ref))
 
 (defconst octocat--reactions
   '(("THUMBS_UP" "+1" "👍") ("THUMBS_DOWN" "-1" "👎") ("LAUGH" "laugh" "😄")
@@ -756,21 +752,6 @@ OBJ is as for `octocat--reaction-counts'."
                  (concat (car c) " "
                          (propertize (number-to-string (cdr c)) 'face 'octocat-dimmed)))
                counts "  ")))
-
-(defun octocat--toggle-reaction (groups content add)
-  "Return GROUPS, a \"reactionGroups\" vector, with one CONTENT more, or less.
-ADD non-nil adds one, else takes one away.  GROUPS is not changed."
-  (let* ((groups (append groups nil))
-         (old    (seq-find (lambda (g) (equal (octocat--get g "content") content)) groups))
-         (n      (max 0 (+ (or (octocat--get old "users" "totalCount") 0) (if add 1 -1))))
-         (new    (make-hash-table :test #'equal))
-         (users  (make-hash-table :test #'equal)))
-    (puthash "totalCount" n users)
-    (puthash "content" content new)
-    (puthash "users" users new)
-    (vconcat (if old
-                 (mapcar (lambda (g) (if (eq g old) new g)) groups)
-               (append groups (list new))))))
 
 (defun octocat--run-icon (status conclusion)
   "Return a propertized status icon for STATUS and CONCLUSION strings.
@@ -1831,36 +1812,6 @@ the git origin remote, via `octocat-repo--current-repo'."
 
 (defconst octocat--default-list-query "is:open"
   "Query a PR or issue list starts with.")
-
-(defun octocat--search-query (repo kind query)
-  "Return the GitHub search string for the KIND items of REPO matching QUERY.
-KIND is `issues' or `pulls'.  A nil QUERY means
-`octocat--default-list-query'.  QUERY is parenthesised, as gh does, so an
-OR in it cannot escape the repo scope."
-  (let ((query (string-trim (or query octocat--default-list-query)))
-        (scope (format "repo:%s type:%s" repo (if (eq kind 'pulls) "pr" "issue"))))
-    (if (string-empty-p query)
-        scope
-      (format "( %s ) %s" query scope))))
-
-(defun octocat--list-people (repo callback)
-  "Fetch the logins that can be assigned in REPO and call CALLBACK.
-CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
-  (octocat--run-gh "people"
-                   (list "api" (format "repos/%s/assignees?per_page=100" repo)
-                         "--jq" ".[].login")
-                   (lambda (output) (split-string output "\n" t))
-                   callback))
-
-(defun octocat--list-branches (repo callback)
-  "Fetch the branch names of REPO and call CALLBACK.
-CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
-  (octocat--run-gh "branches"
-                   (list "api" "--paginate"
-                         (format "repos/%s/branches?per_page=100" repo)
-                         "--jq" ".[].name")
-                   (lambda (output) (split-string output "\n" t))
-                   callback))
 
 ;;;; Edit buffer
 ;;
