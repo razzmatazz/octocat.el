@@ -257,6 +257,14 @@
                 #'octocat-vui-sticky-top))
     (should (equal (get-text-property (1- (length line)) 'display line)
                    '(space :align-to 80))))
+  (let* ((pill (octocat-vui-segmented-pin '(("Diff" t "help" ignore))))
+         (line (octocat-vui--pin-line (octocat-vui-pin "acme/rocket@abc" pill) nil 40)))
+    ;; The pill ends at the right edge, after a space aligned to it.
+    (should (string-prefix-p "acme/rocket@abc" line))
+    (should (memq 'octocat-segment-current
+                  (ensure-list (get-text-property (string-search " Diff " line) 'face line))))
+    (should (equal (get-text-property (1- (string-search " Diff " line)) 'display line)
+                   '(space :align-to 34))))
   (should (string-prefix-p "acme" (octocat-vui--pin-line "acme" nil 80)))
   (should (equal (substring-no-properties (octocat-vui--pin-line "acme/rocket" nil 6))
                  "acme/… ")))

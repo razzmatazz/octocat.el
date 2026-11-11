@@ -337,12 +337,19 @@ Nil ones are left out."
 It is cut to WIDTH columns, the page's, and a stretch space then fills
 it to that column, so the face `octocat-sticky-title' spans the page.
 Links in PIN are plain text, as it is not in the buffer: a click on it
-goes to the top."
-  (let ((line (concat (truncate-string-to-width
-                       (concat (if (octocat--nonempty notice) (concat notice "  ") "") pin)
-                       width nil nil "…")
-                      (propertize " " 'display `(space :align-to ,width))))
-        (map  (make-sparse-keymap)))
+goes to the top.  A pill of views, see `octocat-vui-segmented-pin',
+ends at WIDTH, as on the page, the rest cut to make room for it."
+  (let* ((text  (concat (if (octocat--nonempty notice) (concat notice "  ") "") pin))
+         (cut   (text-property-any 0 (length text) 'octocat-pin-right t text))
+         (right (if cut (substring text cut) ""))
+         (right-w (string-width right))
+         (line  (concat (truncate-string-to-width
+                         (string-trim-right (substring text 0 cut))
+                         (max 0 (- width right-w (if cut 2 0))) nil nil "…")
+                        (and cut (propertize " " 'display `(space :align-to ,(- width right-w))))
+                        right
+                        (propertize " " 'display `(space :align-to ,width))))
+         (map   (make-sparse-keymap)))
     (define-key map [header-line mouse-1] #'octocat-vui-sticky-top)
     (remove-list-of-text-properties
      0 (length line) '(keymap local-map mouse-face help-echo button category field)
@@ -1041,7 +1048,7 @@ scrolls the least that shows it, see `octocat-vui--show-lines'."
          (when-let* ((run (octocat-vui--last-run prop pred))
                      (end (if head (1+ (car run)) (cdr run))))
            (dolist (win (get-buffer-window-list buf nil t))
-             (octocat-vui--show-lines win (car run) end))
+             (octocat-vui--show-lines win (car run) (cdr run)))
            (octocat-vui-pulse buf (car run) end)))))))
 
 (vui-defcomponent octocat-vui-fold-rest (total limit render prefix noun key)

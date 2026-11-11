@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A pinned header keeps its switch of views at the right edge, as on the page
 * A diff's comments show and hide from a [Hide comments (N)] button, not a pill
 * A page's switch of views, as Diff | Tree | Patch, sits at the right edge of its line
 * `RET` on a changed file in a Tree view shows its diff, not the file
