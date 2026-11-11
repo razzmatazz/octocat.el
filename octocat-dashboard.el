@@ -253,7 +253,7 @@ Dispatches on the event type:
 
 (defun octocat--dashboard-item-row (kind node width bg)
   "Return the RET-able row vnode for NODE, one of the dashboard's KIND items.
-NODE is as `octocat--dashboard-items-tree' makes it.  The row is the list
+NODE is as `octocat-model--dashboard-items-tree' makes it.  The row is the list
 pages' two lines, cut to WIDTH; BG is as for `octocat--label-face'."
   (let* ((repo   (gethash "repo" node))
          (item   (gethash "item" node))

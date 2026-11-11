@@ -29,6 +29,7 @@ See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as f
 - **Never modify source files through Emacs** (`emacs__eval-elisp`, buffer edits, `save-buffer`, etc.); it risks a live buffer and the file on disk drifting apart. Use the file-editing tools, or a batch Emacs as below.
 - **Never write your own Elisp parser or refactoring script** (regex, Python, etc.): it misreads strings, comments and `?(`.
   Edit with the file-editing tools; for many forms at once, use or extend `tools/`, run by a batch Emacs, on Emacs's reader and `indent-region`.
+  To rename symbols: `emacs -Q --batch -l tools/rename-symbols.el OLD=NEW ... -- FILE ...`, then `make format`.
   `make format` reindents the tests.
 
 ## Screenshots

@@ -500,7 +500,7 @@ unsubscribes it."
                         (list :data (let ((h (make-hash-table :test #'equal)))
                                       (puthash "nodes" (make-vector stored nil) h)
                                       h)))))
-                ((symbol-function 'octocat--list-items)
+                ((symbol-function 'octocat-model--list-items)
                  (lambda (_kind _repo _cb _query _after limit) (push limit asked))))
         (funcall (plist-get (octocat-sync--props spec) :fetch) #'ignore)))
     (should (equal (nreverse asked) '(15 40 100)))))

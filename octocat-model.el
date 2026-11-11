@@ -228,7 +228,7 @@ A table of \"open\", \"closed\" and, of pull requests, \"merged\"."
   :repo repo
   :parse #'octocat-model--parse-counts)
 
-(defconst octocat--list-item-fields
+(defconst octocat-model--list-item-fields
   `((pulls  . ,(concat "...on PullRequest{number title state isDraft reviewDecision "
                        "createdAt author{login} labels(first:100){nodes{name color}} "
                        "assignees(first:100){nodes{login}} "
@@ -250,14 +250,14 @@ Labels and assignees are all fetched, since the sync store keeps them
 on the item's entity, which must hold the whole set; the Marked bar
 toggles them.")
 
-(defun octocat--list-items-query (kind)
+(defun octocat-model--list-items-query (kind)
   "Return the GraphQL search query for a page of KIND list items."
   (format (concat "query($q:String!,$limit:Int!,$after:String){search(query:$q,"
                   "type:ISSUE_ADVANCED,first:$limit,after:$after){nodes{%s}pageInfo{"
                   "hasNextPage endCursor}}}")
-          (alist-get kind octocat--list-item-fields)))
+          (alist-get kind octocat-model--list-item-fields)))
 
-(defun octocat--flatten-list-item (item)
+(defun octocat-model--flatten-list-item (item)
   "Flatten the connections of the search result ITEM in place; return it.
 \"labels\", \"assignees\" and \"closedByPullRequestsReferences\" become
 vectors of their nodes, as gh's JSON has them; the comments become their
@@ -299,42 +299,51 @@ rolled-up state, \"ciState\", and how many passed of how many,
     (remhash "commits" item))
   item)
 
-(defun octocat--list-page (data)
+(defun octocat-model--list-page (data)
   "Return DATA, a list search's answer, as (:items LIST :cursor C).
-The items are flattened by `octocat--flatten-list-item'.  C is the cursor
+The items are flattened by `octocat-model--flatten-list-item'.  C is the cursor
 to pass for the next page, or nil on the last."
   (let* ((search (gethash "search" data))
          (info   (gethash "pageInfo" search)))
-    (list :items  (mapcar #'octocat--flatten-list-item (gethash "nodes" search))
+    (list :items  (mapcar #'octocat-model--flatten-list-item (gethash "nodes" search))
           :cursor (and (eq (gethash "hasNextPage" info) t)
                        (octocat--nonempty (gethash "endCursor" info))))))
 
-(defun octocat--parse-list-items (json-string)
-  "Parse JSON-STRING, a list search's response, as `octocat--list-page' does."
-  (octocat--list-page (gethash "data" (json-parse-string json-string))))
+(defun octocat-model--parse-list-items (json-string)
+  "Parse JSON-STRING, a list search's response, as `octocat-model--list-page' does."
+  (octocat-model--list-page (gethash "data" (json-parse-string json-string))))
 
-(defun octocat--list-items (kind repo callback &optional query after limit)
+(defun octocat-model--list-items (kind repo callback &optional query after limit)
   "Fetch a page of the KIND items of REPO matching the search QUERY.
 KIND is `issues' or `pulls'.  AFTER, a cursor from an earlier page,
 fetches the page after it; a page is LIMIT items, by default
 `octocat-list-page-size'.
-CALLBACK is called with the plist from `octocat--parse-list-items', or a
+CALLBACK is called with the plist from `octocat-model--parse-list-items', or a
 cons \\=(error . MSG).  One API call."
   (octocat--gh-graphql
-   (symbol-name kind) nil (octocat--list-items-query kind)
+   (symbol-name kind) nil (octocat-model--list-items-query kind)
    `(("q" . ,(octocat--search-query repo kind query))
      ("limit" . ,(or limit octocat-list-page-size))
      ("after" . ,after))
-   #'octocat--parse-list-items
+   #'octocat-model--parse-list-items
    callback))
 
 (defun octocat-model-list-tree (kind repo page)
   "Return PAGE, a page of KIND items of REPO, as a list resource's tree.
-PAGE is as `octocat--parse-list-items' returns; each item is an entity."
+PAGE is as `octocat-model--parse-list-items' returns; each item is an entity."
   (let ((type (octocat-model--item-type kind)))
     (octocat--table "nodes" (vconcat (mapcar (lambda (item) (octocat-model-item type repo item))
                                              (plist-get page :items)))
                     "cursor" (plist-get page :cursor))))
+
+(defun octocat-model-list-more (kind repo query limit)
+  "Return the MORE function of `octocat-sync-more' for a list of items.
+They are the KIND items of REPO matching QUERY, LIMIT a page, as the
+`list-items' resource of the same arguments has them."
+  (lambda (after done)
+    (octocat-model--list-items
+     kind repo (octocat--then (lambda (page) (octocat-model-list-tree kind repo page)) done)
+     query after limit)))
 
 (octocat-sync-define-resource list-items (kind repo query limit)
   :fetch (lambda (done)
@@ -342,7 +351,7 @@ PAGE is as `octocat--parse-list-items' returns; each item is an entity."
            (let ((data (plist-get (octocat-sync-read
                                    (list 'list-items kind repo query limit))
                                   :data)))
-             (octocat--list-items
+             (octocat-model--list-items
               kind repo
               (octocat--then (lambda (page) (octocat-model-list-tree kind repo page)) done)
               query nil (min 100 (max limit (length (and data (gethash "nodes" data)))))))))
@@ -382,7 +391,7 @@ It is at least `octocat-sync-fresh-for'."
   :type 'integer
   :group 'octocat)
 
-(defun octocat--repo-search-args (query)
+(defun octocat-model--repo-search-args (query)
   "Return the `gh' arguments searching for the repos or users of QUERY.
 Forks are included: GitHub leaves them out by default, so one's own fork
 could not be found even by its full name.  \"owner/name\" searches the
@@ -407,7 +416,7 @@ there."
 
 (octocat-sync-define-resource repo-search (query)
   :max-age octocat-repo-search-cache-ttl
-  :gh (octocat--repo-search-args query)
+  :gh (octocat-model--repo-search-args query)
   :parse (lambda (results)
            (cl-map 'vector (lambda (r)
                              (if-let* ((login (gethash "login" r)))
@@ -1601,7 +1610,7 @@ returned."
   :raw t
   :parse (lambda (raw) (octocat--table "log" raw)))
 
-(defun octocat--fetch-run (repo run-id callback)
+(defun octocat-model--fetch-run (repo run-id callback)
   "Fetch detail for run RUN-ID in REPO asynchronously.
 Calls CALLBACK with a hash-table of run data (including a \\='jobs\\=' key
 whose value is a vector of job hash-tables), or a cons \\=(error . MSG)."
@@ -1616,7 +1625,7 @@ whose value is a vector of job hash-tables), or a cons \\=(error . MSG)."
    (lambda (output) (json-parse-string (string-trim output)))
    callback))
 
-(defun octocat--fetch-run-annotations (repo jobs callback)
+(defun octocat-model--fetch-run-annotations (repo jobs callback)
   "Fetch check-run annotations for every job in the JOBS vector from REPO.
 Fires one async request per job in parallel.  Calls CALLBACK with a list
 of (JOB-ID JOB-NAME ANNOTATIONS-VECTOR) in the order of JOBS, or nil when
@@ -1648,7 +1657,7 @@ Individual job annotation failures are silently treated as empty vectors."
 
 
 (defun octocat-model--run-annotation-entries (results)
-  "Return the RESULTS of `octocat--fetch-run-annotations' as a vector.
+  "Return the RESULTS of `octocat-model--fetch-run-annotations' as a vector.
 Each entry is a hash-table of \"job\", its name, and \"annotations\", a
 vector: a shape the store can hold as JSON."
   (vconcat
@@ -1660,7 +1669,7 @@ vector: a shape the store can hold as JSON."
   :invalidates `((runs ,repo _ _) (workflow ,repo _ _) (run-annotations ,repo ,run-id))
   :poll (lambda (data) (octocat-model--poll-status (octocat--get data "item" "status")))
   :fetch (lambda (done)
-           (octocat--fetch-run
+           (octocat-model--fetch-run
             repo run-id
             (octocat--then (lambda (run)
                              (octocat-model-detail run '("jobs")
@@ -1671,12 +1680,12 @@ vector: a shape the store can hold as JSON."
   ;; The run's jobs are fetched here, not taken from the page: keyed by
   ;; them, the annotations would vanish whenever the jobs changed.
   :fetch (lambda (done)
-           (octocat--fetch-run
+           (octocat-model--fetch-run
             repo run-id
             (lambda (run)
               (if (eq (car-safe run) 'error)
                   (funcall done run)
-                (octocat--fetch-run-annotations
+                (octocat-model--fetch-run-annotations
                  repo (gethash "jobs" run)
                  (lambda (r) (funcall done (octocat-model--run-annotation-entries r)))))))))
 
@@ -1867,24 +1876,24 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
 ;; every repository.  The rows are the list pages', so the fields are
 ;; theirs, with the repository each item is in.
 
-(defun octocat--dashboard-search-query (kind)
+(defun octocat-model--dashboard-search-query (kind)
   "Return the GitHub search string for the dashboard's KIND items.
 KIND is `issues' or `pulls'."
   (format "is:open archived:false involves:@me sort:updated-desc type:%s"
           (if (eq kind 'pulls) "pr" "issue")))
 
-(defun octocat--dashboard-items-query (kind)
+(defun octocat-model--dashboard-items-query (kind)
   "Return the GraphQL search query for the dashboard's KIND items."
   (format (concat "query($q:String!,$limit:Int!){search(query:$q,type:ISSUE_ADVANCED,"
                   "first:$limit){nodes{...on Issue{repository{nameWithOwner}} ...on "
                   "PullRequest{repository{nameWithOwner}} %s}pageInfo{hasNextPage "
                   "endCursor}}}")
-          (alist-get kind octocat--list-item-fields)))
+          (alist-get kind octocat-model--list-item-fields)))
 
 
-(defun octocat--dashboard-items-tree (kind page)
+(defun octocat-model--dashboard-items-tree (kind page)
   "Return PAGE, the dashboard's KIND items, as its resource's tree.
-PAGE is as `octocat--list-page' returns.  Each item becomes a
+PAGE is as `octocat-model--list-page' returns.  Each item becomes a
 table of its \"repo\" and its entity, \"item\", shared with the lists."
   (let ((type (if (eq kind 'pulls) 'pr 'issue)))
     (vconcat
@@ -1900,9 +1909,10 @@ table of its \"repo\" and its entity, \"item\", shared with the lists."
   :parse (lambda (repos) (cl-map 'vector #'octocat-model-repo-rest repos)))
 
 (octocat-sync-define-resource dashboard-items (kind limit)
-  :graphql (octocat--dashboard-items-query kind)
-  :vars `(("q" . ,(octocat--dashboard-search-query kind)) ("limit" . ,limit))
-  :parse (lambda (data) (octocat--dashboard-items-tree kind (octocat--list-page data))))
+  :graphql (octocat-model--dashboard-items-query kind)
+  :vars `(("q" . ,(octocat-model--dashboard-search-query kind)) ("limit" . ,limit))
+  :parse (lambda (data)
+           (octocat-model--dashboard-items-tree kind (octocat-model--list-page data))))
 
 ;; The events of the people you follow and the repositories you watch.
 (octocat-sync-define-resource dashboard-feed (limit)
@@ -2002,13 +2012,13 @@ arrives.  It is at least `octocat-sync-fresh-for'."
             "--json" (alist-get type octocat-model--search-fields nil nil #'equal)
             "--limit" "30" query))
 
-(defconst octocat--search-files-ttl 600
+(defconst octocat-model--search-files-ttl 600
   "Seconds a stored repository file list is reused without a refetch.")
 
 ;; As `tree-files', by ref rather than a tree SHA: REF nil is the default
 ;; branch, which `octocat-model-tree-load-files' would ask GitHub for first.
 (octocat-sync-define-resource search-files (repo ref)
-  :max-age octocat--search-files-ttl
+  :max-age octocat-model--search-files-ttl
   :fetch (lambda (done)
            (if ref
                (octocat-model-tree-load-files repo ref done)

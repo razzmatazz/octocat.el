@@ -815,7 +815,7 @@ either timestamp is unavailable."
   "Return a one-character CI-status indicator for PR hash-table PR.
 Returns \"✓\" (success), \"✗\" (failure), or \"●\" (pending/unknown).
 A list row's PR carries GitHub's rolled-up \"ciState\" instead of the
-checks themselves (see `octocat--flatten-list-item')."
+checks themselves (see `octocat-model--flatten-list-item')."
   (if-let* ((state (octocat--nonempty (gethash "ciState" pr))))
       (octocat--outcomes-ci-status (list state))
     (octocat--checks-ci-status (gethash "statusCheckRollup" pr))))
@@ -853,7 +853,7 @@ Combines a dimmed \"CI:\" prefix with the coloured status icon from
 
 (defun octocat--ci-count-label (pr)
   "Return PR's CI status as GitHub's list has it, e.g. \"✓ 5/5\".
-Without the counts (see `octocat--flatten-list-item') it is
+Without the counts (see `octocat-model--flatten-list-item') it is
 `octocat--ci-label'."
   (if-let* ((total (gethash "ciTotal" pr))
             ((> total 0)))

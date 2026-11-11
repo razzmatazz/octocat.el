@@ -1924,12 +1924,7 @@ dropped, so that only items shown are marked."
              (lambda ()
                (vui-set-state :fetching t)
                (octocat-sync-more
-                spec
-                (lambda (after done)
-                  (octocat--list-items
-                   kind repo
-                   (octocat--then (lambda (page) (octocat-model-list-tree kind repo page)) done)
-                   query after limit))
+                spec (octocat-model-list-more kind repo query limit)
                 (vui-async-callback (r)
                   (vui-set-state :fetching nil)
                   (when r (message "Octocat: %s" (cdr r))))))

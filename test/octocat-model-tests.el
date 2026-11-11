@@ -89,7 +89,7 @@
 (ert-deftest octocat-model-test-parse-list-items ()
   "Connections flatten to what the rows read; the cursor ends with the pages."
   (let* ((json "{\"data\":{\"search\":{\"nodes\":[{\"number\":5,\"labels\":{\"nodes\":[{\"name\":\"bug\",\"color\":\"d73a4a\"}]},\"comments\":{\"totalCount\":3},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":{\"state\":\"FAILURE\",\"contexts\":{\"checkRunCountsByState\":[{\"state\":\"SUCCESS\",\"count\":3},{\"state\":\"FAILURE\",\"count\":1}],\"statusContextCountsByState\":[{\"state\":\"SUCCESS\",\"count\":1}]}}}}]}},{\"number\":6,\"labels\":{\"nodes\":[]},\"comments\":{\"totalCount\":0},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":null}}]}}],\"pageInfo\":{\"hasNextPage\":true,\"endCursor\":\"Y3I\"}}}}")
-         (page  (octocat--parse-list-items json))
+         (page  (octocat-model--parse-list-items json))
          (pr    (car (plist-get page :items)))
          (bare  (cadr (plist-get page :items))))
     (should (equal (plist-get page :cursor) "Y3I"))
@@ -100,14 +100,14 @@
     (should (equal (substring-no-properties (octocat--ci-count-label pr)) "✗ 4/5"))
     (should-not (gethash "ciState" bare))
     (should-not (gethash "commits" bare)))
-  (should-not (plist-get (octocat--parse-list-items
+  (should-not (plist-get (octocat-model--parse-list-items
                           "{\"data\":{\"search\":{\"nodes\":[],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}")
                          :cursor)))
 
 (ert-deftest octocat-model-test-list-item-assignees ()
   "A list row's assignees become a vector of their nodes, as its labels do."
   (let ((item (car (plist-get
-                    (octocat--parse-list-items
+                    (octocat-model--parse-list-items
                      "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
                        \"nodes\":[{\"number\":3,
                                    \"assignees\":{\"nodes\":[{\"login\":\"a\"}]}}]}}}")
@@ -118,7 +118,7 @@
 (ert-deftest octocat-model-test-list-item-requested-reviewers ()
   "A PR row's requested reviewers become the users and teams asked."
   (let ((item (car (plist-get
-                    (octocat--parse-list-items
+                    (octocat-model--parse-list-items
                      "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
                        \"nodes\":[{\"number\":3,\"requestedReviewers\":{\"nodes\":[
                          {\"requestedReviewer\":{\"login\":\"a\"}},
@@ -134,12 +134,27 @@
 (ert-deftest octocat-model-test-list-item-without-commits ()
   "A PR that comes with no commits parses, without a CI state."
   (let ((item (car (plist-get
-                    (octocat--parse-list-items
+                    (octocat-model--parse-list-items
                      "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
                        \"nodes\":[{\"number\":3,\"commits\":{\"nodes\":[]}}]}}}")
                     :items))))
     (should (= (gethash "number" item) 3))
     (should-not (gethash "ciState" item))))
+
+(ert-deftest octocat-model-test-list-more ()
+  "The page after a cursor is asked for by the list's query and page size."
+  (let (asked got)
+    (cl-letf (((symbol-function 'octocat-model--list-items)
+               (lambda (kind repo callback query after limit)
+                 (setq asked (list kind repo query after limit))
+                 (funcall callback (list :items (list (octocat--table "number" 7))
+                                         :cursor "c2")))))
+      (funcall (octocat-model-list-more 'issues "o/r" "is:open" 15)
+               "c1" (lambda (tree) (setq got tree))))
+    (should (equal asked '(issues "o/r" "is:open" "c1" 15)))
+    (should (equal (gethash "cursor" got) "c2"))
+    (should (equal (octocat-sync--entity-key (aref (gethash "nodes" got) 0))
+                   "issue:o/r#7"))))
 
 ;;;; Comments
 
@@ -331,7 +346,7 @@
   (let (calls result)
     (cl-letf (((symbol-function 'octocat--run-gh)
                (lambda (_name _args _parse callback) (push callback calls))))
-      (octocat--fetch-run-annotations
+      (octocat-model--fetch-run-annotations
        "o/r"
        (vector (let ((j (make-hash-table :test #'equal)))
                  (puthash "databaseId" 1 j) (puthash "name" "a" j) j)
@@ -394,18 +409,18 @@ env:
 
 (ert-deftest octocat-model-test-dashboard-items-query ()
   "The dashboard searches the user's open items of a kind, with their repo."
-  (should (equal (octocat--dashboard-search-query 'pulls)
+  (should (equal (octocat-model--dashboard-search-query 'pulls)
                  "is:open archived:false involves:@me sort:updated-desc type:pr"))
-  (should (string-match-p "type:issue\\'" (octocat--dashboard-search-query 'issues)))
-  (let ((q (octocat--dashboard-items-query 'issues)))
+  (should (string-match-p "type:issue\\'" (octocat-model--dashboard-search-query 'issues)))
+  (let ((q (octocat-model--dashboard-items-query 'issues)))
     (should (string-search "...on Issue{repository{nameWithOwner}}" q))
-    (should (string-search (alist-get 'issues octocat--list-item-fields) q))))
+    (should (string-search (alist-get 'issues octocat-model--list-item-fields) q))))
 
 (ert-deftest octocat-model-test-dashboard-items-tree ()
   "Each dashboard item keeps its repo beside its entity."
-  (let* ((page (octocat--parse-list-items
+  (let* ((page (octocat-model--parse-list-items
                 "{\"data\":{\"search\":{\"nodes\":[{\"repository\":{\"nameWithOwner\":\"O/R\"},\"number\":5,\"title\":\"T\",\"state\":\"OPEN\",\"comments\":{\"totalCount\":4}}],\"pageInfo\":{\"hasNextPage\":false}}}}"))
-         (tree (octocat--dashboard-items-tree 'pulls page))
+         (tree (octocat-model--dashboard-items-tree 'pulls page))
          (node (aref tree 0))
          (item (gethash "item" node)))
     (should (equal (gethash "repo" node) "O/R"))
@@ -459,12 +474,12 @@ env:
 
 (ert-deftest octocat-model-test-search-repo-search-args ()
   "Forks are searched; \"owner/name\" searches the repos of owner."
-  (should (equal (octocat--repo-search-args "razzmatazz/open")
+  (should (equal (octocat-model--repo-search-args "razzmatazz/open")
                  '("search" "repos" "--limit" "30" "--json" "fullName"
                    "--include-forks=true" "--owner=razzmatazz" "open")))
-  (should (equal (last (octocat--repo-search-args "razzmatazz/"))
+  (should (equal (last (octocat-model--repo-search-args "razzmatazz/"))
                  '("--owner=razzmatazz")))
-  (should (equal (last (octocat--repo-search-args "openra")) '("openra"))))
+  (should (equal (last (octocat-model--repo-search-args "openra")) '("openra"))))
 
 (provide 'octocat-model-tests)
 ;;; octocat-model-tests.el ends here
