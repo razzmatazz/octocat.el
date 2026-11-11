@@ -212,7 +212,7 @@ The lists bind normal state per buffer, see `octocat-evil--list-setup'."
 
   ;; ── octocat-compare-mode ──────────────────────────────────────────────
   (evil-define-key* 'normal octocat-compare-mode-map
-    (kbd "C-c C-v") #'octocat-toggle-markdown)
+    (kbd "C-c C-v") #'octocat-diff-cycle-view)
 
   ;; ── octocat-pr-diff-mode ──────────────────────────────────────────────
   ;; vui.el-rendered like octocat-repo-mode, so only the global commands

@@ -1647,13 +1647,6 @@ The diff is from their merge base, looked up only when needed."
        (cons (lambda (k) (octocat-diff--merge-base repo base head k))
              head)))
 
-(vui-defcomponent octocat-pr-diff--tree (repo head files)
-  "The Tree view of the FILES of a pull request of REPO, at its HEAD commit.
-See `octocat-diff-tree'."
-  :render
-  (let ((snap (octocat-vui-use-resource (list 'repo-head repo head nil) nil)))
-    (octocat-diff-tree repo head (octocat--get (plist-get snap :data) "tree") files)))
-
 (vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw view at tick)
   "The diff of pull request NUMBER of REPO, under the PR page's header.
 HIDE-COMMENTS leaves the review comments out of the diff, and RAW shows
@@ -1707,7 +1700,7 @@ everything again."
               (vui-vstack
                (octocat-diff-views-heading view (octocat--markdown-width))
                (if head
-                   (vui-component 'octocat-pr-diff--tree
+                   (vui-component 'octocat-diff-head-tree
                      :repo repo :head head :files (plist-get files :data))
                  (vui-text (octocat-tree--skeleton)))))
              ('patch

@@ -92,7 +92,7 @@ Optional extras:
 | `m` / `u` / `U` | Mark / unmark the PR or issue at point, or those in the region / unmark all |
 | `C-c C-o` | Open the thing at point on GitHub |
 | `C-c C-j` | Jump to a PR, issue, commit, workflow or file (`C-u`: another repo or user) |
-| `C-c C-v` | Another view, cycling where there are several: raw markdown or org, blame, a commit's or PR's tree or patch, a run's jobs as a graph, compact lists, review comments in diffs |
+| `C-c C-v` | Another view, cycling where there are several: raw markdown or org, blame, a commit's, comparison's or PR's tree or patch, a run's jobs as a graph, compact lists, review comments in diffs |
 | `C-c C-a` | Comment on a PR or issue |
 | `C-c C-e` | Edit the title, body, comment, labels, assignees or reviewers at point |
 | `C-c C-l` | React to the PR, issue or comment at point, or take a reaction back |

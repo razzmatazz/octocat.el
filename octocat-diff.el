@@ -1363,6 +1363,14 @@ ROOT, opened down to FILES, marked as in the diff.  See
           :depth 0 :path "" :reveal dirs :focus nil :changes changes)
       (vui-text (octocat-tree--skeleton)))))
 
+(vui-defcomponent octocat-diff-head-tree (repo head files)
+  "The Tree view of FILES changed in REPO, at HEAD, a ref or commit.
+For a page whose data lacks HEAD's root tree, which this looks up.
+See `octocat-diff-tree'."
+  :render
+  (let ((snap (octocat-vui-use-resource (list 'repo-head repo head nil) nil)))
+    (octocat-diff-tree repo head (octocat--get (plist-get snap :data) "tree") files)))
+
 
 ;;;; Commit page
 ;;
@@ -1776,10 +1784,12 @@ Two full SHAs would push the counts onto another line."
       (propertize (substring ref 0 7) 'face 'octocat-branch 'help-echo ref)
     (propertize ref 'face 'octocat-branch)))
 
-(defun octocat-compare--top-row (repo base dots head data)
+(defun octocat-compare--top-row (repo base dots head data view width)
   "Return the top row of the comparison of BASE and HEAD of REPO.
 That is `owner/repo BASE...HEAD', as the commit page's `owner/repo@sha',
-then the counts of DATA, the comparison, once it is loaded."
+then the counts of DATA, the comparison, once it is loaded, and the
+tabs of the views, VIEW the one shown, at the right edge of WIDTH, see
+`octocat-diff-views-heading'."
   (vui-hstack :spacing 0
               (octocat-vui-repo-heading repo)
               (vui-text (concat "  "
@@ -1788,26 +1798,35 @@ then the counts of DATA, the comparison, once it is loaded."
                                 (octocat-compare--ref-label head)
                                 (and data
                                      (propertize (concat " · " (octocat-compare--counts data))
-                                                 'face 'octocat-dimmed))))))
+                                                 'face 'octocat-dimmed))))
+              (octocat-diff-views-heading view width)))
 
 
 ;;;;; Page
 
-(vui-defcomponent octocat-compare--page (repo base dots head raw at tick)
+(vui-defcomponent octocat-compare--page (repo base dots head raw view at tick)
   "The comparison of BASE and HEAD of REPO: its commits, then its files.
 DOTS is as in `octocat--compare-refs'.  RAW shows markdown verbatim.
-AT is the lines a link named, see `octocat-diff--file'.  A new TICK
-fetches it again."
+VIEW, of `octocat-diff--views', `tree' shows the repository's files at
+HEAD instead, those changed marked, see `octocat-diff-head-tree';
+`patch' every file's diff, see `octocat-diff-patch-text'.  AT is the
+lines a link named, see `octocat-diff--file'.  A new TICK fetches it
+again."
   :render
   (let* ((width    (octocat--markdown-width))
-         (snap     (octocat-vui-use-resource (list 'compare repo base head) tick)))
+         (snap     (octocat-vui-use-resource (list 'compare repo base head) tick))
+         (data     (plist-get snap :data))
+         (text     (vui-use-memo (data view)
+                     (and data (eq view 'patch)
+                          (octocat-diff-patch-text (or (gethash "files" data) []))))))
     (octocat-vui-page
      (octocat-vui-pin (propertize repo 'face 'octocat-repo)
                       (concat (octocat-compare--ref-label base)
                               (propertize dots 'face 'octocat-dimmed)
-                              (octocat-compare--ref-label head)))
+                              (octocat-compare--ref-label head))
+                      (octocat-vui-segmented-pin (octocat-diff--view-segments view)))
      (vui-vstack
-      (octocat-compare--top-row repo base dots head (plist-get snap :data))
+      (octocat-compare--top-row repo base dots head data view (octocat-vui-window-width))
       (octocat-vui-resource-view
        snap
        :skeleton (lambda (_)
@@ -1817,15 +1836,23 @@ fetches it again."
                               (octocat-vui-window-width))))
        :render
        (lambda (data)
-         (apply #'vui-vstack
-                (append
-                 (mapcar (lambda (line) (vui-text line :face 'octocat-dimmed))
-                         (octocat-compare--summary data dots))
-                 (list (vui-newline))
-                 (octocat-compare--commits repo (or (gethash "commits" data) []) width)
-                 (list (octocat-diff-files-section
-                        repo (or (gethash "files" data) []) nil nil raw width t at nil
-                        (cons (octocat--get data "merge_base_commit" "sha") head)))))))))))
+         (let ((files (or (gethash "files" data) [])))
+           (cond
+            (text (vui-text text))
+            ((eq view 'tree)
+             (vui-fragment
+              (vui-newline)
+              (vui-component 'octocat-diff-head-tree :repo repo :head head :files files)))
+            (t
+             (apply #'vui-vstack
+                    (append
+                     (mapcar (lambda (line) (vui-text line :face 'octocat-dimmed))
+                             (octocat-compare--summary data dots))
+                     (list (vui-newline))
+                     (octocat-compare--commits repo (or (gethash "commits" data) []) width)
+                     (list (octocat-diff-files-section
+                            repo files nil nil raw width t at nil
+                            (cons (octocat--get data "merge_base_commit" "sha") head))))))))))))))
 
 
 ;;;;; Major mode
@@ -1843,7 +1870,7 @@ fetches it again."
 (defvar octocat-compare-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-page-mode-map)
-    (define-key map (kbd "C-c C-v") #'octocat-toggle-markdown)
+    (define-key map (kbd "C-c C-v") #'octocat-diff-cycle-view)
     map)
   "Keymap for `octocat-compare-mode'.")
 
@@ -1855,6 +1882,7 @@ fetches it again."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-compare-refresh)
   (setq-local octocat--url-function #'octocat-compare--page-url)
+  (setq-local octocat-diff--view 'diff)
   (setq-local octocat--repo-function (lambda () octocat--compare-repo)))
 
 
@@ -1871,6 +1899,7 @@ fetches it again."
                               (list :repo octocat--compare-repo
                                     :base base :dots dots :head head
                                     :raw octocat--markdown-raw
+                                    :view octocat-diff--view
                                     :at octocat-diff--at))))
 
 (defun octocat-compare-open (repo base dots head &optional at)

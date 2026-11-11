@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 * A pulsed change scrolls into view whole when it is at most half the window
 * A pinned header keeps its switch of views at the right edge, as on the page
+* A comparison has Diff, Tree and Patch views too; `C-c C-v` switches them
 * A diff's comments show and hide from a [Hide comments (N)] button, not a pill
 * A page's switch of views, as Diff | Tree | Patch, sits at the right edge of its line
 * `RET` on a changed file in a Tree view shows its diff, not the file

@@ -672,7 +672,19 @@ Only that file; a hash naming none changes nothing."
                          :raw nil :tick 0)
                        "*octocat-compare-test*")
             (with-current-buffer "*octocat-compare-test*"
-              (should (string-search "Files (1)" (buffer-string)))))
+              (should (string-search "Files (1)" (buffer-string)))
+              (should (string-search " Diff  Tree  Patch " (buffer-string)))))
+        (kill-buffer "*octocat-compare-test*"))
+      ;; The Patch view shows every file's diff as git writes it.
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'octocat-compare--page
+                         :repo "o/r" :base "main" :dots "..." :head "topic"
+                         :raw nil :view 'patch :tick 0)
+                       "*octocat-compare-test*")
+            (with-current-buffer "*octocat-compare-test*"
+              (should (string-search "diff --git a/a.el b/a.el" (buffer-string)))
+              (should-not (string-search "Files (1)" (buffer-string)))))
         (kill-buffer "*octocat-compare-test*")))))
 
 (provide 'octocat-diff-tests)

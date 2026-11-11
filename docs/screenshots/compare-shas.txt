@@ -1,4 +1,4 @@
-acme/rocket  1a95462...8ee9a2c · 7 commits · 3 files changed
+acme/rocket  1a95462...8ee9a2c · 7 commits · 3 files changed                      Diff  Tree  Patch
 
 Commits (7)
 ○ Cache parsed templates by path                      @srivera  2 days ago  dc0c893

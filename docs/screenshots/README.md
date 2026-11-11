@@ -305,6 +305,15 @@ files.
 [As text](compare.txt)
 <!-- /screenshot -->
 
+`C-c C-v` cycles a comparison's views as a commit's: its Tree, the
+files at HEAD opened down to those changed, then its Patch.
+
+<!-- screenshot: (compare "acme/rocket" "main" "..." "template-cache") :name "compare-tree" :press ((:key "C-c C-v")) -->
+![compare-tree](compare-tree.png)
+
+[As text](compare-tree.txt)
+<!-- /screenshot -->
+
 Two commits compared, as from a commit page's link: a full SHA shows as
 its short form, whole on hover.
 

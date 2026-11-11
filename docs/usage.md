@@ -381,6 +381,10 @@ Files (5)  [Expand all]
 ```
 
 `RET` on a commit opens it, `C-c C-o` opens the comparison in a browser.
+As on the commit page, `C-c C-v` cycles three views, their pill at the
+right of the top line: the Diff above; the Tree, the repository's files
+at HEAD opened down to those changed, `RET` on one showing its diff;
+and the Patch, every file's diff as git writes it, to read or copy out.
 GitHub's API only compares from the merge base (`...`), so a two-dot
 link (`BASE..HEAD`) is shown as its three-dot comparison.  The two are
 the same when BASE is an ancestor of HEAD, as with two commits of one
@@ -549,10 +553,11 @@ back.  Pages showing markdown switch between rendered and raw text, so
 the markup can be read or copied as written.  The file page has more
 than two views and cycles through them: rendered, raw and blame for
 Markdown and org, source and blame for other files (see
-[Files](#files-octocat-file-mode)).  The commit page and a PR's Files
-changed page cycle through their files' Diff, Tree and Patch (see
+[Files](#files-octocat-file-mode)).  The commit page, a comparison and
+a PR's Files changed page cycle through their files' Diff, Tree and Patch (see
 [Commit detail view](#commit-detail-view-octocat-commit-mode)); on a
-PR they are of all its commits at once, from base to head.  A run's
+comparison or a PR they are of all its commits at once, from base to
+head.  A run's
 page switches its jobs between a table and a graph.  On those two
 pages, the [Hide comments (N)] button in the Files heading shows
 or hides the review comments in the diff, which opening the page shows
