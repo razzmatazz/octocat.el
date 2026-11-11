@@ -164,10 +164,10 @@ Emacs.  Dependencies come from the `Package-Requires` header of
 
 | Command | Does |
 |---------|------|
-| `make ci` | Compile, lint and test on Emacs 31.1, then run melpazoid |
+| `make ci` | Compile, lint and test on Emacs 31.1 |
 | `make ci EMACS=29.1` | The same on another release |
 | `make ci-all` | 29.1, 30.2 and 31.1 at once, as CI does; logs in `.ci/VERSION.log`, and each check's in `.ci/VERSION-CHECK.log` |
-| `make melpazoid` | MELPA's review checks; reports in `.ci/melpazoid-*.txt` |
+| `make melpazoid` | MELPA's review checks, not part of `ci` as they take minutes; reports in `.ci/melpazoid-*.txt` |
 | `make screenshots` | Redraw [docs/screenshots](docs/screenshots/README.md) (see [Updating](docs/screenshots/README.md#updating)) |
 
 Run `make ci-all` before sending a change: each release catches
@@ -188,9 +188,9 @@ against your own Emacs, quicker while working on a test; `eldev test
 :failed` reruns the failures.  Run `test/octocat-evil-repo-tests.el` on
 its own, since it loads octocat itself.
 
-GitHub Actions compiles, lints and tests on all three releases, and runs
-melpazoid once, on every push and pull request
-([test.yml](.github/workflows/test.yml)).
+GitHub Actions compiles, lints and tests on all three releases, on
+every push and pull request ([test.yml](.github/workflows/test.yml)).
+Run `make melpazoid` yourself before a release.
 
 ## Versioning and releases
 

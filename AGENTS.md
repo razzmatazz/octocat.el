@@ -10,7 +10,7 @@ See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as f
 ## Rules
 
 - **Never commit or modify git state.** The developer handles all commits.
-- **Always run `make ci-all`** (compile + lint + test, on every Emacs release CI runs, at once, plus melpazoid once) after making changes. Fix all errors and warnings before finishing; `make ci` runs one release, for a quicker check while working.
+- **Always run `make ci-all`** (compile + lint + test, on every Emacs release CI runs, at once) after making changes. Fix all errors and warnings before finishing; `make ci` runs one release, for a quicker check while working.
   Read `make ci-all`'s output unfiltered: on a failure it already ends
   with the failing lines, and a `grep` for "error" or "warn" drops
   checkdoc's, which read `FILE:LINE: message`.
@@ -180,7 +180,10 @@ leaving dangling advice and repeated `jit-lock` errors. The `with-temp-buffer` +
 ## melpazoid
 
 `make melpazoid` runs MELPA's review checks, and any finding fails it
-(see "Building and testing" in CONTRIBUTING.md).  What they rule out:
+(see "Building and testing" in CONTRIBUTING.md).  It takes minutes, so
+neither `make ci`, `make ci-all` nor GitHub Actions runs it: don't run
+it after every change, only when asked or before a release.  What it
+rules out:
 
 - No top-level `define-key`, `setq` or `add-hook`.  Bind keys inside the
   map's `defvar` (`(let ((map (make-sparse-keymap))) (define-key map ...)

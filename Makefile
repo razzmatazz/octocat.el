@@ -34,12 +34,12 @@ RUN = $(DOCKER) run $(ISOLATED) --network=none \
 .PHONY: ci ci-all image deps clean compile lint test melpazoid melpazoid-prepare \
   melpazoid-image melpazoid-check screenshots update-architecture-md format
 
-# What ci runs at once.  ci-all runs melpazoid, which is the same on every
-# release, with 31.1's only.
-CI_CHECKS ?= compile lint test melpazoid
+# What ci runs at once.  Not melpazoid, which takes minutes: run `make
+# melpazoid' on its own, now and then.
+CI_CHECKS ?= compile lint test
 
-# Build the image and install the dependencies, then run compile, lint,
-# test and melpazoid in parallel, as they are independent.  Each can also
+# Build the image and install the dependencies, then run compile, lint
+# and test in parallel, as they are independent.  Each can also
 # run on its own once ci has run.  Each check's output goes to
 # .ci/EMACS-CHECK.log, as run at once they would interleave; the end is a
 # line per check, a failed one's findings under it: its log but for the
@@ -69,8 +69,7 @@ ci: clean
 ci-all:
 	@mkdir -p .ci
 	@for v in $(EMACS_ALL); do \
-	  checks="compile lint test"; [ $$v = 31.1 ] && checks="$$checks melpazoid"; \
-	  ( $(MAKE) ci EMACS=$$v CI_CHECKS="$$checks" > .ci/$$v.log 2>&1; \
+	  ( $(MAKE) ci EMACS=$$v > .ci/$$v.log 2>&1; \
 	    echo $$? > .ci/$$v.status ) & \
 	done; \
 	wait; \
