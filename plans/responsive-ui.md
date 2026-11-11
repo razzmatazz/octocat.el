@@ -28,9 +28,8 @@ once `gh repo view` answers (`octocat-pr.el`), on every merge.
   delete-branch off.  As the options land, it updates quietly: a method
   not allowed is unpicked (or picked, if the only one), delete-branch
   follows the repo's setting.
-- The dialog is an edit buffer, not a page: it adds a buffer-local
-  function to `octocat-sync-change-functions` that calls
-  `octocat-pr--merge-update`.  Document this in the conventions.
+- The dialog is an edit buffer, not a page: `octocat-sync-get` calls it
+  back when the options land, or at once when fresh.
 - A method not allowed, submitted before they land or turned off since,
   is refused by `gh pr merge`: its error shows as any mutation's, and
   the message typed is kept.

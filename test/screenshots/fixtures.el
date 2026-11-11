@@ -1230,6 +1230,9 @@ jobs:
       ("counts" ("pullRequests(states:OPEN)")
        (:data (:repository (:open (:totalCount 6) :closed (:totalCount 14) :merged (:totalCount 108)))))
       ("pulls" ("repo:acme/rocket") ,(octocat-screenshots--search octocat-screenshots--prs))
+      ("merge-options" ("acme/rocket")
+       (:deleteBranchOnMerge t :mergeCommitAllowed t :squashMergeAllowed t
+        :rebaseMergeAllowed :false))
       ("pr" ("128") ,octocat-screenshots--pr-128)
       ("pr" ("127") ,octocat-screenshots--pr-127)
       ("timeline-events" ("issues/127/") [[]])

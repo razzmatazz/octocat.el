@@ -721,6 +721,19 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
     (rebase "--rebase" "rebaseMergeAllowed"))
   "Merge methods: the method, `gh pr merge' flag, and the repo field allowing it.")
 
+;; Repo settings, which rarely change.
+(octocat-sync-define-resource merge-options (repo)
+  :max-age 3600
+  :gh (list "repo" "view" repo "--json"
+            (string-join (cons "deleteBranchOnMerge"
+                               (mapcar (lambda (m) (nth 2 m)) octocat-model-pr-merge-methods))
+                         ",")))
+
+(defun octocat-model-pr-merge-allowed (options)
+  "Return the merge methods OPTIONS, the data of `merge-options', allow."
+  (delq nil (mapcar (lambda (m) (and (eq (gethash (nth 2 m) options) t) (car m)))
+                    octocat-model-pr-merge-methods)))
+
 (defun octocat-model--pr-merge-args (repo number method text delete)
   "Return the `gh' arguments merging PR NUMBER of REPO by METHOD.
 METHOD is one of `octocat-model-pr-merge-methods'.  TEXT is the commit

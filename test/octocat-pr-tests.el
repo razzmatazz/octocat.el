@@ -152,11 +152,64 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
 
 (ert-deftest octocat-pr-test-merge-allowed ()
   "Only the methods the repo allows are offered, in GitHub's order."
-  (should (equal (octocat-pr--merge-allowed
+  (should (equal (octocat-model-pr-merge-allowed
                   (json-parse-string "{\"mergeCommitAllowed\":false,
                                        \"squashMergeAllowed\":true,
                                        \"rebaseMergeAllowed\":true}"))
                  '(squash rebase))))
+
+(ert-deftest octocat-pr-test-merge-with-options ()
+  "As the repo's options land, a method it forbids is unpicked."
+  (let ((all '(merge squash rebase))
+        (defaults '((merge . "m") (squash . "s") (rebase . ""))))
+    ;; Allowed: kept.
+    (should (eq (plist-get (octocat-pr--merge-with-options
+                            (octocat-pr--merge-data 'squash all defaults nil)
+                            (json-parse-string
+                             "{\"squashMergeAllowed\":true,\"rebaseMergeAllowed\":true}"))
+                           :method)
+                'squash))
+    ;; Forbidden, with several left: none picked.
+    (let ((data (octocat-pr--merge-with-options
+                 (octocat-pr--merge-data 'merge all defaults nil)
+                 (json-parse-string
+                  "{\"squashMergeAllowed\":true,\"rebaseMergeAllowed\":true}"))))
+      (should-not (plist-get data :method))
+      (should (equal (plist-get data :methods) '(squash rebase)))
+      (should (equal (plist-get data :defaults) defaults)))
+    ;; The only one left: picked.
+    (should (eq (plist-get (octocat-pr--merge-with-options
+                            (octocat-pr--merge-data nil all defaults nil)
+                            (json-parse-string "{\"squashMergeAllowed\":true}"))
+                           :method)
+                'squash))))
+
+(ert-deftest octocat-pr-test-merge-with-options-delete ()
+  "Deleting the branch follows the repo, unless the user chose."
+  (let ((options (json-parse-string
+                  "{\"mergeCommitAllowed\":true,\"deleteBranchOnMerge\":true}")))
+    (should (plist-get (octocat-pr--merge-with-options
+                        (octocat-pr--merge-data 'merge '(merge) nil nil)
+                        options)
+                       :delete))
+    (should-not (plist-get (octocat-pr--merge-with-options
+                            (octocat-pr--merge-data 'merge '(merge) nil nil t)
+                            options)
+                           :delete))))
+
+(ert-deftest octocat-pr-test-merge-switch ()
+  "Switching method replaces the default message, not one typed."
+  (let ((defaults '((merge . "Merge it") (squash . "Squash it"))))
+    (with-temp-buffer
+      (setq-local octocat-edit-title "Merge PR #1")
+      (setq-local octocat-edit-user-data (octocat-pr--merge-data nil '(merge squash) defaults nil))
+      (octocat-pr--merge-switch (octocat-pr--merge-data 'squash '(squash) defaults nil))
+      (should (equal (buffer-string) "Squash it"))
+      (erase-buffer)
+      (insert "Mine")
+      (octocat-pr--merge-switch (octocat-pr--merge-data 'merge '(merge) defaults nil))
+      (should (equal (buffer-string) "Mine"))
+      (should (eq (plist-get octocat-edit-user-data :method) 'merge)))))
 
 (ert-deftest octocat-pr-test-merge-initial-method ()
   "The last method is kept while allowed; a lone method is always picked."

@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* The merge dialog opens at once, from the repo's merge options stored last time
 * The run list's branch and actor filters open at once, from the names stored last time
 * A file too large to diff on the page is fetched once, then diffed again from the store
 * Commits loaded with "load more" are kept, and still there after a refresh or reopening
