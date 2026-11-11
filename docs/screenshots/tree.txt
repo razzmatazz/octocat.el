@@ -1,17 +1,31 @@
-acme/rocket  [main ▾]:/src
+acme/rocket  [main ▾]:/docs/assets
 
 ○ Render footnotes in Markdown pages (#131)                     1a95462 · 2 hours ago  [342 commits]
 ▸ .github/                       Release 0.9.0                                            1 week ago
-▸ docs/                          Document the [build] section of rocket.toml              4 days ago
+▾ docs/                          Document the [build] section of rocket.toml              4 days ago
+    ▾ assets/                    Render footnotes in Markdown pages (#131)               2 hours ago
+          footnote-popup.png     Render footnotes in Markdown pages (#131)               2 hours ago
+          icon-01.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-02.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-03.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-04.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-05.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-06.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-07.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-08.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-09.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-10.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-11.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-12.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-13.svg            Document the [build] section of rocket.toml              4 days ago
+          icon-14.svg            Document the [build] section of rocket.toml              4 days ago
+          [Show 2 more entries]
+      configuration.md           Bump toml from 0.8.12 to 0.8.19                           1 day ago
+      guide.md                   Release 0.9.0                                            1 week ago
+      html.md                    Serve the site over HTTP/2 in `rocket serve`             6 days ago
+      themes.org                 Watch mode: rebuild only the pages that changed          2 days ago
 ▸ examples/                      Fix broken links to pages with spaces in their names     3 days ago
-▾ src/                           Cache parsed templates between builds (#128)            6 hours ago
-  ▸ theme/                       Render footnotes in Markdown pages (#131)               2 hours ago
-    build.rs                     Cache parsed templates between builds (#128)            6 hours ago
-    cache.rs                     Cache parsed templates between builds (#128)            6 hours ago
-    main.rs                      Serve the site over HTTP/2 in `rocket serve`             6 days ago
-    markdown.rs                  Fix broken links to pages with spaces in their names     3 days ago
-    serve.rs                     Watch mode: rebuild only the pages that changed          2 days ago
-    template.rs                  Cache parsed templates between builds (#128)            6 hours ago
+▸ src/                           Cache parsed templates between builds (#128)            6 hours ago
   .gitignore                     Add a --drafts flag to `rocket build`                    1 week ago
   CONTRIBUTING.md                Document the [build] section of rocket.toml              4 days ago
   Cargo.lock                     Bump toml from 0.8.12 to 0.8.19                           1 day ago

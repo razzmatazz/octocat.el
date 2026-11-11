@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A tree indents each level of directories 4 spaces, not 2
+* A big directory in the tree browser lists its first 15 entries, with a button for the rest
+* A big directory in a Tree view of changes lists only those, with a button for the rest
 * The last commit atop the repo, tree and file pages starts with ○, as in a list
 * Local commits not on GitHub start with ○, or ⊕ for a merge
 * A pulsed change scrolls into view whole when it is at most half the window

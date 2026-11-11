@@ -472,6 +472,31 @@
                    '("c.el")))
     (should-not (octocat-tree--removed nil "" nil))))
 
+(ert-deftest octocat-tree-test-listed-entries ()
+  "A big directory lists its first entries, or in a Tree view of changes, those."
+  (let ((changes (make-hash-table :test #'equal))
+        (entries (mapcar (lambda (name) (let ((e (make-hash-table :test #'equal)))
+                                          (puthash "path" name e)
+                                          e))
+                         '("a.el" "b.el" "lib" "c.el" "d.el")))
+        (names   (lambda (es) (mapcar (lambda (e) (gethash "path" e)) es))))
+    (puthash "src/b.el" '(:mark "M ") changes)
+    (puthash "src/lib/x.el" '(:mark "A ") changes)
+    (let ((octocat-tree-dir-entries 2))
+      (should (equal (funcall names (octocat-tree--listed-entries
+                                     entries "src" '("src" "src/lib") nil changes))
+                     '("b.el" "lib")))
+      (should (equal (funcall names (octocat-tree--listed-entries entries "src" nil nil nil))
+                     '("a.el" "b.el")))
+      ;; Opened down to an entry past them, all show.
+      (should (equal (length (octocat-tree--listed-entries entries "src" "src/lib/x.el" nil nil))
+                     5))
+      (should (equal (length (octocat-tree--listed-entries entries "src" nil "src/d.el" nil))
+                     5)))
+    (let ((octocat-tree-dir-entries nil))
+      (should (equal (length (octocat-tree--listed-entries entries "src" nil nil changes)) 5))
+      (should (equal (length (octocat-tree--listed-entries entries "src" nil nil nil)) 5)))))
+
 (ert-deftest octocat-tree-test-proxied-urls ()
   "GitHub's HTML maps each image of another site to its proxy's URL."
   (skip-unless (libxml-available-p))
@@ -1189,7 +1214,7 @@ It does not fold, however long."
                                    (vector (octocat-tree-tests--entry "x.el" "blob" "b2")))
         (octocat-tree-tests--mount-full-tree "src" "src")
         (accept-process-output nil 0.01)
-        (should (string-match-p "▸ doc/\n▾ src/\n    x\\.el\n  a\\.el" (buffer-string)))
+        (should (string-match-p "▸ doc/\n▾ src/\n      x\\.el\n  a\\.el" (buffer-string)))
         (should (equal (octocat-tree--path-at-point) "src"))
         (octocat-tree-visit)
         (vui-flush-sync)
@@ -1201,7 +1226,7 @@ It does not fold, however long."
                     (lambda (&rest _) (octocat-tree-tests--mount-full-tree "src" "src")))
         (octocat-vui-refresh)
         (vui-flush-sync)
-        (should (string-match-p "▾ src/\n    x\\.el" (buffer-string)))))))
+        (should (string-match-p "▾ src/\n      x\\.el" (buffer-string)))))))
 
 (ert-deftest octocat-tree-test-up ()
   "Up moves point to the directory holding the entry, not past the root's."

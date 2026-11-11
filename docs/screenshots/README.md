@@ -29,9 +29,11 @@ and its README.
 [As text](repo.txt)
 <!-- /screenshot -->
 
-The tree browser, opened at `src/`:
+The tree browser, opened at `docs/assets/`.  A directory of more than
+`octocat-tree-dir-entries` lists its first ones, and a button lists the
+rest:
 
-<!-- screenshot: (tree "acme/rocket" nil "src") -->
+<!-- screenshot: (tree "acme/rocket" nil "docs/assets") -->
 ![tree](tree.png)
 
 [As text](tree.txt)
@@ -278,7 +280,9 @@ whose diff is too large for GitHub to send, show no diff:
 
 The same commit as a tree, `C-c C-v` or Tree on its top line: the
 repository's files at the commit, opened down to those it changed,
-which are marked as in the diff, the rest dimmed:
+which are marked as in the diff, the rest dimmed.  A directory of more
+than `octocat-tree-dir-entries` lists only its changes, and a button
+lists the rest:
 
 <!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-tree" :press ((:key "C-c C-v")) -->
 ![commit-tree](commit-tree.png)

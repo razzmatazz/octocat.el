@@ -362,9 +362,14 @@ Themes are plain files; there is no build step.
   "The entries of docs/.")
 
 (defconst octocat-screenshots--docs-assets
-  `[,(octocat-screenshots--tree-entry "footnote-popup.png" "blob" 4210)
-    ,(octocat-screenshots--tree-entry "logo.svg" "blob" 1630)
-    ,(octocat-screenshots--tree-entry "search-index.json" "blob" 912044)]
+  (vconcat
+   `[,(octocat-screenshots--tree-entry "footnote-popup.png" "blob" 4210)
+     ,(octocat-screenshots--tree-entry "logo.svg" "blob" 1630)
+     ,(octocat-screenshots--tree-entry "search-index.json" "blob" 912044)]
+   ;; Enough that the tree folds them.
+   (mapcar (lambda (n)
+             (octocat-screenshots--tree-entry (format "icon-%02d.svg" n) "blob" 512))
+           (number-sequence 1 14)))
   "The entries of docs/assets/.")
 
 (defun octocat-screenshots--last-commits (&rest commits)
@@ -1260,6 +1265,10 @@ jobs:
        (:content ,(octocat-screenshots--base64 octocat-screenshots--org)))
       ("file-blob" ("expr=main:docs/themes.org")
        ,(octocat-screenshots--file-blob "docs/themes.org" octocat-screenshots--org))
+      ("tree-path" ("e2=HEAD:docs/assets")
+       (:data (:repository (:t0 (:oid ,(octocat-screenshots--sha "root"))
+                            :t1 (:oid ,(octocat-screenshots--sha "docs"))
+                            :t2 (:oid ,(octocat-screenshots--sha "assets"))))))
       ("tree-path" ("e1=HEAD:src")
        (:data (:repository (:t0 (:oid ,(octocat-screenshots--sha "root"))
                             :t1 (:oid ,(octocat-screenshots--sha "src"))))))
@@ -1276,6 +1285,9 @@ jobs:
        (:sha ,(octocat-screenshots--sha "assets") :tree ,octocat-screenshots--docs-assets
         :truncated :false))
       ("tree-commits" ("p0=.github") ,(octocat-screenshots--last-commits 7 5 4 1 9 5 2 2 8 0))
+      ("tree-commits" ("p0=docs/assets/")
+       ,(apply #'octocat-screenshots--last-commits 0 9 0 (make-list 14 5)))
+      ("tree-commits" ("p1=docs/configuration.md") ,(octocat-screenshots--last-commits 0 2 7 6 3))
       ("tree-commits" ("p0=src/theme") ,(octocat-screenshots--last-commits 0 1 1 6 4 3 1))
       ("blame" ("path=docs/guide.md")
        ,(octocat-screenshots--blame '(1 5 5) '(6 6 2) '(7 9 7) '(10 18 9)))
