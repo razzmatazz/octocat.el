@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A file too large to diff on the page is fetched once, then diffed again from the store
 * Commits loaded with "load more" are kept, and still there after a refresh or reopening
 * A pinned title keeps to the page's width; an issue's or PR's shows #N and its labels
 * vui pins the title in the header line now: update vui to its 2026-11-10 snapshot or later

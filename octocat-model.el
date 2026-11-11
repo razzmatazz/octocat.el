@@ -1484,6 +1484,22 @@ Calls CALLBACK once with a hash-table of path to commit, see
            (octocat-model--tree-fetch-all-files
             repo sha (octocat--then #'octocat-model--file-table done))))
 
+(defun octocat-model--file-args (repo path ref)
+  "Return the `gh' arguments printing file PATH of REPO at REF."
+  (list "api" "-X" "GET"
+        (format "repos/%s/contents/%s" repo
+                (mapconcat #'url-hexify-string (split-string path "/") "/"))
+        "-f" (concat "ref=" ref)
+        "-H" "Accept: application/vnd.github.raw"))
+
+;; The text of file PATH at REF, as "text".
+(octocat-sync-define-resource file-text (repo ref path)
+  ;; A file at a commit never changes; at a branch it may.
+  :max-age (and (octocat-model-compare-sha-p ref) octocat-model--fixed-max-age)
+  :gh (octocat-model--file-args repo path ref)
+  :raw t
+  :parse (lambda (raw) (octocat--table "text" raw)))
+
 (defun octocat-model-tree-join (dir name)
   "Return the path of NAME inside directory path DIR (\"\" for the root)."
   (if (string-empty-p dir) name (concat dir "/" name)))
@@ -1778,25 +1794,17 @@ a vector of the ids of the jobs it waits for."
                                  job)
                         job)))))
 
-(defun octocat-model--workflow-file-args (repo path ref)
-  "Return the `gh' arguments printing the workflow file PATH of REPO at REF."
-  (list "api" "-X" "GET"
-        (format "repos/%s/contents/%s" repo
-                (mapconcat #'url-hexify-string (split-string path "/") "/"))
-        "-f" (concat "ref=" ref)
-        "-H" "Accept: application/vnd.github.raw"))
-
 (octocat-sync-define-resource workflow-jobs (repo path sha)
   ;; A file at a commit never changes.
   :max-age octocat-model--fixed-max-age
-  :gh (octocat-model--workflow-file-args repo path sha)
+  :gh (octocat-model--file-args repo path sha)
   :raw t
   :parse #'octocat-model--workflow-yaml-jobs)
 
 (octocat-sync-define-resource workflow-dispatch (repo path ref)
   :max-age 300
   :poll 300
-  :gh (octocat-model--workflow-file-args repo path ref)
+  :gh (octocat-model--file-args repo path ref)
   :raw t
   :parse #'octocat-model--workflow-dispatch-spec)
 

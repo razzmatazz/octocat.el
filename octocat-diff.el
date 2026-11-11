@@ -887,12 +887,8 @@ has no lines changed.  A rename alone has no diff to explain."
 Without REF, the file is not on that side, and its content is empty."
   (if (null ref)
       (funcall callback "")
-    (octocat--run-gh
-     "file-at"
-     (list "api" "-H" "Accept: application/vnd.github.raw"
-           (format "repos/%s/contents/%s?ref=%s" repo
-                   (octocat-diff--url-path path) (url-hexify-string ref)))
-     #'identity callback)))
+    (octocat-sync-get (list 'file-text repo ref path)
+                      (octocat--then (lambda (data) (gethash "text" data)) callback))))
 
 (defun octocat-diff--show-large (old-path path old new)
   "Show the diff of OLD, the text of OLD-PATH, and NEW, that of PATH."

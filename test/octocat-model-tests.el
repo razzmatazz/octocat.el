@@ -281,6 +281,12 @@
   (should-error (octocat-model--repo-parse-history
                  "{\"data\":{\"repository\":{\"object\":null}}}")))
 
+(ert-deftest octocat-model-test-file-args ()
+  "A file is asked for raw at its ref, each part of its path encoded."
+  (should (equal (octocat-model--file-args "o/r" "docs/a b.md" "main")
+                 '("api" "-X" "GET" "repos/o/r/contents/docs/a%20b.md" "-f" "ref=main"
+                   "-H" "Accept: application/vnd.github.raw"))))
+
 (ert-deftest octocat-model-test-commits-tree ()
   "A full page has the last commit's cursor; a short one, at the end, none."
   (let ((commits (octocat-model--repo-parse-history
