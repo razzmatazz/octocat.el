@@ -462,8 +462,10 @@ via `auto-mode-alist'."
   "Return what follows LABEL, a tree line's text, to show COMMIT, or \"\".
 COMMIT is the last that touched the entry, as GitHub's tree shows it:
 its subject from a third of WIDTH on, cut to fit, and its age at the
-right.  While it loads, COMMIT is `loading' and grey bars stand in."
+right.  While it loads, COMMIT is `loading' and grey bars stand in.
+A string COMMIT is itself what follows."
   (cond
+   ((stringp commit) commit)
    ((eq commit 'loading)
     (let* ((col  (max (+ (string-width label) 2) (min 40 (/ width 3))))
            ;; Of the name's length, so the bars are not all alike.
@@ -555,8 +557,32 @@ keymaps."
     (if dir (directory-file-name dir) "")))
 
 (defun octocat-tree--reveals-p (path reveal)
-  "Return non-nil when PATH is REVEAL or a directory on the way to it."
-  (and reveal (string-prefix-p (concat path "/") (concat reveal "/"))))
+  "Return non-nil when PATH is REVEAL or a directory on the way to it.
+REVEAL is a path, or a list of them, for any of them."
+  (seq-some (lambda (r) (string-prefix-p (concat path "/") (concat r "/")))
+            (ensure-list reveal)))
+
+(defun octocat-tree--removed (changes path names)
+  "Return entries for the files a commit removed from directory PATH.
+They are those of CHANGES, as for `octocat-tree--subtree', but NAMES,
+the entries PATH still has.  A removed file is an entry of its own,
+and so is a removed directory, holding them: neither has a \"sha\", as
+they are gone."
+  (let ((prefix (if (string-empty-p path) "" (concat path "/")))
+        (seen   names)
+        entries)
+    (when changes
+      (maphash
+       (lambda (file change)
+         (when (and (plist-get change :removed) (string-prefix-p prefix file))
+           (let* ((parts (split-string (substring file (length prefix)) "/"))
+                  (name  (car parts)))
+             (unless (member name seen)
+               (push name seen)
+               (push (octocat--table "path" name "type" (if (cdr parts) "tree" "blob"))
+                     entries)))))
+       changes))
+    entries))
 
 (defun octocat-tree--use-focus (focus paths)
   "Move point to FOCUS once it is among PATHS, the entries listed.
@@ -654,18 +680,28 @@ ON-BROWSE, for the whole tree."
           :on-click on-browse))))))
 
 (vui-defcomponent octocat-tree--subtree
-    (repo branch sha commit depth path reveal focus)
+    (repo branch sha commit depth path reveal focus changes)
   "The entries of directory PATH, tree SHA, at nesting DEPTH of the tree.
 They are of REPO at BRANCH, each with the last commit that touched it,
-from COMMIT back.  Directories on the way to REVEAL start
-expanded.  RET on a directory only toggles it, so the rest of the page
-stays put; on a file it opens it.  Point moves to FOCUS, an entry's
-path, once it is listed.  Unlike the root's listing it does not fold:
-it is for browsing."
+from COMMIT back.  Directories on the way to REVEAL, a path or a list
+of them, start expanded.  RET on a directory only toggles it, so the
+rest of the page stays put; on a file it opens it.  Point moves to
+FOCUS, an entry's path, once it is listed.  Unlike the root's listing
+it does not fold: it is for browsing.
+
+CHANGES, a hash-table of the paths a commit changed, marks them in
+place of the last commit, and dims the rest.  Each maps to a plist:
+:mark, the two columns before its name, :face, its name's, :after, the
+text after it, :ref, where RET opens it, BRANCH if nil, and :removed,
+non-nil for a file the commit removed, listed where it was."
   :render
   (let* ((indent  (make-string (* depth 2) ?\s))
          (result  (octocat-vui-use-latest-resource (list 'tree-dir repo sha) nil path))
-         (entries (octocat-tree--sorted-entries (plist-get result :data)))
+         (data    (plist-get result :data))
+         (entries (octocat-tree--sorted-entries
+                   (append data (octocat-tree--removed
+                                 changes path
+                                 (mapcar (lambda (e) (gethash "path" e)) data)))))
          (last    (octocat-tree--use-last-commits repo (and entries commit) path sha)))
     (octocat-tree--use-focus
      focus (mapcar (lambda (e) (file-name-concat path (gethash "path" e))) entries))
@@ -675,20 +711,29 @@ it is for browsing."
                                       'face 'error)))
       (_ (if (null entries)
              (vui-text (propertize (concat indent "(empty)") 'face 'octocat-dimmed))
-           (vui-list entries
-                     (lambda (entry)
-                       (vui-component 'octocat-tree--node
-                         :repo repo :branch branch :entry entry :commit commit
-                         :last (octocat-tree--last-of
-                                last (file-name-concat path (gethash "path" entry)))
-                         :depth depth :parent path :reveal reveal :focus focus))
-                     (lambda (entry) (gethash "path" entry))))))))
+           (octocat-tree--nodes repo branch entries commit last depth path
+                                reveal focus changes))))))
+
+(defun octocat-tree--nodes (repo branch entries commit last depth path reveal focus changes)
+  "Return ENTRIES of directory PATH as `octocat-tree--node's.
+LAST is of `octocat-tree--use-last-commits'.  REPO, BRANCH, COMMIT,
+DEPTH, REVEAL, FOCUS and CHANGES are as for `octocat-tree--subtree'."
+  (vui-list entries
+            (lambda (entry)
+              (vui-component 'octocat-tree--node
+                :repo repo :branch branch :entry entry :commit commit
+                :last (octocat-tree--last-of
+                       last (file-name-concat path (gethash "path" entry)))
+                :depth depth :parent path :reveal reveal :focus focus
+                :changes changes))
+            (lambda (entry) (gethash "path" entry))))
 
 (vui-defcomponent octocat-tree--node
-    (repo branch entry commit last depth parent reveal focus)
+    (repo branch entry commit last depth parent reveal focus changes)
   "One tree ENTRY (hash-table) at nesting DEPTH, inside directory PARENT.
 LAST is the last commit that touched it, `loading' while it loads.  The other
-arguments are as for `octocat-tree--subtree'."
+arguments are as for `octocat-tree--subtree'.  A directory without a
+\"sha\" is one CHANGES removed, which lists only what it removed."
   :state ((expanded (octocat-tree--reveals-p
                      (file-name-concat parent (or (gethash "path" entry) ""))
                      reveal)))
@@ -701,29 +746,41 @@ arguments are as for `octocat-tree--subtree'."
                                          reveal)))))
          (name   (or (gethash "path" entry) ""))
          (path   (file-name-concat parent name))
-         (sha    (or (gethash "sha" entry) ""))
+         (sha    (gethash "sha" entry))
+         (change (and changes (gethash path changes)))
+         ;; Beside a commit's changes, the rest recede.
+         (dim    (and changes (not change) (not (octocat-tree--reveals-p path reveal))))
          (indent (make-string (* depth 2) ?\s))
          (width  (octocat-vui-window-width)))
     (if (equal (gethash "type" entry) "tree")
         (vui-fragment
          (octocat-tree--entry-line
           indent (concat (if expanded "▾ " "▸ ") name "/")
-          'octocat-branch 'dir entry path
+          (if dim 'octocat-dimmed 'octocat-branch) 'dir entry path
           (vui-with-async-context
            (vui-set-state :expanded (lambda (old) (not old))))
-          last width)
+          (if changes "" last) width)
          (when expanded
            (vui-fragment
             (vui-newline)
-            (vui-component 'octocat-tree--subtree
-              :repo repo :branch branch :sha sha :commit commit :depth (1+ depth)
-              :path path :reveal reveal :focus focus))))
+            (if sha
+                (vui-component 'octocat-tree--subtree
+                  :repo repo :branch branch :sha sha :commit commit :depth (1+ depth)
+                  :path path :reveal reveal :focus focus :changes changes)
+              (octocat-tree--nodes repo branch
+                                   (octocat-tree--sorted-entries
+                                    (octocat-tree--removed changes path nil))
+                                   nil nil (1+ depth) path reveal focus changes)))))
       ;; Two spaces stand for "▸ ", so names line up with directories'.
       (octocat-tree--entry-line
-       indent (concat "  " name) 'default
+       (concat indent (or (plist-get change :mark) "  ")) name
+       (cond (change (or (plist-get change :face) 'default))
+             (dim 'octocat-dimmed)
+             (t 'default))
        'file entry path
-       (lambda () (octocat-tree--open-file-by-path repo branch path))
-       last width))))
+       (lambda () (octocat-tree--open-file-by-path
+                   repo (or (plist-get change :ref) branch) path))
+       (if changes (or (plist-get change :after) "") last) width))))
 
 (defun octocat-tree--skeleton (&optional indent)
   "Return grey bars shaped like a few tree entries, each after INDENT."

@@ -1,0 +1,31 @@
+acme/rocket@1a954628a960aaef81d7b2d4521929579f3541e6   Diff  Tree  Patch
+
+▸ .github/
+▾ docs/
+  ▾ assets/
+    A footnote-popup.png
+      logo.svg
+    M search-index.json  +18240 -17902
+    configuration.md
+    guide.md
+    html.md
+    themes.org
+▸ examples/
+▾ src/
+  ▾ theme/
+    A footnotes.js  +27 -0
+    M main.js  +5 -1
+      search.js
+      style.css
+    build.rs
+    cache.rs
+    main.rs
+  M markdown.rs  +2 -1
+    serve.rs
+    template.rs
+  .gitignore
+  CONTRIBUTING.md
+  Cargo.lock
+  Cargo.toml
+  LICENSE
+  README.md

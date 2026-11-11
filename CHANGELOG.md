@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A commit's Tree view, between Diff and Patch: its repo's files, opened down to its changes
+* The commit page drops [Browse files]: its Tree view browses the files at the commit
 * A comment, description, title or reaction you change briefly lights up where it lands
 * An image in a file is fetched in one request, not two
 * Images of another site in a file no longer break once their signed URLs expire

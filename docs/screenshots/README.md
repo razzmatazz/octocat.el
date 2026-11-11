@@ -258,11 +258,21 @@ whose diff is too large for GitHub to send, show no diff:
 [As text](commit-diff.txt)
 <!-- /screenshot -->
 
-The same commit as a patch, `C-c C-v` or Patch on its top line, as GitHub's
+The same commit as a tree, `C-c C-v` or Tree on its top line: the
+repository's files at the commit, opened down to those it changed,
+which are marked as in the diff, the rest dimmed:
+
+<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-tree" :press ((:key "C-c C-v")) -->
+![commit-tree](commit-tree.png)
+
+[As text](commit-tree.txt)
+<!-- /screenshot -->
+
+The same commit as a patch, `C-c C-v` twice or Patch on its top line, as GitHub's
 `.patch`: its header and message as `git format-patch` writes them,
 then every file's diff in full, to read or copy out.
 
-<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-patch" :press ((:key "C-c C-v")) -->
+<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-patch" :press ((:key "C-c C-v") (:key "C-c C-v")) -->
 ![commit-patch](commit-patch.png)
 
 [As text](commit-patch.txt)

@@ -438,6 +438,32 @@
     (setq octocat-repo--path "src/a.el")
     (should (equal (octocat--url-at-point) "https://github.com/o/r/commits/dev/src/a.el"))))
 
+(ert-deftest octocat-tree-test-reveals-p ()
+  "A directory is revealed on the way to a path, or to any of a list of them."
+  (should (octocat-tree--reveals-p "src" "src/theme"))
+  (should (octocat-tree--reveals-p "src/theme" "src/theme"))
+  (should-not (octocat-tree--reveals-p "sr" "src/theme"))
+  (should (octocat-tree--reveals-p "docs" '("src" "docs/assets")))
+  (should-not (octocat-tree--reveals-p "docs" nil)))
+
+(ert-deftest octocat-tree-test-removed ()
+  "What a commit removed is listed where it was, a removed directory as one entry."
+  (let ((changes (make-hash-table :test #'equal)))
+    (puthash "src/gone.el" '(:removed t) changes)
+    (puthash "src/kept.el" '(:mark "M ") changes)
+    (puthash "src/old/a.el" '(:removed t) changes)
+    (puthash "src/old/b.el" '(:removed t) changes)
+    (puthash "src/lib/c.el" '(:removed t) changes)
+    (let ((entries (octocat-tree--removed changes "src" '("lib" "kept.el"))))
+      (should (equal (sort (mapcar (lambda (e) (cons (gethash "path" e) (gethash "type" e)))
+                                   entries)
+                           (lambda (a b) (string< (car a) (car b))))
+                     '(("gone.el" . "blob") ("old" . "tree")))))
+    (should (equal (mapcar (lambda (e) (gethash "path" e))
+                           (octocat-tree--removed changes "src/lib" '()))
+                   '("c.el")))
+    (should-not (octocat-tree--removed nil "" nil))))
+
 (ert-deftest octocat-tree-test-proxied-urls ()
   "GitHub's HTML maps each image of another site to its proxy's URL."
   (skip-unless (libxml-available-p))

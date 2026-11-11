@@ -337,13 +337,35 @@ Themes are plain files; there is no build step.
   "The docs/themes.org of acme/rocket: org, as some READMEs are.")
 
 (defconst octocat-screenshots--src
-  `[,(octocat-screenshots--tree-entry "build.rs" "blob" 8120)
+  `[,(octocat-screenshots--tree-entry "theme" "tree")
+    ,(octocat-screenshots--tree-entry "build.rs" "blob" 8120)
     ,(octocat-screenshots--tree-entry "cache.rs" "blob" 2304)
     ,(octocat-screenshots--tree-entry "main.rs" "blob" 1802)
     ,(octocat-screenshots--tree-entry "markdown.rs" "blob" 6410)
     ,(octocat-screenshots--tree-entry "serve.rs" "blob" 3022)
     ,(octocat-screenshots--tree-entry "template.rs" "blob" 5530)]
   "The entries of src/.")
+
+(defconst octocat-screenshots--src-theme
+  `[,(octocat-screenshots--tree-entry "footnotes.js" "blob" 702)
+    ,(octocat-screenshots--tree-entry "main.js" "blob" 431)
+    ,(octocat-screenshots--tree-entry "search.js" "blob" 2210)
+    ,(octocat-screenshots--tree-entry "style.css" "blob" 3804)]
+  "The entries of src/theme/.")
+
+(defconst octocat-screenshots--docs
+  `[,(octocat-screenshots--tree-entry "assets" "tree")
+    ,(octocat-screenshots--tree-entry "configuration.md" "blob" 2950)
+    ,(octocat-screenshots--tree-entry "guide.md" "blob" 1120)
+    ,(octocat-screenshots--tree-entry "html.md" "blob" 640)
+    ,(octocat-screenshots--tree-entry "themes.org" "blob" 702)]
+  "The entries of docs/.")
+
+(defconst octocat-screenshots--docs-assets
+  `[,(octocat-screenshots--tree-entry "footnote-popup.png" "blob" 4210)
+    ,(octocat-screenshots--tree-entry "logo.svg" "blob" 1630)
+    ,(octocat-screenshots--tree-entry "search-index.json" "blob" 912044)]
+  "The entries of docs/assets/.")
 
 (defun octocat-screenshots--last-commits (&rest commits)
   "Return the last commits of a directory's entries, in its order.
@@ -880,6 +902,7 @@ Closes #97"
 
 Footnotes were left as their Markdown source.  Render them, and show a
 note in a popup when its reference is hovered."
+               :tree (:sha ,(octocat-screenshots--sha "root"))
                :author (:name "Mei Chen" :email "mchen@example.com" :date ,at)
                :committer (:name "GitHub" :email "noreply@github.com" :date ,at))
       :author ,(octocat-screenshots--user "mchen")
@@ -1236,8 +1259,16 @@ jobs:
        (:sha ,(octocat-screenshots--sha "root") :tree ,octocat-screenshots--root :truncated :false))
       ("tree-dir" (,(format "trees/%s" (octocat-screenshots--sha "src")))
        (:sha ,(octocat-screenshots--sha "src") :tree ,octocat-screenshots--src :truncated :false))
+      ("tree-dir" (,(format "trees/%s" (octocat-screenshots--sha "theme")))
+       (:sha ,(octocat-screenshots--sha "theme") :tree ,octocat-screenshots--src-theme
+        :truncated :false))
+      ("tree-dir" (,(format "trees/%s" (octocat-screenshots--sha "docs")))
+       (:sha ,(octocat-screenshots--sha "docs") :tree ,octocat-screenshots--docs :truncated :false))
+      ("tree-dir" (,(format "trees/%s" (octocat-screenshots--sha "assets")))
+       (:sha ,(octocat-screenshots--sha "assets") :tree ,octocat-screenshots--docs-assets
+        :truncated :false))
       ("tree-commits" ("p0=.github") ,(octocat-screenshots--last-commits 7 5 4 1 9 5 2 2 8 0))
-      ("tree-commits" ("p0=src/build.rs") ,(octocat-screenshots--last-commits 1 1 6 4 3 1))
+      ("tree-commits" ("p0=src/theme") ,(octocat-screenshots--last-commits 0 1 1 6 4 3 1))
       ("blame" ("path=docs/guide.md")
        ,(octocat-screenshots--blame '(1 5 5) '(6 6 2) '(7 9 7) '(10 18 9)))
       ("blob" (,(octocat-screenshots--sha "README.md"))

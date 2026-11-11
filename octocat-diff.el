@@ -972,6 +972,17 @@ Unless LAST, a line across WIDTH follows it, see
       ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
       (_        (vui-text text)))))
 
+(defun octocat-diff--counts (file)
+  "Return the lines FILE added and removed, to follow its name, or nil.
+Nil for a file with no patch and no lines changed, nothing to count."
+  (let ((patch (gethash "patch" file)))
+    (unless (and (not (and (stringp patch) (not (string-empty-p patch))))
+                 (eql (gethash "changes" file) 0))
+      (propertize (format "  +%d -%d"
+                          (or (gethash "additions" file) 0)
+                          (or (gethash "deletions" file) 0))
+                  'face 'octocat-dimmed))))
+
 (defun octocat-diff--file (repo file comments bulk raw width last &optional at revs)
   "Return one changed FILE (a files-endpoint hash-table) of REPO.
 Its inline COMMENTS are placed in its diff.  It is folded unless BULK,
@@ -1004,12 +1015,7 @@ patch, the heading is the place scrolled to."
                            ;; The anchor of a comment on the whole file.
                            (propertize filename 'face 'octocat-diff-file-name
                                        'octocat-diff-line (list filename))
-                           ;; Nothing to count in a file with no lines changed.
-                           (unless (and (null patch) (eql changes 0))
-                             (propertize (format "  +%d -%d"
-                                                 (or (gethash "additions" file) 0)
-                                                 (or (gethash "deletions" file) 0))
-                                         'face 'octocat-dimmed))))
+                           (octocat-diff--counts file)))
          (title    (if (and at (not span)) (propertize title 'octocat-line-target t) title)))
     (cond
      (image
@@ -1226,8 +1232,11 @@ across WIDTH."
 (defvar-local octocat--commit-sha nil
   "The full commit SHA this buffer is displaying.")
 
-(defvar-local octocat-commit--patch nil
-  "Non-nil when the commit shows as a patch, see `octocat-commit-toggle-patch'.")
+(defconst octocat-commit--views '(diff tree patch)
+  "The commit page's views, in the order `octocat-commit-cycle-view' goes.")
+
+(defvar-local octocat-commit--view 'diff
+  "How the commit shows, one of `octocat-commit--views'.")
 
 
 ;;;;; Sections
@@ -1236,46 +1245,41 @@ across WIDTH."
 ;; PR diff's file component: commit comments have the same shape as PR
 ;; review comments.
 
-(defun octocat-commit--view-segments (patch)
-  "Return the segments of the commit page's views, the one of PATCH current.
-`Diff' is the page, `Patch' the commit as `git format-patch' writes it;
-the hint of the other names the key that switches them.  See
-`octocat-vui-segmented'."
-  (let ((key (substitute-command-keys "\\[octocat-commit-toggle-patch]")))
-    (list (list "Diff" (not patch)
-                (propertize (format "RET, %s: show the diff" key) 'octocat-key-help t)
-                #'octocat-commit-toggle-patch)
-          (list "Patch" patch
-                (propertize (format "RET, %s: show the patch" key) 'octocat-key-help t)
-                #'octocat-commit-toggle-patch))))
+(defun octocat-commit--view-segments (view)
+  "Return the segments of the commit page's views, VIEW current.
+`Diff' is the page, `Tree' the repository's files at the commit, those
+it changed marked, `Patch' the commit as `git format-patch' writes it;
+the hints name the key that cycles them.  See `octocat-vui-segmented'."
+  (let ((key (substitute-command-keys "\\[octocat-commit-cycle-view]")))
+    (mapcar (lambda (v)
+              (let ((label (capitalize (symbol-name v))))
+                (list label (eq v view)
+                      (propertize (format "RET: show the %s  %s: next view"
+                                          (downcase label) key)
+                                  'octocat-key-help t)
+                      (lambda () (octocat-commit-show-view v)))))
+            octocat-commit--views)))
 
-(defun octocat-commit--view-tabs (patch)
-  "Return the commit page's views as a pill, the one of PATCH filled in."
-  (octocat-vui-segmented (octocat-commit--view-segments patch)))
+(defun octocat-commit--view-tabs (view)
+  "Return the commit page's views as a pill, VIEW filled in."
+  (octocat-vui-segmented (octocat-commit--view-segments view)))
 
-(defun octocat-commit--top-line (repo sha patch width)
+(defun octocat-commit--top-line (repo sha view width)
   "Return the top line of commit SHA of REPO, as the tree browser's.
-That is owner/repo@SHA, a button to browse the files of the repository
-at it, then the tabs of the views, PATCH the one shown, see
-`octocat-commit--view-tabs'.  SHA is cut to keep the line within WIDTH
-columns, ElDoc showing it whole."
-  (let ((browse "[Browse files]")
-        (tabs   " Diff  Patch "))
+That is owner/repo@SHA, then the tabs of the views, VIEW the one
+shown, see `octocat-commit--view-tabs'; the Tree view browses the
+files at it.  SHA is cut to keep the line within WIDTH columns, ElDoc
+showing it whole."
+  (let ((tabs (mapconcat (lambda (v) (format " %s " (capitalize (symbol-name v))))
+                         octocat-commit--views "")))
     (vui-hstack :spacing 0
                 (octocat-vui-repo-heading repo)
                 (vui-text (concat "@" (octocat-vui--fit
                                        sha (- width (string-width repo) 1 2
-                                              (string-width browse) 2
                                               (string-width tabs))))
                   :face 'octocat-commit-sha)
                 (vui-text "  ")
-                (vui-button browse
-                  :no-decoration t
-                  :face 'octocat-dimmed
-                  :help-echo "RET: browse the repository's files at this commit"
-                  :on-click (lambda () (octocat-open 'tree repo sha)))
-                (vui-text "  ")
-                (octocat-commit--view-tabs patch))))
+                (octocat-commit--view-tabs view))))
 
 (defun octocat-commit--person (commit role)
   "Return who COMMIT's ROLE is, as `git show' prints it, as nodes.
@@ -1464,23 +1468,58 @@ patch `git am' applies."
      "---\n\n"
      (mapconcat #'octocat-commit--patch-file (gethash "files" commit) "\n"))))
 
-(defun octocat-commit-toggle-patch ()
-  "Show the commit as a patch, as GitHub's .patch, or back as its page."
+(defun octocat-commit--tree-changes (files before)
+  "Return how its tree is to show FILES, a commit's \"files\".
+See `octocat-tree--subtree'.  They are as in its diff, see
+`octocat-diff--file-icon' and `octocat-diff--counts'; a removed file
+opens at BEFORE, the parent commit."
+  (let ((changes (make-hash-table :test #'equal)))
+    (seq-doseq (file files)
+      (let ((status (or (gethash "status" file) "modified")))
+        (puthash (or (gethash "filename" file) "")
+                 (list :mark    (concat (octocat-diff--file-icon status) " ")
+                       :face    'octocat-diff-file-name
+                       :after   (or (octocat-diff--counts file) "")
+                       :ref     (and (equal status "removed") before)
+                       :removed (equal status "removed"))
+                 changes)))
+    changes))
+
+(defun octocat-commit--tree-dirs (files)
+  "Return the directories of FILES, a commit's \"files\", for its tree to open."
+  (delete "" (delete-dups (mapcar (lambda (f) (octocat-tree--parent
+                                               (or (gethash "filename" f) "")))
+                                  files))))
+
+(defun octocat-commit-show-view (view)
+  "Show the commit as VIEW, one of `octocat-commit--views'."
+  (unless (derived-mode-p 'octocat-commit-mode)
+    (user-error "Octocat: Not in a commit buffer"))
+  (setq octocat-commit--view view)
+  (octocat-vui-update-page :view view))
+
+(defun octocat-commit-cycle-view ()
+  "Show the commit the next way: as its diff, its tree, then its patch.
+The tree is the repository's files at the commit, opened down to those
+it changed, marked as in the diff; the patch is GitHub's .patch."
   (interactive)
   (unless (derived-mode-p 'octocat-commit-mode)
     (user-error "Octocat: Not in a commit buffer"))
-  (setq octocat-commit--patch (not octocat-commit--patch))
-  (message "Commit view: %s" (if octocat-commit--patch "patch" "diff"))
-  (octocat-vui-update-page :patch octocat-commit--patch))
+  (let ((next (or (cadr (memq octocat-commit--view octocat-commit--views))
+                  (car octocat-commit--views))))
+    (message "Commit view: %s" (capitalize (symbol-name next)))
+    (octocat-commit-show-view next)))
 
 
 ;;;;; Page
 
-(vui-defcomponent octocat-commit--page (repo sha hide-comments raw patch at tick)
+(vui-defcomponent octocat-commit--page (repo sha hide-comments raw view at tick)
   "Commit SHA of REPO: top line, then as `git show': who and when, the
 message, then checks, files and comments.  HIDE-COMMENTS leaves the
-inline comments out of the diff.  RAW shows markdown verbatim.  PATCH
-shows the commit as a patch instead, see `octocat-commit--patch-text'.
+inline comments out of the diff.  RAW shows markdown verbatim.  VIEW,
+of `octocat-commit--views', `tree' shows the repository's files at the
+commit instead, those it changed marked, see `octocat-commit--tree-changes';
+`patch' the commit as a patch, see `octocat-commit--patch-text'.
 AT is the lines a link named, see `octocat-diff--file'.  The
 commit, its checks, its comments and the branch holding it are fetched
 independently; each shows what the store holds until then.  A new TICK
@@ -1497,20 +1536,37 @@ fetches them again."
                      (octocat-diff-by-path (plist-get comments :data))))
          (message  (vui-use-memo (data)
                      (and data (octocat-commit--message data))))
-         (text     (vui-use-memo (data patch)
-                     (and data patch (octocat-commit--patch-text data)))))
+         (text     (vui-use-memo (data view)
+                     (and data (eq view 'patch) (octocat-commit--patch-text data))))
+         (tree     (vui-use-memo (data view)
+                     (and data (eq view 'tree)
+                          (let ((files   (or (gethash "files" data) []))
+                                (parents (gethash "parents" data)))
+                            (list (octocat--get data "commit" "tree" "sha")
+                                  (octocat-commit--tree-changes
+                                   files (and (> (length parents) 0)
+                                              (gethash "sha" (aref parents 0))))
+                                  (octocat-commit--tree-dirs files)))))))
     (octocat-vui-page
      (octocat-vui-commit-pin repo (or (and data (gethash "sha" data)) sha)
-                             (octocat-vui-segmented-pin (octocat-commit--view-segments patch)))
+                             (octocat-vui-segmented-pin (octocat-commit--view-segments view)))
      (vui-vstack
-      (octocat-commit--top-line repo (or (and data (gethash "sha" data)) sha) patch width)
+      (octocat-commit--top-line repo (or (and data (gethash "sha" data)) sha) view width)
       (octocat-vui-resource-view
        commit
        :skeleton (lambda (_) (vui-text (octocat-commit--skeleton width)))
        :render
        (lambda (_)
-         (if text
-             (vui-text text)
+         (cond
+          (text (vui-text text))
+          (tree
+           (pcase-let ((`(,root ,changes ,dirs) tree))
+             (vui-fragment
+              (vui-newline)
+              (vui-component 'octocat-tree--subtree
+                :repo repo :branch (gethash "sha" data) :sha root :commit nil
+                :depth 0 :path "" :reveal dirs :focus nil :changes changes))))
+          (t
            (apply
             #'vui-vstack
             (append
@@ -1534,7 +1590,7 @@ fetches them again."
                            (vui-fragment
                             (vui-newline)
                             (octocat-diff-comments-section
-                             "Comments" comments raw md-width))))))))))))))
+                             "Comments" comments raw md-width)))))))))))))))
 
 
 ;;;;; Major mode
@@ -1548,7 +1604,7 @@ fetches them again."
 (defvar octocat-commit-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-page-mode-map)
-    (define-key map (kbd "C-c C-v") #'octocat-commit-toggle-patch)
+    (define-key map (kbd "C-c C-v") #'octocat-commit-cycle-view)
     map)
   "Keymap for `octocat-commit-mode'.")
 
@@ -1579,7 +1635,7 @@ only on `g'."
                                   :sha octocat--commit-sha
                                   :hide-comments octocat-diff--hide-comments
                                   :raw octocat--markdown-raw
-                                  :patch octocat-commit--patch
+                                  :view octocat-commit--view
                                   :at octocat-diff--at)))
 
 (defun octocat-commit-open (repo sha &optional at)

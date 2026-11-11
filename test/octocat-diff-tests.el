@@ -550,6 +550,34 @@ Only that file; a hash naming none changes nothing."
       (set-time-zone-rule nil))
     (should-not (octocat-commit--date commit "committer"))))
 
+(ert-deftest octocat-commit-test-tree-changes ()
+  "A commit's files mark its tree as its diff does; a removed one opens at the parent."
+  (let* ((files   (json-parse-string
+                   (concat "[{\"filename\":\"src/a.el\",\"status\":\"added\","
+                           "\"additions\":3,\"deletions\":0,\"changes\":3,\"patch\":\"@@\"},"
+                           "{\"filename\":\"old/b.el\",\"status\":\"removed\","
+                           "\"additions\":0,\"deletions\":2,\"changes\":2,\"patch\":\"@@\"},"
+                           "{\"filename\":\"logo.png\",\"status\":\"modified\","
+                           "\"changes\":0}]")))
+         (changes (octocat-commit--tree-changes files "parent"))
+         (added   (gethash "src/a.el" changes))
+         (removed (gethash "old/b.el" changes)))
+    (should (equal (substring-no-properties (plist-get added :mark)) "A "))
+    (should (equal (substring-no-properties (plist-get added :after)) "  +3 -0"))
+    (should-not (plist-get added :ref))
+    (should (equal (substring-no-properties (plist-get removed :mark)) "D "))
+    (should (equal (plist-get removed :ref) "parent"))
+    (should (plist-get removed :removed))
+    ;; Nothing to count, as in the diff.
+    (should (equal (plist-get (gethash "logo.png" changes) :after) ""))
+    (should (equal (sort (octocat-commit--tree-dirs files) #'string<) '("old" "src")))))
+
+(ert-deftest octocat-commit-test-view-segments ()
+  "The commit's views are Diff, Tree and Patch, in that order, VIEW current."
+  (let ((segments (octocat-commit--view-segments 'tree)))
+    (should (equal (mapcar #'car segments) '("Diff" "Tree" "Patch")))
+    (should (equal (mapcar #'cadr segments) '(nil t nil)))))
+
 (ert-deftest octocat-commit-test-patch-text ()
   "A commit as a patch is as `git format-patch' writes it, binary files included."
   (let* ((commit (json-parse-string

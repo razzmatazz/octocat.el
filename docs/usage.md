@@ -307,7 +307,7 @@ to its SHA).  Below a top line like the tree browser's, the commit
 reads as `git show --format=fuller` prints it, its message unindented:
 
 ```
-owner/repo@a1b2c3d4e5f6…  [Browse files]   Diff  Patch
+owner/repo@a1b2c3d4e5f6…   Diff  Tree  Patch
 Author:     Jane Doe <jane@example.com> @jane
 AuthorDate: Mon Oct 19 10:00:00 2026 +0300  (3 days ago)
 Commit:     GitHub <noreply@github.com> @web-flow
@@ -335,19 +335,27 @@ Comments (1)
 ```
 
 Each file is collapsible.  The Comments section shows only when the
-commit has comments.  `[Browse files]` opens the tree browser at the
-commit; the parent opens its own commit page, `@login` the user's page.
+commit has comments.  The parent opens its own commit page, `@login` the user's page.
 `Branch` names the default branch when it holds the commit, as GitHub
 does, and is left out when it does not; it opens the tree at that
 branch.  `RET` on a check opens the commit's checks.
 
 Its files show as diffs, a Markdown file's too; an image unfolds to the
-image on `RET`.  The Diff | Patch switch ending the top line, or
-`C-c C-v`, shows the commit as a patch instead, as GitHub's `.patch`
-link does: its header and message as `git format-patch` writes them,
-then every file's diff in full, with its `diff --git`, `---` and `+++`
-lines, to read or copy out for `git am`.  Diff, or `C-c C-v` again,
-goes back.
+image on `RET`.  The Diff | Tree | Patch switch ending the top line
+shows the commit another way, and `C-c C-v` steps through the three.
+
+Tree is the repository's files at the commit, as the tree browser
+lists them, opened down to every file the commit changed.  Those are
+marked as in the diff, `A`, `M`, `D` or `R` before the name and the
+lines added and removed after it; the files it left alone are dimmed,
+and a removed one is listed where it was.  `RET` on a directory opens
+or closes it; on a file, it opens the file at the commit, a removed one
+at the parent.
+
+Patch is the commit as GitHub's `.patch` link shows it: its header and
+message as `git format-patch` writes them, then every file's diff in
+full, with its `diff --git`, `---` and `+++` lines, to read or copy out
+for `git am`.
 
 Elsewhere, lists and last-commit lines show when a commit was
 *committed*, as GitHub does ("committed 2 days ago"): after a rebase or a
