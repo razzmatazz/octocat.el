@@ -661,6 +661,33 @@ unsubscribes it."
       (should-not octocat-vui--pulse)
       (should-not (overlays-in (point-min) (point-max))))))
 
+(ert-deftest octocat-vui-test-show-lines ()
+  "A window scrolls the least that shows the lines, and not when it does."
+  (with-temp-buffer
+    (dotimes (i 100) (insert (format "line %d\n" i)))
+    (save-window-excursion
+      (switch-to-buffer (current-buffer))
+      (delete-other-windows)
+      (let* ((win    (selected-window))
+             (height (window-body-height win))
+             (bol    (lambda (n) (save-excursion (goto-char (point-min))
+                                                 (forward-line n) (point))))
+             (top    (lambda () (1- (line-number-at-pos (window-start win))))))
+        (set-window-start win (point-min))
+        ;; Shown: no scroll.
+        (octocat-vui--show-lines win (funcall bol 2) (funcall bol 4))
+        (should (= (funcall top) 0))
+        ;; Below: the last line comes to the bottom.
+        (octocat-vui--show-lines win (funcall bol 50) (funcall bol 52))
+        (should (= (funcall top) (- 52 height)))
+        (should (= (window-point win) (funcall bol 50)))
+        ;; Above: the first line comes to the top.
+        (octocat-vui--show-lines win (funcall bol 10) (funcall bol 12))
+        (should (= (funcall top) 10))
+        ;; Taller than the window: from its first line.
+        (octocat-vui--show-lines win (funcall bol 60) (funcall bol (+ 61 height)))
+        (should (= (funcall top) 60))))))
+
 (ert-deftest octocat-vui-test-blend ()
   "Colours blend; anything not a colour gives nil."
   (should (equal (octocat-vui--blend "#000000" "#ffffff" 0.5) "#7f7f7f"))

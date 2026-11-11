@@ -1010,21 +1010,39 @@ PRED is called with the value of PROP.  Nil if there is none."
         (setq pos end)))
     found))
 
+(defun octocat-vui--show-lines (win start end)
+  "Scroll WIN the least needed to show its lines from START to END, if hidden.
+Lines taller than WIN show from the first.  Point moves to START if WIN
+scrolls."
+  (let ((last (max start (1- end))))
+    (unless (and (pos-visible-in-window-p start win)
+                 (pos-visible-in-window-p last win))
+      (with-selected-window win
+        (if (and (> start (window-start))
+                 (<= (count-screen-lines start (save-excursion
+                                                 (goto-char last)
+                                                 (line-end-position)))
+                     (window-body-height)))
+            (progn (goto-char last) (recenter -1))
+          (goto-char start)
+          (recenter 0))
+        (goto-char start)))))
+
 (defun octocat-vui-pulse-change (buf prop pred &optional head)
   "Pulse the last text of BUF whose PROP satisfies PRED, once this command ends.
 That is, once an edit dialog it closed has given BUF its window back.
-HEAD non-nil pulses only its first line.  A window showing BUF but not
-the text moves to it."
+HEAD non-nil pulses only its first line.  Each window showing BUF
+scrolls the least that shows it, see `octocat-vui--show-lines'."
   (run-at-time
    0 nil
    (lambda ()
      (when (buffer-live-p buf)
        (with-current-buffer buf
-         (when-let* ((run (octocat-vui--last-run prop pred)))
+         (when-let* ((run (octocat-vui--last-run prop pred))
+                     (end (if head (1+ (car run)) (cdr run))))
            (dolist (win (get-buffer-window-list buf nil t))
-             (unless (pos-visible-in-window-p (car run) win)
-               (set-window-point win (car run))))
-           (octocat-vui-pulse buf (car run) (if head (1+ (car run)) (cdr run)))))))))
+             (octocat-vui--show-lines win (car run) end))
+           (octocat-vui-pulse buf (car run) end)))))))
 
 (vui-defcomponent octocat-vui-fold-rest (total limit render prefix noun key)
   "Show the first LIMIT of TOTAL things, the rest folded behind a marker row.

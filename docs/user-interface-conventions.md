@@ -797,7 +797,8 @@ at once and reopens it with the text if GitHub refuses.
 Where the user's own change lands, such as the comment they posted, is
 **pulsed**: lit in `octocat-pulse` (from the theme's
 `pulse-highlight-start-face`), then faded into the background,
-`octocat-vui-pulse-change`.  Point moves to it if it is off screen.
+`octocat-vui-pulse-change`.  The window scrolls the least that shows
+all of it, if it does not already.
 Only the user's own changes pulse, once, when they first show; not on
 GitHub's answer, nor what a refetch brings.  Others' changes, when
 marked, get a mark that stays until read, as mail and chat clients do.
