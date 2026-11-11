@@ -694,7 +694,10 @@ unsubscribes it."
         (should (= (funcall top) 10))
         ;; Taller than the window: from its first line.
         (octocat-vui--show-lines win (funcall bol 60) (funcall bol (+ 61 height)))
-        (should (= (funcall top) 60))))))
+        (should (= (funcall top) 60))
+        ;; Taller than half the window, though it fits: from its first line.
+        (octocat-vui--show-lines win (funcall bol 30) (funcall bol (+ 30 (1- height))))
+        (should (= (funcall top) 30))))))
 
 (ert-deftest octocat-vui-test-blend ()
   "Colours blend; anything not a colour gives nil."

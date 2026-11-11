@@ -1019,17 +1019,16 @@ PRED is called with the value of PROP.  Nil if there is none."
 
 (defun octocat-vui--show-lines (win start end)
   "Scroll WIN the least needed to show its lines from START to END, if hidden.
-Lines taller than WIN show from the first.  Point moves to START if WIN
-scrolls."
-  (let ((last (max start (1- end))))
-    (unless (and (pos-visible-in-window-p start win)
-                 (pos-visible-in-window-p last win))
-      (with-selected-window win
-        (if (and (> start (window-start))
-                 (<= (count-screen-lines start (save-excursion
-                                                 (goto-char last)
-                                                 (line-end-position)))
-                     (window-body-height)))
+Lines taller than half of WIN show only the first, at the top if it is
+hidden: more would scroll away what the reader was on.  Point moves to
+START if WIN scrolls."
+  (with-selected-window win
+    (let* ((last  (save-excursion (goto-char (max start (1- end))) (line-end-position)))
+           (whole (<= (count-screen-lines start last) (/ (window-body-height) 2)))
+           (last  (if whole last start)))
+      (unless (and (pos-visible-in-window-p start win)
+                   (pos-visible-in-window-p last win))
+        (if (and whole (> start (window-start)))
             (progn (goto-char last) (recenter -1))
           (goto-char start)
           (recenter 0))
@@ -1039,7 +1038,7 @@ scrolls."
   "Pulse the last text of BUF whose PROP satisfies PRED, once this command ends.
 That is, once an edit dialog it closed has given BUF its window back.
 HEAD non-nil pulses only its first line.  Each window showing BUF
-scrolls the least that shows it, see `octocat-vui--show-lines'."
+scrolls the least that shows all the text, see `octocat-vui--show-lines'."
   (run-at-time
    0 nil
    (lambda ()
@@ -1899,12 +1898,16 @@ found in the same place."
                 (octocat-vui-segmented segments))))
 
 (defun octocat-vui-segmented-pin (segments)
-  "Return SEGMENTS, as for `octocat-vui-segmented', as text to pin, or nil."
+  "Return SEGMENTS, as for `octocat-vui-segmented', as text to pin, or nil.
+It goes last in the pin, which puts it at the right edge, see
+`octocat-vui--pin-line'."
   (and segments
-       (mapconcat (pcase-lambda (`(,label ,current . ,_))
-                    (propertize (concat " " label " ")
-                                'face (if current 'octocat-segment-current 'octocat-segment)))
-                  segments "")))
+       (propertize (mapconcat (pcase-lambda (`(,label ,current . ,_))
+                                (propertize (concat " " label " ")
+                                            'face (if current 'octocat-segment-current
+                                                    'octocat-segment)))
+                              segments "")
+                   'octocat-pin-right t)))
 
 (defun octocat-vui-underlined (width &rest nodes)
   "Return NODES on one line, underlined across WIDTH columns.
