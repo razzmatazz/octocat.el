@@ -203,6 +203,14 @@
       (should (memq 'octocat-marked (ensure-list (get-text-property 3 'face marked))))
       (should (eql (get-text-property 0 'octocat-vui-list-item marked) 7)))))
 
+(ert-deftest octocat-repo-test-parse-unpushed-merge ()
+  "A commit of two parents is a merge, of one or none not."
+  (should (equal (octocat-repo--parse-unpushed
+                  '("aaa\0p1 p2\0Merge x" "bbb\0p1\0One" "ccc\0\0Root"))
+                 '((:sha "aaa" :merge t :subject "Merge x")
+                   (:sha "bbb" :merge nil :subject "One")
+                   (:sha "ccc" :merge nil :subject "Root")))))
+
 (ert-deftest octocat-repo-test-unpushed ()
   "Count local commits against the upstream, and how far it is ahead."
   (skip-unless (executable-find "git"))
@@ -693,7 +701,7 @@ A refresh asks GitHub again, which never answers."
             (should (derived-mode-p 'octocat-file-mode))
             (should (string-match-p
                      (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md +Preview  Code  Blame \n\n"
-                             "Add the guide +abc1234 · .*  \\[3 commits\\] \n")
+                             "○ Add the guide +abc1234 · .*  \\[3 commits\\] \n")
                      text))
             (should-not (string-match-p "reset" text))
             ;; The root and the directories on the way open the tree.

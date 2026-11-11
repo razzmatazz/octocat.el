@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* The last commit atop the repo, tree and file pages starts with ○, as in a list
+* Local commits not on GitHub start with ○, or ⊕ for a merge
 * A pulsed change scrolls into view whole when it is at most half the window
 * A pinned header keeps its switch of views at the right edge, as on the page
 * A comparison has Diff, Tree and Patch views too; `C-c C-v` switches them

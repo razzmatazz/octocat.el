@@ -3549,18 +3549,26 @@ in a history of squashed merges, or there are too many."
                  do (puthash (gethash "sha" c) (octocat-vui-lane-mirror lane) table))
         table))))
 
+(defun octocat-vui-commit-node (merge)
+  "Return the symbol before a commit, `octocat--merge-symbol' if MERGE.
+See \"A commit starts with ○\" in docs/user-interface-conventions.md."
+  (propertize (if merge octocat--merge-symbol octocat--commit-symbol)
+              'face 'octocat-commit-sha))
+
+(defun octocat-vui--commit-merge-p (commit)
+  "Return non-nil when COMMIT is a merge.
+That is one with two \"parents\" or a \"merge\" of t."
+  (or (eq (gethash "merge" commit) t)
+      (> (length (gethash "parents" commit)) 1)))
+
 (defun octocat-vui--commit-row (repo commit head-info author-w
                                      &optional subject-w date-w lane)
   "Return a row vnode for COMMIT in REPO, RET opening it.
-It starts with `octocat--commit-symbol', or `octocat--merge-symbol'
-for a merge, one with two \"parents\" or a \"merge\" of t; in LANE, of
+It starts with `octocat-vui-commit-node'; in LANE, of
 `octocat-vui--commit-lanes', when given.  The other arguments are
 as for `octocat-vui--commit-line'."
-  (octocat-vui-row (let ((node (propertize (if (or (eq (gethash "merge" commit) t)
-                                                   (> (length (gethash "parents" commit)) 1))
-                                               octocat--merge-symbol
-                                             octocat--commit-symbol)
-                                           'face 'octocat-commit-sha)))
+  (octocat-vui-row (let ((node (octocat-vui-commit-node
+                                (octocat-vui--commit-merge-p commit))))
                      (concat (if lane (octocat-vui-lane-text lane node) node)
                              " "
                              (octocat-vui--commit-line commit head-info author-w

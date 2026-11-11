@@ -1,6 +1,6 @@
 acme/rocket  [main ▾]:/docs/guide.md                                           Preview  Code  Blame
 
-Bump toml from 0.8.12 to 0.8.19                                    a625406 · 1 day ago  [12 commits]
+○ Bump toml from 0.8.12 to 0.8.19                                  a625406 · 1 day ago  [12 commits]
 Document the [build…  4 days ago │  1 # Writing pages
                                  │  2
                                  │  3 A page is a Markdown file in `content/`, with a TOML header between

@@ -1392,7 +1392,8 @@ for the page after it, and \"total\", the commits of the whole history."
   (concat "query($owner:String!,$name:String!,$expr:String!,$dir:String!,$path:String){"
           "repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
           "history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate "
-          "committedDate author{name email user{login}}}}}} dir:object(expression:$dir){"
+          "committedDate author{name email user{login}} parents(first:2){nodes{oid}}}}}} "
+          "dir:object(expression:$dir){"
           "__typename oid ...on Blob{byteSize isBinary} ...on Tree{entries{name type oid}}}}}")
   "GraphQL query behind the `repo-head' resource.")
 

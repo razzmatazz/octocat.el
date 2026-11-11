@@ -173,10 +173,13 @@ the remote points to a different repository."
            (split-string (buffer-string) "\n" t)))))
 
 (defun octocat-repo--parse-unpushed (lines)
-  "Parse LINES of \"SHA NUL SUBJECT\" into plists."
+  "Parse LINES of \"SHA NUL PARENTS NUL SUBJECT\" into plists.
+:merge is t for one of more than one parent."
   (mapcar (lambda (l)
-            (pcase-let ((`(,sha ,subject) (split-string l "\0")))
-              (list :sha sha :subject subject)))
+            (pcase-let ((`(,sha ,parents ,subject) (split-string l "\0")))
+              (list :sha sha
+                    :merge (and (cdr (split-string (or parents ""))) t)
+                    :subject subject)))
           lines))
 
 (defun octocat-repo--unpushed (dir)
@@ -188,7 +191,7 @@ branch), and :behind how many upstream commits HEAD lacks, as of the
 last fetch; non-zero means the branches diverged.  Reads git synchronously."
   (let* ((upstream (car (octocat-repo--git-lines
                          dir "rev-parse" "--abbrev-ref" "--symbolic-full-name" "@{u}")))
-         (log      (append '("log" "--format=%H%x00%s")
+         (log      (append '("log" "--format=%H%x00%P%x00%s")
                            (if upstream
                                '("@{u}..HEAD")
                              '("HEAD" "--not" "--remotes=origin"))))
@@ -407,6 +410,8 @@ Not RET-able: the commit page reads from GitHub, which lacks it."
   (let ((sha (plist-get commit :sha)))
     (vui-text
         (concat
+         (octocat-vui-commit-node (plist-get commit :merge))
+         " "
          (propertize (substring sha 0 (min 7 (length sha))) 'face 'octocat-commit-sha)
          " "
          (plist-get commit :subject)))))
@@ -983,8 +988,9 @@ last to it (see `octocat-sync-more'), pinned to the head shown."
 
 (defun octocat-repo-vui--head-row (repo ref path commit width)
   "Return the line atop the files: COMMIT, of PATH at REF.
-COMMIT is the last that touched PATH, nil for the root.  It shows its
-subject, a TAB stop, then, at the right of WIDTH columns, its short SHA
+COMMIT is the last that touched PATH, nil for the root.  It shows
+`octocat-vui-commit-node' and its subject, a TAB stop, then, at the
+right of WIDTH columns, its short SHA
 and age, as GitHub's \"1a95462 · 2 hours ago\", RET opening it, and a
 button to the commits page of PATH at REF of REPO, with the count of its
 history.
@@ -996,13 +1002,17 @@ is cut so the line fits."
                       (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
          (count     (format "[%s commits]" (gethash "total" commit)))
          (tail      (+ 7 3 (string-width date) 2 (string-width count)))
-         (subject-w (max 1 (min (string-width subject) (- width tail 2))))
-         (gap       (max 2 (- width subject-w tail)))
+         (node      (concat (octocat-vui-commit-node (octocat-vui--commit-merge-p commit))
+                            " "))
+         (subject-w (max 1 (min (string-width subject)
+                                (- width (string-width node) tail 2))))
+         (gap       (max 2 (- width (string-width node) subject-w tail)))
          (open      (lambda () (octocat-vui--open-commit repo commit))))
     (octocat-vui-row
      ;; A face that sets nothing: nil would be `link', and `default'
      ;; would mask the underline the file page adds.
-     (list (octocat-vui--link
+     (list node
+           (octocat-vui--link
             (truncate-string-to-width subject subject-w nil nil "…")
             '(:inherit nil) open "RET: view commit")
            (make-string gap ?\s)

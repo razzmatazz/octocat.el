@@ -1,6 +1,6 @@
 acme/rocket  [main ▾]:/src/cache.rs                                                     Code  Blame
 
-Bump toml from 0.8.12 to 0.8.19                                     a625406 · 1 day ago  [4 commits]
+○ Bump toml from 0.8.12 to 0.8.19                                   a625406 · 1 day ago  [4 commits]
 //! A cache of rendered pages, keyed by their source's hash.
 
 use std::collections::HashMap;

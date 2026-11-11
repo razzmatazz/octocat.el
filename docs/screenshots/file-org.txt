@@ -1,6 +1,6 @@
 acme/rocket  [main ▾]:/docs/themes.org                                         Preview  Code  Blame
 
-Bump toml from 0.8.12 to 0.8.19                                     a625406 · 1 day ago  [2 commits]
+○ Bump toml from 0.8.12 to 0.8.19                                   a625406 · 1 day ago  [2 commits]
 Themes
 [image: light]
 
