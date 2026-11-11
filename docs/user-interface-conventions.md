@@ -733,12 +733,22 @@ Every key answers at once; a `gh` call may take seconds.
 
 ### Reading: have it before it is asked for
 
-A command must not fetch, then act on the answer.  The page reads what
-its commands need as resources while it renders, so the command acts at
-once.  If it may still be missing, show the UI at once with a sensible
-default, and update it quietly as the data lands; show `…` or a
-skeleton only where there is no default.  Never pop up a buffer seconds
-after the key.
+A command should not fetch, then act on the answer.  The page reads
+what its commands need as resources while it renders, so the command
+acts at once.  If it may still be missing, show the UI at once with a
+sensible default, and update it quietly as the data lands; show `…` or
+a skeleton only where there is no default.
+
+Reading ahead costs a request on every page open, and its polls: it
+pays only for a key used often.  A command may instead fetch, then act,
+when all of these hold:
+
+- there is no sensible default: nothing better to show than a message;
+- it is a jump or a lookup the user asked for once, not a step of a
+  flow they repeat, such as `M-x octocat-pr` finding the branch's PR;
+- it says what it waits on in the echo area, and acts only if the user
+  is still where they pressed the key (`octocat--still-selected-p`):
+  never pop up a buffer after they moved on.
 
 ### Writing: show the action at once
 
