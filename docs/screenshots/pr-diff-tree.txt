@@ -1,0 +1,30 @@
+acme/rocket#128  Cache parsed templates between builds · @srivera
+open    Assignees @srivera
+        Reviewers @mchen (approved), @jlindqvist (pending)
+        Labels  performance   enhancement
+        template-cache → main · Approved · Milestone 0.10 · Closes #97
+
+[Conversation]  [Commits (7)]  Files changed (3)
+                                                                                  Diff  Tree  Patch
+▸ .github/
+▸ docs/
+▸ examples/
+▾ src/
+  ▸ theme/
+  M build.rs  +5 -2
+  A cache.rs  +18 -0
+  M main.rs  +1 -0
+    markdown.rs
+    serve.rs
+    template.rs
+  .gitignore
+  CONTRIBUTING.md
+  Cargo.lock
+  Cargo.toml
+  LICENSE
+  README.md
+
+Review Comments (6)
+  (6 inline review comments, in the diff above)
+
+  [Submit review (1 pending)]   [Discard review]

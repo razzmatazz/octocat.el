@@ -1046,16 +1046,18 @@ stop."
         (setq pos next)))
     (apply #'vui-hstack :spacing 0 (nreverse parts))))
 
-(defun octocat-run--view-tabs (view)
-  "Return the pill of the Jobs section's views, the one of VIEW filled in."
+(defun octocat-run--view-tabs (view width)
+  "Return the pill of the Jobs section's views, the one of VIEW filled in.
+It ends at the right edge of WIDTH."
   (let ((key (substitute-command-keys "\\[octocat-run-toggle-view]")))
-    (octocat-vui-segmented
+    (octocat-vui-segmented-right
      (list (list "Table" (eq view 'table)
                  (propertize (format "RET, %s: show the jobs as a table" key) 'octocat-key-help t)
                  #'octocat-run-toggle-view)
            (list "Graph" (eq view 'graph)
                  (propertize (format "RET, %s: show the jobs as a graph" key) 'octocat-key-help t)
-                 #'octocat-run-toggle-view)))))
+                 #'octocat-run-toggle-view))
+     width)))
 
 (defun octocat-run--jobs-section (repo run-id jobs specs view width)
   "Return the vnodes of the Jobs section: JOBS of run RUN-ID of REPO.
@@ -1068,8 +1070,7 @@ table."
      (list (vui-hstack :spacing 0
                        (vui-text (propertize (format "Jobs (%d)" (length jobs))
                                              'face 'octocat-section-heading))
-                       (and jobs (vui-text "  "))
-                       (and jobs (octocat-run--view-tabs view))))
+                       (and jobs (octocat-run--view-tabs view width))))
      (cond ((null jobs) (list (vui-text "  (no jobs)" :face 'octocat-dimmed)))
            (lines (mapcar (lambda (line) (octocat-run--graph-line repo run-id line)) lines))
            (t (append (and (eq view 'graph)

@@ -1647,11 +1647,19 @@ The diff is from their merge base, looked up only when needed."
        (cons (lambda (k) (octocat-diff--merge-base repo base head k))
              head)))
 
-(vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw at tick)
+(vui-defcomponent octocat-pr-diff--tree (repo head files)
+  "The Tree view of the FILES of a pull request of REPO, at its HEAD commit.
+See `octocat-diff-tree'."
+  :render
+  (let ((snap (octocat-vui-use-resource (list 'repo-head repo head nil) nil)))
+    (octocat-diff-tree repo head (octocat--get (plist-get snap :data) "tree") files)))
+
+(vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw view at tick)
   "The diff of pull request NUMBER of REPO, under the PR page's header.
 HIDE-COMMENTS leaves the review comments out of the diff, and RAW shows
-their markdown verbatim.  AT is the lines a link named, see
-`octocat-diff--file'.  A review being
+their markdown verbatim.  VIEW, of `octocat-diff--views', shows the
+files as a tree or a patch instead, from base to head, all commits in
+one.  AT is the lines a link named, see `octocat-diff--file'.  A review being
 submitted shows in place of the submit button.  A new TICK fetches
 everything again."
   :render
@@ -1667,6 +1675,9 @@ everything again."
          (base     (octocat--get (plist-get pr :data) "baseRefName"))
          (head     (and data (gethash "head" data)))
          (revs     (vui-use-memo (base head) (octocat-pr-diff--revs repo base head)))
+         (text     (vui-use-memo ((plist-get files :data) view)
+                     (and (eq view 'patch)
+                          (octocat-diff-patch-text (plist-get files :data)))))
          (review   (and data (gethash "pending" data)))
          (pending  (and review (cons (gethash "id" review)
                                      (octocat-pr-diff--pending-count data)))))
@@ -1691,10 +1702,22 @@ everything again."
       (pcase (octocat-vui-snapshot-status files)
         ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
         ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
-        (_ (octocat-diff-files-section repo (plist-get files :data) by-path
-                                       hide-comments raw (octocat--markdown-width) nil at
-                                       (octocat--get (plist-get pr :data) "changedFiles")
-                                       revs)))
+        (_ (pcase view
+             ('tree
+              (vui-vstack
+               (octocat-diff-views-heading view (octocat--markdown-width))
+               (if head
+                   (vui-component 'octocat-pr-diff--tree
+                     :repo repo :head head :files (plist-get files :data))
+                 (vui-text (octocat-tree--skeleton)))))
+             ('patch
+              (vui-vstack
+               (octocat-diff-views-heading view (octocat--markdown-width))
+               (vui-text text)))
+             (_ (octocat-diff-files-section repo (plist-get files :data) by-path
+                                            hide-comments raw (octocat--markdown-width) nil at
+                                            (octocat--get (plist-get pr :data) "changedFiles")
+                                            revs (or view 'diff))))))
       (vui-newline)
       (octocat-diff-comments-section "Review Comments" (plist-put (copy-sequence threads)
                                                                   :data comments)
@@ -1721,7 +1744,7 @@ It is at the diff line of point or the region."
     (define-key map (kbd "C-c C-e") #'octocat-diff-edit-comment)
     (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
     (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
-    (define-key map (kbd "C-c C-v") #'octocat-diff-toggle-comments)
+    (define-key map (kbd "C-c C-v") #'octocat-diff-cycle-view)
     map)
   "Keymap for `octocat-pr-diff-mode'.")
 
@@ -1734,6 +1757,7 @@ It is at the diff line of point or the region."
   (setq-local revert-buffer-function #'octocat-pr-diff-refresh)
   (setq-local octocat--url-function #'octocat-pr-diff--page-url)
   (setq-local octocat-diff--comment-backend octocat-pr-diff--comment-backend)
+  (setq-local octocat-diff--view 'diff)
   (setq-local octocat--repo-function (lambda () octocat--pr-diff-repo)))
 
 
@@ -1752,6 +1776,7 @@ in place."
                                   :number octocat--pr-diff-number
                                   :hide-comments octocat-diff--hide-comments
                                   :raw octocat--markdown-raw
+                                  :view octocat-diff--view
                                   :at octocat-diff--at)))
 
 (defun octocat-pr-diff-open (repo number &optional at)

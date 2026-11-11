@@ -236,7 +236,7 @@ it stays right when the user rebinds the command:
             :help-echo (octocat--key-help #'octocat-diff-toggle-comments
                                           "show the comments in the diff")
             :on-click #'octocat-diff-toggle-comments)
-;; point rests on it → echo area: "RET, C-c C-v: show the comments in the diff"
+;; point rests on it → echo area: "RET: show the comments in the diff"
 ```
 
 Builders that take a button's command, such as `octocat-timeline-buttons`
@@ -528,9 +528,13 @@ Where a page has more than one, as the file page's Preview, Code and
 Blame, `C-c C-v` cycles through them in a fixed order and says in the
 echo area which is shown.  Such a page, and one whose
 two views are both worth finding, as the commit page's Diff and Patch,
-ends its top line in a switch of them, `octocat-vui-segmented`: a pill,
+shows a switch of them, `octocat-vui-segmented`: a pill,
 its views boxed side by side into one outline, the view shown filled in, the others buttons whose hover
 text names `C-c C-v`, so the key is found from the page.
+The pill always ends its line, at the right edge
+(`octocat-vui-segmented-right`), so it is found in the same place on
+every page: the file and commit pages' top line, the Files heading of a
+PR's files changed, the Jobs heading of a run.
 
 Re-render the page in place with the new prop (`octocat-vui-update-page`),
 not a remount; see [using vui.el](using-vui.md).  Remember the choice with

@@ -1088,20 +1088,19 @@ They roll down out of their first line, and back up into it."
       (octocat-vui-roll buf 'octocat-comment 'in))))
 
 (defun octocat-diff--comments-switch (hide count)
-  "Return the pill switching the diff's COUNT comments on and off.
-HIDE is whether they are hidden; the hint names the key that switches."
-  (cl-flet ((help (action)
-              (octocat--key-help #'octocat-diff-toggle-comments action)))
-    (octocat-vui-segmented
-     (list (list (format "Comments (%d)" count) (not hide)
-                 (help "show the comments in the diff")
-                 #'octocat-diff-toggle-comments)
-           (list "Diff only" hide
-                 (help "hide the comments in the diff")
-                 #'octocat-diff-toggle-comments)))))
+  "Return the button showing or hiding the diff's COUNT comments.
+HIDE is whether they are hidden; it names what pressing it does, as
+\"[Expand all]\" does, and its hint the key, if any."
+  (vui-button (format (if hide "Show comments (%d)" "Hide comments (%d)") count)
+    :face 'octocat-dimmed
+    :key 'comments
+    :help-echo (octocat--key-help #'octocat-diff-toggle-comments
+                                  (if hide "show the comments in the diff"
+                                    "hide the comments in the diff"))
+    :on-click #'octocat-diff-toggle-comments))
 
 (vui-defcomponent octocat-diff--files
-    (repo files by-path hide fits raw width underline at total revs)
+    (repo files by-path hide fits raw width underline at total revs view)
   "The Files section: FILES of REPO with the review comments BY-PATH, folded.
 They start unfolded when FITS, the whole diff fitting in the window.
 HIDE leaves the comments out.  RAW and WIDTH are as for
@@ -1112,7 +1111,10 @@ comments, there when the diff shows some, runs
 `octocat-diff-toggle-comments'.  AT, the lines a link named, is
 scrolled to, see `octocat-diff--file'; the user's refresh drops it.
 TOTAL, how many files changed, says at the end how many GitHub left out.
-REVS is as for `octocat-diff-open-large', for the files too large to diff."
+REVS is as for `octocat-diff-open-large', for the files too large to diff.
+VIEW, when non-nil, puts the pill of the views in place of the
+heading, at the right edge of WIDTH, the buttons before it, see
+`octocat-diff-views-heading'."
   :state ((bulk (and fits (cons 0 t))))
   :render
   (let* ((buf (current-buffer))
@@ -1141,10 +1143,13 @@ REVS is as for `octocat-diff-open-large', for the files too large to diff."
                               bulk (vui-async-callback (v) (vui-set-state :bulk v)))
                              (and (> placed 0)
                                   (list (octocat-diff--comments-switch hide placed)))))))
-       (if underline
-           (apply #'octocat-vui-section-heading heading width after)
-         (apply #'vui-hstack :spacing 2
-                (vui-text heading :face 'octocat-section-heading) after)))
+       (cond
+        ;; The buttons first, the views at the right edge.
+        (view (apply #'vui-hstack :spacing 2
+                     (append after (list (octocat-diff-views-heading view width)))))
+        (underline (apply #'octocat-vui-section-heading heading width after))
+        (t (apply #'vui-hstack :spacing 2
+                  (vui-text heading :face 'octocat-section-heading) after))))
      (if (zerop (length files))
          (vui-text "  (no files changed)" :face 'octocat-dimmed)
        (vui-list (append files nil)
@@ -1164,7 +1169,7 @@ REVS is as for `octocat-diff-open-large', for the files too large to diff."
          :face 'octocat-dimmed)))))
 
 (defun octocat-diff-files-section (repo files by-path hide raw width
-                                        &optional underline at total revs)
+                                        &optional underline at total revs view)
   "Return the vnode of the Files section: the heading and one entry per file.
 FILES is REPO's files vector and BY-PATH the review comments by file path,
 left out when HIDE.
@@ -1173,7 +1178,7 @@ comments are markdown, rendered unless RAW, to fit WIDTH columns.
 UNDERLINE underlines the heading across WIDTH.  AT is the lines a
 link named, see `octocat-diff--file'.  TOTAL is how many files changed,
 when FILES may be fewer.  REVS, the commits compared, is as for
-`octocat-diff-open-large'."
+`octocat-diff-open-large'.  VIEW is as for `octocat-diff--files'."
   (vui-component 'octocat-diff--files
     :repo repo
     :files files
@@ -1185,6 +1190,7 @@ when FILES may be fewer.  REVS, the commits compared, is as for
     :at at
     :total total
     :revs revs
+    :view view
     :fits (<= (octocat-diff--line-count files) (octocat-vui-window-height))))
 
 (defun octocat-diff-comments-section (label comments raw width)
@@ -1217,6 +1223,147 @@ across WIDTH."
                    (list (vui-text (octocat-diff--timeline general raw width))))))))))
 
 
+;;;; Views
+;;
+;; A page of changed files shows them three ways, as `octocat-diff--views':
+;; the Diff, its own; the Tree, the repository's files at the new side,
+;; opened down to the changes and marked as in the diff, which is the
+;; tree browser's; and the Patch, every file's diff as git writes it.
+
+(defconst octocat-diff--views '(diff tree patch)
+  "The views of changed files, in the order `octocat-diff-cycle-view' goes.")
+
+(defvar-local octocat-diff--view nil
+  "The view this page shows, one of `octocat-diff--views'.
+A page with views sets it, buffer-locally, to `diff'.")
+
+(defun octocat-diff--view-segments (view)
+  "Return the segments of the views of a page of changed files, VIEW current.
+The hints name the key that cycles them.  See `octocat-vui-segmented'."
+  (let ((key (substitute-command-keys "\\[octocat-diff-cycle-view]")))
+    (mapcar (lambda (v)
+              (let ((label (capitalize (symbol-name v))))
+                (list label (eq v view)
+                      (propertize (format "RET: show the %s  %s: next view"
+                                          (downcase label) key)
+                                  'octocat-key-help t)
+                      (lambda () (octocat-diff-show-view v)))))
+            octocat-diff--views)))
+
+(defun octocat-diff-show-view (view)
+  "Show this page's changed files as VIEW, one of `octocat-diff--views'."
+  (unless (local-variable-p 'octocat-diff--view)
+    (user-error "Octocat: This page has no views"))
+  (setq octocat-diff--view view)
+  (octocat-vui-update-page :view view))
+
+(defun octocat-diff-cycle-view ()
+  "Show the changed files the next way: as their diff, tree, then patch.
+The tree is the repository's files, opened down to those changed,
+marked as in the diff; the patch is every file's diff as git writes it."
+  (interactive)
+  (unless (local-variable-p 'octocat-diff--view)
+    (user-error "Octocat: This page has no views"))
+  (let ((next (or (cadr (memq octocat-diff--view octocat-diff--views))
+                  (car octocat-diff--views))))
+    (message "View: %s" (capitalize (symbol-name next)))
+    (octocat-diff-show-view next)))
+
+(defun octocat-diff--patch-file (file)
+  "Return the diff of changed FILE, as git writes it, propertized.
+FILE is an entry of the \"files\" of a commit or a pull request.
+Without a patch, as of a binary or very large file, git's line saying
+it differs stands in."
+  (let* ((new    (or (gethash "filename" file) ""))
+         (old    (or (octocat--nonempty (gethash "previous_filename" file)) new))
+         (status (gethash "status" file))
+         (patch  (gethash "patch" file))
+         (a      (if (equal status "added") "/dev/null" (concat "a/" old)))
+         (b      (if (equal status "removed") "/dev/null" (concat "b/" new))))
+    (concat
+     (propertize (string-join
+                  (delq nil
+                        (list (format "diff --git a/%s b/%s" old new)
+                              (pcase status
+                                ("added" "new file mode 100644")
+                                ("removed" "deleted file mode 100644"))
+                              (and (equal status "renamed")
+                                   (format "rename from %s\nrename to %s" old new))))
+                  "\n")
+                 'face 'octocat-diff-file-name)
+     "\n"
+     (if (stringp patch)
+         (concat (propertize (format "--- %s\n+++ %s" a b) 'face 'octocat-diff-file-name)
+                 "\n"
+                 (mapconcat (lambda (l) (octocat--clip-line l octocat--max-line-length))
+                            (octocat-diff--lines patch new) "\n"))
+       (format "Binary files %s and %s differ" a b)))))
+
+(defun octocat-diff-patch-text (files)
+  "Return the diff of FILES as git writes it, as GitHub's .diff.
+Each file's diff in full, see `octocat-diff--patch-file'.  Not
+indented, so it copies out as a patch `git apply' applies."
+  (mapconcat #'octocat-diff--patch-file files "\n"))
+
+(defun octocat-diff--tree-changes (files)
+  "Return how its tree is to show FILES, the \"files\" changed.
+See `octocat-tree--subtree'.  They are as in its diff, see
+`octocat-diff--file-icon' and `octocat-diff--counts'; RET on one shows
+its diff, see `octocat-diff--show-file'."
+  (let ((changes (make-hash-table :test #'equal)))
+    (seq-doseq (file files)
+      (let ((status (or (gethash "status" file) "modified"))
+            (path   (or (gethash "filename" file) "")))
+        (puthash path
+                 (list :mark    (concat (octocat-diff--file-icon status) " ")
+                       :face    'octocat-diff-file-name
+                       :after   (or (octocat-diff--counts file) "")
+                       :open    (lambda () (octocat-diff--show-file path))
+                       :removed (equal status "removed"))
+                 changes)))
+    changes))
+
+(defun octocat-diff--tree-dirs (files)
+  "Return the directories of FILES, the \"files\" changed, for the tree to open."
+  (delete "" (delete-dups (mapcar (lambda (f) (octocat-tree--parent
+                                               (or (gethash "filename" f) "")))
+                                  files))))
+
+(defun octocat-diff-views-heading (view width)
+  "Return the pill of the views, VIEW filled in, at the right edge of WIDTH.
+It ends the heading of the changed files, see `octocat-diff--files',
+and the commit page's top line."
+  (octocat-vui-segmented-right (octocat-diff--view-segments view) width))
+
+(defun octocat-diff--show-file (path)
+  "Show the Diff view at file PATH, its diff unfolded, as a link to it would.
+Its heading lights up, so the eye finds it after the switch."
+  (let ((at (list 'diff (secure-hash 'sha256 path))))
+    (setq octocat-diff--view 'diff
+          octocat-diff--at at)
+    (octocat-vui-update-page :view 'diff :at at)
+    (octocat-vui-pulse-change (current-buffer) 'octocat-line-target #'identity t)))
+
+(defun octocat-diff-tree (repo ref root files)
+  "Return the Tree view of FILES, the \"files\" changed in REPO.
+That is the tree browser's tree at REF, the new side, its root tree
+ROOT, opened down to FILES, marked as in the diff.  See
+`octocat-diff--tree-changes'."
+  (vui-component 'octocat-diff--tree :repo repo :ref ref :root root :files files))
+
+(vui-defcomponent octocat-diff--tree (repo ref root files)
+  "The Tree view, see `octocat-diff-tree'."
+  :render
+  (let ((changes (vui-use-memo (files) (octocat-diff--tree-changes files)))
+        (dirs    (vui-use-memo (files) (octocat-diff--tree-dirs files))))
+    (if root
+        (vui-component 'octocat-tree--subtree
+          :key (list ref root)
+          :repo repo :branch ref :sha root :commit nil
+          :depth 0 :path "" :reveal dirs :focus nil :changes changes)
+      (vui-text (octocat-tree--skeleton)))))
+
+
 ;;;; Commit page
 ;;
 ;; Commit data fetching and the `octocat-commit-mode' page, rendered with
@@ -1232,11 +1379,6 @@ across WIDTH."
 (defvar-local octocat--commit-sha nil
   "The full commit SHA this buffer is displaying.")
 
-(defconst octocat-commit--views '(diff tree patch)
-  "The commit page's views, in the order `octocat-commit-cycle-view' goes.")
-
-(defvar-local octocat-commit--view 'diff
-  "How the commit shows, one of `octocat-commit--views'.")
 
 
 ;;;;; Sections
@@ -1245,41 +1387,21 @@ across WIDTH."
 ;; PR diff's file component: commit comments have the same shape as PR
 ;; review comments.
 
-(defun octocat-commit--view-segments (view)
-  "Return the segments of the commit page's views, VIEW current.
-`Diff' is the page, `Tree' the repository's files at the commit, those
-it changed marked, `Patch' the commit as `git format-patch' writes it;
-the hints name the key that cycles them.  See `octocat-vui-segmented'."
-  (let ((key (substitute-command-keys "\\[octocat-commit-cycle-view]")))
-    (mapcar (lambda (v)
-              (let ((label (capitalize (symbol-name v))))
-                (list label (eq v view)
-                      (propertize (format "RET: show the %s  %s: next view"
-                                          (downcase label) key)
-                                  'octocat-key-help t)
-                      (lambda () (octocat-commit-show-view v)))))
-            octocat-commit--views)))
-
-(defun octocat-commit--view-tabs (view)
-  "Return the commit page's views as a pill, VIEW filled in."
-  (octocat-vui-segmented (octocat-commit--view-segments view)))
-
 (defun octocat-commit--top-line (repo sha view width)
   "Return the top line of commit SHA of REPO, as the tree browser's.
 That is owner/repo@SHA, then the tabs of the views, VIEW the one
-shown, see `octocat-commit--view-tabs'; the Tree view browses the
+shown, see `octocat-diff-views-heading'; the Tree view browses the
 files at it.  SHA is cut to keep the line within WIDTH columns, ElDoc
 showing it whole."
   (let ((tabs (mapconcat (lambda (v) (format " %s " (capitalize (symbol-name v))))
-                         octocat-commit--views "")))
+                         octocat-diff--views "")))
     (vui-hstack :spacing 0
                 (octocat-vui-repo-heading repo)
                 (vui-text (concat "@" (octocat-vui--fit
                                        sha (- width (string-width repo) 1 2
                                               (string-width tabs))))
                   :face 'octocat-commit-sha)
-                (vui-text "  ")
-                (octocat-commit--view-tabs view))))
+                (octocat-diff-views-heading view width))))
 
 (defun octocat-commit--person (commit role)
   "Return who COMMIT's ROLE is, as `git show' prints it, as nodes.
@@ -1412,39 +1534,10 @@ underlined across WIDTH columns."
 
 ;;;;; Patch
 
-(defun octocat-commit--patch-file (file)
-  "Return the diff of changed FILE, as git writes it, propertized.
-FILE is an entry of the commit's \"files\".  Without a patch, as of
-a binary or very large file, git's line saying it differs stands in."
-  (let* ((new    (or (gethash "filename" file) ""))
-         (old    (or (octocat--nonempty (gethash "previous_filename" file)) new))
-         (status (gethash "status" file))
-         (patch  (gethash "patch" file))
-         (a      (if (equal status "added") "/dev/null" (concat "a/" old)))
-         (b      (if (equal status "removed") "/dev/null" (concat "b/" new))))
-    (concat
-     (propertize (string-join
-                  (delq nil
-                        (list (format "diff --git a/%s b/%s" old new)
-                              (pcase status
-                                ("added" "new file mode 100644")
-                                ("removed" "deleted file mode 100644"))
-                              (and (equal status "renamed")
-                                   (format "rename from %s\nrename to %s" old new))))
-                  "\n")
-                 'face 'octocat-diff-file-name)
-     "\n"
-     (if (stringp patch)
-         (concat (propertize (format "--- %s\n+++ %s" a b) 'face 'octocat-diff-file-name)
-                 "\n"
-                 (mapconcat (lambda (l) (octocat--clip-line l octocat--max-line-length))
-                            (octocat-diff--lines patch new) "\n"))
-       (format "Binary files %s and %s differ" a b)))))
-
 (defun octocat-commit--patch-text (commit)
   "Return COMMIT as `git format-patch' writes it, as GitHub's .patch.
 Its header, message, then each file's diff, see
-`octocat-commit--patch-file'.  Not indented, so it copies out as a
+`octocat-diff--patch-file'.  Not indented, so it copies out as a
 patch `git am' applies."
   (let* ((c       (gethash "commit" commit))
          (author  (and (hash-table-p c) (gethash "author" c)))
@@ -1466,49 +1559,8 @@ patch `git am' applies."
      "\n\n"
      (if (string-empty-p body) "" (concat body "\n"))
      "---\n\n"
-     (mapconcat #'octocat-commit--patch-file (gethash "files" commit) "\n"))))
+     (mapconcat #'octocat-diff--patch-file (gethash "files" commit) "\n"))))
 
-(defun octocat-commit--tree-changes (files before)
-  "Return how its tree is to show FILES, a commit's \"files\".
-See `octocat-tree--subtree'.  They are as in its diff, see
-`octocat-diff--file-icon' and `octocat-diff--counts'; a removed file
-opens at BEFORE, the parent commit."
-  (let ((changes (make-hash-table :test #'equal)))
-    (seq-doseq (file files)
-      (let ((status (or (gethash "status" file) "modified")))
-        (puthash (or (gethash "filename" file) "")
-                 (list :mark    (concat (octocat-diff--file-icon status) " ")
-                       :face    'octocat-diff-file-name
-                       :after   (or (octocat-diff--counts file) "")
-                       :ref     (and (equal status "removed") before)
-                       :removed (equal status "removed"))
-                 changes)))
-    changes))
-
-(defun octocat-commit--tree-dirs (files)
-  "Return the directories of FILES, a commit's \"files\", for its tree to open."
-  (delete "" (delete-dups (mapcar (lambda (f) (octocat-tree--parent
-                                               (or (gethash "filename" f) "")))
-                                  files))))
-
-(defun octocat-commit-show-view (view)
-  "Show the commit as VIEW, one of `octocat-commit--views'."
-  (unless (derived-mode-p 'octocat-commit-mode)
-    (user-error "Octocat: Not in a commit buffer"))
-  (setq octocat-commit--view view)
-  (octocat-vui-update-page :view view))
-
-(defun octocat-commit-cycle-view ()
-  "Show the commit the next way: as its diff, its tree, then its patch.
-The tree is the repository's files at the commit, opened down to those
-it changed, marked as in the diff; the patch is GitHub's .patch."
-  (interactive)
-  (unless (derived-mode-p 'octocat-commit-mode)
-    (user-error "Octocat: Not in a commit buffer"))
-  (let ((next (or (cadr (memq octocat-commit--view octocat-commit--views))
-                  (car octocat-commit--views))))
-    (message "Commit view: %s" (capitalize (symbol-name next)))
-    (octocat-commit-show-view next)))
 
 
 ;;;;; Page
@@ -1517,8 +1569,8 @@ it changed, marked as in the diff; the patch is GitHub's .patch."
   "Commit SHA of REPO: top line, then as `git show': who and when, the
 message, then checks, files and comments.  HIDE-COMMENTS leaves the
 inline comments out of the diff.  RAW shows markdown verbatim.  VIEW,
-of `octocat-commit--views', `tree' shows the repository's files at the
-commit instead, those it changed marked, see `octocat-commit--tree-changes';
+of `octocat-diff--views', `tree' shows the repository's files at the
+commit instead, those it changed marked, see `octocat-diff-tree';
 `patch' the commit as a patch, see `octocat-commit--patch-text'.
 AT is the lines a link named, see `octocat-diff--file'.  The
 commit, its checks, its comments and the branch holding it are fetched
@@ -1538,18 +1590,11 @@ fetches them again."
                      (and data (octocat-commit--message data))))
          (text     (vui-use-memo (data view)
                      (and data (eq view 'patch) (octocat-commit--patch-text data))))
-         (tree     (vui-use-memo (data view)
-                     (and data (eq view 'tree)
-                          (let ((files   (or (gethash "files" data) []))
-                                (parents (gethash "parents" data)))
-                            (list (octocat--get data "commit" "tree" "sha")
-                                  (octocat-commit--tree-changes
-                                   files (and (> (length parents) 0)
-                                              (gethash "sha" (aref parents 0))))
-                                  (octocat-commit--tree-dirs files)))))))
+         (parent   (let ((parents (and data (gethash "parents" data))))
+                     (and (> (length parents) 0) (gethash "sha" (aref parents 0))))))
     (octocat-vui-page
      (octocat-vui-commit-pin repo (or (and data (gethash "sha" data)) sha)
-                             (octocat-vui-segmented-pin (octocat-commit--view-segments view)))
+                             (octocat-vui-segmented-pin (octocat-diff--view-segments view)))
      (vui-vstack
       (octocat-commit--top-line repo (or (and data (gethash "sha" data)) sha) view width)
       (octocat-vui-resource-view
@@ -1559,13 +1604,12 @@ fetches them again."
        (lambda (_)
          (cond
           (text (vui-text text))
-          (tree
-           (pcase-let ((`(,root ,changes ,dirs) tree))
-             (vui-fragment
-              (vui-newline)
-              (vui-component 'octocat-tree--subtree
-                :repo repo :branch (gethash "sha" data) :sha root :commit nil
-                :depth 0 :path "" :reveal dirs :focus nil :changes changes))))
+          ((eq view 'tree)
+           (vui-fragment
+            (vui-newline)
+            (octocat-diff-tree repo (gethash "sha" data)
+                               (octocat--get data "commit" "tree" "sha")
+                               (or (gethash "files" data) []))))
           (t
            (apply
             #'vui-vstack
@@ -1579,10 +1623,7 @@ fetches them again."
                            (vui-fragment section (vui-newline)))
                          (octocat-diff-files-section
                           repo (or (gethash "files" data) []) by-path hide-comments raw md-width t
-                          at nil (cons (let ((parents (gethash "parents" data)))
-                                         (and (> (length parents) 0)
-                                              (gethash "sha" (aref parents 0))))
-                                       (gethash "sha" data)))
+                          at nil (cons parent (gethash "sha" data)))
                          ;; Most commits have none, so the section is left
                          ;; out unless there are any, or they failed to load.
                          (when (or (not (seq-empty-p (plist-get comments :data)))
@@ -1604,7 +1645,7 @@ fetches them again."
 (defvar octocat-commit-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-page-mode-map)
-    (define-key map (kbd "C-c C-v") #'octocat-commit-cycle-view)
+    (define-key map (kbd "C-c C-v") #'octocat-diff-cycle-view)
     map)
   "Keymap for `octocat-commit-mode'.")
 
@@ -1616,6 +1657,7 @@ fetches them again."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-commit-refresh)
   (setq-local octocat--url-function #'octocat-commit--page-url)
+  (setq-local octocat-diff--view 'diff)
   (setq-local octocat--repo-function (lambda () octocat--commit-repo)))
 
 
@@ -1635,7 +1677,7 @@ only on `g'."
                                   :sha octocat--commit-sha
                                   :hide-comments octocat-diff--hide-comments
                                   :raw octocat--markdown-raw
-                                  :view octocat-commit--view
+                                  :view octocat-diff--view
                                   :at octocat-diff--at)))
 
 (defun octocat-commit-open (repo sha &optional at)

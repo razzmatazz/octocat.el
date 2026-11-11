@@ -1,4 +1,4 @@
-acme/rocket@1a954628a960aaef81d7b2d4521929579f3541e6   Diff  Tree  Patch
+acme/rocket@1a954628a960aaef81d7b2d4521929579f3541e6                              Diff  Tree  Patch
 
 ▸ .github/
 ▾ docs/

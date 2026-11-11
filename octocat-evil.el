@@ -208,7 +208,7 @@ The lists bind normal state per buffer, see `octocat-evil--list-setup'."
   ;; vui.el-rendered like octocat-pr-diff-mode: row RET actions come from
   ;; per-row keymaps, so only the global commands are bound here.
   (evil-define-key* 'normal octocat-commit-mode-map
-    (kbd "C-c C-v") #'octocat-commit-cycle-view)
+    (kbd "C-c C-v") #'octocat-diff-cycle-view)
 
   ;; ── octocat-compare-mode ──────────────────────────────────────────────
   (evil-define-key* 'normal octocat-compare-mode-map
@@ -222,7 +222,7 @@ The lists bind normal state per buffer, see `octocat-evil--list-setup'."
     (kbd "C-c C-e") #'octocat-diff-edit-comment
     (kbd "C-c C-r") #'octocat-pr-diff-review
     (kbd "C-c C-m") #'octocat-pr-merge
-    (kbd "C-c C-v") #'octocat-diff-toggle-comments)
+    (kbd "C-c C-v") #'octocat-diff-cycle-view)
 
   ;; A region of lines, marked with `V', is commented on as one.
   (evil-define-key* 'visual octocat-pr-diff-mode-map

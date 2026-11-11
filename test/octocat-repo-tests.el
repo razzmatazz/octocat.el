@@ -692,7 +692,7 @@ A refresh asks GitHub again, which never answers."
             (should (equal (buffer-name) "*owner/repo@dev:docs/GUIDE.md*"))
             (should (derived-mode-p 'octocat-file-mode))
             (should (string-match-p
-                     (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md   Preview  Code  Blame \n\n"
+                     (concat "\\`owner/repo  \\[dev ▾\\]:/docs/GUIDE.md +Preview  Code  Blame \n\n"
                              "Add the guide +abc1234 · .*  \\[3 commits\\] \n")
                      text))
             (should-not (string-match-p "reset" text))
@@ -868,7 +868,7 @@ The top line has a tab for each view, the one shown plain."
             (progn
               (should (eq (key-binding (kbd "C-c C-v")) #'octocat-file-cycle-view))
               (should (string-match-p "^Guide$" (buffer-string)))
-              (should (string-match-p ":/docs/GUIDE.md   Preview  Code  Blame $" (buffer-string)))
+              (should (string-match-p ":/docs/GUIDE.md +Preview  Code  Blame $" (buffer-string)))
               (goto-char (point-min))
               (search-forward "Preview")
               (should (eq (get-text-property (point) 'face) 'octocat-segment-current))

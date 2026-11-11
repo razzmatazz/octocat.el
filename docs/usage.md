@@ -349,8 +349,8 @@ lists them, opened down to every file the commit changed.  Those are
 marked as in the diff, `A`, `M`, `D` or `R` before the name and the
 lines added and removed after it; the files it left alone are dimmed,
 and a removed one is listed where it was.  `RET` on a directory opens
-or closes it; on a file, it opens the file at the commit, a removed one
-at the parent.
+or closes it; on a changed file, it shows the file's diff in the Diff
+view; on another file, it opens the file at the commit.
 
 Patch is the commit as GitHub's `.patch` link shows it: its header and
 message as `git format-patch` writes them, then every file's diff in
@@ -549,13 +549,14 @@ back.  Pages showing markdown switch between rendered and raw text, so
 the markup can be read or copied as written.  The file page has more
 than two views and cycles through them: rendered, raw and blame for
 Markdown and org, source and blame for other files (see
-[Files](#files-octocat-file-mode)).  The commit page switches between
-its diff and the commit as a patch, a run's page its jobs between a
-table and a graph.  The PR's files changed
-page instead shows or hides the review comments in the diff, which
-opening the page shows again; they roll down out of their first line
-and back up into it.  The Comments (N) | Diff only switch in the Files
-heading does the same, also on the commit page.  The PR and
+[Files](#files-octocat-file-mode)).  The commit page and a PR's Files
+changed page cycle through their files' Diff, Tree and Patch (see
+[Commit detail view](#commit-detail-view-octocat-commit-mode)); on a
+PR they are of all its commits at once, from base to head.  A run's
+page switches its jobs between a table and a graph.  On those two
+pages, the [Hide comments (N)] button in the Files heading shows
+or hides the review comments in the diff, which opening the page shows
+again; they roll down out of their first line and back up into it.  The PR and
 issue lists switch between two-line rows and a compact view of one line
 per item.
 The list pages remember the choice per repository, across Emacs

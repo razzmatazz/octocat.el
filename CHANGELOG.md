@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A diff's comments show and hide from a [Hide comments (N)] button, not a pill
+* A page's switch of views, as Diff | Tree | Patch, sits at the right edge of its line
+* `RET` on a changed file in a Tree view shows its diff, not the file
+* A PR's Files changed has Diff, Tree and Patch views too, all its commits in one
+* `C-c C-v` on a PR's Files changed switches its views, not its comments
 * A commit's Tree view, between Diff and Patch: its repo's files, opened down to its changes
 * The commit page drops [Browse files]: its Tree view browses the files at the commit
 * A comment, description, title or reaction you change briefly lights up where it lands

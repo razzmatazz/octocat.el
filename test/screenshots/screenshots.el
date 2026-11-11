@@ -213,10 +213,12 @@ A LABEL of (:key KEY) calls the command KEY is bound to in BUFFER;
                 octocat-screenshots--problems))))))
 
 (defun octocat-screenshots--text (buffer)
-  "Return BUFFER's text, without trailing blanks."
+  "Return BUFFER's text, without trailing blanks.
+Its spaces aligned to a column are laid out, see `octocat-screenshots--aligned'."
   (with-current-buffer buffer
     (replace-regexp-in-string
-     "[ \t]+$" "" (string-trim-right (buffer-substring-no-properties (point-min) (point-max))))))
+     "[ \t]+$" "" (string-trim-right
+                   (octocat-screenshots--aligned (buffer-substring (point-min) (point-max)))))))
 
 (defun octocat-screenshots--png (buffer file)
   "Save BUFFER, shown whole in a frame of its own, to FILE as PNG."
@@ -236,21 +238,45 @@ A LABEL of (:key KEY) calls the command KEY is bound to in BUFFER;
             (write-region (x-export-frames frame 'png) nil file nil 0)))
       (delete-frame frame t))))
 
+(defun octocat-screenshots--aligned (text)
+  "Return TEXT with each space aligned to a column as that many spaces.
+A `(space :align-to N)' that text follows on its line, as buttons at a
+right edge, is drawn up to column N; one ending a line, as an
+underline's, draws nothing a text shot shows, and stays a space."
+  (let ((out "") (i 0) (n (length text)))
+    (while (< i n)
+      (let* ((next    (or (next-single-property-change i 'display text) n))
+             (display (get-text-property i 'display text))
+             (to      (and (eq (car-safe display) 'space)
+                           (plist-get (cdr display) :align-to)))
+             (chunk   (substring-no-properties text i next)))
+        (setq out (concat out
+                          (if (and (numberp to) (< next n)
+                                   (not (eq (aref text next) ?\n)))
+                              (let ((col (string-width
+                                          (substring out (1+ (or (cl-position ?\n out :from-end t)
+                                                                 -1))))))
+                                (make-string (max 0 (- to col)) ?\s))
+                            chunk))
+              i next)))
+    out))
+
 (defun octocat-screenshots--window-text (win start end)
   "Return the text from START to END as WIN shows it.
 That is with the strings of overlays only WIN shows, as a pinned
-blame commit, in place of the text they cover."
+blame commit, in place of the text they cover, and its spaces aligned
+to a column laid out, see `octocat-screenshots--aligned'."
   (let ((pos start) parts)
     (dolist (ov (sort (seq-filter (lambda (ov)
                                     (and (eq (overlay-get ov 'window) win)
                                          (stringp (overlay-get ov 'display))))
                                   (overlays-in start end))
                       (lambda (a b) (< (overlay-start a) (overlay-start b)))))
-      (push (buffer-substring-no-properties pos (overlay-start ov)) parts)
+      (push (buffer-substring pos (overlay-start ov)) parts)
       (push (substring-no-properties (overlay-get ov 'display)) parts)
       (setq pos (overlay-end ov)))
-    (push (buffer-substring-no-properties pos end) parts)
-    (apply #'concat (nreverse parts))))
+    (push (buffer-substring pos end) parts)
+    (octocat-screenshots--aligned (apply #'concat (nreverse parts)))))
 
 (defun octocat-screenshots--scrolled (buffer text png)
   "Return BUFFER as a window scrolled to the line showing TEXT shows it.

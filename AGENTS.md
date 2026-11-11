@@ -21,6 +21,8 @@ See "Functional core" in [CONTRIBUTING.md](CONTRIBUTING.md): keep functions as f
   Don't edit an existing entry because a later change supersedes it:
   add a new entry saying what changed.  Edit one only when it was wrong
   when written, to correct the record.
+- **Add no key binding** unless an established convention gives it
+  (e.g. `C-c C-v` for another view); otherwise ask.
 - **Keep `Assisted-by:` headers complete.** Every `.el` file, tests included, lists each model that has worked on it, one line per model, as MELPA asks (`;; Assisted-by: AGENT_NAME:MODEL_VERSION`, e.g. `;; Assisted-by: Claude:claude-opus-5-5`). When you edit or create a file and your model is not listed there, add a line after the existing `Assisted-by:` lines, or, in a file with none, after the title line. Never remove a line.
 - **Keep docs and comments minimal.** Say only what the code doesn't: the why, the non-obvious. Short, but complete enough to understand.
   Docs (`README.md`, `docs/`) must not be too short either: a reader new to the feature should get what it does, why, and how to use or extend it, in full sentences.

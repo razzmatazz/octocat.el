@@ -2,7 +2,7 @@ acme/rocket › Actions › CI › #310  Incremental builds: skip pages whose in
 in_progress  Event pull_request · Branch incremental · SHA b7d444f
              Run 9100200310 · Created 4 minutes ago
 
-Jobs (4)   Table  Graph
+Jobs (4)                                                                               Table  Graph
   ✓─╮    lint           success        5/5   1m30s
     ●─╮  test (stable)  in_progress    3/5          Run cargo
     ●─┤  test (beta)    in_progress    2/5          Install Rust

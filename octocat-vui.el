@@ -1882,6 +1882,15 @@ each label is padded so it reads without the outline, as in a terminal."
                          :on-click on-click))))
                  segments)))
 
+(defun octocat-vui-segmented-right (segments width)
+  "Return SEGMENTS as for `octocat-vui-segmented', ending at column WIDTH.
+A pill of views goes at the right edge of its line, so it is always
+found in the same place."
+  (let ((used (apply #'+ (mapcar (lambda (s) (+ 2 (string-width (car s)))) segments))))
+    (vui-hstack :spacing 0
+                (vui-text (propertize " " 'display `(space :align-to ,(- width used))))
+                (octocat-vui-segmented segments))))
+
 (defun octocat-vui-segmented-pin (segments)
   "Return SEGMENTS, as for `octocat-vui-segmented', as text to pin, or nil."
   (and segments

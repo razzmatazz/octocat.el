@@ -692,8 +692,8 @@ it does not fold: it is for browsing.
 CHANGES, a hash-table of the paths a commit changed, marks them in
 place of the last commit, and dims the rest.  Each maps to a plist:
 :mark, the two columns before its name, :face, its name's, :after, the
-text after it, :ref, where RET opens it, BRANCH if nil, and :removed,
-non-nil for a file the commit removed, listed where it was."
+text after it, :open, what RET on it does, and :removed, non-nil for a
+file the commit removed, listed where it was."
   :render
   (let* ((indent  (make-string (* depth 2) ?\s))
          (result  (octocat-vui-use-latest-resource (list 'tree-dir repo sha) nil path))
@@ -778,8 +778,8 @@ arguments are as for `octocat-tree--subtree'.  A directory without a
              (dim 'octocat-dimmed)
              (t 'default))
        'file entry path
-       (lambda () (octocat-tree--open-file-by-path
-                   repo (or (plist-get change :ref) branch) path))
+       (or (plist-get change :open)
+           (lambda () (octocat-tree--open-file-by-path repo branch path)))
        (if changes (or (plist-get change :after) "") last) width))))
 
 (defun octocat-tree--skeleton (&optional indent)
@@ -1572,11 +1572,12 @@ and `octocat-vui-segmented'."
                         (lambda () (octocat-file-show-view view)))))
               views))))
 
-(defun octocat-repo-vui--view-tabs (path raw blame)
+(defun octocat-repo-vui--view-tabs (path raw blame width)
   "Return the views of file PATH as a pill, as GitHub's, or nil.
-See `octocat-repo-vui--view-segments' for RAW and BLAME."
+It ends at the right edge of WIDTH.  See `octocat-repo-vui--view-segments'
+for RAW and BLAME."
   (when-let* ((segments (octocat-repo-vui--view-segments path raw blame)))
-    (octocat-vui-segmented segments)))
+    (octocat-vui-segmented-right segments width)))
 
 (vui-defcomponent octocat-repo-vui--file-page (repo ref path raw blame lines tick)
   "Root component of the file viewer: file PATH of REPO at REF.
@@ -1621,7 +1622,7 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
       (octocat-repo-vui--top-line
        repo (or ref default-branch) path current-branch #'octocat-file-switch-branch
        (lambda (dir) (octocat-tree-open repo ref (octocat--nonempty dir)))
-       (octocat-repo-vui--view-tabs path raw blame))
+       (octocat-repo-vui--view-tabs path raw blame (octocat-vui-window-width)))
       (vui-newline)
       (octocat-repo-vui--head-line repo ref path head-snap)
       (cond (notice

@@ -1206,6 +1206,10 @@ jobs:
        (:data (:repository (:object (:history (:totalCount 87 :nodes [,(octocat-screenshots--history-node
                                                                         (nth 1 octocat-screenshots--commits))]))
                             :dir (:__typename "Tree" :oid ,(octocat-screenshots--sha "src"))))))
+      ("repo-head" (,(format "dir=%s:" octocat-screenshots--pr-head))
+       (:data (:repository (:object (:history (:totalCount 98 :nodes [,(octocat-screenshots--history-node
+                                                                        (nth 1 octocat-screenshots--commits))]))
+                            :dir (:__typename "Tree" :oid ,(octocat-screenshots--sha "root"))))))
       ("repo-head" ("dir=HEAD:")
        (:data (:repository (:object (:history (:totalCount 342 :nodes [,(octocat-screenshots--history-node
                                                                          (car octocat-screenshots--commits))]))

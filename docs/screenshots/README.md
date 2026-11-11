@@ -165,6 +165,24 @@ after its line, a resolved one folded to its heading, and your draft,
 [As text](pr-diff.txt)
 <!-- /screenshot -->
 
+The same files as a tree, `C-c C-v` or Tree after their heading: the
+repository at the head of the PR, opened down to what it changes, all
+its commits in one.
+
+<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-tree" :press ((:key "C-c C-v")) -->
+![pr-diff-tree](pr-diff-tree.png)
+
+[As text](pr-diff-tree.txt)
+<!-- /screenshot -->
+
+`RET` on a changed file there shows its diff, unfolded and lit up:
+
+<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-tree-file" :press ((:key "C-c C-v") (:key "RET" "main.rs")) -->
+![pr-diff-tree-file](pr-diff-tree-file.png)
+
+[As text](pr-diff-tree-file.txt)
+<!-- /screenshot -->
+
 Reviewing: `C-c C-a` on a line opens a comment on it below, the line
 highlighted until it is saved as a draft, and `RET` on the resolved
 conversation unfolds it.

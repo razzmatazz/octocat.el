@@ -95,7 +95,7 @@ The comments come as a sync snapshot."
       (should-not (string-search "┌" out)))))
 
 (ert-deftest octocat-diff-test-files-hide-comments ()
-  "Inline comments start hidden, their count on the switch that shows them."
+  "Inline comments start hidden, their count on the button that shows them."
   (let* ((file (json-parse-string
                 "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}"))
          (c    (json-parse-string
@@ -107,7 +107,7 @@ The comments come as a sync snapshot."
                                :hide t
                                :fits t :raw nil :width 80))
                  (buffer-substring-no-properties (point-min) (point-max)))))
-    (should (string-search "]   Comments (1)  Diff only " out))
+    (should (string-search "]  [Show comments (1)]" out))
     (should (string-search "+x" out))
     (should-not (string-search "note" out))))
 
@@ -123,7 +123,7 @@ The comments come as a sync snapshot."
                                :by-path (octocat-diff-by-path (vector c))
                                :hide nil :fits t :raw nil :width 80))
                  (buffer-substring-no-properties (point-min) (point-max)))))
-    (should-not (string-search "Comments (" out))
+    (should-not (string-search "comments (" out))
     (should (string-search "+x" out))))
 
 (defun octocat-diff-tests--face-at (line col)
@@ -551,7 +551,7 @@ Only that file; a hash naming none changes nothing."
     (should-not (octocat-commit--date commit "committer"))))
 
 (ert-deftest octocat-commit-test-tree-changes ()
-  "A commit's files mark its tree as its diff does; a removed one opens at the parent."
+  "A commit's files mark its tree as its diff does, RET on one showing its diff."
   (let* ((files   (json-parse-string
                    (concat "[{\"filename\":\"src/a.el\",\"status\":\"added\","
                            "\"additions\":3,\"deletions\":0,\"changes\":3,\"patch\":\"@@\"},"
@@ -559,22 +559,37 @@ Only that file; a hash naming none changes nothing."
                            "\"additions\":0,\"deletions\":2,\"changes\":2,\"patch\":\"@@\"},"
                            "{\"filename\":\"logo.png\",\"status\":\"modified\","
                            "\"changes\":0}]")))
-         (changes (octocat-commit--tree-changes files "parent"))
+         (changes (octocat-diff--tree-changes files))
          (added   (gethash "src/a.el" changes))
          (removed (gethash "old/b.el" changes)))
     (should (equal (substring-no-properties (plist-get added :mark)) "A "))
     (should (equal (substring-no-properties (plist-get added :after)) "  +3 -0"))
-    (should-not (plist-get added :ref))
     (should (equal (substring-no-properties (plist-get removed :mark)) "D "))
-    (should (equal (plist-get removed :ref) "parent"))
+    (should (functionp (plist-get removed :open)))
     (should (plist-get removed :removed))
     ;; Nothing to count, as in the diff.
     (should (equal (plist-get (gethash "logo.png" changes) :after) ""))
-    (should (equal (sort (octocat-commit--tree-dirs files) #'string<) '("old" "src")))))
+    (should (equal (sort (octocat-diff--tree-dirs files) #'string<) '("old" "src")))))
+
+(ert-deftest octocat-diff-test-patch-text ()
+  "Changed files as a patch are every file's diff, as git writes them."
+  (let ((files (json-parse-string
+                (concat "[{\"filename\":\"a.el\",\"status\":\"modified\","
+                        "\"patch\":\"@@ -1 +1 @@\\n-old\\n+new\"},"
+                        "{\"filename\":\"b.el\",\"status\":\"removed\","
+                        "\"patch\":\"@@ -1 +0,0 @@\\n-gone\"}]"))))
+    (should (equal (substring-no-properties (octocat-diff-patch-text files))
+                   (concat "diff --git a/a.el b/a.el\n"
+                           "--- a/a.el\n+++ b/a.el\n"
+                           "@@ -1 +1 @@\n-old\n+new\n"
+                           "diff --git a/b.el b/b.el\n"
+                           "deleted file mode 100644\n"
+                           "--- a/b.el\n+++ /dev/null\n"
+                           "@@ -1 +0,0 @@\n-gone")))))
 
 (ert-deftest octocat-commit-test-view-segments ()
   "The commit's views are Diff, Tree and Patch, in that order, VIEW current."
-  (let ((segments (octocat-commit--view-segments 'tree)))
+  (let ((segments (octocat-diff--view-segments 'tree)))
     (should (equal (mapcar #'car segments) '("Diff" "Tree" "Patch")))
     (should (equal (mapcar #'cadr segments) '(nil t nil)))))
 
