@@ -61,6 +61,8 @@
 (require 'octocat-sync)
 (require 'octocat-model)
 (require 'cl-lib)
+(require 'color)
+(require 'pulse) ; `pulse-highlight-start-face', which themes set
 (require 'seq)
 (require 'subr-x)
 (require 'url-util)
@@ -923,6 +925,106 @@ roll on low battery, nor with too many lines."
           (progn (octocat-vui--roll-show boxes nil)
                  (when done (funcall done)))
         (funcall step)))))
+
+;; A pulse lights up what the user just changed, such as the comment
+;; they posted, and fades it into the page's background: only an
+;; overlay's face changes, so the page is not re-rendered.  It shows
+;; where the change went, so low battery keeps it, without the fade.
+
+(defface octocat-pulse
+  '((t :inherit pulse-highlight-start-face :extend t))
+  "Face a pulse starts from, see `octocat-vui-pulse'.
+Its background fades into the default one."
+  :group 'octocat)
+
+(defconst octocat-vui-pulse-frames 16
+  "Frames a pulse fades over, `octocat-vui-unfold-interval' seconds apart.")
+
+(defconst octocat-vui-pulse-hold 0.4
+  "Seconds a pulse that does not fade stays lit.")
+
+(defvar-local octocat-vui--pulse nil
+  "This buffer's pulse, (OVERLAY . TIMER); one runs at a time.")
+
+(defun octocat-vui--blend (from to frac)
+  "Return the colour FRAC of the way from colour FROM to colour TO, or nil.
+Nil when either is not a colour, as an unspecified background is not."
+  (let ((a (and from (color-name-to-rgb from)))
+        (b (and to (color-name-to-rgb to))))
+    (and a b (apply #'color-rgb-to-hex
+                    (append (cl-mapcar (lambda (x y) (+ x (* frac (- y x)))) a b)
+                            '(2))))))
+
+(defun octocat-vui--pulse-stop ()
+  "Stop the current buffer's pulse, if any."
+  (when octocat-vui--pulse
+    (delete-overlay (car octocat-vui--pulse))
+    (when (timerp (cdr octocat-vui--pulse))
+      (cancel-timer (cdr octocat-vui--pulse)))
+    (setq octocat-vui--pulse nil)))
+
+(defun octocat-vui-pulse (buf start end)
+  "Light up the lines of BUF from START to END, then fade them out.
+A pulse started stops the one running.  On low battery, or without
+colours to fade between, they stay lit `octocat-vui-pulse-hold' seconds."
+  (with-current-buffer buf
+    (octocat-vui--pulse-stop)
+    (let* ((ov    (make-overlay (save-excursion (goto-char start) (line-beginning-position))
+                                (save-excursion (goto-char (max start (1- end)))
+                                                (min (point-max) (1+ (line-end-position))))))
+           (from  (face-background 'octocat-pulse nil t))
+           (to    (face-background 'default nil t))
+           (fade  (and (not (eq (octocat-power) 'low))
+                       (octocat-vui--blend from to 0)))
+           (frame 0)
+           step)
+      (overlay-put ov 'face 'octocat-pulse)
+      (setq step
+            (lambda ()
+              (when (buffer-live-p buf)
+                (with-current-buffer buf
+                  (if (or (not fade) (>= frame octocat-vui-pulse-frames))
+                      (octocat-vui--pulse-stop)
+                    (setq frame (1+ frame))
+                    ;; Slow at first, so it reads as lit before it fades.
+                    (overlay-put ov 'face
+                                 (list :background
+                                       (octocat-vui--blend
+                                        from to
+                                        (expt (/ frame (float octocat-vui-pulse-frames)) 2))
+                                       :extend t))
+                    (setcdr octocat-vui--pulse
+                            (run-at-time octocat-vui-unfold-interval nil step)))))))
+      (setq octocat-vui--pulse
+            (cons ov (run-at-time (if fade octocat-vui-unfold-interval octocat-vui-pulse-hold)
+                                  nil step))))))
+
+(defun octocat-vui--last-run (prop pred)
+  "Return (START . END) of the current buffer's last run of PROP satisfying PRED.
+PRED is called with the value of PROP.  Nil if there is none."
+  (let ((pos (point-min)) found)
+    (while (setq pos (text-property-not-all pos (point-max) prop nil))
+      (let ((end (or (next-single-property-change pos prop) (point-max))))
+        (when (funcall pred (get-text-property pos prop))
+          (setq found (cons pos end)))
+        (setq pos end)))
+    found))
+
+(defun octocat-vui-pulse-change (buf prop pred &optional head)
+  "Pulse the last text of BUF whose PROP satisfies PRED, once this command ends.
+That is, once an edit dialog it closed has given BUF its window back.
+HEAD non-nil pulses only its first line.  A window showing BUF but not
+the text moves to it."
+  (run-at-time
+   0 nil
+   (lambda ()
+     (when (buffer-live-p buf)
+       (with-current-buffer buf
+         (when-let* ((run (octocat-vui--last-run prop pred)))
+           (dolist (win (get-buffer-window-list buf nil t))
+             (unless (pos-visible-in-window-p (car run) win)
+               (set-window-point win (car run))))
+           (octocat-vui-pulse buf (car run) (if head (1+ (car run)) (cdr run)))))))))
 
 (vui-defcomponent octocat-vui-fold-rest (total limit render prefix noun key)
   "Show the first LIMIT of TOTAL things, the rest folded behind a marker row.

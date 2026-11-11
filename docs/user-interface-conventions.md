@@ -717,7 +717,8 @@ What the user does still fetches at once on low battery: `g`, opening a
 page, and coming back (see [Keeping shown pages up to
 date](#keeping-shown-pages-up-to-date)).  Without animations, folds open
 and close in one step, the blame column shows and hides at once, and
-spinners stand still on one frame.
+spinners stand still on one frame.  A [pulse](#pulse-what-the-user-changed)
+still shows, as it tells where a change went, but lit without fading.
 
 ---
 
@@ -790,6 +791,19 @@ line a `display` string every frame, so a column of more than
 A dialog whose text the user typed (a comment, a description) must not
 lose it: `octocat-timeline-submit` sends its mutation, closes the dialog
 at once and reopens it with the text if GitHub refuses.
+
+### Pulse what the user changed
+
+Where the user's own change lands, such as the comment they posted, is
+**pulsed**: lit in `octocat-pulse` (from the theme's
+`pulse-highlight-start-face`), then faded into the background,
+`octocat-vui-pulse-change`.  Point moves to it if it is off screen.
+Only the user's own changes pulse, once, when they first show; not on
+GitHub's answer, nor what a refetch brings.  Others' changes, when
+marked, get a mark that stays until read, as mail and chat clients do.
+
+Pulsed now: a new or edited comment or description, a reaction (its
+box's first line), and the title.
 
 Where each slot shows:
 

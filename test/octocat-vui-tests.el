@@ -637,6 +637,36 @@ unsubscribes it."
       (octocat-vui--roll-show boxes nil)
       (should-not (text-property-not-all (point-min) (point-max) 'invisible nil)))))
 
+(ert-deftest octocat-vui-test-last-run ()
+  "The last run of a property whose value satisfies the predicate is found."
+  (with-temp-buffer
+    (insert (propertize "a" 'octocat-test 1) (propertize "bb" 'octocat-test 2)
+            "-" (propertize "c" 'octocat-test 1))
+    (should (equal (octocat-vui--last-run 'octocat-test (lambda (v) (eql v 1))) '(5 . 6)))
+    (should (equal (octocat-vui--last-run 'octocat-test (lambda (v) (eql v 2))) '(2 . 4)))
+    (should-not (octocat-vui--last-run 'octocat-test (lambda (v) (eql v 3))))))
+
+(ert-deftest octocat-vui-test-pulse ()
+  "A pulse lights up whole lines; one started stops the one running."
+  (with-temp-buffer
+    (insert "one\ntwo\nthree\n")
+    (let ((octocat--power (cons (float-time) 'mains)))
+      (octocat-vui-pulse (current-buffer) 6 7)
+      (let ((first (car octocat-vui--pulse)))
+        (should (equal (list (overlay-start first) (overlay-end first)) '(5 9)))
+        (octocat-vui-pulse (current-buffer) 10 15)
+        (should-not (overlay-buffer first)))
+      (should (equal (overlay-end (car octocat-vui--pulse)) 15))
+      (octocat-vui--pulse-stop)
+      (should-not octocat-vui--pulse)
+      (should-not (overlays-in (point-min) (point-max))))))
+
+(ert-deftest octocat-vui-test-blend ()
+  "Colours blend; anything not a colour gives nil."
+  (should (equal (octocat-vui--blend "#000000" "#ffffff" 0.5) "#7f7f7f"))
+  (should (equal (octocat-vui--blend "#000000" "#ffffff" 1) "#ffffff"))
+  (should-not (octocat-vui--blend "unspecified-bg" "#ffffff" 0)))
+
 (defvar octocat-vui-tests--marks nil
   "The marks of `octocat-vui-tests--marks-buffer'.")
 

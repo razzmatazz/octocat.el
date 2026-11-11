@@ -656,7 +656,24 @@ lost."
        (when (and (eq (car-safe result) 'error) (buffer-live-p source))
          (with-current-buffer source
            (octocat-edit-open title submit-fn #'ignore body data)))))
+    (when-let* ((shows (octocat-timeline--change-target spec)))
+      (octocat-vui-pulse-change source 'octocat-timeline-target shows))
     (funcall on-success)))
+
+(defun octocat-timeline--change-target (spec)
+  "Return a predicate: whether a timeline target is where SPEC's change lands.
+SPEC is a mutation's, as `octocat-sync-submit' takes.  Nil if no target
+shows it.  See `octocat-timeline-target' for the targets."
+  (pcase spec
+    (`(comment . ,_)
+     (lambda (target) (equal (octocat--get target octocat-model-pending) "posting")))
+    (`(edit-body . ,_)
+     (lambda (target) (eq target 'body)))
+    (`(edit-comment ,_ ,_ ,_ ,id . ,_)
+     (lambda (target) (and (hash-table-p target)
+                           (equal (octocat-model-comment-numeric-id target) id))))
+    (`(set-title . ,_)
+     (lambda (target) (eq target 'title)))))
 
 (defun octocat-timeline-prepare-comment ()
   "Fetch your login, for a comment being posted, unless the store has it."
@@ -716,7 +733,14 @@ ticked; picking one of them takes it back."
                                              octocat-timeline--reaction-keys))))
                 (octocat-sync-submit
                  `(react ,kind ,repo ,number ,subject ,content
-                         ,(not (member content given))))))))))))
+                         ,(not (member content given))))
+                ;; The reactions show on the box's first line.
+                (octocat-vui-pulse-change
+                 buf 'octocat-timeline-target
+                 (if (memq target '(title body))
+                     (lambda (shown) (eq shown 'body))
+                   (lambda (shown) (equal (octocat--get shown "id") subject)))
+                 t)))))))))
     (unless called
       (message "Octocat: Fetching your reactions…"))))
 
@@ -740,7 +764,10 @@ Every page showing it changes at once; the mode line shows it under way."
     (when (string-empty-p new)
       (user-error "Octocat: Title must not be empty"))
     (unless (string-equal new current)
-      (octocat-sync-submit `(set-title ,kind ,repo ,number ,new)))))
+      (let ((spec `(set-title ,kind ,repo ,number ,new)))
+        (octocat-sync-submit spec)
+        (octocat-vui-pulse-change (current-buffer) 'octocat-timeline-target
+                                  (octocat-timeline--change-target spec))))))
 
 (defconst octocat-timeline--value-fields
   '(("label"    "Labels"    "labels"         "name")

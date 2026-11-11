@@ -516,5 +516,21 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
     (should (equal (nth 1 prompted) '(?- "👎 -1")))
     (should (equal submitted '(react "issue" "o/r" 7 "I_7" "THUMBS_UP" nil)))))
 
+(ert-deftest octocat-timeline-test-shows-change ()
+  "The entry pulsed for a change is the one it lands in."
+  (let ((posting (octocat--table octocat-model-pending "posting"))
+        (posted  (octocat--table "url" "https://github.com/o/r/issues/7#issuecomment-42")))
+    (should (funcall (octocat-timeline--change-target '(comment "issue" "o/r" 7 "hi")) posting))
+    (should-not (funcall (octocat-timeline--change-target '(comment "issue" "o/r" 7 "hi")) posted))
+    (should (funcall (octocat-timeline--change-target '(edit-comment "issue" "o/r" 7 "42" "hi"))
+                     posted))
+    (should-not (funcall (octocat-timeline--change-target '(edit-comment "issue" "o/r" 7 "43" "hi"))
+                         posted))
+    (should-not (funcall (octocat-timeline--change-target '(edit-comment "issue" "o/r" 7 "42" "hi"))
+                         'body))
+    (should (funcall (octocat-timeline--change-target '(edit-body "issue" "o/r" 7 "hi")) 'body))
+    (should (funcall (octocat-timeline--change-target '(set-title "issue" "o/r" 7 "t")) 'title))
+    (should-not (octocat-timeline--change-target '(set-state "issue" "close" "o/r" 7)))))
+
 (provide 'octocat-timeline-tests)
 ;;; octocat-timeline-tests.el ends here
