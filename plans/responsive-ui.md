@@ -109,7 +109,7 @@ pressed the key (`octocat--still-selected-p`).
 - The filter and value prompts (`octocat-vui-list--stored`) wait on a
   repo's first use; they check already.
 
-## 8. Direct calls left
+## 8. Direct calls left (done)
 
 Through `octocat--run-gh`, outside the model.  The first two run as a
 page draws its images, not from a key: they move for step 9's rule.

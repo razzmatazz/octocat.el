@@ -441,28 +441,13 @@
 (ert-deftest octocat-tree-test-proxied-urls ()
   "GitHub's HTML maps each image of another site to its proxy's URL."
   (skip-unless (libxml-available-p))
-  (let ((table (octocat-tree--proxied-urls
+  (let ((table (octocat-model--proxied-urls
                 (concat "<p><img src=\"https://camo.githubusercontent.com/a/b\" "
                         "data-canonical-src=\"https://example.com/x.png?a=1&amp;b=2\">"
                         "<img src=\"/o/r/raw/main/local.png\"></p>"))))
     (should (equal (gethash "https://example.com/x.png?a=1&b=2" table)
                    "https://camo.githubusercontent.com/a/b"))
     (should (= (hash-table-count table) 1))))
-
-(ert-deftest octocat-tree-test-proxied-url-once ()
-  "A file's rendering is asked for once, for all its images."
-  (let ((octocat-tree--proxied (make-hash-table :test #'equal))
-        (calls 0) got)
-    (cl-letf (((symbol-function 'octocat--run-gh)
-               (lambda (_name args parse cb)
-                 (cl-incf calls)
-                 (should (member "repos/o/r/contents/docs/a%20b.md" args))
-                 (should (member "ref=main" args))
-                 (funcall cb (funcall parse "<img src=\"https://camo.githubusercontent.com/1\" data-canonical-src=\"https://e.com/1.png\">")))))
-      (octocat-tree--proxied-url "o/r" "main" "docs/a b.md" "https://e.com/1.png" (lambda (u) (push u got)))
-      (octocat-tree--proxied-url "o/r" "main" "docs/a b.md" "https://e.com/2.png" (lambda (u) (push u got)))
-      (should (= calls 1))
-      (should (equal got '(nil "https://camo.githubusercontent.com/1"))))))
 
 (ert-deftest octocat-tree-test-fontify-plain-text ()
   "octocat-tree--fontify returns the content string unchanged for plain text."
@@ -579,6 +564,22 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
                                     (list :repo "owner/repo" :ref "main"))))
       (should (member '(blob "owner/repo" "b1") requested)))))
 
+(ert-deftest octocat-tree-test-proxied-url-once ()
+  "A file's rendering is asked for once, for all its images."
+  (skip-unless (libxml-available-p))
+  (octocat-tree-tests--with-store
+    (let ((calls 0) got)
+      (cl-letf (((symbol-function 'octocat--run-gh)
+                 (lambda (_name args parse cb)
+                   (cl-incf calls)
+                   (should (member "repos/o/r/contents/docs/a%20b.md" args))
+                   (should (member "ref=main" args))
+                   (funcall cb (funcall parse "<img src=\"https://camo.githubusercontent.com/1\" data-canonical-src=\"https://e.com/1.png\">")))))
+        (octocat-tree--proxied-url "o/r" "main" "docs/a b.md" "https://e.com/1.png" (lambda (u) (push u got)))
+        (octocat-tree--proxied-url "o/r" "main" "docs/a b.md" "https://e.com/2.png" (lambda (u) (push u got)))
+        (should (= calls 1))
+        (should (equal got '(nil "https://camo.githubusercontent.com/1")))))))
+
 (ert-deftest octocat-tree-test-blob-store ()
   "A fetched blob, which need not be text, is stored and then served without a fetch."
   (octocat-tree-tests--with-store
@@ -594,20 +595,32 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
       (should (equal got bytes)))))
 
 (ert-deftest octocat-tree-test-image-file ()
-  "A README's image is its file's blob, looked up at the ref; nil when there is none."
+  "A file's image is fetched in one request, by ref and path; nil when there is none.
+Over 1 MB, GitHub leaves its bytes out, and its blob is fetched."
   (octocat-tree-tests--with-store
     (let ((bytes (string-to-unibyte "\211PNG"))
-          got)
-      (cl-letf (((symbol-function 'octocat-tree--fetch-blob-sha)
-                 (lambda (repo ref path cb)
-                   (funcall cb (if (equal (list repo ref path) '("o/r" "main" "a.png"))
-                                   "b1"
-                                 '(error . "No file")))))
-                ((symbol-function 'octocat--run-gh) (octocat-tree-tests--blob-answer bytes)))
+          calls got)
+      (cl-letf (((symbol-function 'octocat--run-gh)
+                 (lambda (name args parse callback)
+                   (push name calls)
+                   (funcall callback
+                            (cond ((equal name "blob")
+                                   (funcall parse (json-serialize
+                                                   `((content . ,(base64-encode-string bytes))))))
+                                  ((member "repos/o/r/contents/a.png" args)
+                                   (funcall parse (json-serialize
+                                                   `((content . ,(base64-encode-string bytes))
+                                                     (sha . "b1")))))
+                                  ((member "repos/o/r/contents/big.png" args)
+                                   (funcall parse (json-serialize '((content . "") (sha . "b2")))))
+                                  (t '(error . "Not Found")))))))
         (with-temp-buffer
           (octocat-file-mode)
           (should (eq octocat-image-file-function #'octocat-tree--image-file)))
         (octocat-tree--image-file "o/r" "main" "a.png" (lambda (r) (setq got r)))
+        (should (equal got bytes))
+        (should (equal calls '("file-bytes")))
+        (octocat-tree--image-file "o/r" "main" "big.png" (lambda (r) (setq got r)))
         (should (equal got bytes))
         (octocat-tree--image-file "o/r" "main" "b.png" (lambda (r) (setq got (list r))))
         (should (equal got '(nil)))))))

@@ -33,6 +33,7 @@
 (require 'cl-lib)
 (require 'seq)
 (require 'subr-x)
+(require 'dom)
 (require 'octocat-core)
 (require 'octocat-sync)
 (require 'yaml)
@@ -1673,6 +1674,50 @@ one larger than `octocat--max-file-size' or one GitHub cut short."
                                 (not (eq (gethash "isTruncated" blob) t))
                                 (<= (or (gethash "byteSize" blob) 0) octocat--max-file-size)
                                 (gethash "text" blob)))))
+
+;; The bytes of file PATH at REF, as "base64", and its blob's "sha", in
+;; one request: an image a page shows.  GitHub leaves out the bytes of a
+;; file over 1 MB, which is then fetched as its `blob'.
+(octocat-sync-define-resource file-bytes (repo ref path)
+  :max-age (if (octocat--sha-p ref) octocat-model--fixed-max-age 3600)
+  :poll nil
+  :gh (list "api" "-X" "GET"
+            (format "repos/%s/contents/%s" repo (octocat-model--url-path path))
+            "-f" (concat "ref=" ref))
+  :parse (lambda (file)
+           (unless (hash-table-p file)
+             (error "No file %s at %s" path ref))
+           (octocat--table "base64" (replace-regexp-in-string
+                                     "\n" "" (or (gethash "content" file) ""))
+                           "sha" (gethash "sha" file))))
+
+;; GitHub's rendering of file PATH at REF, read for the URLs of its
+;; images on GitHub's proxy, each by the image's own URL.  The proxy's
+;; URLs are signed, and some expire within minutes.
+(octocat-sync-define-resource proxied-urls (repo ref path)
+  :max-age 240
+  :poll nil
+  :gh (list "api" "-X" "GET"
+            (format "repos/%s/contents/%s" repo (octocat-model--url-path path))
+            "-f" (concat "ref=" ref)
+            "-H" "Accept: application/vnd.github.html")
+  :raw t
+  :parse #'octocat-model--proxied-urls)
+
+(defun octocat-model--proxied-urls (html)
+  "Return the table of the images of GitHub's HTML, their URL to the proxy's.
+GitHub gives each image of another site as its proxy's, the image's
+own URL as `data-canonical-src'."
+  (let ((table (make-hash-table :test #'equal)))
+    (when (libxml-available-p)
+      (with-temp-buffer
+        (insert html)
+        (dolist (img (dom-by-tag (libxml-parse-html-region (point-min) (point-max)) 'img))
+          (let ((src  (dom-attr img 'src))
+                (orig (dom-attr img 'data-canonical-src)))
+            (when (and src orig)
+              (puthash orig src table))))))
+    table))
 
 ;; The commits of REF that touched PATH, LIMIT a page.
 (octocat-sync-define-resource commits (repo ref path limit)

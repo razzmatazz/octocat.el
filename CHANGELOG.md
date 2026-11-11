@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* An image in a file is fetched in one request, not two
+* Images of another site in a file no longer break once their signed URLs expire
 * A repository's README is fetched along with its root listing, not after it
 * A folder link fetches the listings on the way to it at once, not one after another
 * A file's first view fetches its text alongside its last commit, not after it

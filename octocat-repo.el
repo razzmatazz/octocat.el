@@ -50,9 +50,7 @@
 
 (require 'cl-lib)
 (require 'consult)
-(require 'dom)
 (require 'seq)
-(require 'url-util)
 (require 'octocat-core)
 (require 'octocat-sync)
 (require 'octocat-model)
@@ -414,28 +412,6 @@ Not RET-able: the commit page reads from GitHub, which lacks it."
          (plist-get commit :subject)))))
 
 
-;;;; API fetch helpers
-
-
-(defconst octocat-tree--blob-query
-  (concat "query($owner:String!,$name:String!,$expr:String!){repository(owner:$owner,"
-          "name:$name){object(expression:$expr){...on Blob{oid}}}}")
-  "GraphQL query behind `octocat-tree--fetch-blob-sha'.")
-
-(defun octocat-tree--fetch-blob-sha (repo ref path callback)
-  "Fetch the blob SHA of file PATH of REPO at REF.
-Calls CALLBACK with the SHA, or a cons (error . MSG)."
-  (octocat--gh-graphql
-   "blob-sha" repo octocat-tree--blob-query `(("expr" . ,(concat ref ":" path)))
-   (lambda (json)
-     (let* ((r   (gethash "repository"
-                          (gethash "data" (json-parse-string json :null-object nil))))
-            (obj (and r (gethash "object" r))))
-       (or (and obj (gethash "oid" obj))
-           (error "No file %s at %s" path ref))))
-   callback))
-
-
 ;;;; Sync resources
 
 (defun octocat-tree--load-blob (repo sha callback)
@@ -449,56 +425,22 @@ From the store at once when there, else once fetched."
 
 (defun octocat-tree--image-file (repo ref path callback)
   "Call CALLBACK with the bytes of file PATH of REPO at REF, or nil.
-For `octocat-image-file-function': the blob is stored, so an image is
-fetched once."
-  (octocat-tree--fetch-blob-sha
-   repo ref path
-   (lambda (sha)
-     (if (eq (car-safe sha) 'error)
-         (funcall callback nil)
-       (octocat-tree--load-blob
-        repo sha (lambda (r) (funcall callback (and (stringp r) r))))))))
-
-(defvar octocat-tree--proxied (make-hash-table :test #'equal)
-  "File (REPO REF PATH) to its images' URLs on GitHub's proxy.
-Each is a hash table from an image's own URL to the proxy's.")
-
-(defun octocat-tree--proxied-urls (html)
-  "Return the table of the images of GitHub's HTML, their URL to the proxy's.
-GitHub gives each image of another site as its proxy's, the image's
-own URL as `data-canonical-src'."
-  (let ((table (make-hash-table :test #'equal)))
-    (when (libxml-available-p)
-      (with-temp-buffer
-        (insert html)
-        (dolist (img (dom-by-tag (libxml-parse-html-region (point-min) (point-max)) 'img))
-          (let ((src  (dom-attr img 'src))
-                (orig (dom-attr img 'data-canonical-src)))
-            (when (and src orig)
-              (puthash orig src table))))))
-    table))
+For `octocat-image-file-function'."
+  (octocat-sync-get
+   (list 'file-bytes repo ref path)
+   (lambda (r)
+     (cond ((eq (car-safe r) 'error) (funcall callback nil))
+           ((octocat--nonempty (gethash "base64" r))
+            (funcall callback (octocat-model-blob-content r)))
+           (t (octocat-tree--load-blob
+               repo (gethash "sha" r) (lambda (b) (funcall callback (and (stringp b) b)))))))))
 
 (defun octocat-tree--proxied-url (repo ref path url callback)
   "Call CALLBACK with the URL of image URL on GitHub's proxy, or nil.
 URL is shown by file PATH of REPO at REF.  For
-`octocat-image-proxy-function': the proxy's URLs are signed, so they
-are read from GitHub's rendering of the file, fetched once."
-  (let ((key (list repo ref path)))
-    (if-let* ((table (gethash key octocat-tree--proxied)))
-        (funcall callback (gethash url table))
-      (octocat--run-gh
-       "proxied"
-       (list "api" "-X" "GET"
-             (format "repos/%s/contents/%s" repo
-                     (mapconcat #'url-hexify-string (split-string path "/") "/"))
-             "-f" (concat "ref=" ref)
-             "-H" "Accept: application/vnd.github.html")
-       #'octocat-tree--proxied-urls
-       (lambda (r)
-         (if (hash-table-p r)
-             (progn (puthash key r octocat-tree--proxied)
-                    (funcall callback (gethash url r)))
-           (funcall callback nil)))))))
+`octocat-image-proxy-function'."
+  (octocat-sync-get (list 'proxied-urls repo ref path)
+                    (lambda (r) (funcall callback (and (hash-table-p r) (gethash url r))))))
 
 ;;;; Syntax highlighting
 
