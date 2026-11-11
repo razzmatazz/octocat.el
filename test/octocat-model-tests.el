@@ -381,13 +381,17 @@
 (ert-deftest octocat-model-test-repo-parse-head ()
   "A directory at a ref has its last commit, its tree and its history count."
   (let ((head (octocat-model--repo-parse-head
-               (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\"}}}}")
+               (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\",\"entries\":[{\"name\":\"README.md\",\"type\":\"blob\",\"oid\":\"b1\"}]}}}}")
                "main" "src")))
     (should (equal (gethash "sha" head) "abc"))
     (should (equal (octocat--commit-author head) "@ann"))
     (should (equal (gethash "tree" head) "t1"))
     (should (equal (gethash "kind" head) "tree"))
-    (should (equal (gethash "total" head) 42)))
+    (should (equal (gethash "total" head) 42))
+    ;; Its entries, as `tree-dir' has them.
+    (let ((entry (aref (gethash "entries" head) 0)))
+      (should (equal (mapcar (lambda (k) (gethash k entry)) '("path" "type" "sha"))
+                     '("README.md" "blob" "b1")))))
   (should-error (octocat-model--repo-parse-head
                  (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":null,\"dir\":null}}}")
                  "nope" nil))

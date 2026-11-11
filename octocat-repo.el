@@ -1185,7 +1185,16 @@ one summary resource and the rest from the root's `repo-head' at REF."
          (shown          (or ref tracked))
          (fork-parent    (and summary (gethash "fork-parent" summary)))
          (head-snap      (octocat-vui-use-resource (list 'repo-head repo shown nil) tick))
-         (tree           (let ((d (plist-get head-snap :data))) (and d (gethash "tree" d)))))
+         (tree           (let ((d (plist-get head-snap :data))) (and d (gethash "tree" d))))
+         (readme         (let ((doc (car (octocat-repo--docs
+                                          (append (octocat--get (plist-get head-snap :data)
+                                                                "entries")
+                                                  nil)))))
+                           (and doc (gethash "sha" (nth 2 doc))))))
+    ;; With the root's listing, not after it: the head names the README.
+    (vui-use-effect (readme)
+      (when readme (octocat-sync-request (list 'blob repo readme)))
+      nil)
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
         (with-current-buffer buf

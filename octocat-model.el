@@ -1392,7 +1392,7 @@ for the page after it, and \"total\", the commits of the whole history."
           "repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
           "history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate "
           "committedDate author{name email user{login}}}}}} dir:object(expression:$dir){"
-          "__typename oid ...on Blob{byteSize isBinary}}}}")
+          "__typename oid ...on Blob{byteSize isBinary} ...on Tree{entries{name type oid}}}}}")
   "GraphQL query behind the `repo-head' resource.")
 
 (defun octocat-model--repo-parse-head (data ref path)
@@ -1401,7 +1401,9 @@ It is for PATH, nil for the root, at REF.  Return the last commit that
 touched PATH, as `octocat-model--repo-history-commit' shapes it, with
 \"tree\", the SHA of PATH's tree, or its blob's when \"kind\" is
 \"blob\", and \"total\", the commits that touched PATH.  Of a blob,
-\"size\" is its bytes and \"binary\" t when it is not text."
+\"size\" is its bytes and \"binary\" t when it is not text; of a
+tree, \"entries\" its entries, as `tree-dir' has them but for their
+size, so the README can be fetched along with its listing."
   (let* ((repo   (gethash "repository" data))
          (obj    (and (hash-table-p repo) (gethash "object" repo)))
          (dir    (and (hash-table-p repo) (gethash "dir" repo)))
@@ -1418,6 +1420,13 @@ touched PATH, as `octocat-model--repo-history-commit' shapes it, with
       (puthash "total" (gethash "totalCount" hist) commit)
       (puthash "size" (gethash "byteSize" dir) commit)
       (puthash "binary" (eq (gethash "isBinary" dir) t) commit)
+      (when-let* ((entries (gethash "entries" dir)))
+        (puthash "entries"
+                 (cl-map 'vector (lambda (e) (octocat--table "path" (gethash "name" e)
+                                                             "type" (gethash "type" e)
+                                                             "sha" (gethash "oid" e)))
+                         entries)
+                 commit))
       commit)))
 
 ;; The last commit and the tree of PATH at REF: a branch, tag or SHA, as

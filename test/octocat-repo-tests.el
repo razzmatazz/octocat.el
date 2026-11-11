@@ -562,6 +562,23 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
       (dolist (sha '("rootsha" "asha" "bsha"))
         (should (member (list 'tree-dir "owner/repo" sha) requested))))))
 
+(ert-deftest octocat-repo-test-readme-fetched-with-listing ()
+  "The repo page asks for the README the head names, not after the root's listing."
+  (octocat-tree-tests--with-store
+    (let ((head (octocat--table "sha" "c1" "tree" "rootsha" "kind" "tree"
+                                "entries" (vector (octocat-tree-tests--entry "README.md" "blob" "b1"))))
+          requested)
+      (octocat-tree-tests--store '(repo-head "owner/repo" "main" nil) head)
+      (cl-letf (((symbol-function 'octocat-sync-request)
+                 (lambda (spec &rest _) (push spec requested)))
+                ((symbol-function 'octocat--head-info) #'ignore)
+                ((symbol-function 'octocat-repo--unpushed) #'ignore))
+        (with-temp-buffer
+          (octocat-repo-mode)
+          (octocat-vui-refresh-page 'octocat-repo-vui--root "repo"
+                                    (list :repo "owner/repo" :ref "main"))))
+      (should (member '(blob "owner/repo" "b1") requested)))))
+
 (ert-deftest octocat-tree-test-blob-store ()
   "A fetched blob, which need not be text, is stored and then served without a fetch."
   (octocat-tree-tests--with-store

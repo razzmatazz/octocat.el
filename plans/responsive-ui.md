@@ -83,7 +83,7 @@ root, then of a, b and c in turn, each needing its parent's listing for
 its SHA: five requests in turn.  One query, `tree-path`, gives every
 level's SHA, and the page asks for their listings at once: two in turn.
 
-## 6. The repository page's README
+## 6. The repository page's README (done)
 
 `repo-head`, then the root's `tree-dir`, then the README's `blob`:
 three in turn.  Have `repo-head` list the root's entries too, so the
