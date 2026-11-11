@@ -794,5 +794,36 @@ The marks are kept in a variable, as the page keeps them in its state."
                                        (mapcar (lambda (n) (list n (1+ n)))
                                                (number-sequence 0 7)))))
 
+(defun octocat-vui-tests--open-settled (stored moved-on answer)
+  "Open a page settled by a resource holding STORED, answered with ANSWER.
+MOVED-ON switches to another buffer before the answer.  Return the
+pages opened, oldest first, and whether the guess's buffer is live."
+  (let (opened guess answered)
+    (save-window-excursion
+      (cl-letf (((symbol-function 'octocat-sync-read) (lambda (_) (list :data stored)))
+                ((symbol-function 'octocat-sync-get) (lambda (_ k) (setq answered k)))
+                ((symbol-function 'octocat-open)
+                 (lambda (&rest args)
+                   (push args opened)
+                   (switch-to-buffer (generate-new-buffer "*octocat-test-page*")))))
+        (octocat-vui-open-settled '(spec) (lambda (data) (list (or data 'guess))))
+        (setq guess (window-buffer))
+        (when answered
+          (when moved-on (switch-to-buffer (generate-new-buffer "*octocat-test-other*")))
+          (funcall answered answer))))
+    (list (nreverse opened) (buffer-live-p guess))))
+
+(ert-deftest octocat-vui-test-open-settled ()
+  "A page opens at once; a guess gives way to what the data settles."
+  ;; Stored: no guess.
+  (should (equal (octocat-vui-tests--open-settled 'known nil nil) '(((known)) t)))
+  ;; A wrong guess is replaced, and killed.
+  (should (equal (octocat-vui-tests--open-settled nil nil 'right) '(((guess) (right)) nil)))
+  ;; A right guess, or a failed fetch, stays.
+  (should (equal (octocat-vui-tests--open-settled nil nil 'guess) '(((guess)) t)))
+  (should (equal (octocat-vui-tests--open-settled nil nil '(error . "x")) '(((guess)) t)))
+  ;; The user moved on: nothing more opens.
+  (should (equal (octocat-vui-tests--open-settled nil t 'right) '(((guess)) t))))
+
 (provide 'octocat-vui-tests)
 ;;; octocat-vui-tests.el ends here

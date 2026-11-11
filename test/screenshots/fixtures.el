@@ -56,6 +56,12 @@
   (vconcat (seq-map (pcase-lambda (`(,content ,n)) `(:content ,content :users (:totalCount ,n)))
                     (seq-partition counts 2))))
 
+(defun octocat-screenshots--file-blob (path text)
+  "Return file PATH holding TEXT, as the `file-blob' query gives it."
+  `(:data (:repository (:object (:oid ,(octocat-screenshots--sha path)
+                                 :byteSize ,(string-bytes text) :isBinary :false
+                                 :isTruncated :false :text ,text)))))
+
 (defun octocat-screenshots--label (name color)
   "Return label NAME of COLOR, a hex string."
   `(:name ,name :color ,color :description ""))
@@ -1197,24 +1203,32 @@ jobs:
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/guide.md"))))))
       ("blob" (,(octocat-screenshots--sha "docs/guide.md"))
        (:content ,(octocat-screenshots--base64 octocat-screenshots--guide)))
+      ("file-blob" ("expr=main:docs/guide.md")
+       ,(octocat-screenshots--file-blob "docs/guide.md" octocat-screenshots--guide))
       ("repo-head" ("dir=main:src/cache.rs")
        (:data (:repository (:object (:history (:totalCount 4 :nodes [,(octocat-screenshots--history-node
                                                                        (nth 2 octocat-screenshots--commits))]))
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "src/cache.rs"))))))
       ("blob" (,(octocat-screenshots--sha "src/cache.rs"))
        (:content ,(octocat-screenshots--base64 octocat-screenshots--cache-rs)))
+      ("file-blob" ("expr=main:src/cache.rs")
+       ,(octocat-screenshots--file-blob "src/cache.rs" octocat-screenshots--cache-rs))
       ("repo-head" ("dir=main:docs/html.md")
        (:data (:repository (:object (:history (:totalCount 3 :nodes [,(octocat-screenshots--history-node
                                                                        (nth 2 octocat-screenshots--commits))]))
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/html.md"))))))
       ("blob" (,(octocat-screenshots--sha "docs/html.md"))
        (:content ,(octocat-screenshots--base64 octocat-screenshots--html)))
+      ("file-blob" ("expr=main:docs/html.md")
+       ,(octocat-screenshots--file-blob "docs/html.md" octocat-screenshots--html))
       ("repo-head" ("dir=main:docs/themes.org")
        (:data (:repository (:object (:history (:totalCount 2 :nodes [,(octocat-screenshots--history-node
                                                                        (nth 2 octocat-screenshots--commits))]))
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "docs/themes.org"))))))
       ("blob" (,(octocat-screenshots--sha "docs/themes.org"))
        (:content ,(octocat-screenshots--base64 octocat-screenshots--org)))
+      ("file-blob" ("expr=main:docs/themes.org")
+       ,(octocat-screenshots--file-blob "docs/themes.org" octocat-screenshots--org))
       ("tree-dir" (,(format "trees/%s" (octocat-screenshots--sha "root")))
        (:sha ,(octocat-screenshots--sha "root") :tree ,octocat-screenshots--root :truncated :false))
       ("tree-dir" (,(format "trees/%s" (octocat-screenshots--sha "src")))

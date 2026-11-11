@@ -1509,30 +1509,34 @@ LINES are as for `octocat-repo--mark-lines'."
           (text (vui-text text))
           (t (vui-text (octocat-tree--skeleton))))))
 
-(vui-defcomponent octocat-repo-vui--file-content (repo ref path blob raw lines)
+(vui-defcomponent octocat-repo-vui--file-content (repo ref path blob text wait raw lines)
   "The content of file PATH, BLOB, of REPO at REF.
-RAW shows markdown as is.  In the code view, LINES are as for
-`octocat-repo--mark-lines'."
+TEXT, when given, is it, as `file-blob' had it; else the blob is
+fetched, unless WAIT says the text may yet come.  RAW shows markdown as
+is.  In the code view, LINES are as for `octocat-repo--mark-lines'."
   :render
-  (let* ((buf   (current-buffer))
-         (snap  (octocat-vui-use-resource (list 'blob repo blob) nil))
-         (width (octocat--markdown-width))
-         (code  (and (eq (octocat-file--view path raw nil) 'code)
-                     (not (octocat--image-file-p path))))
-         (text  (vui-use-memo ((plist-get snap :data) raw width lines)
-                  (when-let* ((data (plist-get snap :data)))
-                    (let ((text (octocat-repo--file-text repo ref path
-                                                         (octocat-model-blob-content data)
-                                                         raw width)))
-                      (if code (octocat-repo--mark-lines text lines) text)))))
-         (ready (and text t)))
+  (let* ((buf     (current-buffer))
+         ;; No SHA, no fetch: the text is in, or may be.
+         (snap    (octocat-vui-use-resource (list 'blob repo (and (not text) (not wait) blob))
+                                            nil))
+         (content (cond (text (encode-coding-string text 'utf-8))
+                        ((not wait) (let ((data (plist-get snap :data)))
+                                      (and data (octocat-model-blob-content data))))))
+         (width   (octocat--markdown-width))
+         (code    (and (eq (octocat-file--view path raw nil) 'code)
+                       (not (octocat--image-file-p path))))
+         (shown   (vui-use-memo (content raw width lines)
+                    (when content
+                      (let ((shown (octocat-repo--file-text repo ref path content raw width)))
+                        (if code (octocat-repo--mark-lines shown lines) shown)))))
+         (ready   (and shown t)))
     (vui-use-effect (lines ready)
       (when (and lines ready code) (octocat--goto-line-target buf))
       nil)
-    (pcase (octocat-vui-snapshot-status snap)
+    (pcase (if (or text wait) (if text 'ready 'pending) (octocat-vui-snapshot-status snap))
       ('pending (vui-text (octocat-tree--skeleton)))
       ('error   (vui-text (octocat-vui-error-text snap) :face 'error))
-      (_        (vui-text (string-remove-suffix "\n" (or text "")))))))
+      (_        (vui-text (string-remove-suffix "\n" (or shown "")))))))
 
 (defun octocat-repo-vui--view-segments (path raw blame)
   "Return the views of file PATH as segments of a pill, or nil.
@@ -1583,9 +1587,14 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
                                     :data))
          (default-branch (and summary (gethash "default-branch" summary)))
          (head-snap      (octocat-vui-use-resource (list 'repo-head repo ref path) tick))
+         ;; Alongside the head, not after it: the text, while it is the
+         ;; head's blob, spares fetching the blob once the head is in.
+         (file-snap      (octocat-vui-use-resource (list 'file-blob repo ref path) tick))
          (head           (plist-get head-snap :data))
          (blob           (and head (equal (gethash "kind" head) "blob")
                               (gethash "tree" head)))
+         (file           (plist-get file-snap :data))
+         (text           (and file (equal (gethash "oid" file) blob) (gethash "text" file)))
          (notice         (and blob (not anyway) (octocat-repo--file-notice path head))))
     (octocat-vui-page
      (octocat-repo--pin repo (or ref default-branch) path current-branch
@@ -1614,7 +1623,10 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
             (blob
              (vui-component 'octocat-repo-vui--file-content
                :key blob :repo repo :ref (or ref default-branch "HEAD")
-               :path path :blob blob :raw raw :lines lines))
+               :path path :blob blob :text text
+               :wait (and (not text) (eq (octocat-vui-snapshot-status file-snap) 'pending)
+                          (not (plist-get (octocat-sync-read (list 'blob repo blob)) :data)))
+               :raw raw :lines lines))
             ;; The head line says why there is none.
             ((eq (octocat-vui-snapshot-status head-snap) 'pending)
              (vui-text (octocat-tree--skeleton))))))))
@@ -1809,6 +1821,34 @@ those lines and scrolls to them; a rendered file shows its code."
   "Open file PATH of REPO at BRANCH, AT the lines a link named.
 See `octocat-tree--open-file-by-path'."
   (apply #'octocat-tree--open-file-by-path repo branch path (and at (list at))))
+
+(defun octocat-repo--ref-path-target (repo kind segments count &optional at)
+  "Return the `octocat-open' arguments of page KIND for SEGMENTS of a REPO link.
+KIND is `tree', `commit-list' or `file'; COUNT of SEGMENTS are the ref,
+the rest the path.  AT is as for a file.  A tree with no path is the
+repository's page."
+  (pcase-let ((`(,ref . ,path) (octocat--split-ref-path segments count)))
+    (pcase kind
+      ((guard (null segments)) (list 'repo repo))
+      ((and 'tree (guard (null path))) (list 'repo repo ref))
+      ('file `(file ,repo ,ref ,path ,@(and at (list at))))
+      (_ (list kind repo ref path)))))
+
+(cl-defmethod octocat-open ((_kind (eql 'ref-path)) repo kind segments &optional at)
+  "Open page KIND for SEGMENTS, the ref and path after it in a REPO link.
+See `octocat-repo--ref-path-target'.  The ref may have slashes: the
+stored branches settle which SEGMENTS it is, else GitHub, the page
+opening at once on the first segment meanwhile."
+  (let* ((summary  (plist-get (octocat-sync-read (list 'repo-summary repo)) :data))
+         (refs     (append (plist-get (octocat-sync-read (list 'branches repo)) :data)
+                           (and summary (list (gethash "default-branch" summary)))))
+         (count    (octocat--ref-count segments refs))
+         (target   (lambda (n) (octocat-repo--ref-path-target repo kind segments n at))))
+    (if count
+        (apply #'octocat-open (funcall target count))
+      (octocat-vui-open-settled
+       (list 'ref-split repo (string-join segments "/"))
+       (lambda (data) (funcall target (if data (gethash "count" data) 1)))))))
 
 (defun octocat-file-switch-branch ()
   "Open this file at another branch, in a buffer of its own."

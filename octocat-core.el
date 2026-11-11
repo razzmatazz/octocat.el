@@ -1279,27 +1279,12 @@ See `octocat--clip-line'."
 (defun octocat--markdown-open-ref (kind repo id)
   "Open the reference of KIND (`issue' or `commit') ID in REPO.
 A nil REPO means the repository of the current buffer.  An issue number
-may belong to a pull request, which the GitHub API tells apart, so that
-is asked first and the matching view opened."
+may belong to a pull request: the page opened settles which."
   (let ((repo (or repo (octocat--search-repo--current-repo)
                   (user-error "Octocat: no repository to look %s up in" id))))
     (pcase kind
       ('commit (octocat-open 'commit repo id))
-      ('issue
-       (message "Octocat: opening %s#%d…" repo id)
-       (let ((buf (current-buffer)))
-         (octocat--run-gh
-          "resolve-ref"
-          (list "api" (format "repos/%s/issues/%d" repo id) "--jq" ".pull_request != null")
-          #'string-trim
-          (octocat--display-later
-           (lambda (result)
-             (cond ((eq (car-safe result) 'error)
-                    (message "Octocat: cannot open %s#%d: %s" repo id (cdr result)))
-                   ((not (octocat--still-selected-p buf))
-                    (message "Octocat: not opening %s#%d, as you moved on" repo id))
-                   ((equal result "true") (octocat-open 'pr repo id))
-                   (t (octocat-open 'issue repo id)))))))))))
+      ('issue  (octocat-open 'issue-or-pr repo id)))))
 
 ;;;; Opening pages
 ;;
@@ -1347,7 +1332,7 @@ KIND is `user', `repo', `pr', `pr-diff', `pr-commits', `issue', `commit',
 octocat has no view for URL.  The
 ARGS of the last three are the repo and the path segments after the
 kind, a ref and then a path: a ref may have slashes, so which segments
-are the ref takes asking GitHub, see `octocat--open-ref-path'.  A
+are the ref is settled as the page opens, see `octocat--ref-count'.  A
 `compare' URL needs both refs: with one, GitHub picks the base."
   (when (string-match "\\`https?://\\(?:www\\.\\)?github\\.com\\(/[^?#]*\\)?\\(?:[?#].*\\)?\\'"
                       url)
@@ -1444,52 +1429,22 @@ TO defaults to FROM."
                       (when (and to (not (equal to from)))
                         (concat "-" (funcall end to))))))))
 
-(defconst octocat--ref-prefixes-max 10
-  "Most leading segments of a github.com path tried as a ref.")
-
-(defun octocat--split-ref-path (segments resolved)
-  "Split SEGMENTS of a github.com path into (REF . PATH), as GitHub does.
-RESOLVED are the counts of leading SEGMENTS that name a ref; the most
-is the ref, else the first segment.  PATH is the rest joined by
-slashes, or nil when none is left."
-  (let* ((n    (apply #'max 1 resolved))
-         (rest (nthcdr n segments)))
-    (cons (string-join (seq-take segments n) "/")
+(defun octocat--split-ref-path (segments count)
+  "Split SEGMENTS of a github.com path into (REF . PATH), COUNT of them the ref.
+PATH is the rest joined by slashes, or nil when none is left."
+  (let ((rest (nthcdr count segments)))
+    (cons (string-join (seq-take segments count) "/")
           (and rest (string-join rest "/")))))
 
-(defun octocat--ref-prefixes-query (n)
-  "Return a GraphQL query resolving N revs, $e1 and on, as p1 and on."
-  (let ((is (number-sequence 1 n)))
-    (format "query($owner:String!,$name:String!,%s){repository(owner:$owner,name:$name){%s}}"
-            (mapconcat (lambda (i) (format "$e%d:String!" i)) is ",")
-            (mapconcat (lambda (i) (format "p%d:object(expression:$e%d){oid}" i i)) is " "))))
-
-(defun octocat--open-ref-path (repo segments open)
-  "Call OPEN with the ref and the path that SEGMENTS of a REPO link name.
-SEGMENTS follow \"tree\", \"commits\" or \"blob\" in the link.  A ref
-may have slashes, as \"feature/x\", so with more than one segment GitHub
-is asked which leading ones name one, in one query.  With none, the ref
-and path are nil: the default branch."
-  (if (null (cdr segments))
-      (funcall open (car segments) nil)
-    (let ((n (min (length segments) octocat--ref-prefixes-max)))
-      (octocat--gh-graphql
-       "ref-prefixes" repo (octocat--ref-prefixes-query n)
-       (mapcar (lambda (i)
-                 (cons (format "e%d" i)
-                       (concat (string-join (seq-take segments i) "/") "^{commit}")))
-               (number-sequence 1 n))
-       (lambda (json)
-         (let ((r (gethash "repository"
-                           (gethash "data" (json-parse-string json :null-object nil)))))
-           (seq-filter (lambda (i) (and r (gethash (format "p%d" i) r)))
-                       (number-sequence 1 n))))
-       (octocat--display-later
-        (lambda (resolved)
-          ;; Unresolved, the first segment is the ref, which the page reports.
-          (let ((split (octocat--split-ref-path
-                        segments (if (eq (car-safe resolved) 'error) nil resolved))))
-            (funcall open (car split) (cdr split)))))))))
+(defun octocat--ref-count (segments refs)
+  "Return how many leading SEGMENTS of a github.com path name the ref, or nil.
+A ref may have slashes, as \"feature/x\": the most that name one of
+REFS, a list of names, else 1 when the first is a SHA or the only one.
+Nil when REFS do not settle it."
+  (or (and (null (cdr segments)) 1)
+      (seq-find (lambda (n) (member (string-join (seq-take segments n) "/") refs))
+                (number-sequence (length segments) 1 -1))
+      (and (octocat--sha-p (car segments)) 1)))
 
 (defun octocat-browse-url (url &rest _)
   "Open github.com URL in the octocat view showing it.
@@ -1502,24 +1457,13 @@ highlighted on the file page and on the diff pages."
     (pcase (octocat--github-url-target url)
       ('nil (user-error "Octocat: no view for %s" url))
       (`(repo ,repo)         (octocat-visit-repo repo))
-      ;; github.com redirects /issues/N of a PR to it, so ask which it is.
-      (`(issue ,repo ,n)     (octocat--markdown-open-ref 'issue repo n))
+      ;; github.com redirects /issues/N of a PR to it.
+      (`(issue ,repo ,n)     (octocat-open 'issue-or-pr repo n))
       (`(workflow ,repo ,file)
        (octocat-open 'workflow repo file file (concat ".github/workflows/" file)))
-      (`(tree ,repo . ,segs)
-       (octocat--open-ref-path repo segs
-                               (lambda (ref path)
-                                 (if path
-                                     (octocat-open 'tree repo ref path)
-                                   (octocat-visit-repo repo ref)))))
-      (`(commit-list ,repo . ,segs)
-       (octocat--open-ref-path repo segs
-                               (lambda (ref path) (octocat-open 'commit-list repo ref path))))
-      (`(blob ,repo . ,segs)
-       (octocat--open-ref-path repo segs
-                               (lambda (ref path)
-                                 (apply #'octocat-open 'file repo ref path
-                                        (and lines (list lines))))))
+      (`(tree ,repo . ,segs)        (octocat-open 'ref-path repo 'tree segs))
+      (`(commit-list ,repo . ,segs) (octocat-open 'ref-path repo 'commit-list segs))
+      (`(blob ,repo . ,segs)        (octocat-open 'ref-path repo 'file segs lines))
       ((and target `(,(or 'commit 'compare 'pr-diff) . ,_) (guard diff))
        (apply #'octocat-open (append target (list diff))))
       (target (apply #'octocat-open target)))))
@@ -1711,15 +1655,6 @@ pane."
            (direction . right)
            (inhibit-same-window . t))))
     (funcall fn)))
-
-(defun octocat--display-later (fn)
-  "Return FN, made to show a page where the command calling this would.
-For a page shown once `gh' answers: by then the command has returned,
-and `octocat-call-in-other-window''s binding with it."
-  (let ((action display-buffer-overriding-action))
-    (lambda (&rest args)
-      (let ((display-buffer-overriding-action action))
-        (apply fn args)))))
 
 (defun octocat-visit ()
   "Do what RET does at point.

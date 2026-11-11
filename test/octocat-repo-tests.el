@@ -1200,5 +1200,32 @@ It does not fold, however long."
           (kill-buffer)
           (kill-buffer file))))))
 
+(ert-deftest octocat-repo-test-ref-path-unsettled ()
+  "A link the stored branches don't settle opens at once on its first segment.
+GitHub's answer then opens the right page."
+  (let (opened answered spec)
+    (cl-letf (((symbol-function 'octocat-sync-read) #'ignore)
+              ((symbol-function 'octocat-sync-get) (lambda (s k) (setq spec s answered k)))
+              ((symbol-function 'octocat-tree--open-file-by-path)
+               (lambda (&rest a) (push a opened))))
+      (octocat-open 'ref-path "o/r" 'file '("feat" "x" "a.el") '(lines 3 3))
+      (should (equal spec '(ref-split "o/r" "feat/x/a.el")))
+      (funcall answered (octocat--table "count" 2)))
+    (should (equal (nreverse opened)
+                   '(("o/r" "feat" "x/a.el" (lines 3 3))
+                     ("o/r" "feat/x" "a.el" (lines 3 3)))))))
+
+(ert-deftest octocat-repo-test-file-content-text ()
+  "The file page shows the text `file-blob' had, fetching no blob."
+  (let (fetched)
+    (cl-letf (((symbol-function 'octocat-sync-request)
+               (lambda (spec &rest _) (push spec fetched))))
+      (with-temp-buffer
+        (vui-render (vui-component 'octocat-repo-vui--file-content
+                      :repo "o/r" :ref "main" :path "a.txt" :blob "b1" :text "héllo\n")
+                    (current-buffer))
+        (should (string-search "héllo" (buffer-string)))))
+    (should-not (member '(blob "o/r" "b1") fetched))))
+
 (provide 'octocat-repo-tests)
 ;;; octocat-repo-tests.el ends here

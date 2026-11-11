@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A file's first view fetches its text alongside its last commit, not after it
+* Issue and #N links open at once, as the store knows them or as an issue until GitHub says
+* File, folder and commits links open at once, splitting the branch from the stored ones
 * A file too large to diff on the page opens its buffer at once, filled in as it's fetched
 * The merge dialog opens at once, from the repo's merge options stored last time
 * The run list's branch and actor filters open at once, from the names stored last time

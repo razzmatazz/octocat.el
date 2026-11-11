@@ -50,7 +50,7 @@ in, perhaps after the user moved on.
   with `octocat-sync-get` each time: the base is a branch, so it is not
   kept.  `octocat-diff--url-path` goes with its call.
 
-## 3. Links open at once
+## 3. Links open at once (done)
 
 `octocat-browse-url` waits on GitHub before it shows anything, on links
 users follow all the time.  A link should open its page at once,
@@ -69,7 +69,7 @@ assuming what it names exists; the page shows an error if not.
   as what the store has it as; else as an issue, whose page turns into
   the PR's if GitHub says it is one.
 
-## 4. A file's content in one round trip
+## 4. A file's content in one round trip (done)
 
 The file page reads `repo-head` for the blob's SHA, then `blob`: two
 requests in turn before a first visit shows the file.  Fetch the text

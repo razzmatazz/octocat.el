@@ -91,29 +91,6 @@
       (kill-buffer list)
       (kill-buffer page))))
 
-(ert-deftest octocat-core-test-other-window-after-gh ()
-  "A page shown once `gh' answers goes to the other window the command asked for."
-  (let ((list (generate-new-buffer "*octocat-test-list*"))
-        (page (generate-new-buffer "*octocat-test-page*"))
-        answer)
-    (unwind-protect
-        (save-window-excursion
-          (delete-other-windows)
-          (with-current-buffer list (octocat-core-test-page-mode))
-          (with-current-buffer page (octocat-core-test-page-mode))
-          (switch-to-buffer list)
-          (cl-letf (((symbol-function 'octocat--run-gh)
-                     (lambda (_name _args _parse callback) (setq answer callback))))
-            (octocat-call-in-other-window
-             (lambda ()
-               (octocat--open-ref-path "o/r" '("feature" "x")
-                                       (lambda (_ref _path) (octocat-display-buffer page))))))
-          (funcall answer '(2))
-          (should (eq (window-buffer) page))
-          (should (eq (window-buffer (next-window)) list)))
-      (kill-buffer list)
-      (kill-buffer page))))
-
 (ert-deftest octocat-core-test-format-label-colour ()
   (let* ((label (make-hash-table :test 'equal)))
     (puthash "name" "bug" label)
@@ -256,7 +233,8 @@ It gives no stateReason, so a closed issue is purple, as completed."
               ((symbol-function 'octocat-pr-open)       (lambda (&rest a) (push (cons 'pr a) opened)))
               ((symbol-function 'octocat-pr-diff-open)  (lambda (&rest a) (push (cons 'pr-diff a) opened)))
               ((symbol-function 'octocat-pr-commits-open) (lambda (&rest a) (push (cons 'pr-commits a) opened)))
-              ((symbol-function 'octocat--markdown-open-ref) (lambda (&rest a) (push (cons 'ref a) opened)))
+              ((symbol-function 'octocat-issue-open)    (lambda (&rest a) (push (cons 'issue a) opened)))
+              ((symbol-function 'octocat-sync-get)      #'ignore)
               ((symbol-function 'octocat-commit-open)   (lambda (&rest a) (push (cons 'commit a) opened)))
               ((symbol-function 'octocat-compare-open)  (lambda (&rest a) (push (cons 'compare a) opened)))
               ((symbol-function 'octocat-run-open)      (lambda (&rest a) (push (cons 'run a) opened)))
@@ -269,10 +247,16 @@ It gives no stateReason, so a closed issue is purple, as completed."
               ((symbol-function 'octocat-tree-open)     (lambda (&rest a) (push (cons 'tree a) opened)))
               ((symbol-function 'octocat-tree--open-file-by-path)
                (lambda (&rest a) (push (cons 'file a) opened)))
-              ;; Of feat/x/src/a.el, GitHub has feat and feat/x.
-              ((symbol-function 'octocat--run-gh)
-               (lambda (_name _args parse callback)
-                 (funcall callback (funcall parse "{\"data\":{\"repository\":{\"p1\":{\"oid\":\"1\"},\"p2\":{\"oid\":\"2\"},\"p3\":null,\"p4\":null}}}")))))
+              ;; Of feat/x/src/a.el, the stored branches have feat and feat/x.
+              ((symbol-function 'octocat-sync-read)
+               (lambda (spec)
+                 (and (eq (car spec) 'branches) (list :data ["feat" "feat/x" "main"]))))
+              ((symbol-function 'octocat-open)
+               (let ((open (symbol-function 'octocat-open)))
+                 (lambda (kind &rest args)
+                   (if (eq kind 'repo)
+                       (push (cons 'repo args) opened)
+                     (apply open kind args))))))
       (dolist (path '("octocat" "o/r" "o/r/pull/1" "o/r/pull/1/files" "o/r/pull/1/commits" "o/r/issues/2"
                       "o/r/commit/abc1234" "o/r/compare/a...b" "o/r/actions/runs/3" "o/r/actions/runs/3/job/4"
                       "o/r/actions/workflows/ci.yml"
@@ -283,12 +267,12 @@ It gives no stateReason, so a closed issue is purple, as completed."
         (octocat-browse-url (concat "https://github.com/" path))))
     (should (equal (nreverse opened)
                    '((user "octocat") (repo "o/r") (pr "o/r" 1) (pr-diff "o/r" 1) (pr-commits "o/r" 1)
-                     (ref issue "o/r" 2) (commit "o/r" "abc1234")
+                     (issue "o/r" 2) (commit "o/r" "abc1234")
                      (compare "o/r" "a" "..." "b") (run "o/r" 3)
                      (job "o/r" 3 4 nil)
                      (workflow "o/r" "ci.yml" "ci.yml" ".github/workflows/ci.yml")
                      (pr-list "o/r") (issue-list "o/r")
-                     (actions "o/r") (repo "o/r" "main") (repo "o/r" nil)
+                     (actions "o/r") (repo "o/r" "main") (repo "o/r")
                      (tree "o/r" "feat/x" "src/a.el") (commit-list "o/r" "main" nil)
                      (commit-list "o/r" "feat/x" "src/a.el") (file "o/r" "feat/x" "src/a.el")
                      (file "o/r" "feat/x" "img.png"))))))
@@ -380,10 +364,18 @@ A fragment of another page's form is left out."
     (should (equal (octocat--point-or-region) '(1 . 11)))))
 
 (ert-deftest octocat-core-test-split-ref-path ()
-  "The most leading segments naming a ref are the ref, else the first."
-  (should (equal (octocat--split-ref-path '("feat" "x" "src") '(1 2)) '("feat/x" . "src")))
-  (should (equal (octocat--split-ref-path '("main" "src" "a.el") nil) '("main" . "src/a.el")))
-  (should (equal (octocat--split-ref-path '("feat" "x") '(2)) '("feat/x"))))
+  "The leading COUNT segments are the ref, the rest the path."
+  (should (equal (octocat--split-ref-path '("feat" "x" "src") 2) '("feat/x" . "src")))
+  (should (equal (octocat--split-ref-path '("main" "src" "a.el") 1) '("main" . "src/a.el")))
+  (should (equal (octocat--split-ref-path '("feat" "x") 2) '("feat/x"))))
+
+(ert-deftest octocat-core-test-ref-count ()
+  "The most leading segments naming a known ref, else a SHA or a lone segment."
+  (should (eql (octocat--ref-count '("feat" "x" "a.el") '("feat" "feat/x" "main")) 2))
+  (should (eql (octocat--ref-count '("main" "src" "a.el") '("main")) 1))
+  (should (eql (octocat--ref-count '("abc1234" "a.el") nil) 1))
+  (should (eql (octocat--ref-count '("main") nil) 1))
+  (should-not (octocat--ref-count '("v1" "a.el") '("main"))))
 
 (ert-deftest octocat-core-test-browse-url-handler ()
   "`browse-url' sends the github.com links octocat can show to it.

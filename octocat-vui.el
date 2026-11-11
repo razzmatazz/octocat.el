@@ -1448,6 +1448,30 @@ has no page."
     (apply #'vui-set-props root props)
     t))
 
+(defun octocat-vui-open-settled (spec target)
+  "Open at once the page TARGET names, settled by SPEC's data.
+TARGET is a function of SPEC's data, or of nil when it is not stored,
+returning the arguments of `octocat-open'.  Without the data, the page
+opened is a guess, and SPEC is fetched: if its data names another page
+while the user is still on the guess, that page takes its place, and
+the guess is killed unless it was open before."
+  (let* ((stored (plist-get (octocat-sync-read spec) :data))
+         (guess  (funcall target stored))
+         (before (buffer-list)))
+    (apply #'octocat-open guess)
+    (unless stored
+      (let ((buf (window-buffer)))
+        (octocat-sync-get
+         spec
+         (lambda (data)
+           (let ((settled (and data (not (eq (car-safe data) 'error))
+                               (funcall target data))))
+             (when (and settled (not (equal settled guess))
+                        (octocat--still-selected-p buf))
+               (apply #'octocat-open settled)
+               (unless (or (eq (window-buffer) buf) (memq buf before))
+                 (kill-buffer buf))))))))))
+
 (defvar-local octocat-vui--page nil
   "The page `octocat-vui-refresh-page' mounted here: (COMPONENT ID INSTANCE).")
 

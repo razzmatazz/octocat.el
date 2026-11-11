@@ -457,7 +457,36 @@ CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
 (octocat-sync-define-resource branches (repo)
   :fetch (lambda (done) (octocat-model--list-branches repo (octocat--then #'vconcat done))))
 
+;; How many leading segments of a github.com path PATH name a ref, as
+;; "count": a ref may have slashes.  At most ten are tried.
+(octocat-sync-define-resource ref-split (repo path)
+  :graphql (octocat-model--ref-split-query (min 10 (length (split-string path "/"))))
+  :repo repo
+  :vars (let ((segments (split-string path "/")))
+          (mapcar (lambda (i) (cons (format "e%d" i)
+                                    (concat (string-join (seq-take segments i) "/") "^{commit}")))
+                  (number-sequence 1 (min 10 (length segments)))))
+  :parse (lambda (data)
+           (let* ((r     (gethash "repository" data))
+                  (count (and r (seq-find (lambda (i) (gethash (format "p%d" i) r))
+                                          (number-sequence (hash-table-count r) 1 -1)))))
+             (octocat--table "count" (or count 1)))))
+
+(defun octocat-model--ref-split-query (n)
+  "Return a GraphQL query resolving N revs, $e1 and on, as p1 and on."
+  (let ((is (number-sequence 1 n)))
+    (format "query($owner:String!,$name:String!,%s){repository(owner:$owner,name:$name){%s}}"
+            (mapconcat (lambda (i) (format "$e%d:String!" i)) is ",")
+            (mapconcat (lambda (i) (format "p%d:object(expression:$e%d){oid}" i i)) is " "))))
+
 ;;;; Issues and PRs
+
+;; Whether issue NUMBER is a pull request's, as "pr": never changes.
+(octocat-sync-define-resource issue-kind (repo number)
+  :max-age octocat-model--fixed-max-age
+  :gh (list "api" (format "repos/%s/issues/%d" repo number) "--jq" ".pull_request != null")
+  :raw t
+  :parse (lambda (raw) (octocat--table "pr" (equal (string-trim raw) "true"))))
 
 ;; Its "events" are those of all pages.
 (octocat-sync-define-resource timeline-events (repo number)
@@ -1581,6 +1610,32 @@ Calls CALLBACK once with a hash-table of path to commit, see
   :gh (octocat-model--file-args repo path ref)
   :raw t
   :parse (lambda (raw) (octocat--table "text" raw)))
+
+;; File PATH at REF with its text, fetched alongside `repo-head' so the
+;; file page need not wait for the blob's SHA: it uses the text only
+;; while "oid" is the head's blob.
+(octocat-sync-define-resource file-blob (repo ref path)
+  :max-age (and ref (octocat--sha-p ref) octocat-model--fixed-max-age)
+  :poll nil
+  :graphql (concat "query($owner:String!,$name:String!,$expr:String!){"
+                   "repository(owner:$owner,name:$name){object(expression:$expr){"
+                   "...on Blob{oid byteSize isBinary isTruncated text}}}}")
+  :repo repo
+  :vars `(("expr" . ,(concat (or ref "HEAD") ":" path)))
+  :parse #'octocat-model--parse-file-blob)
+
+(defun octocat-model--parse-file-blob (data)
+  "Return the blob in DATA, the answer to the `file-blob' query.
+That is a table of its \"oid\" and \"text\", nil for a binary file,
+one larger than `octocat--max-file-size' or one GitHub cut short."
+  (let ((blob (octocat--get data "repository" "object")))
+    (unless (hash-table-p blob)
+      (error "No such file"))
+    (octocat--table "oid" (gethash "oid" blob)
+                    "text" (and (not (eq (gethash "isBinary" blob) t))
+                                (not (eq (gethash "isTruncated" blob) t))
+                                (<= (or (gethash "byteSize" blob) 0) octocat--max-file-size)
+                                (gethash "text" blob)))))
 
 ;; The commits of REF that touched PATH, LIMIT a page.
 (octocat-sync-define-resource commits (repo ref path limit)

@@ -46,6 +46,36 @@
       (should (equal (gethash "login" (gethash "author" page)) "alice"))
       (should (equal (gethash "body" (aref (gethash "comments" page) 0)) "me too")))))
 
+(ert-deftest octocat-model-test-parse-file-blob ()
+  "A file's text is kept but for a binary, cut short or too large one."
+  (let ((parse (lambda (json)
+                 (octocat-model--parse-file-blob
+                  (json-parse-string (format "{\"repository\":{\"object\":%s}}" json)
+                                     :null-object nil :false-object :false)))))
+    (should (equal (gethash "text" (funcall parse "{\"oid\":\"b\",\"byteSize\":3,\"isBinary\":false,\"isTruncated\":false,\"text\":\"hi\\n\"}"))
+                   "hi\n"))
+    (should (equal (gethash "oid" (funcall parse "{\"oid\":\"b\",\"isBinary\":true,\"text\":null}"))
+                   "b"))
+    (should-not (gethash "text" (funcall parse "{\"oid\":\"b\",\"isBinary\":true,\"text\":null}")))
+    (should-not (gethash "text" (funcall parse "{\"oid\":\"b\",\"isTruncated\":true,\"text\":\"h\"}")))
+    (should-not (gethash "text" (funcall parse (format "{\"oid\":\"b\",\"byteSize\":%d,\"text\":\"h\"}"
+                                                       (1+ octocat--max-file-size)))))
+    (should-error (funcall parse "null"))))
+
+(ert-deftest octocat-model-test-ref-split ()
+  "The most leading segments GitHub resolves are the ref, else the first."
+  (let* ((props (octocat-sync--props '(ref-split "o/r" "feat/x/a.el")))
+         (parse (plist-get props :parse)))
+    (should (equal (mapcar #'car (plist-get props :vars)) '("e1" "e2" "e3")))
+    (should (equal (cdr (assoc "e2" (plist-get props :vars))) "feat/x^{commit}"))
+    (should (eql (gethash "count" (funcall parse (json-parse-string
+                                                  "{\"repository\":{\"p1\":{\"oid\":\"1\"},\"p2\":{\"oid\":\"2\"},\"p3\":null}}"
+                                                  :null-object nil)))
+                 2))
+    (should (eql (gethash "count" (funcall parse (json-parse-string "{\"repository\":null}"
+                                                                    :null-object nil)))
+                 1))))
+
 (ert-deftest octocat-model-test-issue-parse-created ()
   "The number is read from the URL `gh issue create' prints."
   (should (= (octocat-model--issue-parse-created

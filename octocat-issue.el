@@ -351,6 +351,21 @@ the background, in place: what is unfolded stays so."
   "Open issue NUMBER of REPO, as `octocat-issue-open'."
   (octocat-issue-open repo number))
 
+(defun octocat-issue--stored-p (kind repo number)
+  "Return non-nil when NUMBER of REPO is stored as a KIND, `pr' or `issue'."
+  (let ((snap (octocat-sync-read (list kind repo number))))
+    (or (plist-get snap :data) (plist-get snap :partial))))
+
+(cl-defmethod octocat-open ((_kind (eql 'issue-or-pr)) repo number)
+  "Open NUMBER of REPO, an issue or a pull request: they share numbers.
+As what the store holds it as, else as an issue until GitHub says."
+  (cond ((octocat-issue--stored-p 'pr repo number) (octocat-open 'pr repo number))
+        ((octocat-issue--stored-p 'issue repo number) (octocat-open 'issue repo number))
+        (t (octocat-vui-open-settled
+            (list 'issue-kind repo number)
+            (lambda (data)
+              (list (if (and data (eq (gethash "pr" data) t)) 'pr 'issue) repo number))))))
+
 
 ;;;; Issue list page
 ;;
