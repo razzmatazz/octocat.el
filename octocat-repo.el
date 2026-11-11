@@ -1252,11 +1252,20 @@ branch."
          (default-branch (and summary (gethash "default-branch" summary)))
          (shown          (or ref tracked))
          (head-snap      (octocat-vui-use-resource (list 'repo-head repo shown nil) tick))
-         (root           (plist-get head-snap :data)))
+         (root           (plist-get head-snap :data))
+         (path-snap      (octocat-vui-use-resource
+                          (list 'tree-path repo (or shown "HEAD") reveal) tick))
+         (shas           (octocat--get (plist-get path-snap :data) "shas")))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
         (with-current-buffer buf
           (setq octocat-repo--default-branch default-branch)))
+      nil)
+    ;; The listings on the way to REVEAL at once, not each once its
+    ;; parent's is in: the subtrees find them fetched or under way.
+    (vui-use-effect (shas)
+      (seq-doseq (sha shas)
+        (when sha (octocat-sync-request (list 'tree-dir repo sha))))
       nil)
     (octocat-vui-page
      (octocat-repo--pin repo (or ref tracked default-branch) reveal current-branch)

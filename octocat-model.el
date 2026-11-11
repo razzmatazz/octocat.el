@@ -1545,6 +1545,34 @@ Calls CALLBACK once with a hash-table of path to commit, see
            (when (zerop (cl-decf left))
              (funcall callback (or failed out)))))))))
 
+;; The SHAs of the trees on the way to PATH at REF, the root's first, as
+;; "shas": the page fetches their listings at once, not each after its
+;; parent's.  Nil for a level that is no tree.
+(octocat-sync-define-resource tree-path (repo ref path)
+  :max-age (and (octocat--sha-p ref) octocat-model--fixed-max-age)
+  :poll nil
+  :fetch (and (null path) (lambda (done) (funcall done (octocat--table "shas" []))))
+  :graphql (octocat-model--tree-path-query (length (split-string (or path "") "/")))
+  :repo repo
+  :vars (let ((dirs (split-string (or path "") "/")))
+          (cons (cons "e0" (concat ref ":"))
+                (mapcar (lambda (i) (cons (format "e%d" i)
+                                          (concat ref ":" (string-join (seq-take dirs i) "/"))))
+                        (number-sequence 1 (length dirs)))))
+  :parse (lambda (data)
+           (let ((r (or (gethash "repository" data) (error "No such repository"))))
+             (octocat--table
+              "shas" (vconcat (mapcar (lambda (i) (octocat--get r (format "t%d" i) "oid"))
+                                      (number-sequence 0 (1- (hash-table-count r)))))))))
+
+(defun octocat-model--tree-path-query (n)
+  "Return a GraphQL query of the tree SHAs of N + 1 revs, $e0 on, as t0 on."
+  (let ((is (number-sequence 0 n)))
+    (format "query($owner:String!,$name:String!,%s){repository(owner:$owner,name:$name){%s}}"
+            (mapconcat (lambda (i) (format "$e%d:String!" i)) is ",")
+            (mapconcat (lambda (i) (format "t%d:object(expression:$e%d){...on Tree{oid}}" i i))
+                       is " "))))
+
 ;; The children of directory SHA, a vector of entries.
 (octocat-sync-define-resource tree-dir (repo sha)
   :max-age octocat-model--fixed-max-age

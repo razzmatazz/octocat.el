@@ -546,6 +546,22 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
       (octocat-tree-tests--mount-tree)
       (should (string-match-p "cached\\.el" (buffer-string))))))
 
+(ert-deftest octocat-tree-test-reveal-fetches-at-once ()
+  "Opened down to a directory, the tree asks for every listing on the way at once."
+  (octocat-tree-tests--with-store
+    (octocat-tree-tests--store '(tree-path "owner/repo" "main" "a/b")
+                               (octocat--table "shas" ["rootsha" "asha" "bsha"]))
+    (let (requested)
+      (cl-letf (((symbol-function 'octocat-sync-request)
+                 (lambda (spec &rest _) (push spec requested)))
+                ((symbol-function 'octocat--head-info) #'ignore))
+        (with-temp-buffer
+          (octocat-tree-mode)
+          (octocat-vui-refresh-page 'octocat-repo-vui--tree-page "tree"
+                                    (list :repo "owner/repo" :ref "main" :reveal "a/b"))))
+      (dolist (sha '("rootsha" "asha" "bsha"))
+        (should (member (list 'tree-dir "owner/repo" sha) requested))))))
+
 (ert-deftest octocat-tree-test-blob-store ()
   "A fetched blob, which need not be text, is stored and then served without a fetch."
   (octocat-tree-tests--with-store

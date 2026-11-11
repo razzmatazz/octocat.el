@@ -62,6 +62,19 @@
                                                        (1+ octocat--max-file-size)))))
     (should-error (funcall parse "null"))))
 
+(ert-deftest octocat-model-test-tree-path ()
+  "Each tree on the way to a path is asked for in one query, the root's first."
+  (let* ((props (octocat-sync--props '(tree-path "o/r" "main" "a/b")))
+         (parse (plist-get props :parse)))
+    (should (equal (plist-get props :vars)
+                   '(("e0" . "main:") ("e1" . "main:a") ("e2" . "main:a/b"))))
+    (should (equal (gethash "shas" (funcall parse (json-parse-string
+                                                   "{\"repository\":{\"t0\":{\"oid\":\"r\"},\"t1\":{\"oid\":\"a\"},\"t2\":{}}}"
+                                                   :null-object nil)))
+                   ["r" "a" nil]))
+    ;; Nothing revealed, nothing asked.
+    (should (plist-get (octocat-sync--props '(tree-path "o/r" "main" nil)) :fetch))))
+
 (ert-deftest octocat-model-test-ref-split ()
   "The most leading segments GitHub resolves are the ref, else the first."
   (let* ((props (octocat-sync--props '(ref-split "o/r" "feat/x/a.el")))

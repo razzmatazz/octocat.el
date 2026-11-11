@@ -76,13 +76,12 @@ requests in turn before a first visit shows the file.  Fetch the text
 by ref and path (`file-text`) alongside `repo-head`, and show whichever
 gives it first.  A later visit shows it at once from the store, as now.
 
-## 5. A folder link in one round trip
+## 5. A folder link in one round trip (done)
 
 A `tree/REF/a/b/c` link reveals c: `repo-head`, then `tree-dir` of the
 root, then of a, b and c in turn, each needing its parent's listing for
-its SHA: five requests in turn.  One GraphQL query can list every level
-at once, an `object(expression:"REF:a")` alias each, stored as each
-`tree-dir`.
+its SHA: five requests in turn.  One query, `tree-path`, gives every
+level's SHA, and the page asks for their listings at once: two in turn.
 
 ## 6. The repository page's README
 
