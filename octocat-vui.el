@@ -2388,12 +2388,40 @@ text as the way to enter a value."
                                 (octocat-vui-list--stored 'assignees) '("@me")
                                 "no:assignee"))
 
-(defun octocat-vui-list-filter-reviewer ()
-  "Filter by requested reviewer; @me lists the PRs awaiting your review."
+(defconst octocat-vui-list--reviews
+  '(("No reviews"                            . "review:none")
+    ("Review required"                       . "review:required")
+    ("Approved review"                       . "review:approved")
+    ("Changes requested"                     . "review:changes_requested")
+    ("Reviewed by you"                       . "reviewed-by:@me")
+    ("Not reviewed by you"                   . "-reviewed-by:@me")
+    ("Awaiting review from you"              . "user-review-requested:@me")
+    ("Awaiting review from you or your team" . "review-requested:@me"))
+  "The Reviews filter's choices as (LABEL . TOKEN), as GitHub's PR list has them.")
+
+(defun octocat-vui-list--review (query)
+  "Return the label of QUERY's Reviews choice, or nil."
+  (car (seq-find (lambda (choice)
+                   (member (cdr choice) (octocat-vui-list--tokenize query)))
+                 octocat-vui-list--reviews)))
+
+(defun octocat-vui-list--with-review (query label)
+  "Return QUERY with its Reviews choice set to LABEL (nil drops it)."
+  (octocat-vui-list--replace
+   query (lambda (tok) (rassoc tok octocat-vui-list--reviews))
+   (and label (list (cdr (assoc label octocat-vui-list--reviews))))))
+
+(defun octocat-vui-list-filter-reviews ()
+  "Filter by reviews: their state, yours, or a request for yours."
   (interactive)
   (octocat-vui-list--check-filterable)
-  (octocat-vui-list--edit-facet "review-requested:" "Reviewer" nil
-                                (octocat-vui-list--stored 'assignees) '("@me")))
+  (let* ((query  (octocat-vui-list-query))
+         (picked (car (octocat-vui-list--toggle-read
+                       "Reviews" (mapcar #'car octocat-vui-list--reviews)
+                       (ensure-list (octocat-vui-list--review query))))))
+    (when (and picked (not (assoc picked octocat-vui-list--reviews)))
+      (user-error "Octocat: No such review filter: %s" picked))
+    (octocat-vui-list--apply (octocat-vui-list--with-review query picked))))
 
 (defun octocat-vui-list-filter-label ()
   "Filter by labels (all selected labels must match)."

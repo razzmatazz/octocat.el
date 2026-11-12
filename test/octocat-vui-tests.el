@@ -120,6 +120,19 @@
   (should (equal (octocat-vui-list--with-state "is:open label:x" "all")
                  "label:x")))
 
+(ert-deftest octocat-vui-test-filter-reviews ()
+  "A Reviews choice is read, replaces the one before, and is removed."
+  (should (equal (octocat-vui-list--review "is:open reviewed-by:@me")
+                 "Reviewed by you"))
+  (should (equal (octocat-vui-list--review "is:open -reviewed-by:@me")
+                 "Not reviewed by you"))
+  (should-not (octocat-vui-list--review "is:open reviewed-by:x"))
+  (should (equal (octocat-vui-list--with-review
+                  "is:open review-requested:@me label:x" "Approved review")
+                 "is:open label:x review:approved"))
+  (should (equal (octocat-vui-list--with-review "is:open review:none" nil)
+                 "is:open")))
+
 (ert-deftest octocat-vui-test-detail-skeleton ()
   "The skeleton starts with the item and keeps its grey bars within WIDTH."
   (let ((text (octocat-vui-detail-skeleton "o/r" 7 30)))

@@ -1818,7 +1818,7 @@ See `octocat-pr-diff-open'."
               '(("State"    . octocat-vui-list-filter-state)
                 ("Author"   . octocat-vui-list-filter-author)
                 ("Assignee" . octocat-vui-list-filter-assignee)
-                ("Reviewer" . octocat-vui-list-filter-reviewer)
+                ("Reviews"  . octocat-vui-list-filter-reviews)
                 ("Label"    . octocat-vui-list-filter-label)))
   (setq-local octocat-vui-list--view "pr-list")
   (setq-local octocat-vui-list--web-scope "is:pr")

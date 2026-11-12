@@ -168,9 +168,12 @@ survives restarting Emacs; pages start in the full view.
 The query is a GitHub search, edited by hand (with completion) or through
 the buttons below the field (or `F`).  **[Assignee]** offers `(none)`,
 which sets `no:assignee` to list the items assigned to nobody.  On the
-pull request list, **[Reviewer]** sets `review-requested:`; pick `@me`
-to list the pull requests waiting for your review, including those
-requested from one of your teams.
+pull request list, **[Reviews]** offers the choices of GitHub's Reviews
+menu, such as "Approved review" or "Reviewed by you".  "Awaiting review
+from you" lists only the pull requests still waiting for your review:
+GitHub drops the request once you review, so use "Reviewed by you" to
+find those you approved.  Pick another reviewer by typing
+`reviewed-by:` or `review-requested:` into the query.
 
 Items are marked as files are in Dired, the same with Evil:
 

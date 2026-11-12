@@ -1,7 +1,7 @@
 acme/rocket › Pull requests  6 open · 14 closed · 108 merged
 
 Filter  is:open
-        [State]  [Author]  [Assignee]  [Reviewer]  [Label]
+        [State]  [Author]  [Assignee]  [Reviews]  [Label]
 
   #133  Incremental builds: skip…  ≡ 2/2   performance   enhancement   ✉ 4  assigned to @srivera +1
   #132  Add RSS and Atom feeds for each section   enhancement                                   ✉ 2
