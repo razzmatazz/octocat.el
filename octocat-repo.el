@@ -2068,31 +2068,26 @@ It is one of `octocat-file--views'."
 
 (defun octocat-file-show-view (view)
   "Show the file in VIEW, one of `octocat-file--views'.
-The blame slides in from the left edge, and back out of it; the page's
-cap widens by its column, so the code keeps its width."
+From the code, the blame slides in from the left edge, beside the same
+lines; every other switch is at once.  The page's cap widens by the
+blame's column, so the code keeps its width."
   (unless (and (derived-mode-p 'octocat-file-mode) octocat-tree--file-path)
     (user-error "Octocat: Not in a file viewer buffer"))
-  (let ((buf  (current-buffer))
-        (show (lambda ()
-                (setq octocat-tree--file-blame (eq view 'blame)
-                      octocat-tree--file-diff (eq view 'diff)
-                      octocat--markdown-raw (eq view 'code)
-                      octocat--cap-extra (if octocat-tree--file-blame
-                                             (octocat-repo--blame-column-width)
-                                           0))
-                (octocat-vui-update-page :raw octocat--markdown-raw
-                                         :blame octocat-tree--file-blame
-                                         :diff octocat-tree--file-diff))))
-    (cond ((eq view (octocat-file--view octocat-tree--file-path octocat--markdown-raw
-                                        octocat-tree--file-blame octocat-tree--file-diff)))
-          (octocat-tree--file-blame
-           (octocat-repo--blame-unpin buf)
-           (setq octocat-repo--blame-sliding t)
-           (octocat-vui-slide buf 'octocat-blame 'out
-                              (lambda ()
-                                (setq octocat-repo--blame-sliding nil)
-                                (funcall show))))
-          ((eq view 'blame)
+  (let ((buf     (current-buffer))
+        (current (octocat-file--view octocat-tree--file-path octocat--markdown-raw
+                                     octocat-tree--file-blame octocat-tree--file-diff))
+        (show    (lambda ()
+                   (setq octocat-tree--file-blame (eq view 'blame)
+                         octocat-tree--file-diff (eq view 'diff)
+                         octocat--markdown-raw (eq view 'code)
+                         octocat--cap-extra (if octocat-tree--file-blame
+                                                (octocat-repo--blame-column-width)
+                                              0))
+                   (octocat-vui-update-page :raw octocat--markdown-raw
+                                            :blame octocat-tree--file-blame
+                                            :diff octocat-tree--file-diff))))
+    (cond ((eq view current))
+          ((and (eq view 'blame) (eq current 'code))
            ;; The pin waits for the column, which it would cover.
            (setq octocat-repo--blame-sliding t)
            (funcall show)
