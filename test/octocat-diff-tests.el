@@ -527,12 +527,10 @@ Only that file; a hash naming none changes nothing."
 
 (ert-deftest octocat-commit-test-date-committed ()
   "Rows show when a commit was committed; its author date when it has no other."
-  (let ((both (octocat-model--repo-history-commit
-               (json-parse-string
-                "{\"oid\":\"a\",\"messageHeadline\":\"s\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"committedDate\":\"2026-10-02T10:00:00Z\",\"author\":null}")))
-        (old  (octocat-model--repo-history-commit
-               (json-parse-string
-                "{\"oid\":\"a\",\"messageHeadline\":\"s\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":null}"))))
+  (let ((both (json-parse-string
+               "{\"oid\":\"a\",\"messageHeadline\":\"s\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"committedDate\":\"2026-10-02T10:00:00Z\",\"author\":null}"))
+        (old  (json-parse-string
+               "{\"oid\":\"a\",\"messageHeadline\":\"s\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":null}")))
     (should (equal (octocat--commit-date both) "2026-10-02T10:00:00Z"))
     (should (equal (octocat--commit-date old) "2026-10-01T10:00:00Z"))
     (should (equal (octocat-vui--date both)

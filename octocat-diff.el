@@ -1965,7 +1965,7 @@ have diverged gets a note that the three-dot one is shown."
 
 (defun octocat-compare--commits (repo commits width)
   "Return the vnodes of the Commits section, fitted to WIDTH.
-COMMITS is a REST commits vector of REPO."
+COMMITS is a vector of commits of REPO, as the commit rows read them."
   (let* ((commits   (append commits nil))
          (author-w  (octocat-vui--author-width commits))
          (subject-w (octocat-vui--subject-width commits width author-w))

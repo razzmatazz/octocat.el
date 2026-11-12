@@ -505,8 +505,7 @@ A string COMMIT is itself what follows."
    (t
     (let* ((age     (let ((ts (octocat--commit-date commit)))
                       (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
-           (subject (car (split-string (or (gethash "message" (gethash "commit" commit)) "")
-                                       "\n")))
+           (subject (octocat-vui--subject commit))
            (col     (max (+ (string-width label) 2) (min 40 (/ width 3))))
            (room    (- width col 2 (string-width age)))
            (shown   (if (< room 8) ""
@@ -1009,7 +1008,7 @@ last to it (see `octocat-sync-more'), pinned to the head shown."
      (octocat-repo-vui--top-line
       repo label path current-branch nil
       (lambda (dir) (octocat-commit-list-open repo ref (octocat--nonempty dir)))
-      (when-let* ((total (and commits (gethash "total" (car commits)))))
+      (when-let* ((total (and commits (gethash "totalCount" data))))
         (vui-text (format "%d commit%s" total (if (= total 1) "" "s"))
           :face 'octocat-dimmed))
       (and (octocat-repo--resettable-p ref default-branch)
@@ -1036,8 +1035,8 @@ last to it (see `octocat-sync-more'), pinned to the head shown."
               commits
               (lambda (c)
                 (octocat-vui--commit-row repo c head-info author-w subject-w date-w
-                                         (and lanes (gethash (gethash "sha" c) lanes))))
-              (lambda (c) (gethash "sha" c)))))
+                                         (and lanes (gethash (gethash "oid" c) lanes))))
+              (lambda (c) (gethash "oid" c)))))
          (when (and commits (gethash "cursor" data))
            (octocat-vui-load-more-button
             'load-more-commits octocat-repo-commits-page-size
@@ -1045,7 +1044,7 @@ last to it (see `octocat-sync-more'), pinned to the head shown."
             (lambda ()
               (vui-set-state :fetching t)
               (octocat-sync-more
-               spec (octocat-model-commits-more repo path (gethash "sha" (car commits))
+               spec (octocat-model-commits-more repo path (gethash "oid" (car commits))
                                                 octocat-repo-commits-page-size)
                (vui-async-callback (r)
                  (vui-set-state :fetching nil)
@@ -1062,7 +1061,7 @@ button to the commits page of PATH at REF of REPO, with the count of its
 history.
 The author is left out for room: the commit page has it.  The subject
 is cut so the line fits."
-  (let* ((sha       (or (gethash "sha" commit) ""))
+  (let* ((sha       (or (gethash "oid" commit) ""))
          (subject   (octocat-vui--subject commit))
          (date      (let ((ts (octocat--commit-date commit)))
                       (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
@@ -1310,7 +1309,7 @@ one summary resource and the rest from the root's `repo-head' at REF."
       (if tree
           (vui-component 'octocat-tree--dir
             :key shown :repo repo :branch (or shown default-branch "HEAD") :sha tree
-            :commit (gethash "sha" (plist-get head-snap :data))
+            :commit (gethash "oid" (plist-get head-snap :data))
             :on-dir (lambda (dir) (octocat-tree-open repo ref dir))
             :on-browse (lambda () (octocat-tree-open repo ref)))
         (vui-text (octocat-tree--skeleton)))
@@ -1367,7 +1366,7 @@ branch."
           (vui-component 'octocat-tree--subtree
             :key (list shown reveal)
             :repo repo :branch (or shown default-branch "HEAD")
-            :sha (gethash "tree" root) :commit (gethash "sha" root)
+            :sha (gethash "tree" root) :commit (gethash "oid" root)
             :depth 0 :path "" :reveal reveal :focus focus)
         (vui-text (octocat-tree--skeleton)))))))
 
@@ -1464,20 +1463,20 @@ grey bars at the head of every few lines instead."
       (seq-do
        (lambda (range)
          (let* ((commit (gethash "commit" range))
-                (sha    (or (gethash "sha" commit) ""))
-                (last   (min (gethash "end" range) (length lines)))
+                (sha    (or (gethash "oid" commit) ""))
+                (last   (min (gethash "endingLine" range) (length lines)))
                 (head   (octocat-repo--blame-margin commit margin))
                 (map    (let ((m (make-sparse-keymap)))
                           (define-key m (kbd "RET")
                                       (lambda () (interactive)
                                         (octocat-vui--open-commit repo commit)))
                           m)))
-           (cl-loop for n from (gethash "start" range) to (gethash "end" range)
+           (cl-loop for n from (gethash "startingLine" range) to (gethash "endingLine" range)
                     while (<= n (length lines))
                     do (let* ((ruled (and (= n last) (< n (length lines))))
                               (s (funcall
                                   line n
-                                  (propertize (if (= n (gethash "start" range))
+                                  (propertize (if (= n (gethash "startingLine" range))
                                                   head
                                                 (propertize
                                                  blank 'octocat-blame-head
@@ -1712,7 +1711,7 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
       (cond ((or diff removed)
              (vui-component 'octocat-diff-file-view
                :repo repo :path path :change change
-               :commit (and head (gethash "sha" head))))
+               :commit (and head (gethash "oid" head))))
             (notice
              (apply #'vui-hstack :spacing 2
                     (vui-text notice :face 'octocat-dimmed)
@@ -1724,7 +1723,7 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
                               :on-click (lambda () (vui-set-state :anyway t)))))))
             ((and blob blame)
              (vui-component 'octocat-repo-vui--file-blame
-               :key blob :repo repo :path path :blob blob :commit (gethash "sha" head)
+               :key blob :repo repo :path path :blob blob :commit (gethash "oid" head)
                :lines lines))
             (blob
              (vui-component 'octocat-repo-vui--file-content

@@ -69,6 +69,10 @@ of its data a name of its own (a pure function) when it is long, tested
 or shared.  A query used once goes next to it, inline or as a `defconst`
 beside a named parser.
 
+Write GraphQL as s-expressions with `octocat--graphql-query`, e.g.
+`(labels (:first 100) (nodes name color))`; see its docstring.  Pages
+read the answer as is: a connection's items with `octocat--nodes`.
+
 Completion candidates and search results are resources too, read with
 `octocat-sync-get`; the only other file octocat writes is
 `octocat-settings-file`.  Do **not** hardcode

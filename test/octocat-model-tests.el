@@ -372,22 +372,27 @@
 
 ;;;; Repository code
 
-(ert-deftest octocat-model-test-repo-parse-history ()
-  "History edges become REST-shaped commits that keep their cursor."
-  (let* ((json "{\"data\":{\"repository\":{\"object\":{\"history\":{\"edges\":[{\"cursor\":\"abc 0\",\"node\":{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}},{\"cursor\":\"abc 1\",\"node\":{\"oid\":\"def\",\"messageHeadline\":\"Old\",\"authoredDate\":\"2026-10-13T00:00:00Z\",\"author\":{\"name\":\"Bo\",\"email\":\"b@x\",\"user\":null}}}]}}}}}")
-         (commits (octocat-model--repo-parse-history json))
-         (first   (car commits)))
-    (should (equal (gethash "sha" first) "abc"))
-    (should (equal (gethash "message" (gethash "commit" first)) "Fix it"))
-    (should (equal (octocat--commit-author first) "@ann"))
-    (should (equal (octocat--commit-author (cadr commits)) "Bo"))
-    (should (equal (gethash "cursor" (cadr commits)) "abc 1"))
-    (should-not (gethash "total" first)))
-  (should (equal (gethash "total" (car (octocat-model--repo-parse-history
-                                        "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":7,\"edges\":[{\"cursor\":\"c\",\"node\":{\"oid\":\"abc\"}}]}}}}}")))
-                 7))
-  (should-error (octocat-model--repo-parse-history
-                 "{\"data\":{\"repository\":{\"object\":null}}}")))
+(ert-deftest octocat-model-test-commits-tree ()
+  "A page of history keeps its commits, their count and the cursor after it."
+  (let ((tree (octocat-model--commits-tree
+               (octocat-model-tests--data
+                (concat "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":7,"
+                        "\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\","
+                        "\"author\":{\"name\":\"Ann\",\"user\":{\"login\":\"ann\"}}},"
+                        "{\"oid\":\"def\",\"author\":{\"name\":\"Bo\",\"user\":null}}],"
+                        "\"pageInfo\":{\"hasNextPage\":true,\"endCursor\":\"c1\"}}}}}}")))))
+    (should (equal (mapcar (lambda (c) (gethash "oid" c)) (gethash "nodes" tree)) '("abc" "def")))
+    (should (equal (mapcar #'octocat--commit-author (gethash "nodes" tree)) '("@ann" "Bo")))
+    (should (= (gethash "totalCount" tree) 7))
+    (should (equal (gethash "cursor" tree) "c1")))
+  (should-not (gethash "cursor"
+                       (octocat-model--commits-tree
+                        (octocat-model-tests--data
+                         (concat "{\"data\":{\"repository\":{\"object\":{\"history\":{"
+                                 "\"nodes\":[],\"pageInfo\":{\"hasNextPage\":false,"
+                                 "\"endCursor\":\"c1\"}}}}}}")))))
+  (should-error (octocat-model--commits-tree
+                 (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":null}}}"))))
 
 (ert-deftest octocat-model-test-file-args ()
   "A file is asked for raw at its ref, each part of its path encoded."
@@ -395,21 +400,12 @@
                  '("api" "-X" "GET" "repos/o/r/contents/docs/a%20b.md" "-f" "ref=main"
                    "-H" "Accept: application/vnd.github.raw"))))
 
-(ert-deftest octocat-model-test-commits-tree ()
-  "A full page has the last commit's cursor; a short one, at the end, none."
-  (let ((commits (octocat-model--repo-parse-history
-                  "{\"data\":{\"repository\":{\"object\":{\"history\":{\"edges\":[{\"cursor\":\"c 0\",\"node\":{\"oid\":\"abc\"}},{\"cursor\":\"c 1\",\"node\":{\"oid\":\"def\"}}]}}}}}")))
-    (should (equal (gethash "cursor" (octocat-model--commits-tree commits 2)) "c 1"))
-    (should (= (length (gethash "nodes" (octocat-model--commits-tree commits 2))) 2))
-    (should-not (gethash "cursor" (octocat-model--commits-tree commits 3)))
-    (should-not (gethash "cursor" (octocat-model--commits-tree nil 2)))))
-
 (ert-deftest octocat-model-test-repo-parse-head ()
   "A directory at a ref has its last commit, its tree and its history count."
   (let ((head (octocat-model--repo-parse-head
                (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\",\"entries\":[{\"name\":\"README.md\",\"type\":\"blob\",\"oid\":\"b1\"}]}}}}")
                "main" "src")))
-    (should (equal (gethash "sha" head) "abc"))
+    (should (equal (gethash "oid" head) "abc"))
     (should (equal (octocat--commit-author head) "@ann"))
     (should (equal (gethash "tree" head) "t1"))
     (should (equal (gethash "kind" head) "tree"))
@@ -433,7 +429,7 @@
                       "\"e0\":{\"nodes\":[{\"oid\":\"a1\",\"messageHeadline\":\"One\"}]},"
                       "\"e1\":{\"nodes\":[]}}}}}")
               '("README.md" "gone"))))
-    (should (equal (gethash "sha" (gethash "README.md" got)) "a1"))
+    (should (equal (gethash "oid" (gethash "README.md" got)) "a1"))
     (should-not (gethash "gone" got))))
 
 ;;;; Actions
@@ -511,7 +507,8 @@ env:
   (should (string-match-p "type:issue\\'" (octocat-model--dashboard-search-query 'issues)))
   (let ((q (octocat-model--dashboard-items-query 'issues)))
     (should (string-search "...on Issue{repository{nameWithOwner}}" q))
-    (should (string-search (alist-get 'issues octocat-model--list-item-fields) q))))
+    (should (string-search (octocat--graphql (alist-get 'issues octocat-model--list-item-fields))
+                           q))))
 
 (ert-deftest octocat-model-test-dashboard-items-tree ()
   "Each dashboard item keeps its repo beside its entity."
@@ -548,7 +545,7 @@ env:
                    []))))
 
 (ert-deftest octocat-model-test-user-repos-share-entities ()
-  "The REST list and the pinned list write one entity per repository."
+  "The repositories list and the pinned list write one entity per repository."
   (let ((db (octocat-sync--create (sqlite-open nil))))
     (octocat-sync--write
      db "pinned"
@@ -559,8 +556,10 @@ env:
     (should (equal (sort (octocat-sync--write
                           db "repos"
                           (octocat-model--user-parse-repos
-                           (octocat-sync--parse
-                            "[{\"full_name\":\"bob/app\",\"description\":\"new\",\"language\":\"Go\",\"fork\":false}]"))
+                           (octocat-model-tests--data
+                            (concat "{\"data\":{\"repositoryOwner\":{\"repositories\":{\"nodes\":["
+                                    "{\"nameWithOwner\":\"bob/app\",\"description\":\"new\","
+                                    "\"primaryLanguage\":{\"name\":\"Go\"},\"isFork\":false}]}}}}")))
                           2.0)
                          #'string<)
                    '("pinned" "repos")))

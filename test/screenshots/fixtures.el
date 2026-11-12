@@ -641,6 +641,11 @@ TYPE is `:issue' or `:pullRequest'."
                                        `(:name ,(plist-get a :name)
                                          :email ,(plist-get a :email)
                                          :user (:login ,(plist-get a :login))))
+                            ;; A merge by its subject.
+                            :parents (:nodes ,(if (string-prefix-p
+                                                   "Merge" (plist-get c :messageHeadline))
+                                                  [(:oid "p1") (:oid "p2")]
+                                                [(:oid "p1")]))
                             :statusCheckRollup
                             ,(if (and (= i (1- (length commits))) checks)
                                  `(:state ,(if (seq-every-p
@@ -1098,30 +1103,22 @@ It names no step, as GitHub keeps one log for the whole job.")
 
 ;;;; People
 
-(defun octocat-screenshots--repo-rest (name description language stars ago &rest fields)
-  "Return repository NAME of acme, as the REST API lists it.
-DESCRIPTION, LANGUAGE, STARS and AGO, since its last push, are its own;
-FIELDS, a plist, override the rest."
-  (let ((repo (copy-tree `(:id ,(abs (sxhash-equal name)) :name ,name :full_name ,(concat "acme/" name)
-                :owner ,(octocat-screenshots--user "acme")
-                :html_url ,(concat "https://github.com/acme/" name)
-                :description ,description :language ,language :stargazers_count ,stars
-                :forks_count ,(/ stars 8) :open_issues_count 3 :private :false :fork :false
-                :archived :false :visibility "public" :default_branch "main"
-                :pushed_at ,(octocat-screenshots--ago ago) :updated_at ,(octocat-screenshots--ago ago)))))
-    (while fields
-      (setq repo (plist-put repo (pop fields) (pop fields))))
-    repo))
+(defun octocat-screenshots--repo (name description language stars ago &optional owner)
+  "Return repository NAME of OWNER, acme by default, as GraphQL lists it.
+DESCRIPTION, LANGUAGE, STARS and AGO, since its last push, are its own."
+  `(:nameWithOwner ,(concat (or owner "acme") "/" name) :description ,description
+    :stargazerCount ,stars :primaryLanguage (:name ,language)
+    :pushedAt ,(octocat-screenshots--ago ago) :isFork :false :isArchived :false))
 
 (defconst octocat-screenshots--repos
   (let ((h octocat-screenshots--h) (d octocat-screenshots--d))
-    (list
-     (octocat-screenshots--repo-rest "rocket" "A small, fast static site generator" "Rust" 2481 (* 2 h))
-     (octocat-screenshots--repo-rest "rocket-themes" "Themes for rocket sites" "CSS" 312 (* 3 d))
-     (octocat-screenshots--repo-rest "launchpad" "Deploy static sites to any CDN with one command" "Go" 905 (* 6 d))
-     (octocat-screenshots--repo-rest "orbit" "Tiny HTTP server for local previews" "Rust" 140 (* 15 d))
-     (octocat-screenshots--repo-rest "dotfiles" "My editor and shell setup" "Emacs Lisp" 37 (* 22 d)
-                                     :full_name "srivera/dotfiles" :owner (octocat-screenshots--user "srivera"))))
+    (vector
+     (octocat-screenshots--repo "rocket" "A small, fast static site generator" "Rust" 2481 (* 2 h))
+     (octocat-screenshots--repo "rocket-themes" "Themes for rocket sites" "CSS" 312 (* 3 d))
+     (octocat-screenshots--repo "launchpad" "Deploy static sites to any CDN with one command" "Go" 905 (* 6 d))
+     (octocat-screenshots--repo "orbit" "Tiny HTTP server for local previews" "Rust" 140 (* 15 d))
+     (octocat-screenshots--repo "dotfiles" "My editor and shell setup" "Emacs Lisp" 37 (* 22 d)
+                                "srivera")))
   "Repositories, most recently pushed first.")
 
 (defun octocat-screenshots--event (id type actor repo ago payload)
@@ -1241,7 +1238,7 @@ jobs:
 (defvar octocat-screenshots-fixtures
   (let ((d octocat-screenshots--d) (h octocat-screenshots--h))
     `(;; Dashboard
-      ("dashboard-repos" () ,(vconcat octocat-screenshots--repos))
+      ("dashboard-repos" () (:data (:viewer (:repositories (:nodes ,octocat-screenshots--repos)))))
       ("dashboard-items" ("type:pr")
        ,(octocat-screenshots--search
          (mapcar #'octocat-screenshots--with-repo
@@ -1284,12 +1281,11 @@ jobs:
        (:data (:repository
                (:object (:history
                          (:totalCount 342
-                          :edges ,(vconcat
-                                   (seq-map-indexed
-                                    (lambda (c i) `(:cursor ,(format "cursor-%d" i)
-                                                    :node ,(octocat-screenshots--history-node
-                                                            (car c) (cdr c))))
-                                    octocat-screenshots--history))))))))
+                          :nodes ,(vconcat
+                                   (mapcar (lambda (c)
+                                             (octocat-screenshots--history-node (car c) (cdr c)))
+                                           octocat-screenshots--history))
+                          :pageInfo (:hasNextPage :false :endCursor "cursor-10")))))))
       ("file-blob" (,(format "expr=%s:src/main.rs" octocat-screenshots--pr-head))
        ,(octocat-screenshots--file-blob
          "src/main.rs" "mod build;\nmod cache;\nmod markdown;\nmod serve;\nmod template;\n"))
@@ -1391,17 +1387,6 @@ jobs:
                          (:number 133 :state "open" :draft :false :merged_at :null
                           :head (:ref "incremental-builds" :sha ,(octocat-screenshots--sha "pr-133-1")))])])
       ("pr-stack" () (:data (:repository (:pullRequest (:stack :null)))))
-      ("pr-merges" ("number=128")
-       (:data (:repository
-               (:pullRequest
-                (:commits
-                 (:nodes ,(vconcat
-                           (mapcar (pcase-lambda (`(,sha ,headline ,_))
-                                     `(:commit (:oid ,sha :parents
-                                                     (:totalCount ,(if (string-prefix-p "Merge" headline)
-                                                                       2 1)))))
-                                   octocat-screenshots--pr-128-commits))))))))
-      ("pr-merges" () (:data (:repository (:pullRequest (:commits (:nodes []))))))
       ("pr-files" ("pulls/128/files") ,octocat-screenshots--pr-128-files)
       ("pr-review-threads" ("number=128") ,octocat-screenshots--pr-128-review-threads)
       ("viewer" () (:login "jlindqvist"))
@@ -1498,7 +1483,8 @@ jobs:
       ;; People
       ("user-profile" ("users/srivera") ,octocat-screenshots--srivera)
       ("user-pinned" ("login=srivera") ,octocat-screenshots--pinned)
-      ("user-repos" ("users/srivera/repos") ,(vconcat octocat-screenshots--repos))))
+      ("user-repos" ("login=srivera")
+       (:data (:repositoryOwner (:repositories (:nodes ,octocat-screenshots--repos)))))))
   "The `gh' calls the shots make, and what `gh' answers: see the Commentary.")
 
 (provide 'fixtures)

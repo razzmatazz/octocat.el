@@ -128,7 +128,7 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
     (should-not (octocat-pr--stacks-label nil 15))))
 
 (ert-deftest octocat-pr-test-commits ()
-  "Commits are listed oldest first and read as REST commits."
+  "Commits are listed oldest first, as the commit rows read them."
   (let* ((pr (octocat-pr-test--pr
               "{\"commits\":{\"nodes\":[
                  {\"commit\":{\"oid\":\"aaa\",\"messageHeadline\":\"a\",
@@ -140,12 +140,12 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
                  {\"commit\":{\"oid\":\"ccc\",\"messageHeadline\":\"c\",
                   \"committedDate\":\"2026-10-05T12:00:00Z\"}}]}}"))
          (commits (octocat-pr--commits pr)))
-    (should (equal (mapcar (lambda (c) (gethash "sha" c)) commits) '("aaa" "bbb" "ccc")))
+    (should (equal (mapcar (lambda (c) (gethash "oid" c)) commits) '("aaa" "bbb" "ccc")))
     (should (equal (mapcar #'octocat--commit-author (butlast commits)) '("@me" "Anon")))
     ;; Short subjects get the minimum column; long ones what the page leaves.
     (should (= (octocat-vui--subject-width commits 112 3)
                octocat-vui--subject-min-width))
-    (puthash "message" (make-string 200 ?x) (gethash "commit" (car commits)))
+    (puthash "messageHeadline" (make-string 200 ?x) (car commits))
     (should (= (+ (octocat-vui--subject-width commits 112 3) 2 7 2 2 3 2
                   (apply #'max (mapcar (lambda (c) (string-width (octocat-vui--date c)))
                                        commits)))

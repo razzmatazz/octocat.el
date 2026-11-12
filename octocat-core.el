@@ -445,70 +445,19 @@ author field is absent, null, or carries no login."
       "")))
 
 (defun octocat--commit-author (commit)
-  "Return a compact author string for COMMIT, for use in list rows.
-COMMIT is a hash-table from the GitHub REST commits endpoint.
-Prefers the GitHub handle: if the top-level \\\"author\\\" user object has a
-\\\"login\\\" field the result is \\\"@LOGIN\\\".  Falls back to the git author
-name from the nested \\\"commit\\\" → \\\"author\\\" → \\\"name\\\" field
-when the
-commit is not associated with a GitHub account.  Returns \"\" when neither
-is available.  For detail views where space allows, use
-`octocat--commit-author-full' instead."
-  (let* ((gh-user (gethash "author" commit))
-         (login   (and gh-user
-                       (not (eq gh-user :null))
-                       (gethash "login" gh-user)))
-         (c       (gethash "commit" commit))
-         (ca      (and c (gethash "author" c))))
-    (cond
-     ((and login (not (string-empty-p login)))
-      (concat "@" login))
-     ((and ca (octocat--nonempty (gethash "name" ca)))
-      (gethash "name" ca))
-     (t ""))))
-
-(defun octocat--commit-author-full (commit)
-  "Return a git-log-style author string for COMMIT, for use in detail views.
-COMMIT is a hash-table from the GitHub REST commits endpoint.
-Returns \\\"Name  <email>\\\" from the nested git identity fields, including
-only the parts that are present and non-empty:
-
-  Saulius Menkevičius  <sauliusmenkevicius@fastmail.com>
-
-The GitHub handle is intentionally excluded; callers that want it should
-call `octocat--commit-author-login' separately and render it on its own
-line.  For compact list rows where horizontal space is constrained, use
-`octocat--commit-author' instead."
-  (let* ((c     (gethash "commit" commit))
-         (ca    (and c (gethash "author" c)))
-         (name  (and ca (octocat--nonempty (gethash "name"  ca))))
-         (email (and ca (octocat--nonempty (gethash "email" ca)))))
-    (cond
-     ((and name email) (format "%s  <%s>" name email))
-     (name             name)
-     (email            (format "<%s>" email))
-     (t                ""))))
+  "Return COMMIT's author for a row: \"@login\", else the git name, else \"\".
+COMMIT is as `octocat-model--commit-fields' reads it."
+  (if-let* ((login (octocat--nonempty (octocat--get commit "author" "user" "login"))))
+      (concat "@" login)
+    (or (octocat--nonempty (octocat--get commit "author" "name")) "")))
 
 (defun octocat--commit-date (commit)
   "Return the timestamp COMMIT was committed at, as GitHub's lists show.
-COMMIT is shaped as the REST commits endpoint has it.  Its author date
-when it has none, as a commit stored before octocat asked for both."
-  (let* ((c   (gethash "commit" commit))
-         (get (lambda (role)
-                (let ((who (and (hash-table-p c) (gethash role c))))
-                  (and (hash-table-p who) (octocat--nonempty (gethash "date" who)))))))
-    (or (funcall get "committer") (funcall get "author") "")))
-
-(defun octocat--commit-author-login (commit)
-  "Return \\\"@login\\\" for the GitHub account linked to COMMIT, or nil.
-COMMIT is a hash-table from the GitHub REST commits endpoint.
-Returns nil when the commit email is not associated with any GitHub account,
-so callers can omit the GitHub line entirely in that case."
-  (let* ((gh-user (gethash "author" commit))
-         (login   (and gh-user
-                       (not (eq gh-user :null))
-                       (octocat--nonempty (gethash "login" gh-user)))))
-    (and login (concat "@" login))))
+Its author date when it has none.  COMMIT is as
+`octocat-model--commit-fields' reads it."
+  (or (octocat--nonempty (gethash "committedDate" commit))
+      (octocat--nonempty (gethash "authoredDate" commit))
+      ""))
 
 (defun octocat--debug-log (label data)
   "When `octocat-debug' is non-nil, append LABEL and DATA to *octocat-debug*."
@@ -702,8 +651,10 @@ It is [] when there is none."
   "Return SELECTIONS, GraphQL fields as s-expressions, as GraphQL's text.
 A selection is a field's symbol, or (FIELD [ARGS] SELECTION...): FIELD
 with ARGS, a plist such as (:first 100), and its own selections.
-\(... TYPE SELECTION...) selects only on TYPE.  An argument is a number
-or a symbol: an enum value, or a variable such as $id."
+\(... TYPE SELECTION...) selects only on TYPE.  A field's symbol may
+carry an alias, as `open:issues'.  An argument is a number, a symbol
+\(an enum value, or a variable such as $id), a vector of enum values,
+or a plist, an input object such as (:id $id)."
   (mapconcat
    (lambda (s)
      (if (symbolp s)
@@ -712,22 +663,30 @@ or a symbol: an enum value, or a variable such as $id."
               (type (and (eq name '...) (pop s)))
               (args (and (keywordp (car-safe (car s))) (pop s))))
          (concat (if type (format "...on %s" type) (symbol-name name))
-                 (and args
-                      (format "(%s)"
-                              (mapconcat (pcase-lambda (`(,k ,v))
-                                           (format "%s:%s" (substring (symbol-name k) 1) v))
-                                         (seq-partition args 2) ",")))
+                 (and args (format "(%s)" (octocat--graphql-args args)))
                  (and s (format "{%s}" (octocat--graphql s)))))))
    selections " "))
 
-(defun octocat--graphql-query (vars selections)
+(defun octocat--graphql-args (args)
+  "Return ARGS, a plist of arguments as `octocat--graphql' takes them, as GraphQL."
+  (mapconcat (pcase-lambda (`(,k ,v))
+               (format "%s:%s" (substring (symbol-name k) 1)
+                       (cond ((consp v) (format "{%s}" (octocat--graphql-args v)))
+                             ((vectorp v) (format "[%s]" (mapconcat #'symbol-name v ",")))
+                             (t v))))
+             (seq-partition args 2) ","))
+
+(defun octocat--graphql-query (vars selections &optional operation)
   "Return a GraphQL query of SELECTIONS, as `octocat--graphql' takes them.
 VARS is a plist of the variables it declares and their types, such as
-\(:owner String! :after String)."
-  (format "query(%s){%s}"
-          (mapconcat (pcase-lambda (`(,k ,type))
-                       (format "$%s:%s" (substring (symbol-name k) 1) type))
-                     (seq-partition vars 2) ",")
+\(:owner String! :after String).  OPERATION is `mutation', or nil for
+a query."
+  (format "%s%s{%s}" (or operation 'query)
+          (if vars
+              (format "(%s)" (mapconcat (pcase-lambda (`(,k ,type))
+                                          (format "$%s:%s" (substring (symbol-name k) 1) type))
+                                        (seq-partition vars 2) ","))
+            "")
           (octocat--graphql selections)))
 
 (defun octocat--table (&rest pairs)

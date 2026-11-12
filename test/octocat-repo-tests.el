@@ -611,7 +611,7 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
 (ert-deftest octocat-repo-test-readme-fetched-with-listing ()
   "The repo page asks for the README the head names, not after the root's listing."
   (octocat-tree-tests--with-store
-    (let ((head (octocat--table "sha" "c1" "tree" "rootsha" "kind" "tree"
+    (let ((head (octocat--table "oid" "c1" "tree" "rootsha" "kind" "tree"
                                 "entries" (vector (octocat-tree-tests--entry "README.md" "blob" "b1"))))
           requested)
       (octocat-tree-tests--store '(repo-head "owner/repo" "main" nil) head)
@@ -694,9 +694,8 @@ Over 1 MB, GitHub leaves its bytes out, and its blob is fetched."
   "Store owner/repo, main by default, and file PATH at REF holding CONTENT."
   (octocat-tree-tests--store '(repo-summary "owner/repo")
                              (octocat-tree-tests--json "{\"default-branch\":\"main\"}"))
-  (let ((head (octocat-model--repo-history-commit
-               (octocat-tree-tests--json
-                "{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}")))
+  (let ((head (octocat-tree-tests--json
+               "{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}"))
         (blob (make-hash-table :test #'equal)))
     (puthash "tree" (concat "blob-" ref) head)
     (puthash "kind" "blob" head)
@@ -981,9 +980,8 @@ The top line has a tab for each view, the one shown plain."
 
 (ert-deftest octocat-tree-test-last-commit-text ()
   "A tree entry is followed by its last commit's subject and, at the right, its age."
-  (let* ((commit (octocat-model--repo-history-commit
-                  (octocat-tree-tests--json
-                   "{\"oid\":\"abc\",\"messageHeadline\":\"Fix the build\",\"committedDate\":\"2026-10-01T10:00:00Z\",\"author\":null}")))
+  (let* ((commit (octocat-tree-tests--json
+                  "{\"oid\":\"abc\",\"messageHeadline\":\"Fix the build\",\"committedDate\":\"2026-10-01T10:00:00Z\",\"author\":null}"))
          (text   (concat "src/" (octocat-tree--last-commit-text "src/" commit 60))))
     (should (equal (string-width text) 60))
     (should (string-match-p "\\`src/ +Fix the build +[0-9a-z ]+ago\\'" text))
@@ -1009,13 +1007,8 @@ The top line has a tab for each view, the one shown plain."
   "Each commit's run of lines but the last ends underlined to the edge given,
 the margin as wide whatever the window."
   (let* ((range (lambda (start end sha)
-                  (let ((h (make-hash-table :test #'equal))
-                        (c (make-hash-table :test #'equal)))
-                    (puthash "sha" sha c)
-                    (puthash "start" start h)
-                    (puthash "end" end h)
-                    (puthash "commit" c h)
-                    h)))
+                  (octocat--table "startingLine" start "endingLine" end
+                                  "commit" (octocat--table "oid" sha))))
          (text  (octocat-repo--blame-text
                  "owner/repo" "a\nb\nc"
                  (vector (funcall range 1 2 "a1") (funcall range 3 3 "b2"))
@@ -1037,16 +1030,9 @@ the margin as wide whatever the window."
   "A window scrolled past a run's head shows its commit on the top line,
 that window only, and none once the head is in view again."
   (let* ((range (lambda (start end subject)
-                  (let ((h (make-hash-table :test #'equal))
-                        (c (make-hash-table :test #'equal))
-                        (m (make-hash-table :test #'equal)))
-                    (puthash "message" subject m)
-                    (puthash "sha" "a1" c)
-                    (puthash "commit" m c)
-                    (puthash "start" start h)
-                    (puthash "end" end h)
-                    (puthash "commit" c h)
-                    h)))
+                  (octocat--table "startingLine" start "endingLine" end
+                                  "commit" (octocat--table "oid" "a1"
+                                                           "messageHeadline" subject))))
          (text  (octocat-repo--blame-text
                  "owner/repo" "a\nb\nc\nd"
                  (vector (funcall range 1 3 "Add letters") (funcall range 4 4 "Add d"))
@@ -1100,9 +1086,8 @@ that window only, and none once the head is in view again."
   "While the last commits load, a stored older commit's show; a new entry's load."
   (octocat-tree-tests--with-store
     (let ((old (make-hash-table :test #'equal)))
-      (puthash "a.el" (octocat-model--repo-history-commit
-                       (octocat-tree-tests--json
-                        "{\"oid\":\"abc\",\"messageHeadline\":\"Old subject\",\"author\":null}"))
+      (puthash "a.el" (octocat-tree-tests--json
+                       "{\"oid\":\"abc\",\"messageHeadline\":\"Old subject\",\"author\":null}")
                old)
       (octocat-tree-tests--store '(tree-dir "owner/repo" "rootsha")
                                  (vector (octocat-tree-tests--entry "a.el" "blob" "b1")
@@ -1328,9 +1313,9 @@ It does not fold, however long."
     (octocat-tree-tests--store-file "dev" "docs/GUIDE.md" "# Guide\n")
     (octocat-tree-tests--store
      `(commits "owner/repo" "dev" "docs/GUIDE.md" ,octocat-repo-commits-page-size)
-     (octocat-model--commits-tree (octocat-model--repo-parse-history
-                                   "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":3,\"edges\":[{\"cursor\":\"c 0\",\"node\":{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}}]}}}}}")
-                                  octocat-repo-commits-page-size))
+     (octocat-model--commits-tree
+      (gethash "data" (octocat-tree-tests--json
+                       "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":3,\"nodes\":[{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}],\"pageInfo\":{\"hasNextPage\":false}}}}}}"))))
     (save-current-buffer
       (octocat-tree--open-file-by-path "owner/repo" "dev" "docs/GUIDE.md")
       (let ((file (current-buffer)))

@@ -399,8 +399,8 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
   "A comment shows at once, behind a spinner, and GitHub's takes its place."
   (octocat-timeline-tests--with-issue
     (octocat-sync-submit '(comment "issue" "o/r" 7 "new"))
-    (should (equal (car (car calls))
-                   '("api" "repos/o/r/issues/7/comments" "-f" "body=new")))
+    (should (member "id=I_7" (car (car calls))))
+    (should (member "body=new" (car (car calls))))
     (let* ((items (octocat-timeline-items (issue) "opened this issue" nil nil))
            (new   (car (last items))))
       (should (= (length items) 3))
@@ -418,9 +418,10 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
                1))
     (octocat-timeline-tests--answer
      (car calls)
-     (concat "{\"id\":9,\"node_id\":\"IC_9\",\"user\":{\"login\":\"me\"},\"body\":\"new\","
-             "\"created_at\":\"2026-01-05T10:00:00Z\",\"author_association\":\"OWNER\","
-             "\"html_url\":\"https://github.com/o/r/issues/7#issuecomment-9\"}"))
+     (concat "{\"data\":{\"addComment\":{\"commentEdge\":{\"node\":{"
+             "\"id\":\"IC_9\",\"author\":{\"login\":\"me\"},\"body\":\"new\","
+             "\"createdAt\":\"2026-01-05T10:00:00Z\",\"viewerDidAuthor\":true,"
+             "\"url\":\"https://github.com/o/r/issues/7#issuecomment-9\"}}}}}"))
     (let ((comments (octocat--nodes (issue) "comments")))
       (should (= (length comments) 2))
       (should (equal (octocat-model-comment-numeric-id (aref comments 1)) "9"))

@@ -118,18 +118,9 @@ are never a page of it."
   (octocat-sync-entity 'repo (concat "repo:" (downcase (gethash "nameWithOwner" fields)))
                        fields))
 
-(defun octocat-model-repo-rest (repo)
-  "Return the `repo' entity of REPO, a repository from GitHub's REST API.
-Its fields are mapped to GraphQL's names, as every repo entity has them."
-  (let ((lang (gethash "language" repo)))
-    (octocat-model-repo
-     (octocat--table "nameWithOwner" (gethash "full_name" repo)
-                     "description" (gethash "description" repo)
-                     "stargazerCount" (gethash "stargazers_count" repo)
-                     "primaryLanguage" (and (stringp lang) (octocat--table "name" lang))
-                     "pushedAt" (gethash "pushed_at" repo)
-                     "isFork" (gethash "fork" repo)
-                     "isArchived" (gethash "archived" repo)))))
+(defconst octocat-model--repo-fields
+  '(nameWithOwner description stargazerCount (primaryLanguage name) pushedAt isFork isArchived)
+  "The GraphQL fields of a repository as the lists of repositories show it.")
 
 (defun octocat-model-run (repo run)
   "Return the `run' entity of RUN, a workflow run of REPO, by `gh run' names."
@@ -176,10 +167,17 @@ least `octocat-sync-fresh-for'."
   :type 'integer
   :group 'octocat)
 
+(defun octocat-model--repo-query (vars &rest selections)
+  "Return a query of SELECTIONS of the repository $owner/$name.
+VARS are its variables besides those, as `octocat--graphql-query' takes them."
+  (octocat--graphql-query `(:owner String! :name String! ,@vars)
+                          `((repository (:owner $owner :name $name) ,@selections))))
+
 (defconst octocat-model--repo-summary-query
-  (concat "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){"
-          "defaultBranchRef{name} parent{nameWithOwner} issues(states:OPEN){totalCount} "
-          "pullRequests(states:OPEN){totalCount}}}")
+  (octocat-model--repo-query nil
+                             '(defaultBranchRef name) '(parent nameWithOwner)
+                             '(issues (:states OPEN) totalCount)
+                             '(pullRequests (:states OPEN) totalCount))
   "GraphQL query behind the `repo-summary' resource.
 One request, in place of separate default-branch, fork-parent and
 issue and PR count lookups.")
@@ -203,13 +201,12 @@ when there is none, and the counts \"open-issues\" and \"open-prs\"."
 (defun octocat-model--counts-query (kind)
   "Return the GraphQL query counting items of KIND (`issues' or `pulls')."
   (let ((field (if (eq kind 'pulls) "pullRequests" "issues"))
-        (states (if (eq kind 'pulls)
-                    '(("open" . "OPEN") ("closed" . "CLOSED") ("merged" . "MERGED"))
-                  '(("open" . "OPEN") ("closed" . "CLOSED")))))
-    (format "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){%s}}"
-            (mapconcat (lambda (s)
-                         (format "%s:%s(states:%s){totalCount}" (car s) field (cdr s)))
-                       states " "))))
+        (states (if (eq kind 'pulls) '(OPEN CLOSED MERGED) '(OPEN CLOSED))))
+    (apply #'octocat-model--repo-query nil
+           (mapcar (lambda (state)
+                     `(,(intern (format "%s:%s" (downcase (symbol-name state)) field))
+                       (:states ,state) totalCount))
+                   states))))
 
 (defun octocat-model--parse-counts (data)
   "Return the counts in DATA, the answer to `octocat-model--counts-query'.
@@ -229,22 +226,27 @@ A table of \"open\", \"closed\" and, of pull requests, \"merged\"."
   :parse #'octocat-model--parse-counts)
 
 (defconst octocat-model--list-item-fields
-  `((pulls  . ,(concat "...on PullRequest{number title state isDraft reviewDecision "
-                       "createdAt author{login} labels(first:100){nodes{name color}} "
-                       "assignees(first:100){nodes{login}} "
-                       ;; Not reviewRequests: the PR page keeps that apart.
-                       "requestedReviewers:reviewRequests(first:100){nodes{requestedReviewer{"
-                       "...on User{login} ...on Team{name}}}} "
-                       "comments{totalCount} commits(last:1){totalCount "
-                       "nodes{commit{statusCheckRollup{"
-                       "state contexts{checkRunCountsByState{state count} "
-                       "statusContextCountsByState{state count}}}}}}}"))
-    (issues . ,(concat "...on Issue{number title state stateReason createdAt author{login} "
-                       "labels(first:100){nodes{name color}} comments{totalCount} "
-                       "assignees(first:100){nodes{login}} "
-                       "closedByPullRequestsReferences(first:20){nodes{number repository{"
-                       "name owner{login}}}}}")))
-  "The GraphQL fields of a list row, by KIND.
+  '((pulls  (... PullRequest number title state isDraft reviewDecision
+                 createdAt (author login) (labels (:first 100) (nodes name color))
+                 (assignees (:first 100) (nodes login))
+                 ;; Not reviewRequests: the PR page keeps that apart.
+                 (requestedReviewers:reviewRequests
+                  (:first 100)
+                  (nodes (requestedReviewer (... User login) (... Team name))))
+                 (comments totalCount)
+                 (commits (:last 1)
+                          totalCount
+                          (nodes (commit (statusCheckRollup
+                                          state
+                                          (contexts (checkRunCountsByState state count)
+                                                    (statusContextCountsByState
+                                                     state count))))))))
+    (issues (... Issue number title state stateReason createdAt (author login)
+                 (labels (:first 100) (nodes name color)) (comments totalCount)
+                 (assignees (:first 100) (nodes login))
+                 (closedByPullRequestsReferences
+                  (:first 20) (nodes number (repository name (owner login)))))))
+  "The GraphQL fields of a list row, by KIND, as `octocat--graphql' takes them.
 Only what the row shows: `gh pr/issue list --json' would fetch every
 comment's body and every check run, many times the size and the API cost.
 Labels and assignees are all fetched, since the sync store keeps them
@@ -264,10 +266,11 @@ OR in it cannot escape the repo scope."
 
 (defun octocat-model--list-items-query (kind)
   "Return the GraphQL search query for a page of KIND list items."
-  (format (concat "query($q:String!,$limit:Int!,$after:String){search(query:$q,"
-                  "type:ISSUE_ADVANCED,first:$limit,after:$after){nodes{%s}pageInfo{"
-                  "hasNextPage endCursor}}}")
-          (alist-get kind octocat-model--list-item-fields)))
+  (octocat--graphql-query
+   '(:q String! :limit Int! :after String)
+   `((search (:query $q :type ISSUE_ADVANCED :first $limit :after $after)
+             (nodes ,@(alist-get kind octocat-model--list-item-fields))
+             (pageInfo hasNextPage endCursor)))))
 
 (defun octocat-model--list-page (data)
   "Return DATA, a list search's answer, as (:items LIST :cursor C).
@@ -433,11 +436,27 @@ CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
 (defun octocat-model--ref-split-query (n)
   "Return a GraphQL query resolving N revs, $e1 and on, as p1 and on."
   (let ((is (number-sequence 1 n)))
-    (format "query($owner:String!,$name:String!,%s){repository(owner:$owner,name:$name){%s}}"
-            (mapconcat (lambda (i) (format "$e%d:String!" i)) is ",")
-            (mapconcat (lambda (i) (format "p%d:object(expression:$e%d){oid}" i i)) is " "))))
+    (apply #'octocat-model--repo-query
+           (mapcan (lambda (i) (list (intern (format ":e%d" i)) 'String!)) is)
+           (mapcar (lambda (i)
+                     `(,(intern (format "p%d:object" i)) (:expression ,(intern (format "$e%d" i)))
+                       oid))
+                   is))))
 
 ;;;; Issues and PRs
+
+(defconst octocat-model--reaction-fields '(reactionGroups content (users totalCount))
+  "The GraphQL fields of the reactions to an item, comment or review.")
+
+(defconst octocat-model--commit-fields
+  '(oid messageHeadline authoredDate committedDate (author name email (user login))
+        (parents (:first 2) (nodes oid)))
+  "The GraphQL fields of a commit as a row of commits shows it.
+The parents draw the graph beside it, and mark a merge.")
+
+(defconst octocat-model--comment-fields
+  `(id url body createdAt viewerDidAuthor (author login) ,octocat-model--reaction-fields)
+  "The GraphQL fields of a comment on an issue or PR.")
 
 ;; Whether issue NUMBER is a pull request's, as "pr": never changes.
 (octocat-sync-define-resource issue-kind (repo number)
@@ -480,15 +499,6 @@ NOW is an ISO 8601 time.  It has no id or URL until GitHub answers."
                   "viewerDidAuthor" t
                   octocat-model-pending "posting"))
 
-(defun octocat-model--rest-comment (comment)
-  "Return COMMENT, from GitHub's REST API, in the fields `gh ... view' gives."
-  (octocat--table "id" (octocat--get comment "node_id")
-                  "author" (octocat--table "login" (octocat--get comment "user" "login"))
-                  "authorAssociation" (octocat--get comment "author_association")
-                  "body" (or (octocat--get comment "body") "")
-                  "createdAt" (octocat--get comment "created_at")
-                  "url" (octocat--get comment "html_url")
-                  "viewerDidAuthor" t))
 
 (defun octocat-model--put-comment (data comment)
   "Return DATA, a page resource's body, with COMMENT added to its comments.
@@ -563,15 +573,23 @@ being done to it, as `octocat-model-pending' has it."
   :edits (lambda (answered answer)
            (let ((comment
                   (if answered
-                      (octocat-model--rest-comment answer)
+                      answer
                     (octocat-model--pending-comment
                      body
                      (octocat--get (plist-get (octocat-sync-read '(viewer)) :data) "login")
                      (format-time-string "%Y-%m-%dT%H:%M:%SZ" nil t)))))
              (octocat-model--detail-edit
               kind repo number (lambda (data) (octocat-model--put-comment data comment)))))
-  :gh (list "api" (format "repos/%s/issues/%d/comments" repo number) "-f" (concat "body=" body))
-  :parse #'identity
+  :graphql (octocat--graphql-query
+            '(:id ID! :body String!)
+            `((addComment (:input (:subjectId $id :body $body))
+                          (commentEdge (node ,@octocat-model--comment-fields))))
+            'mutation)
+  :vars `(("id" . ,(octocat--get (octocat-model-detail-read
+                                  (octocat-model-detail-spec kind repo number))
+                                 "id"))
+          ("body" . ,body))
+  :parse (lambda (data) (octocat--get data "addComment" "commentEdge" "node"))
   ;; The comment count, on the entity.
   :invalidates (list (octocat-model-detail-spec kind repo number)))
 
@@ -613,8 +631,9 @@ being done to it, as `octocat-model-pending' has it."
 (octocat-sync-define-resource viewer-reactions (subject)
   :max-age 3600
   ;; Not `gh ... view': it leaves out whose they are.
-  :graphql (concat "query($id:ID!){node(id:$id){"
-                   "...on Reactable{reactionGroups{content viewerHasReacted}}}}")
+  :graphql (octocat--graphql-query
+            '(:id ID!)
+            '((node (:id $id) (... Reactable (reactionGroups content viewerHasReacted)))))
   :vars `(("id" . ,subject))
   :parse (lambda (data)
            (octocat--table
@@ -672,9 +691,12 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
                          (let ((given (remove content (append (gethash "given" data) nil))))
                            (puthash "given" (vconcat (if add (cons content given) given)) data)
                            data)))))
-  :graphql (format (concat "mutation($id:ID!,$content:ReactionContent!){"
-                           "%s(input:{subjectId:$id,content:$content}){clientMutationId}}")
-                   (if add "addReaction" "removeReaction"))
+  :graphql (octocat--graphql-query
+            '(:id ID! :content ReactionContent!)
+            `((,(if add 'addReaction 'removeReaction)
+               (:input (:subjectId $id :content $content))
+               clientMutationId))
+            'mutation)
   :vars `(("id" . ,subject) ("content" . ,content)))
 
 ;;;; Issues
@@ -692,30 +714,21 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
   :parse #'octocat-model--issue-parse-created
   :invalidates (octocat-model--item-lists 'issue repo))
 
-(defconst octocat-model--reaction-fields '(reactionGroups content (users totalCount))
-  "The GraphQL fields of the reactions to an item, comment or review.")
-
 (defconst octocat-model--item-fields
   `(id number title state body url createdAt closedAt (author login)
        (labels (:first 100) (nodes name color))
        (assignees (:first 100) (nodes login))
        (milestone number title)
        ,octocat-model--reaction-fields
-       (comments (:first 100)
-                 totalCount
-                 (nodes id url body createdAt viewerDidAuthor (author login)
-                        ,octocat-model--reaction-fields)))
+       (comments (:first 100) totalCount (nodes ,@octocat-model--comment-fields)))
   "The GraphQL fields an issue's page and a PR's both read.
 As `octocat--graphql' takes them.  Labels and assignees are all
 fetched, as for a list row (see `octocat-model--list-item-fields').")
 
-(defun octocat-model--item-query (type fields)
-  "Return the query of an issue or PR page, TYPE \"issue\" or \"pullRequest\".
-FIELDS are those it reads."
-  (octocat--graphql-query
-   '(:owner String! :name String! :number Int!)
-   `((repository (:owner $owner :name $name)
-                 (,(intern type) (:number $number) ,@fields)))))
+(defun octocat-model--item-query (type fields &optional vars)
+  "Return a query of FIELDS of issue or PR $number, TYPE `issue' or `pullRequest'.
+VARS are its variables besides the repository's and $number."
+  (octocat-model--repo-query `(:number Int! ,@vars) `(,type (:number $number) ,@fields)))
 
 (defun octocat-model--item-tree (type repo item parts)
   "Return ITEM, an issue or PR (TYPE) of REPO, as its page's resource's tree.
@@ -729,10 +742,10 @@ such item."
   :entity (octocat-model-item-key 'issue repo number)
   :invalidates (octocat-model--item-lists 'issue repo)
   :graphql (octocat-model--item-query
-            "issue" `(stateReason
-                      (closedByPullRequestsReferences
-                       (:first 20) (nodes number url (repository name (owner login))))
-                      ,@octocat-model--item-fields))
+            'issue `(stateReason
+                     (closedByPullRequestsReferences
+                      (:first 20) (nodes number url (repository name (owner login))))
+                     ,@octocat-model--item-fields))
   :repo repo
   :vars `(("number" . ,number))
   :parse (lambda (data)
@@ -843,8 +856,7 @@ Pages of connections, which the lists do not share.")
              ;; The newest, so the head is last; GitHub gives no more than 100.
              (commits (:last 100)
                       totalCount
-                      (nodes (commit oid messageHeadline authoredDate committedDate
-                                     (author name email (user login))
+                      (nodes (commit ,@octocat-model--commit-fields
                                      (statusCheckRollup
                                       state
                                       (contexts (:first 100)
@@ -856,7 +868,7 @@ As `octocat--graphql' takes them.")
   :entity (octocat-model-item-key 'pr repo number)
   :invalidates (octocat-model--item-lists 'pr repo)
   :graphql (octocat-model--item-query
-            "pullRequest" (append octocat-model--pr-fields octocat-model--item-fields))
+            'pullRequest (append octocat-model--pr-fields octocat-model--item-fields))
   :repo repo
   :vars `(("number" . ,number))
   :parse (lambda (data)
@@ -873,11 +885,13 @@ As `octocat--graphql' takes them.")
   :parse (lambda (r) (or (gethash "workflow_runs" r) [])))
 
 (defconst octocat-model--pr-stack-query
-  (concat "query($owner:String!,$name:String!,$number:Int!){"
-          "repository(owner:$owner,name:$name){pullRequest(number:$number){"
-          ;; A stack holds at most 100 pull requests.
-          "stack{number baseRefName entries(first:100){nodes{position "
-          "pullRequest{number title state isDraft mergeable}}}}}}}")
+  (octocat-model--item-query
+   'pullRequest
+   ;; A stack holds at most 100 pull requests.
+   '((stack number baseRefName
+            (entries (:first 100)
+                     (nodes position
+                            (pullRequest number title state isDraft mergeable))))))
   "GraphQL query for the stack a pull request is in.")
 
 (defun octocat-model--pr-parse-stack (data)
@@ -893,22 +907,6 @@ is in none."
   :vars `(("number" . ,number))
   :parse #'octocat-model--pr-parse-stack)
 
-(octocat-sync-define-resource pr-merges (repo number)
-  ;; Not `gh pr view': it gives no commit's parents.
-  :graphql (concat "query($owner:String!,$name:String!,$number:Int!){"
-                   "repository(owner:$owner,name:$name){pullRequest(number:$number){"
-                   ;; The last 100: a longer PR's first commits show as plain ones.
-                   "commits(last:100){nodes{commit{oid parents{totalCount}}}}}}}")
-  :repo repo
-  :vars `(("number" . ,number))
-  :parse (lambda (data)
-           (vconcat
-            (cl-loop for node across (or (octocat--get data "repository" "pullRequest"
-                                                       "commits" "nodes")
-                                         [])
-                     for commit = (gethash "commit" node)
-                     when (> (or (octocat--get commit "parents" "totalCount") 0) 1)
-                     collect (gethash "oid" commit)))))
 
 ;; Newest first.
 (octocat-sync-define-resource repo-stacks (repo)
@@ -923,25 +921,27 @@ is in none."
   :gh (list "api" "--paginate" (format "repos/%s/pulls/%d/files?per_page=100" repo number)))
 
 (defconst octocat-model--review-comment-fields
-  (concat "id databaseId body createdAt state viewerDidAuthor viewerCanUpdate "
-          "viewerCanDelete author{login} replyTo{databaseId} "
-          "reactionGroups{content users{totalCount}}")
+  `(id databaseId body createdAt state viewerDidAuthor viewerCanUpdate
+       viewerCanDelete (author login) (replyTo databaseId)
+       ,octocat-model--reaction-fields)
   "The fields of a review comment read from GraphQL.")
 
 (defconst octocat-model--review-thread-fields
-  (concat "id isResolved isOutdated path line startLine diffSide startDiffSide "
-          "subjectType viewerCanReply viewerCanResolve viewerCanUnresolve "
-          "resolvedBy{login} comments(first:100){nodes{"
-          octocat-model--review-comment-fields "}}")
+  `(id isResolved isOutdated path line startLine diffSide startDiffSide
+       subjectType viewerCanReply viewerCanResolve viewerCanUnresolve
+       (resolvedBy login)
+       (comments (:first 100) (nodes ,@octocat-model--review-comment-fields)))
   "The fields of a review thread read from GraphQL.")
 
 (defconst octocat-model--review-threads-query
-  (concat "query($owner:String!,$name:String!,$number:Int!,$endCursor:String){"
-          "repository(owner:$owner,name:$name){pullRequest(number:$number){"
-          "id headRefOid reviews(states:PENDING,first:1){nodes{id commit{oid}}} "
-          "reviewThreads(first:50,after:$endCursor){nodes{"
-          octocat-model--review-thread-fields
-          "} pageInfo{hasNextPage endCursor}}}}}")
+  (octocat-model--item-query
+   'pullRequest
+   `(id headRefOid
+        (reviews (:states PENDING :first 1) (nodes id (commit oid)))
+        (reviewThreads (:first 50 :after $endCursor)
+                       (nodes ,@octocat-model--review-thread-fields)
+                       (pageInfo hasNextPage endCursor)))
+   '(:endCursor String))
   "GraphQL query for a PR's review threads and your pending review.")
 
 (defun octocat-model--review-parse-threads (output)
@@ -995,8 +995,11 @@ when the review cannot be started."
       (funcall k review-id)
     (octocat-model--review-graphql
      "review-start"
-     (concat "mutation($pr:ID!,$commit:GitObjectID){addPullRequestReview("
-             "input:{pullRequestId:$pr,commitOID:$commit}){pullRequestReview{id commit{oid}}}}")
+     (octocat--graphql-query
+      '(:pr ID! :commit GitObjectID)
+      '((addPullRequestReview (:input (:pullRequestId $pr :commitOID $commit))
+                              (pullRequestReview id (commit oid))))
+      'mutation)
      `(("pr" . ,pr-id) ("commit" . ,commit))
      (lambda (data) (octocat--get data "addPullRequestReview" "pullRequestReview"))
      (lambda (review)
@@ -1086,13 +1089,18 @@ FN gets their data and returns it changed."
                  (funcall done review)
                (octocat-model--review-graphql
                 "review-draft-add"
-                (concat "mutation($review:ID!,$path:String!,$body:String!,$line:Int,"
-                        "$side:DiffSide,$startLine:Int,$startSide:DiffSide,"
-                        "$subject:PullRequestReviewThreadSubjectType){"
-                        "addPullRequestReviewThread(input:{pullRequestReviewId:$review,"
-                        "path:$path,body:$body,line:$line,side:$side,startLine:$startLine,"
-                        "startSide:$startSide,subjectType:$subject}){thread{"
-                        octocat-model--review-thread-fields "}}}")
+                (octocat--graphql-query
+                 '(:review ID! :path String! :body String! :line Int :side DiffSide
+                           :startLine Int :startSide DiffSide
+                           :subject PullRequestReviewThreadSubjectType)
+                 `((addPullRequestReviewThread
+                    (:input (:pullRequestReviewId $review :path $path :body $body
+                                                  :line $line :side $side
+                                                  :startLine $startLine
+                                                  :startSide $startSide
+                                                  :subjectType $subject))
+                    (thread ,@octocat-model--review-thread-fields)))
+                 'mutation)
                 `(("review" . ,review) ("path" . ,(plist-get range :path)) ("body" . ,body)
                   ("line" . ,(plist-get range :line)) ("side" . ,(plist-get range :side))
                   ("startLine" . ,(plist-get range :start-line))
@@ -1137,10 +1145,13 @@ FN gets their data and returns it changed."
                  (funcall done review)
                (octocat-model--review-graphql
                 "review-draft-reply"
-                (concat "mutation($review:ID!,$thread:ID!,$body:String!){"
-                        "addPullRequestReviewThreadReply(input:{pullRequestReviewId:$review,"
-                        "pullRequestReviewThreadId:$thread,body:$body}){comment{"
-                        octocat-model--review-comment-fields "}}}")
+                (octocat--graphql-query
+                 '(:review ID! :thread ID! :body String!)
+                 `((addPullRequestReviewThreadReply
+                    (:input (:pullRequestReviewId $review :pullRequestReviewThreadId $thread
+                                                  :body $body))
+                    (comment ,@octocat-model--review-comment-fields)))
+                 'mutation)
                 `(("review" . ,review) ("thread" . ,thread-id) ("body" . ,body))
                 (lambda (data)
                   (cons review (octocat--get data "addPullRequestReviewThreadReply" "comment")))
@@ -1173,9 +1184,12 @@ FN gets their data and returns it changed."
                         (let ((c (copy-hash-table c)))
                           (puthash "body" body c)
                           c)))))))
-  :graphql (concat "mutation($id:ID!,$body:String!){updatePullRequestReviewComment("
-                   "input:{pullRequestReviewCommentId:$id,body:$body}){"
-                   "pullRequestReviewComment{id}}}")
+  :graphql (octocat--graphql-query
+            '(:id ID! :body String!)
+            '((updatePullRequestReviewComment
+               (:input (:pullRequestReviewCommentId $id :body $body))
+               (pullRequestReviewComment id)))
+            'mutation)
   :vars `(("id" . ,node-id) ("body" . ,body)))
 
 (octocat-sync-define-mutation review-comment-delete (repo number node-id)
@@ -1187,8 +1201,10 @@ FN gets their data and returns it changed."
             (lambda (data)
               (octocat-model--review-map-comments
                data (lambda (c) (unless (equal (gethash "id" c) node-id) c))))))
-  :graphql (concat "mutation($id:ID!){deletePullRequestReviewComment(input:{id:$id}){"
-                   "clientMutationId}}")
+  :graphql (octocat--graphql-query
+            '(:id ID!)
+            '((deletePullRequestReviewComment (:input (:id $id)) clientMutationId))
+            'mutation)
   :vars `(("id" . ,node-id)))
 
 (octocat-sync-define-mutation review-thread-resolve (repo number thread-id resolve)
@@ -1209,8 +1225,11 @@ FN gets their data and returns it changed."
           (let ((field (if resolve "resolveReviewThread" "unresolveReviewThread")))
             (octocat-model--review-graphql
              "review-thread-resolve"
-             (format "mutation($id:ID!){%s(input:{threadId:$id}){thread{%s}}}"
-                     field octocat-model--review-thread-fields)
+             (octocat--graphql-query
+              '(:id ID!)
+              `((,(intern field) (:input (:threadId $id))
+                 (thread ,@octocat-model--review-thread-fields)))
+              'mutation)
              `(("id" . ,thread-id))
              (lambda (data) (octocat--get data field "thread"))
              done))))
@@ -1227,8 +1246,10 @@ FN gets their data and returns it changed."
   :slot 'inline
   :edits (lambda (_answered _)
            (octocat-model--threads-edit repo number #'octocat-model--review-drop-drafts))
-  :graphql (concat "mutation($id:ID!){deletePullRequestReview(input:{pullRequestReviewId:$id}){"
-                   "clientMutationId}}")
+  :graphql (octocat--graphql-query
+            '(:id ID!)
+            '((deletePullRequestReview (:input (:pullRequestReviewId $id)) clientMutationId))
+            'mutation)
   :vars `(("id" . ,review-id)))
 
 (defconst octocat-model-review-events
@@ -1270,9 +1291,12 @@ out, as `gh' rejects an empty --body."
           (if review-id
               (octocat-model--review-graphql
                "review"
-               (concat "mutation($id:ID!,$event:PullRequestReviewEvent!,$body:String){"
-                       "submitPullRequestReview(input:{pullRequestReviewId:$id,event:$event,"
-                       "body:$body}){clientMutationId}}")
+               (octocat--graphql-query
+                '(:id ID! :event PullRequestReviewEvent! :body String)
+                '((submitPullRequestReview
+                   (:input (:pullRequestReviewId $id :event $event :body $body))
+                   clientMutationId))
+                'mutation)
                `(("id" . ,review-id)
                  ("event" . ,(nth 2 (assq event octocat-model-review-events)))
                  ("body" . ,(and (not (string-empty-p body)) body)))
@@ -1298,8 +1322,8 @@ out, as `gh' rejects an empty --body."
 
 ;; Not REST: it has no way to ask whether a branch holds a commit.
 (defconst octocat-model--commit-branch-query
-  (concat "query($owner:String!,$name:String!,$sha:String!){repository(owner:$owner,"
-          "name:$name){defaultBranchRef{name compare(headRef:$sha){status}}}}")
+  (octocat-model--repo-query '(:sha String!)
+                             '(defaultBranchRef name (compare (:headRef $sha) status)))
   "GraphQL query behind the `commit-branch' resource.")
 
 (defun octocat-model--commit-parse-branch (data)
@@ -1324,16 +1348,25 @@ commit, the commit being behind it or at its head, else :null."
   :max-age (and (octocat--sha-p base)
                 (octocat--sha-p head)
                 octocat-model--fixed-max-age)
-  :gh (list "api" (format "repos/%s/compare/%s...%s" repo base head)))
+  :gh (list "api" (format "repos/%s/compare/%s...%s" repo base head))
+  ;; REST for the patches; its commits as the commit rows read them.
+  :parse (lambda (data)
+           (puthash "commits" (cl-map 'vector #'octocat-model-commit-from-rest
+                                      (or (gethash "commits" data) []))
+                    data)
+           data))
 
 ;;;; Repository code
 
 (defconst octocat-model--repo-history-query
-  (concat "query($owner:String!,$name:String!,$ref:String!,$limit:Int!,$after:String,"
-          "$path:String){repository(owner:$owner,name:$name){object(expression:$ref){...on "
-          "Commit{history(first:$limit,after:$after,path:$path){totalCount edges{cursor "
-          "node{oid messageHeadline authoredDate committedDate author{name email user{"
-          "login}} parents(first:2){nodes{oid}}}}}}}}}")
+  (octocat-model--repo-query
+   '(:ref String! :limit Int! :after String :path String)
+   `(object (:expression $ref)
+            (... Commit
+                 (history (:first $limit :after $after :path $path)
+                          totalCount
+                          (nodes ,@octocat-model--commit-fields)
+                          (pageInfo hasNextPage endCursor)))))
   "GraphQL query behind `octocat-model--repo-list-commits'.
 Only what a row shows: the REST commits endpoint sends ~15 times as much.")
 
@@ -1341,7 +1374,7 @@ Only what a row shows: the REST commits endpoint sends ~15 times as much.")
   "Fetch a page of LIMIT commits of REPO, from REF back.
 REF is a branch or SHA; nil means the head of the default branch.  PATH,
 when non-nil, keeps only the commits that touched it.
-AFTER, a commit's \"cursor\", fetches the page after that commit.
+AFTER, the \"cursor\" of the page before, fetches the page after it.
 Calls CALLBACK with the page as `octocat-model--commits-tree' makes it,
 or a cons \\=(error . MSG)."
   (octocat--gh-graphql "commits" repo octocat-model--repo-history-query
@@ -1351,16 +1384,20 @@ or a cons \\=(error . MSG)."
                          ("path" . ,path))
                        (lambda (json)
                          (octocat-model--commits-tree
-                          (octocat-model--repo-parse-history json) limit))
+                          (gethash "data" (octocat-sync--parse json))))
                        callback))
 
-(defun octocat-model--commits-tree (commits limit)
-  "Return COMMITS, a page of up to LIMIT, as the `commits' resource's tree.
-\"nodes\" are the commits, \"cursor\" the last one's, nil when the page
-came back short, at the end of the history."
-  (octocat--table "nodes" (vconcat commits)
-                  "cursor" (and (>= (length commits) limit)
-                                (gethash "cursor" (car (last commits))))))
+(defun octocat-model--commits-tree (data)
+  "Return DATA, a page of history, as the `commits' resource's tree.
+\"nodes\" are the commits, \"totalCount\" those of the whole history,
+and \"cursor\" the page's, nil at the end of the history."
+  (let ((history (octocat--get data "repository" "object" "history")))
+    (unless history
+      (error "No such branch or commit"))
+    (octocat--table "nodes" (octocat--nodes history)
+                    "totalCount" (gethash "totalCount" history)
+                    "cursor" (and (eq (octocat--get history "pageInfo" "hasNextPage") t)
+                                  (octocat--get history "pageInfo" "endCursor")))))
 
 (defun octocat-model-commits-more (repo path head limit)
   "Return the MORE function of `octocat-sync-more' for the commits of REPO.
@@ -1369,60 +1406,49 @@ pages are fetched from HEAD, the SHA of the first commit shown, so the
 history they page through cannot shift under them."
   (lambda (after done) (octocat-model--repo-list-commits repo head path limit done after)))
 
-(defun octocat-model--repo-history-commit (node)
-  "Return the commit NODE of a GraphQL history shaped as REST has it.
-That is what the rows read: \"sha\"; \"commit\", with the \"message\"
-\(its headline only), the git \"author\" (name, email, date) and the
-\"committer\" (date); \"author\", the GitHub user or :null; and, when
-NODE has them, the SHAs of its \"parents\", for the graph beside it."
-  (let* ((a      (gethash "author" node))
-         (user   (and (hash-table-p a) (gethash "user" a)))
-         (git    (octocat--table "date" (gethash "authoredDate" node)))
-         (commit (octocat--table
-                  "sha" (gethash "oid" node)
-                  "commit" (octocat--table
-                            "message" (gethash "messageHeadline" node)
-                            "author" git
-                            "committer" (octocat--table "date" (gethash "committedDate" node)))
-                  "author" (if (hash-table-p user) user :null))))
-    (when (hash-table-p a)
-      (puthash "name" (gethash "name" a) git)
-      (puthash "email" (gethash "email" a) git))
-    (when-let* ((parents (gethash "parents" node)))
-      (puthash "parents" (vconcat (mapcar (lambda (p) (gethash "oid" p))
-                                          (gethash "nodes" parents)))
-               commit))
-    commit))
-
-(defun octocat-model--repo-parse-history (json-string)
-  "Parse the commit history response JSON-STRING into a list of commits.
-Each is shaped by `octocat-model--repo-history-commit', with its \"cursor\",
-for the page after it, and \"total\", the commits of the whole history."
-  (let* ((repo (gethash "repository" (gethash "data" (json-parse-string json-string))))
-         (obj  (and (hash-table-p repo) (gethash "object" repo))))
-    (unless (hash-table-p obj)
-      (error "No such branch or commit"))
-    (let ((history (gethash "history" obj)))
-      (mapcar (lambda (edge)
-                (let ((commit (octocat-model--repo-history-commit (gethash "node" edge))))
-                  (puthash "cursor" (gethash "cursor" edge) commit)
-                  (puthash "total" (gethash "totalCount" history) commit)
-                  commit))
-              (gethash "edges" history)))))
+(defun octocat-model-commit-from-rest (commit)
+  "Return COMMIT, from GitHub's REST API, in `octocat-model--commit-fields'.
+Its \"parents\" too, when it has them."
+  (let* ((c      (gethash "commit" commit))
+         (author (and (hash-table-p c) (gethash "author" c)))
+         (user   (gethash "author" commit))
+         (node   (octocat--table
+                  "oid" (gethash "sha" commit)
+                  "messageHeadline" (car (split-string (or (octocat--get c "message") "")
+                                                       "\n"))
+                  "authoredDate" (octocat--get author "date")
+                  "committedDate" (octocat--get c "committer" "date")
+                  "author" (octocat--table
+                            "name" (octocat--get author "name")
+                            "email" (octocat--get author "email")
+                            "user" (and (hash-table-p user)
+                                        (octocat--table "login" (gethash "login" user)))))))
+    (when-let* ((parents (gethash "parents" commit)))
+      (puthash "parents"
+               (octocat--table "nodes" (cl-map 'vector (lambda (p)
+                                                         (octocat--table "oid" (gethash "sha" p)))
+                                               parents))
+               node))
+    node))
 
 (defconst octocat-model--repo-head-query
-  (concat "query($owner:String!,$name:String!,$expr:String!,$dir:String!,$path:String){"
-          "repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
-          "history(first:1,path:$path){totalCount nodes{oid messageHeadline authoredDate "
-          "committedDate author{name email user{login}} parents(first:2){nodes{oid}}}}}} "
-          "dir:object(expression:$dir){"
-          "__typename oid ...on Blob{byteSize isBinary} ...on Tree{entries{name type oid}}}}}")
+  (octocat-model--repo-query
+   '(:expr String! :dir String! :path String)
+   `(object (:expression $expr)
+            (... Commit
+                 (history (:first 1 :path $path)
+                          totalCount
+                          (nodes ,@octocat-model--commit-fields))))
+   '(dir:object (:expression $dir)
+                __typename oid
+                (... Blob byteSize isBinary)
+                (... Tree (entries name type oid))))
   "GraphQL query behind the `repo-head' resource.")
 
 (defun octocat-model--repo-parse-head (data ref path)
   "Return the head in DATA, the answer to `octocat-model--repo-head-query'.
 It is for PATH, nil for the root, at REF.  Return the last commit that
-touched PATH, as `octocat-model--repo-history-commit' shapes it, with
+touched PATH, as `octocat-model--commit-fields' reads it, with
 \"tree\", the SHA of PATH's tree, or its blob's when \"kind\" is
 \"blob\", and \"total\", the commits that touched PATH.  Of a blob,
 \"size\" is its bytes and \"binary\" t when it is not text; of a
@@ -1438,7 +1464,7 @@ size, so the README can be fetched along with its listing."
       (error "No branch, tag or commit %s" (or ref "HEAD")))
     (unless (and (hash-table-p dir) (hash-table-p node))
       (error "No %s at %s" path (or ref "HEAD")))
-    (let ((commit (octocat-model--repo-history-commit node)))
+    (let ((commit (copy-hash-table node)))
       (puthash "tree" (gethash "oid" dir) commit)
       (puthash "kind" (if (equal (gethash "__typename" dir) "Blob") "blob" "tree") commit)
       (puthash "total" (gethash "totalCount" hist) commit)
@@ -1465,26 +1491,21 @@ size, so the README can be fetched along with its listing."
   :parse (lambda (data) (octocat-model--repo-parse-head data ref path)))
 
 (defconst octocat-model--repo-blame-query
-  (concat "query($owner:String!,$name:String!,$expr:String!,$path:String!){"
-          "repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
-          "blame(path:$path){ranges{startingLine endingLine commit{oid messageHeadline "
-          "authoredDate committedDate author{name email user{login}}}}}}}}}")
+  (octocat-model--repo-query
+   '(:expr String! :path String!)
+   `(object (:expression $expr)
+            (... Commit
+                 (blame (:path $path)
+                        (ranges startingLine endingLine
+                                (commit ,@octocat-model--commit-fields))))))
   "GraphQL query behind the `blame' resource.")
 
 (defun octocat-model--repo-parse-blame (data)
-  "Return the ranges in DATA, the answer to `octocat-model--repo-blame-query'.
-That is a vector of hash-tables of \"start\" and \"end\",
-the first and last line, and \"commit\", the commit that last changed
-them, as `octocat-model--repo-history-commit' shapes it."
+  "Return the ranges in DATA, the answer to `octocat-model--repo-blame-query'."
   (let ((blame (octocat--get data "repository" "object" "blame")))
     (unless (hash-table-p blame)
       (error "No such commit"))
-    (vconcat
-     (mapcar (lambda (r)
-               (octocat--table "start" (gethash "startingLine" r)
-                               "end" (gethash "endingLine" r)
-                               "commit" (octocat-model--repo-history-commit (gethash "commit" r))))
-             (gethash "ranges" blame)))))
+    (or (gethash "ranges" blame) [])))
 
 (octocat-sync-define-resource blame (repo commit path)
   ;; COMMIT names the history, so what it says never changes.
@@ -1528,19 +1549,21 @@ Each walks the history on GitHub's side, so a large directory is split.")
 (defun octocat-model--tree-last-commits-query (n)
   "Return the GraphQL query of the last commits of N paths, $p0 to $pN-1.
 Each is history alias eI, one commit long."
-  (concat "query($owner:String!,$name:String!,$expr:String!"
-          (mapconcat (lambda (i) (format ",$p%d:String!" i)) (number-sequence 0 (1- n)) "")
-          "){repository(owner:$owner,name:$name){object(expression:$expr){...on Commit{"
-          (mapconcat (lambda (i)
-                       (format "e%d:history(first:1,path:$p%d){nodes{oid messageHeadline \
-authoredDate committedDate author{name email user{login}}}}" i i))
-                     (number-sequence 0 (1- n)) " ")
-          "}}}}"))
+  (let ((is (number-sequence 0 (1- n))))
+    (octocat-model--repo-query
+     `(:expr String! ,@(mapcan (lambda (i) (list (intern (format ":p%d" i)) 'String!)) is))
+     `(object (:expression $expr)
+              (... Commit
+                   ,@(mapcar (lambda (i)
+                               `(,(intern (format "e%d:history" i))
+                                 (:first 1 :path ,(intern (format "$p%d" i)))
+                                 (nodes ,@octocat-model--commit-fields)))
+                             is))))))
 
 (defun octocat-model--tree-parse-last-commits (json paths)
   "Return a hash-table of each of PATHS to its last commit, from JSON.
-JSON answers `octocat-model--tree-last-commits-query' for PATHS.  A commit is
-shaped by `octocat-model--repo-history-commit'; a path with none is left out."
+JSON answers `octocat-model--tree-last-commits-query' for PATHS.  A path
+with none is left out."
   (let* ((repo (gethash "repository" (gethash "data" (json-parse-string json))))
          (obj  (and (hash-table-p repo) (gethash "object" repo)))
          (out  (make-hash-table :test #'equal)))
@@ -1551,7 +1574,7 @@ shaped by `octocat-model--repo-history-commit'; a path with none is left out."
        (let* ((hist  (gethash (format "e%d" i) obj))
               (nodes (and (hash-table-p hist) (gethash "nodes" hist))))
          (when (> (length nodes) 0)
-           (puthash path (octocat-model--repo-history-commit (aref nodes 0)) out))))
+           (puthash path (aref nodes 0) out))))
      paths)
     out))
 
@@ -1601,10 +1624,12 @@ Calls CALLBACK once with a hash-table of path to commit, see
 (defun octocat-model--tree-path-query (n)
   "Return a GraphQL query of the tree SHAs of N + 1 revs, $e0 on, as t0 on."
   (let ((is (number-sequence 0 n)))
-    (format "query($owner:String!,$name:String!,%s){repository(owner:$owner,name:$name){%s}}"
-            (mapconcat (lambda (i) (format "$e%d:String!" i)) is ",")
-            (mapconcat (lambda (i) (format "t%d:object(expression:$e%d){...on Tree{oid}}" i i))
-                       is " "))))
+    (apply #'octocat-model--repo-query
+           (mapcan (lambda (i) (list (intern (format ":e%d" i)) 'String!)) is)
+           (mapcar (lambda (i)
+                     `(,(intern (format "t%d:object" i)) (:expression ,(intern (format "$e%d" i)))
+                       (... Tree oid)))
+                   is))))
 
 ;; The children of directory SHA, a vector of entries.
 (octocat-sync-define-resource tree-dir (repo sha)
@@ -1678,9 +1703,9 @@ Calls CALLBACK once with a hash-table of path to commit, see
 (octocat-sync-define-resource file-blob (repo ref path)
   :max-age (and ref (octocat--sha-p ref) octocat-model--fixed-max-age)
   :poll nil
-  :graphql (concat "query($owner:String!,$name:String!,$expr:String!){"
-                   "repository(owner:$owner,name:$name){object(expression:$expr){"
-                   "...on Blob{oid byteSize isBinary isTruncated text}}}}")
+  :graphql (octocat-model--repo-query
+            '(:expr String!)
+            '(object (:expression $expr) (... Blob oid byteSize isBinary isTruncated text)))
   :repo repo
   :vars `(("expr" . ,(concat (or ref "HEAD") ":" path)))
   :parse #'octocat-model--parse-file-blob)
@@ -2095,14 +2120,12 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
               octocat-sync-poll-interval
             (apply #'octocat-model--poll-status
                    (mapcar (lambda (c) (gethash "status" c)) data))))
-  :graphql (octocat--graphql-query
-            '(:owner String! :name String! :sha String!)
-            `((repository (:owner $owner :name $name)
-                          (object (:expression $sha)
-                                  (... Commit
-                                       (statusCheckRollup
-                                        (contexts (:first 100)
-                                                  (nodes ,@octocat-model--check-fields))))))))
+  :graphql (octocat-model--repo-query
+            '(:sha String!)
+            `(object (:expression $sha)
+                     (... Commit
+                          (statusCheckRollup
+                           (contexts (:first 100) (nodes ,@octocat-model--check-fields))))))
   :repo repo
   :vars `(("sha" . ,sha))
   :parse (lambda (data)
@@ -2123,11 +2146,13 @@ KIND is `issues' or `pulls'."
 
 (defun octocat-model--dashboard-items-query (kind)
   "Return the GraphQL search query for the dashboard's KIND items."
-  (format (concat "query($q:String!,$limit:Int!){search(query:$q,type:ISSUE_ADVANCED,"
-                  "first:$limit){nodes{...on Issue{repository{nameWithOwner}} ...on "
-                  "PullRequest{repository{nameWithOwner}} %s}pageInfo{hasNextPage "
-                  "endCursor}}}")
-          (alist-get kind octocat-model--list-item-fields)))
+  (octocat--graphql-query
+   '(:q String! :limit Int!)
+   `((search (:query $q :type ISSUE_ADVANCED :first $limit)
+             (nodes (... Issue (repository nameWithOwner))
+                    (... PullRequest (repository nameWithOwner))
+                    ,@(alist-get kind octocat-model--list-item-fields))
+             (pageInfo hasNextPage endCursor)))))
 
 
 (defun octocat-model--dashboard-items-tree (kind page)
@@ -2142,10 +2167,16 @@ table of its \"repo\" and its entity, \"item\", shared with the lists."
                  (octocat--table "repo" repo "item" (octocat-model-item type repo item))))
              (plist-get page :items)))))
 
-;; The repositories you pushed to last.
+;; The repositories you pushed to last, of those you can push to.
 (octocat-sync-define-resource dashboard-repos ()
-  :gh (list "api" "user/repos?sort=pushed&per_page=10")
-  :parse (lambda (repos) (cl-map 'vector #'octocat-model-repo-rest repos)))
+  :graphql (octocat--graphql-query
+            nil
+            `((viewer (repositories
+                       (:first 10 :orderBy (:field PUSHED_AT :direction DESC)
+                               :ownerAffiliations [OWNER COLLABORATOR ORGANIZATION_MEMBER])
+                       (nodes ,@octocat-model--repo-fields)))))
+  :parse (lambda (data)
+           (cl-map 'vector #'octocat-model-repo (octocat--nodes data "viewer" "repositories"))))
 
 (octocat-sync-define-resource dashboard-items (kind limit)
   :graphql (octocat-model--dashboard-items-query kind)
@@ -2188,15 +2219,19 @@ The user is an entity; the counts belong to this resource."
    "following" (gethash "following" p)
    "publicRepos" (gethash "public_repos" p)))
 
-(defun octocat-model--user-parse-repos (repos)
-  "Return REPOS, a `users/LOGIN/repos' response, as a list resource."
-  (octocat--table "nodes" (cl-map 'vector #'octocat-model-repo-rest repos)))
+(defun octocat-model--user-parse-repos (data)
+  "Return DATA, the `user-repos' answer, as a list resource."
+  (octocat--table "nodes" (cl-map 'vector #'octocat-model-repo
+                                  (octocat--nodes data "repositoryOwner" "repositories"))))
 
 (defconst octocat-model--user-pinned-query
-  (concat "query($login:String!){repositoryOwner(login:$login){... on ProfileOwner{"
-          "pinnedItems(first:6,types:REPOSITORY){nodes{... on Repository{nameWithOwner "
-          "description stargazerCount primaryLanguage{name} pushedAt isFork "
-          "isArchived}}}}}}")
+  (octocat--graphql-query
+   '(:login String!)
+   `((repositoryOwner (:login $login)
+                      (... ProfileOwner
+                           (pinnedItems (:first 6 :types REPOSITORY)
+                                        (nodes (... Repository
+                                                    ,@octocat-model--repo-fields)))))))
   "GraphQL query behind the `user-pinned' resource.
 The REST API does not expose pinned repositories.")
 
@@ -2217,8 +2252,14 @@ Pinned gists, which come back as empty nodes, are left out."
 
 (octocat-sync-define-resource user-repos (login limit)
   :poll octocat-sync-poll-slow
-  ;; The limit is in the URL so that `gh api' issues a GET.
-  :gh (list "api" (format "users/%s/repos?sort=pushed&per_page=%d" login limit))
+  :graphql (octocat--graphql-query
+            '(:login String! :limit Int!)
+            `((repositoryOwner (:login $login)
+                               (repositories
+                                (:first $limit :orderBy (:field PUSHED_AT :direction DESC)
+                                        :ownerAffiliations [OWNER])
+                                (nodes ,@octocat-model--repo-fields)))))
+  :vars `(("login" . ,login) ("limit" . ,limit))
   :parse #'octocat-model--user-parse-repos)
 
 (octocat-sync-define-resource user-pinned (login)
@@ -2249,7 +2290,11 @@ arrives.  It is at least `octocat-sync-fresh-for'."
   :max-age octocat-search-cache-ttl
   :gh (list "search" type (format "--repo=%s" repo)
             "--json" (alist-get type octocat-model--search-fields nil nil #'equal)
-            "--limit" "30" query))
+            "--limit" "30" query)
+  :parse (lambda (items)
+           (if (equal type "commits")
+               (cl-map 'vector #'octocat-model-commit-from-rest items)
+             items)))
 
 (defconst octocat-model--search-files-ttl 600
   "Seconds a stored repository file list is reused without a refetch.")

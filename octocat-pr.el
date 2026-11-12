@@ -870,35 +870,9 @@ BG is as for `octocat--label-face'."
   "Return the SHA of the newest commit of PR (a hash-table), or nil."
   (octocat--get (octocat--head-commit pr) "oid"))
 
-(defun octocat-pr--rest-commit (node)
-  "Return NODE, one of a PR's commits, shaped as the REST commits endpoint has it.
-That is what `octocat-vui--commit-row' reads."
-  (let* ((commit  (gethash "commit" node))
-         (writer  (gethash "author" commit))
-         (login   (octocat--nonempty (octocat--get writer "user" "login")))
-         (c       (make-hash-table :test #'equal))
-         (ca      (make-hash-table :test #'equal))
-         (cc      (make-hash-table :test #'equal))
-         (rest    (make-hash-table :test #'equal)))
-    (puthash "name" (or (and writer (octocat--get writer "name")) "") ca)
-    (puthash "date" (or (octocat--get commit "authoredDate") "") ca)
-    (puthash "date" (or (octocat--get commit "committedDate") "") cc)
-    (puthash "message" (or (octocat--get commit "messageHeadline") "") c)
-    (puthash "author" ca c)
-    (puthash "committer" cc c)
-    (puthash "sha" (or (octocat--get commit "oid") "") rest)
-    (puthash "commit" c rest)
-    (puthash "author" (if login
-                          (let ((u (make-hash-table :test #'equal)))
-                            (puthash "login" login u)
-                            u)
-                        :null)
-             rest)
-    rest))
-
 (defun octocat-pr--commits (pr)
-  "Return the commits of PR, oldest first, shaped by `octocat-pr--rest-commit'."
-  (mapcar #'octocat-pr--rest-commit (octocat--nodes pr "commits")))
+  "Return the commits of PR, oldest first."
+  (mapcar (lambda (node) (gethash "commit" node)) (octocat--nodes pr "commits")))
 
 (defconst octocat-pr--tab-labels '("Conversation" "Commits" "Files changed")
   "The labels of a PR page's tabs (see `octocat-pr--tabs'), for its skeleton.")
@@ -1102,13 +1076,7 @@ A new TICK fetches them again."
          (snap  (octocat-pr--use-data repo number tick))
          (stack (octocat-pr--use-stack repo number tick))
          (pr    (plist-get snap :data))
-         (merges (plist-get (octocat-vui-use-resource (list 'pr-merges repo number) tick) :data))
-         (commits (vui-use-memo (pr merges)
-                    (and pr (mapcar (lambda (c)
-                                      (when (seq-contains-p merges (gethash "sha" c))
-                                        (puthash "merge" t c))
-                                      c)
-                                    (octocat-pr--commits pr))))))
+         (commits (and pr (octocat-pr--commits pr))))
     (octocat-vui-page
      (octocat-pr--pin number snap width (octocat--label-background))
      (octocat-vui-resource-view

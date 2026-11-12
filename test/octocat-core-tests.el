@@ -42,7 +42,14 @@
 (ert-deftest octocat-core-test-graphql-query ()
   "A query declares its variables, with their types, before its selections."
   (should (equal (octocat--graphql-query '(:id ID! :after String) '((node (:id $id) id)))
-                 "query($id:ID!,$after:String){node(id:$id){id}}")))
+                 "query($id:ID!,$after:String){node(id:$id){id}}"))
+  ;; A mutation takes an input object; a field may carry an alias.
+  (should (equal (octocat--graphql-query
+                  '(:id ID!)
+                  '((r:addReaction (:input (:subjectId $id :content HEART)) clientMutationId))
+                  'mutation)
+                 (concat "mutation($id:ID!){r:addReaction(input:{subjectId:$id,content:HEART})"
+                         "{clientMutationId}}"))))
 
 (ert-deftest octocat-core-test-reactions ()
   "Reactions read from `gh' and from REST, in GitHub's order, none left out."

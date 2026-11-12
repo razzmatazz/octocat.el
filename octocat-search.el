@@ -121,14 +121,10 @@ A word of the input that is one, or its plural, lists that type first.")
 
 (defun octocat--search-make-commit-candidate (commit repo)
   "Return a propertized candidate string for COMMIT hash-table in REPO.
-Handles both the REST shape (\"sha\", nested \"commit\") and the GraphQL
-shape (\"oid\", nested \"commit\") used in different parts of the codebase."
-  (let* ((sha     (or (octocat--nonempty (gethash "sha"    commit))
-                      (octocat--nonempty (gethash "oid"    commit)) ""))
+COMMIT is as `octocat-model--commit-fields' reads it."
+  (let* ((sha     (or (gethash "oid" commit) ""))
          (short   (substring sha 0 (min 7 (length sha))))
-         (c       (gethash "commit" commit))
-         (msg     (or (and c (octocat--nonempty (gethash "message" c))) ""))
-         (subject (car (split-string msg "\n")))
+         (subject (or (gethash "messageHeadline" commit) ""))
          (author  (octocat--commit-author commit))
          (display
           (format "%-8s %s  %-42s  %s"
@@ -237,15 +233,14 @@ The order is otherwise kept."
 (defun octocat--search-item-id (type item)
   "Return what names ITEM of TYPE in every source: its number or SHA."
   (if (equal type "commits")
-      (or (gethash "sha" item) (gethash "oid" item))
+      (gethash "oid" item)
     (gethash "number" item)))
 
 (defun octocat--search-item-text (type item)
   "Return the text of ITEM of TYPE that input is matched against."
   (if (equal type "commits")
-      (let ((c (gethash "commit" item)))
-        (concat (octocat--search-item-id type item) " "
-                (or (and (hash-table-p c) (octocat--nonempty (gethash "message" c))) "")))
+      (concat (octocat--search-item-id type item) " "
+              (or (gethash "messageHeadline" item) ""))
     (format "#%s %s" (gethash "number" item) (or (gethash "title" item) ""))))
 
 (defun octocat--search-match (type items query)
@@ -297,7 +292,7 @@ pages, and the items of the `object-search' results fetched within
           (seq-doseq (item (gethash "nodes" data)) (add "commits" item at))))
       (pcase-dolist (`(,spec ,data ,at) (octocat-sync-stored 'commit))
         (when (and (equal (downcase (nth 1 spec)) repo) (hash-table-p data))
-          (add "commits" data at))))
+          (add "commits" (octocat-model-commit-from-rest data) at))))
     (mapcar (pcase-lambda (`(,type . ,entries))
               (cons type
                     (octocat--search-merge
@@ -321,21 +316,14 @@ holds every word; and when QUERY looks like a SHA, the commit it names."
        (list (list "log" "-n" "1" octocat--search-git-format query "--"))))))
 
 (defun octocat--search-git-parse (lines)
-  "Return the commits of LINES, `git log' output, as GitHub's REST gives them.
+  "Return the commits of LINES, `git log' output, as GraphQL gives them.
 That is, only the fields `octocat--search-make-commit-candidate' reads."
   (delq nil
         (mapcar (lambda (line)
                   (pcase (split-string line "\0")
                     (`(,sha ,name ,subject)
-                     (let ((commit (make-hash-table :test #'equal))
-                           (c      (make-hash-table :test #'equal))
-                           (author (make-hash-table :test #'equal)))
-                       (puthash "name" name author)
-                       (puthash "message" subject c)
-                       (puthash "author" author c)
-                       (puthash "sha" sha commit)
-                       (puthash "commit" c commit)
-                       commit))))
+                     (octocat--table "oid" sha "messageHeadline" subject
+                                     "author" (octocat--table "name" name)))))
                 lines)))
 
 (defun octocat--search-git (dir arg-lists callback)

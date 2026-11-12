@@ -2844,7 +2844,7 @@ such as \"Labelled\", how it went once the last is answered."
 
 (defun octocat-vui--open-commit (repo commit)
   "Open the commit detail buffer for COMMIT (a hash-table) in REPO."
-  (octocat-open 'commit repo (or (gethash "sha" commit) (gethash "oid" commit) "")))
+  (octocat-open 'commit repo (or (gethash "oid" commit) "")))
 
 ;;;;; Row builders
 
@@ -3466,8 +3466,7 @@ line up with no more padding than the different names require."
 
 (defun octocat-vui--subject (commit)
   "Return the first line of COMMIT's message."
-  (let ((c (gethash "commit" commit)))
-    (car (split-string (or (and c (gethash "message" c)) "") "\n"))))
+  (or (gethash "messageHeadline" commit) ""))
 
 (defconst octocat-vui--subject-min-width 24
   "Narrowest subject column, so short subjects still leave a gap before the author.")
@@ -3504,7 +3503,7 @@ highlighted.  AUTHOR-W is the width of the author column, see
 `octocat-vui--date-width', which lines the SHAs up."
   (let* ((subject-w (or subject-w octocat-title-width))
          (head-hash (and head-info (plist-get head-info :hash)))
-         (sha       (or (gethash "sha" commit) ""))
+         (sha       (or (gethash "oid" commit) ""))
          (short     (substring sha 0 (min 7 (length sha))))
          (is-head   (and head-hash
                          (>= (length sha) (length head-hash))
@@ -3533,14 +3532,14 @@ Each is a lane of `octocat-vui-lanes', mirrored, so the first parents
 run down beside the subjects.  Return nil when no line would branch, as
 in a history of squashed merges, or there are too many."
   (let ((lanes (octocat-vui-lanes
-                (mapcar (lambda (c) (gethash "sha" c)) commits)
+                (mapcar (lambda (c) (gethash "oid" c)) commits)
                 (cl-loop for c in commits
-                         append (cl-loop for p across (or (gethash "parents" c) [])
-                                         collect (list (gethash "sha" c) p))))))
+                         append (cl-loop for p across (octocat--nodes c "parents")
+                                         collect (list (gethash "oid" c) (gethash "oid" p)))))))
     (when (seq-some (lambda (lane) (string-match-p "[^ ]" (car lane))) lanes)
       (let ((table (make-hash-table :test #'equal)))
         (cl-loop for c in commits for lane in lanes
-                 do (puthash (gethash "sha" c) (octocat-vui-lane-mirror lane) table))
+                 do (puthash (gethash "oid" c) (octocat-vui-lane-mirror lane) table))
         table))))
 
 (defun octocat-vui-commit-node (merge)
@@ -3550,10 +3549,8 @@ See \"A commit starts with ○\" in docs/user-interface-conventions.md."
               'face 'octocat-commit-sha))
 
 (defun octocat-vui--commit-merge-p (commit)
-  "Return non-nil when COMMIT is a merge.
-That is one with two \"parents\" or a \"merge\" of t."
-  (or (eq (gethash "merge" commit) t)
-      (> (length (gethash "parents" commit)) 1)))
+  "Return non-nil when COMMIT is a merge, one with two \"parents\"."
+  (> (length (octocat--nodes commit "parents")) 1))
 
 (defun octocat-vui--commit-row (repo commit head-info author-w
                                      &optional subject-w date-w lane)
@@ -3569,8 +3566,7 @@ as for `octocat-vui--commit-line'."
                                                        subject-w date-w)))
                    (lambda () (octocat-vui--open-commit repo commit))
                    "RET: view commit"
-                   (octocat--web-url "%s/commit/%s" repo
-                                     (or (gethash "sha" commit) (gethash "oid" commit) ""))))
+                   (octocat--web-url "%s/commit/%s" repo (or (gethash "oid" commit) ""))))
 
 (provide 'octocat-vui)
 ;;; octocat-vui.el ends here

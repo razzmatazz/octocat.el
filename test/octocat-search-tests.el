@@ -136,15 +136,9 @@ GitHub's results lead once in, the stored ones it lacks after them."
         (should (equal (funcall titles) '("New crash")))
         (should (equal (cdr log) [indicator finished]))))))
 
-;; Commits as the REST API gives them, no more than the search reads.
 (defun octocat-search-tests--commit (sha message)
-  "Return a commit of SHA and MESSAGE."
-  (let ((commit (make-hash-table :test #'equal))
-        (c      (make-hash-table :test #'equal)))
-    (puthash "message" message c)
-    (puthash "sha" sha commit)
-    (puthash "commit" c commit)
-    commit))
+  "Return a commit of SHA and MESSAGE, as a stored list of commits has it."
+  (octocat--table "oid" sha "messageHeadline" message))
 
 (ert-deftest octocat-search-test-repo-objects-stored ()
   "Stored PRs and commits matching the input show at once, and the commits
@@ -321,7 +315,7 @@ the file before the commit mentioning it, which it would follow."
           (with-timeout (10 (error "Git timed out"))
             (while (null result) (accept-process-output nil 0.05)))
           (let ((commits (octocat--search-git-parse (car result))))
-            (should (equal (mapcar (lambda (c) (gethash "message" (gethash "commit" c))) commits)
+            (should (equal (mapcar (lambda (c) (gethash "messageHeadline" c)) commits)
                            '("Fix the crash")))))
       (delete-directory dir t))))
 
