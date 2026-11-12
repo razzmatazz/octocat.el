@@ -1983,19 +1983,22 @@ render, like any hook."
                  (cdr (mapcan (lambda (n) (list (vui-text "  " :face 'underline) n))
                               nodes))))))
 
-(defun octocat-vui-list-views (compact width)
-  "Return the pill of a list's views, Full and Compact, ending at WIDTH.
+(defun octocat-vui-list-view-segments (compact)
+  "Return the segments of a list's views, Full and Compact.
 COMPACT fills in Compact.  Both run `octocat-vui-list-toggle-compact'."
-  (octocat-vui-segmented-right
-   (list (list "Full" (not compact)
-               (octocat--key-help #'octocat-vui-list-toggle-compact
-                                  "show two lines per item")
-               #'octocat-vui-list-toggle-compact)
-         (list "Compact" compact
-               (octocat--key-help #'octocat-vui-list-toggle-compact
-                                  "show one line per item")
-               #'octocat-vui-list-toggle-compact))
-   width))
+  (list (list "Full" (not compact)
+              (octocat--key-help #'octocat-vui-list-toggle-compact
+                                 "show two lines per item")
+              #'octocat-vui-list-toggle-compact)
+        (list "Compact" compact
+              (octocat--key-help #'octocat-vui-list-toggle-compact
+                                 "show one line per item")
+              #'octocat-vui-list-toggle-compact)))
+
+(defun octocat-vui-list-views (compact width)
+  "Return the pill of a list's views, ending at WIDTH.
+See `octocat-vui-list-view-segments' for COMPACT."
+  (octocat-vui-segmented-right (octocat-vui-list-view-segments compact) width))
 
 (vui-defcomponent octocat-vui-list-header (repo tab kind tick view)
   "Header for a list page: REPO, the page and, for KIND, item counts.
@@ -2050,7 +2053,8 @@ starts the results afresh."
                                             (list 'counts kind repo) tick)
                                            :mutating))))
     (octocat-vui-page
-     (octocat-vui-crumbs-pin repo (cadr (assq kind octocat--repo-tabs)))
+     (concat (octocat-vui-crumbs-pin repo (cadr (assq kind octocat--repo-tabs)))
+             (octocat-vui-segmented-pin (octocat-vui-list-view-segments compact)))
      (vui-vstack
       (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick
                      :view (if compact 'compact 'full))

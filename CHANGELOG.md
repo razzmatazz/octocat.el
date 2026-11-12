@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Issue and PR lists keep their Full and Compact pill in the pinned title
 * With Evil, editing a body, comment or merge message starts in normal state
 * PRs, issues, READMEs and lists show a pill of their `C-c C-v` views, at the right
 * `gr` on a diff's Tree or Patch no longer leaves a later switch jumping to an old file
