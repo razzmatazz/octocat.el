@@ -1023,15 +1023,23 @@ Lines taller than half of WIN show only the first, at the top if it is
 hidden: more would scroll away what the reader was on.  Point moves to
 START if WIN scrolls."
   (with-selected-window win
-    (let* ((last  (save-excursion (goto-char (max start (1- end))) (line-end-position)))
-           (whole (<= (count-screen-lines start last) (/ (window-body-height) 2)))
-           (last  (if whole last start)))
-      (unless (and (pos-visible-in-window-p start win)
-                   (pos-visible-in-window-p last win))
-        (if (and whole (> start (window-start)))
-            (progn (goto-char last) (recenter -1))
-          (goto-char start)
-          (recenter 0))
+    (let* ((last   (save-excursion (goto-char (max start (1- end))) (line-end-position)))
+           (whole  (<= (count-screen-lines start last) (/ (window-body-height) 2)))
+           (last   (if whole last start))
+           (shown  (lambda () (and (pos-visible-in-window-p start win)
+                                   (pos-visible-in-window-p last win))))
+           (scroll (lambda ()
+                     (if (and whole (> start (window-start)))
+                         (progn (goto-char last) (recenter -1))
+                       (goto-char start)
+                       (recenter 0)))))
+      (unless (funcall shown)
+        (funcall scroll)
+        ;; vui pins the title in the header line only as it redraws, so
+        ;; a scroll past the title loses a row after it is measured.
+        (redisplay)
+        (unless (funcall shown)
+          (funcall scroll))
         (goto-char start)))))
 
 (defun octocat-vui-pulse-change (buf prop pred &optional head)
