@@ -600,6 +600,59 @@ Stacked on #130, whose watcher this uses.")
     pr)
   "Pull request #133, stacked on #130, as `gh pr view' gives it.")
 
+(defun octocat-screenshots--item-query (type item)
+  "Return ITEM, as `gh ... view' gives it, as its page's query answers it.
+TYPE is `:issue' or `:pullRequest'."
+  (let* ((nodes   (lambda (v) `(:nodes ,(vconcat v))))
+         (commits (append (plist-get item :commits) nil))
+         (checks  (seq-map (lambda (c)
+                             (let ((c (copy-sequence c)))
+                               (setq c (plist-put c :checkSuite
+                                                  `(:workflowRun (:workflow (:name ,(plist-get c :workflowName))))))
+                               (cl-remf c :workflowName)
+                               c))
+                           (or (plist-get item :statusCheckRollup) [])))
+         (out     (copy-sequence item)))
+    (dolist (key '(:labels :assignees :closingIssuesReferences :closedByPullRequestsReferences
+                           :reviews :latestReviews))
+      (when (plist-member item key)
+        (setq out (plist-put out key (funcall nodes (plist-get item key))))))
+    (setq out (plist-put out :comments
+                         `(:totalCount ,(length (plist-get item :comments))
+                           ,@(funcall nodes (plist-get item :comments)))))
+    (when (eq type :pullRequest)
+      (setq out (plist-put out :reviewRequests
+                           (funcall nodes (seq-map (lambda (r) `(:requestedReviewer ,r))
+                                                   (or (plist-get item :reviewRequests) [])))))
+      (setq out (plist-put
+                 out :commits
+                 `(:totalCount
+                   ,(length commits)
+                   ,@(funcall
+                      nodes
+                      (seq-map-indexed
+                       (lambda (c i)
+                         `(:commit
+                           (:oid ,(plist-get c :oid)
+                            :messageHeadline ,(plist-get c :messageHeadline)
+                            :authoredDate ,(plist-get c :authoredDate)
+                            :committedDate ,(plist-get c :committedDate)
+                            :author ,(let ((a (aref (plist-get c :authors) 0)))
+                                       `(:name ,(plist-get a :name)
+                                         :email ,(plist-get a :email)
+                                         :user (:login ,(plist-get a :login))))
+                            :statusCheckRollup
+                            ,(if (and (= i (1- (length commits))) checks)
+                                 `(:state ,(if (seq-every-p
+                                                (lambda (c) (equal (plist-get c :conclusion) "SUCCESS"))
+                                                checks)
+                                               "SUCCESS" "PENDING")
+                                   :contexts ,(funcall nodes checks))
+                               :null))))
+                       commits)))))
+      (cl-remf out :statusCheckRollup))
+    `(:data (:repository (,type ,out)))))
+
 (defun octocat-screenshots--commit-rest-short (sha message login name ago)
   "Return commit SHA, by LOGIN called NAME AGO seconds ago, as the REST API does.
 MESSAGE is its message."
@@ -918,15 +971,13 @@ note in a popup when its reference is hovered."
   "The commit that merged #131, the tip of main, as the REST API gives it.")
 
 (defun octocat-screenshots--check-run (id name conclusion started minutes)
-  "Return check run ID, NAME, ended in CONCLUSION, STARTED ago, lasting MINUTES."
-  `(:id ,id :name ,name :status "completed" :conclusion ,conclusion
-    :started_at ,(octocat-screenshots--ago started)
-    :completed_at ,(octocat-screenshots--ago (- started (* minutes 60)))
-    :html_url ,(format "https://github.com/acme/rocket/actions/runs/9100200300/job/%d" id)
-    :details_url ,(format "https://github.com/acme/rocket/actions/runs/9100200300/job/%d" id)
-    :app (:slug "github-actions" :name "GitHub Actions")
-    :check_suite (:id 7100200300)
-    :output (:title :null :summary :null :annotations_count 0)))
+  "Return check run ID, NAME, ended in CONCLUSION, STARTED ago, lasting MINUTES.
+As the `checks' query gives it."
+  `(:__typename "CheckRun" :name ,name :status "COMPLETED" :conclusion ,conclusion
+    :startedAt ,(octocat-screenshots--ago started)
+    :completedAt ,(octocat-screenshots--ago (- started (* minutes 60)))
+    :detailsUrl ,(format "https://github.com/acme/rocket/actions/runs/9100200300/job/%d" id)
+    :checkSuite (:workflowRun (:workflow (:name "CI")))))
 
 ;;;; Actions
 
@@ -1310,8 +1361,8 @@ jobs:
       ("merge-options" ("acme/rocket")
        (:deleteBranchOnMerge t :mergeCommitAllowed t :squashMergeAllowed t
         :rebaseMergeAllowed :false))
-      ("pr" ("128") ,octocat-screenshots--pr-128)
-      ("pr" ("127") ,octocat-screenshots--pr-127)
+      ("pr" ("number=128") ,(octocat-screenshots--item-query :pullRequest octocat-screenshots--pr-128))
+      ("pr" ("number=127") ,(octocat-screenshots--item-query :pullRequest octocat-screenshots--pr-127))
       ("timeline-events" ("issues/127/") [[]])
       ("timeline-events" ("issues/128/") ,octocat-screenshots--pr-128-events)
       ("awaiting-runs" (,(concat "head_sha=" (octocat-screenshots--sha "pr-133-1")))
@@ -1319,7 +1370,7 @@ jobs:
         :workflow_runs [(:id 9100200311 :name "Deploy preview" :status "action_required"
                          :head_sha ,(octocat-screenshots--sha "pr-133-1"))]))
       ("awaiting-runs" () (:total_count 0 :workflow_runs []))
-      ("pr" ("133") ,octocat-screenshots--pr-133)
+      ("pr" ("number=133") ,(octocat-screenshots--item-query :pullRequest octocat-screenshots--pr-133))
       ("timeline-events" ("issues/133/") [[]])
       ;; #133 builds on #130's fix; #130 conflicts, so the stack cannot merge.
       ("pr-stack" ("number=133")
@@ -1359,7 +1410,7 @@ jobs:
       ("counts" ("issues(states:OPEN)")
        (:data (:repository (:open (:totalCount 5) :closed (:totalCount 61)))))
       ("issues" ("repo:acme/rocket") ,(octocat-screenshots--search octocat-screenshots--issues))
-      ("issue" ("97") ,octocat-screenshots--issue-97)
+      ("issue" ("number=97") ,(octocat-screenshots--item-query :issue octocat-screenshots--issue-97))
       ("timeline-events" ("issues/97/") ,octocat-screenshots--issue-97-events)
 
       ;; Commit
@@ -1368,12 +1419,16 @@ jobs:
       ("commit-comments" (,(concat "commits/" octocat-screenshots--head)) [])
       ("blob" (,(octocat-screenshots--sha "f7"))
        (:content ,(base64-encode-string octocat-screenshots--footnote-popup)))
-      ("checks" ("check-runs")
-       (:total_count 4
-        :check_runs [,(octocat-screenshots--check-run 27100200310 "lint" "success" (* 6 h) 2)
-                     ,(octocat-screenshots--check-run 27100200311 "test (stable)" "success" (* 6 h) 6)
-                     ,(octocat-screenshots--check-run 27100200312 "test (beta)" "success" (* 6 h) 7)
-                     ,(octocat-screenshots--check-run 27100200313 "docs" "success" (* 6 h) 3)]))
+      ("checks" ("sha=")
+       (:data
+        (:repository
+         (:object
+          (:statusCheckRollup
+           (:contexts
+            (:nodes [,(octocat-screenshots--check-run 27100200310 "lint" "SUCCESS" (* 6 h) 2)
+                     ,(octocat-screenshots--check-run 27100200311 "test (stable)" "SUCCESS" (* 6 h) 6)
+                     ,(octocat-screenshots--check-run 27100200312 "test (beta)" "SUCCESS" (* 6 h) 7)
+                     ,(octocat-screenshots--check-run 27100200313 "docs" "SUCCESS" (* 6 h) 3)])))))))
       ("commit-comments" ()
        [(:id 701 :path :null :line :null :position :null
          :user ,(octocat-screenshots--user "pnair") :created_at ,(octocat-screenshots--ago (* 4 h))

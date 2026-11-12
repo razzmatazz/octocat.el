@@ -15,11 +15,11 @@
 (defconst octocat-timeline-tests--issue-json
   (concat "{\"number\":7,\"state\":\"CLOSED\",\"body\":\"opening\","
           "\"createdAt\":\"2026-01-01T10:00:00Z\",\"closedAt\":\"2026-01-03T10:00:00Z\","
-          "\"author\":{\"login\":\"ann\"},\"labels\":[],"
-          "\"comments\":[{\"author\":{\"login\":\"bob\"},\"body\":\"later\","
+          "\"author\":{\"login\":\"ann\"},\"labels\":{\"nodes\":[]},"
+          "\"comments\":{\"nodes\":[{\"author\":{\"login\":\"bob\"},\"body\":\"later\","
           "\"createdAt\":\"2026-01-04T10:00:00Z\"},"
           "{\"author\":{\"login\":\"cy\"},\"body\":\"first\","
-          "\"createdAt\":\"2026-01-02T10:00:00Z\"}]}")
+          "\"createdAt\":\"2026-01-02T10:00:00Z\"}]}}")
   "A closed issue with two comments, the later one listed first.")
 
 (ert-deftest octocat-timeline-test-issue-orders-by-time ()
@@ -143,11 +143,11 @@
          (pr (json-parse-string
               (concat "{\"body\":\"b\",\"createdAt\":\"2026-01-01T10:00:00Z\","
                       "\"author\":{\"login\":\"ann\"}," (funcall rg "HOORAY" 2) ","
-                      "\"comments\":[{\"author\":{\"login\":\"bob\"},\"body\":\"c\","
-                      "\"createdAt\":\"2026-01-02T10:00:00Z\"," (funcall rg "EYES" 1) "}],"
-                      "\"reviews\":[{\"author\":{\"login\":\"cy\"},\"body\":\"r\","
+                      "\"comments\":{\"nodes\":[{\"author\":{\"login\":\"bob\"},\"body\":\"c\","
+                      "\"createdAt\":\"2026-01-02T10:00:00Z\"," (funcall rg "EYES" 1) "}]},"
+                      "\"reviews\":{\"nodes\":[{\"author\":{\"login\":\"cy\"},\"body\":\"r\","
                       "\"state\":\"APPROVED\",\"submittedAt\":\"2026-01-03T10:00:00Z\","
-                      (funcall rg "ROCKET" 4) "}]}")))
+                      (funcall rg "ROCKET" 4) "}]}}")))
          (items (octocat-pr--items "o/r" pr nil nil)))
     (should (equal (mapcar (lambda (i) (substring-no-properties (plist-get i :reactions)))
                            items)
@@ -339,8 +339,8 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
   "Picking assignees submits only who was added or removed, without the @."
   (let ((item (make-hash-table :test #'equal)) submitted)
     (puthash "assignees"
-             (vector (let ((u (make-hash-table :test #'equal))) (puthash "login" "ann" u) u)
-                     (let ((u (make-hash-table :test #'equal))) (puthash "login" "bob" u) u))
+             (octocat--table "nodes" (vector (octocat--table "login" "ann")
+                                             (octocat--table "login" "bob")))
              item)
     (cl-letf (((symbol-function 'octocat-model-detail-read) (lambda (_) item))
               ((symbol-function 'octocat-vui-list--stored)
@@ -359,11 +359,12 @@ Return (MUTATING-WHILE-RUNNING MUTATING-AFTER REOPENED CLOSED)."
 
 (defconst octocat-timeline-tests--mine-json
   (concat "{\"id\":\"I_7\",\"number\":7,\"state\":\"OPEN\",\"body\":\"opening\","
-          "\"createdAt\":\"2026-01-01T10:00:00Z\",\"author\":{\"login\":\"me\"},\"labels\":[],"
-          "\"comments\":[{\"id\":\"IC_5\",\"author\":{\"login\":\"me\"},\"body\":\"mine\","
+          "\"createdAt\":\"2026-01-01T10:00:00Z\",\"author\":{\"login\":\"me\"},"
+          "\"labels\":{\"nodes\":[]},\"comments\":{\"totalCount\":1,\"nodes\":["
+          "{\"id\":\"IC_5\",\"author\":{\"login\":\"me\"},\"body\":\"mine\","
           "\"createdAt\":\"2026-01-02T10:00:00Z\",\"viewerDidAuthor\":true,"
           "\"reactionGroups\":[{\"content\":\"HEART\",\"users\":{\"totalCount\":1}}],"
-          "\"url\":\"https://github.com/o/r/issues/7#issuecomment-5\"}]}")
+          "\"url\":\"https://github.com/o/r/issues/7#issuecomment-5\"}]}}")
   "An open issue by \"me\", with one comment of mine, given a ❤️.")
 
 (defmacro octocat-timeline-tests--with-issue (&rest body)
@@ -411,34 +412,34 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
           (should (string-match-p "@me commented  . posting…" (substring-no-properties entry)))
           (should (text-property-any 0 (length entry) 'octocat-spinner t entry)))))
     ;; Not stored before GitHub accepts it.
-    (should (= (length (gethash "comments"
-                                (car (octocat-sync--read octocat-sync--db
-                                                         "(issue \"o/r\" 7)"))))
+    (should (= (length (octocat--nodes (car (octocat-sync--read octocat-sync--db
+                                                                "(issue \"o/r\" 7)"))
+                                       "comments"))
                1))
     (octocat-timeline-tests--answer
      (car calls)
      (concat "{\"id\":9,\"node_id\":\"IC_9\",\"user\":{\"login\":\"me\"},\"body\":\"new\","
              "\"created_at\":\"2026-01-05T10:00:00Z\",\"author_association\":\"OWNER\","
              "\"html_url\":\"https://github.com/o/r/issues/7#issuecomment-9\"}"))
-    (let ((comments (gethash "comments" (issue))))
+    (let ((comments (octocat--nodes (issue) "comments")))
       (should (= (length comments) 2))
       (should (equal (octocat-model-comment-numeric-id (aref comments 1)) "9"))
       (should (equal (gethash "createdAt" (aref comments 1)) "2026-01-05T10:00:00Z"))
       (should-not (gethash octocat-model-pending (aref comments 1))))
     ;; Stored as GitHub has it, so the refetch finds no gap to fill.
-    (should (= (length (gethash "comments"
-                                (car (octocat-sync--read octocat-sync--db
-                                                         "(issue \"o/r\" 7)"))))
+    (should (= (length (octocat--nodes (car (octocat-sync--read octocat-sync--db
+                                                                "(issue \"o/r\" 7)"))
+                                       "comments"))
                2))))
 
 (ert-deftest octocat-timeline-test-post-comment-failure ()
   "A comment GitHub refused is gone again, and the page refetched."
   (octocat-timeline-tests--with-issue
     (octocat-sync-submit '(comment "issue" "o/r" 7 "new"))
-    (should (= (length (gethash "comments" (issue))) 2))
+    (should (= (length (octocat--nodes (issue) "comments")) 2))
     (let ((inhibit-message t))
       (octocat-timeline-tests--answer (car calls) '(error . "boom")))
-    (should (= (length (gethash "comments" (issue))) 1))
+    (should (= (length (octocat--nodes (issue) "comments")) 1))
     (should-not (plist-get (octocat-sync-read '(issue "o/r" 7)) :mutating))
     (should (plist-get (octocat-sync-read '(issue "o/r" 7)) :outdated))))
 
@@ -446,11 +447,11 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
   "An edited comment shows its new body at once, behind a spinner."
   (octocat-timeline-tests--with-issue
     (octocat-sync-submit '(edit-comment "issue" "o/r" 7 "5" "changed"))
-    (let ((comment (aref (gethash "comments" (issue)) 0)))
+    (let ((comment (aref (octocat--nodes (issue) "comments") 0)))
       (should (equal (gethash "body" comment) "changed"))
       (should (equal (gethash octocat-model-pending comment) "saving")))
     (octocat-timeline-tests--answer (car calls) "{}")
-    (let ((comment (aref (gethash "comments" (issue)) 0)))
+    (let ((comment (aref (octocat--nodes (issue) "comments") 0)))
       (should (equal (gethash "body" comment) "changed"))
       (should-not (gethash octocat-model-pending comment)))))
 

@@ -96,21 +96,20 @@ Only the login is kept: the fields beside it vary with the source."
 ITEM is a table of its fields.  Its author, assignees and labels become
 entities too.  Labels must be the whole set: an entity's list fields
 are never a page of it."
-  (let ((fields (copy-hash-table item)))
+  (let* ((fields (copy-hash-table item))
+         (nodes  (lambda (key make)
+                   (when (gethash key item)
+                     (puthash key (octocat--table "nodes" (cl-map 'vector make
+                                                                  (octocat--nodes item key)))
+                              fields)))))
     (when-let* ((author (gethash "author" item)))
       (puthash "author" (octocat-model-user author) fields))
-    (when-let* ((assignees (gethash "assignees" item)))
-      (puthash "assignees" (cl-map 'vector #'octocat-model-user assignees) fields))
-    (when-let* ((labels (gethash "labels" item)))
-      (when (sequencep labels)
-        (puthash "labels" (cl-map 'vector (lambda (l) (octocat-model-label repo l)) labels)
-                 fields)))
+    (funcall nodes "assignees" #'octocat-model-user)
+    (funcall nodes "labels" (lambda (l) (octocat-model-label repo l)))
     ;; The lists and the page fetch these with different fields; keep
     ;; those both have, so the entity reads the same from either.
     (dolist (key '("closedByPullRequestsReferences" "closingIssuesReferences"))
-      (when-let* ((refs (gethash key item)))
-        (when (sequencep refs)
-          (puthash key (cl-map 'vector #'octocat-model--item-ref refs) fields))))
+      (funcall nodes key #'octocat-model--item-ref))
     (octocat-sync-entity type (octocat-model-item-key type repo (gethash "number" item))
                          fields)))
 
@@ -142,16 +141,16 @@ Its fields are mapped to GraphQL's names, as every repo entity has them."
 MAKE returns the entity of a table of fields, such as
 `octocat-model-item' does; the entity goes under \"item\", shared with
 the lists that show it.  PARTS are the keys of ITEM that are pages of a
-connection, such as \"comments\": an entity holds no such field, so
-they stay with the resource.  The comments are counted on the entity,
-as the lists count them."
+connection, such as \"comments\": an entity holds no such page, so they
+stay with the resource.  The entity keeps the comments' \"totalCount\",
+as the lists have it."
   (let ((fields (copy-hash-table item))
         (tree   (make-hash-table :test #'equal)))
     (dolist (part parts)
       (puthash part (gethash part item) tree)
       (remhash part fields))
-    (when (member "comments" parts)
-      (puthash "commentCount" (length (gethash "comments" item)) fields))
+    (when-let* ((n (octocat--get item "comments" "totalCount")))
+      (puthash "comments" (octocat--table "totalCount" n) fields))
     (puthash "item" (funcall make fields) tree)
     tree))
 
@@ -236,7 +235,8 @@ A table of \"open\", \"closed\" and, of pull requests, \"merged\"."
                        ;; Not reviewRequests: the PR page keeps that apart.
                        "requestedReviewers:reviewRequests(first:100){nodes{requestedReviewer{"
                        "...on User{login} ...on Team{name}}}} "
-                       "comments{totalCount} commits(last:1){nodes{commit{statusCheckRollup{"
+                       "comments{totalCount} commits(last:1){totalCount "
+                       "nodes{commit{statusCheckRollup{"
                        "state contexts{checkRunCountsByState{state count} "
                        "statusContextCountsByState{state count}}}}}}}"))
     (issues . ,(concat "...on Issue{number title state stateReason createdAt author{login} "
@@ -269,55 +269,12 @@ OR in it cannot escape the repo scope."
                   "hasNextPage endCursor}}}")
           (alist-get kind octocat-model--list-item-fields)))
 
-(defun octocat-model--flatten-list-item (item)
-  "Flatten the connections of the search result ITEM in place; return it.
-\"labels\", \"assignees\" and \"closedByPullRequestsReferences\" become
-vectors of their nodes, as gh's JSON has them; the comments become their
-count, \"commentCount\"; a PR's \"requestedReviewers\" the users and
-teams asked to review it; and the head commit's checks become GitHub's
-rolled-up state, \"ciState\", and how many passed of how many,
-\"ciPassed\" and \"ciTotal\", absent without checks."
-  (dolist (key '("labels" "assignees" "closedByPullRequestsReferences"))
-    (let ((conn (gethash key item)))
-      (when (hash-table-p conn)
-        (puthash key (gethash "nodes" conn) item))))
-  (let ((requests (gethash "requestedReviewers" item)))
-    (when (hash-table-p requests)
-      (puthash "requestedReviewers"
-               (cl-map 'vector (lambda (n) (gethash "requestedReviewer" n))
-                       (gethash "nodes" requests))
-               item)))
-  (let ((comments (gethash "comments" item)))
-    (when (hash-table-p comments)
-      (puthash "commentCount" (gethash "totalCount" comments) item)
-      (remhash "comments" item)))
-  (let* ((commits (gethash "commits" item))
-         ;; A closed PR may come with no commits: [].
-         (node    (and (hash-table-p commits) (car (append (gethash "nodes" commits) nil))))
-         (rollup  (and node (gethash "statusCheckRollup" (gethash "commit" node)))))
-    (when (hash-table-p rollup)
-      (puthash "ciState" (gethash "state" rollup) item)
-      (let ((ctx (gethash "contexts" rollup)) (passed 0) (total 0))
-        (when (hash-table-p ctx)
-          (dolist (kind '(("checkRunCountsByState" "SUCCESS" "NEUTRAL" "SKIPPED")
-                          ("statusContextCountsByState" "SUCCESS")))
-            (seq-doseq (c (or (gethash (car kind) ctx) []))
-              (let ((n (gethash "count" c)))
-                (setq total (+ total n))
-                (when (member (gethash "state" c) (cdr kind))
-                  (setq passed (+ passed n))))))
-          (puthash "ciPassed" passed item)
-          (puthash "ciTotal" total item))))
-    (remhash "commits" item))
-  item)
-
 (defun octocat-model--list-page (data)
   "Return DATA, a list search's answer, as (:items LIST :cursor C).
-The items are flattened by `octocat-model--flatten-list-item'.  C is the cursor
-to pass for the next page, or nil on the last."
+C is the cursor to pass for the next page, or nil on the last."
   (let* ((search (gethash "search" data))
          (info   (gethash "pageInfo" search)))
-    (list :items  (mapcar #'octocat-model--flatten-list-item (gethash "nodes" search))
+    (list :items  (append (gethash "nodes" search) nil)
           :cursor (and (eq (gethash "hasNextPage" info) t)
                        (octocat--nonempty (gethash "endCursor" info))))))
 
@@ -537,13 +494,21 @@ NOW is an ISO 8601 time.  It has no id or URL until GitHub answers."
   "Return DATA, a page resource's body, with COMMENT added to its comments.
 A comment of the same id, as a refetch may already have, is replaced."
   (let* ((id       (gethash "id" comment))
-         (comments (append (gethash "comments" data) nil))
+         (comments (append (octocat--nodes data "comments") nil))
          (old      (and id (seq-find (lambda (c) (equal (gethash "id" c) id)) comments))))
-    (puthash "comments"
-             (vconcat (if old
-                          (mapcar (lambda (c) (if (eq c old) comment c)) comments)
-                        (append comments (list comment))))
-             data)
+    (octocat-model--set-comments
+     data (vconcat (if old
+                       (mapcar (lambda (c) (if (eq c old) comment c)) comments)
+                     (append comments (list comment)))))))
+
+(defun octocat-model--set-comments (data comments)
+  "Return DATA, a page resource's body, with COMMENTS, a vector, its comments.
+The connection's other fields, such as its \"totalCount\", are kept."
+  (let ((conn (if (hash-table-p (gethash "comments" data))
+                  (copy-hash-table (gethash "comments" data))
+                (octocat--table))))
+    (puthash "nodes" comments conn)
+    (puthash "comments" conn data)
     data))
 
 (defun octocat-model-comment-numeric-id (comment)
@@ -559,18 +524,16 @@ It is read from the comment's \"url\", which ends in
   "Return DATA, a page resource's body, with comment COMMENT-ID's BODY set.
 COMMENT-ID is the numeric REST id.  PENDING, if non-nil, is what is
 being done to it, as `octocat-model-pending' has it."
-  (puthash "comments"
-           (cl-map 'vector
-                   (lambda (c)
-                     (if (not (equal (octocat-model-comment-numeric-id c) comment-id))
-                         c
-                       (let ((c (copy-hash-table c)))
-                         (puthash "body" body c)
-                         (when pending (puthash octocat-model-pending pending c))
-                         c)))
-                   (gethash "comments" data))
-           data)
-  data)
+  (octocat-model--set-comments
+   data (cl-map 'vector
+                (lambda (c)
+                  (if (not (equal (octocat-model-comment-numeric-id c) comment-id))
+                      c
+                    (let ((c (copy-hash-table c)))
+                      (puthash "body" body c)
+                      (when pending (puthash octocat-model-pending pending c))
+                      c)))
+                (octocat--nodes data "comments"))))
 
 (octocat-sync-define-mutation set-state (kind verb repo number)
   :label (format "%s %s…" (if (equal verb "close") "Closing" "Reopening")
@@ -678,20 +641,18 @@ ADD non-nil adds one, else takes one away.  GROUPS is not changed."
 (defun octocat-model--react-comment (data subject content add)
   "Return DATA, a page resource's body, with one CONTENT more on comment SUBJECT.
 SUBJECT is the comment's node id; ADD nil takes one away instead."
-  (puthash "comments"
-           (cl-map 'vector
-                   (lambda (c)
-                     (if (not (equal (gethash "id" c) subject))
-                         c
-                       (let ((c (copy-hash-table c)))
-                         (puthash "reactionGroups"
-                                  (octocat-model--toggle-reaction
-                                   (gethash "reactionGroups" c) content add)
-                                  c)
-                         c)))
-                   (gethash "comments" data))
-           data)
-  data)
+  (octocat-model--set-comments
+   data (cl-map 'vector
+                (lambda (c)
+                  (if (not (equal (gethash "id" c) subject))
+                      c
+                    (let ((c (copy-hash-table c)))
+                      (puthash "reactionGroups"
+                               (octocat-model--toggle-reaction
+                                (gethash "reactionGroups" c) content add)
+                               c)
+                      c)))
+                (octocat--nodes data "comments"))))
 
 (octocat-sync-define-mutation react (kind repo number subject content add)
   :label (if add "Reacting…" "Taking reaction back…")
@@ -731,17 +692,52 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
   :parse #'octocat-model--issue-parse-created
   :invalidates (octocat-model--item-lists 'issue repo))
 
+(defconst octocat-model--reaction-fields '(reactionGroups content (users totalCount))
+  "The GraphQL fields of the reactions to an item, comment or review.")
+
+(defconst octocat-model--item-fields
+  `(id number title state body url createdAt closedAt (author login)
+       (labels (:first 100) (nodes name color))
+       (assignees (:first 100) (nodes login))
+       (milestone number title)
+       ,octocat-model--reaction-fields
+       (comments (:first 100)
+                 totalCount
+                 (nodes id url body createdAt viewerDidAuthor (author login)
+                        ,octocat-model--reaction-fields)))
+  "The GraphQL fields an issue's page and a PR's both read.
+As `octocat--graphql' takes them.  Labels and assignees are all
+fetched, as for a list row (see `octocat-model--list-item-fields').")
+
+(defun octocat-model--item-query (type fields)
+  "Return the query of an issue or PR page, TYPE \"issue\" or \"pullRequest\".
+FIELDS are those it reads."
+  (octocat--graphql-query
+   '(:owner String! :name String! :number Int!)
+   `((repository (:owner $owner :name $name)
+                 (,(intern type) (:number $number) ,@fields)))))
+
+(defun octocat-model--item-tree (type repo item parts)
+  "Return ITEM, an issue or PR (TYPE) of REPO, as its page's resource's tree.
+PARTS are as for `octocat-model-detail'.  ITEM is nil when there is no
+such item."
+  (unless item
+    (error "No such %s" (if (eq type 'pr) "pull request" "issue")))
+  (octocat-model-detail item parts (lambda (f) (octocat-model-item type repo f))))
+
 (octocat-sync-define-resource issue (repo number)
   :entity (octocat-model-item-key 'issue repo number)
   :invalidates (octocat-model--item-lists 'issue repo)
-  :gh (list "issue" "view" (number-to-string number) "--repo" repo
-            "--json" (concat "id,number,title,author,state,stateReason,body,"
-                             "createdAt,closedAt,"
-                             "labels,comments,url,assignees,milestone,reactionGroups,"
-                             "closedByPullRequestsReferences"))
-  :parse (lambda (item)
-           (octocat-model-detail item '("comments")
-                                 (lambda (f) (octocat-model-item 'issue repo f)))))
+  :graphql (octocat-model--item-query
+            "issue" `(stateReason
+                      (closedByPullRequestsReferences
+                       (:first 20) (nodes number url (repository name (owner login))))
+                      ,@octocat-model--item-fields))
+  :repo repo
+  :vars `(("number" . ,number))
+  :parse (lambda (data)
+           (octocat-model--item-tree 'issue repo (octocat--get data "repository" "issue")
+                                     '("comments"))))
 
 ;;;; Pull requests
 
@@ -819,27 +815,53 @@ deletes the head branch as well."
 
 
 (defconst octocat-model--pr-parts
-  '("comments" "reviews" "latestReviews" "reviewRequests" "commits" "statusCheckRollup")
+  '("comments" "reviews" "latestReviews" "reviewRequests" "commits")
   "The fields of a PR page's data kept with its resource, not its entity.
-Pages of connections, and what belongs to the head commit, which the
-lists do not share.")
+Pages of connections, which the lists do not share.")
+
+(defconst octocat-model--check-fields
+  '(__typename
+    (... CheckRun name status conclusion startedAt completedAt detailsUrl
+         (checkSuite (workflowRun (workflow name))))
+    (... StatusContext context state targetUrl createdAt))
+  "The GraphQL fields of a check: a check run, or a commit status.")
+
+(defconst octocat-model--pr-fields
+  `(mergedAt baseRefName headRefName (headRepositoryOwner login)
+             isDraft mergeable mergeStateStatus changedFiles reviewDecision
+             (closingIssuesReferences (:first 20)
+                                      (nodes number url (repository name (owner login))))
+             (reviews (:first 100)
+                      (nodes id body state submittedAt (author login)
+                             ,octocat-model--reaction-fields))
+             (latestReviews (:first 100)
+                            (nodes id body state submittedAt (author login)))
+             (reviewRequests (:first 100)
+                             (nodes (requestedReviewer __typename
+                                                       (... User login)
+                                                       (... Team name slug))))
+             ;; The newest, so the head is last; GitHub gives no more than 100.
+             (commits (:last 100)
+                      totalCount
+                      (nodes (commit oid messageHeadline authoredDate committedDate
+                                     (author name email (user login))
+                                     (statusCheckRollup
+                                      state
+                                      (contexts (:first 100)
+                                                (nodes ,@octocat-model--check-fields)))))))
+  "The GraphQL fields of a PR page besides `octocat-model--item-fields'.
+As `octocat--graphql' takes them.")
 
 (octocat-sync-define-resource pr (repo number)
   :entity (octocat-model-item-key 'pr repo number)
   :invalidates (octocat-model--item-lists 'pr repo)
-  :gh (list "pr" "view" (number-to-string number) "--repo" repo
-            "--json" (concat "id,number,title,author,state,body,"
-                             "createdAt,mergedAt,closedAt,"
-                             "baseRefName,headRefName,headRepositoryOwner,"
-                             "isDraft,mergeable,mergeStateStatus,"
-                             "changedFiles,"
-                             "labels,reviewDecision,reviews,"
-                             "comments,statusCheckRollup,url,commits,"
-                             "assignees,milestone,latestReviews,reactionGroups,"
-                             "reviewRequests,closingIssuesReferences"))
-  :parse (lambda (item)
-           (octocat-model-detail item octocat-model--pr-parts
-                                 (lambda (f) (octocat-model-item 'pr repo f)))))
+  :graphql (octocat-model--item-query
+            "pullRequest" (append octocat-model--pr-fields octocat-model--item-fields))
+  :repo repo
+  :vars `(("number" . ,number))
+  :parse (lambda (data)
+           (octocat-model--item-tree 'pr repo (octocat--get data "repository" "pullRequest")
+                                     octocat-model--pr-parts)))
 
 ;; The runs of commit SHA awaiting approval.
 (octocat-sync-define-resource awaiting-runs (repo sha)
@@ -2065,18 +2087,26 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
 (octocat-sync-define-resource workflows (repo)
   :fetch (lambda (done) (octocat-model--workflow-list repo (octocat--then #'vconcat done))))
 
-;; The first 100 check runs of SHA.
+;; The first 100 checks of SHA, as `octocat-model--check-fields' reads them.
 (octocat-sync-define-resource checks (repo sha)
-  ;; None yet: they may still start.
+  ;; None yet: they may still start.  A commit status has no "status".
   :poll (lambda (data)
           (if (seq-empty-p data)
               octocat-sync-poll-interval
             (apply #'octocat-model--poll-status
                    (mapcar (lambda (c) (gethash "status" c)) data))))
-  :gh (list "api" (format "repos/%s/commits/%s/check-runs?per_page=100" repo sha))
-  :parse (lambda (r)
-           (let ((runs (and (hash-table-p r) (gethash "check_runs" r))))
-             (if (vectorp runs) runs []))))
+  :graphql (octocat--graphql-query
+            '(:owner String! :name String! :sha String!)
+            `((repository (:owner $owner :name $name)
+                          (object (:expression $sha)
+                                  (... Commit
+                                       (statusCheckRollup
+                                        (contexts (:first 100)
+                                                  (nodes ,@octocat-model--check-fields))))))))
+  :repo repo
+  :vars `(("sha" . ,sha))
+  :parse (lambda (data)
+           (octocat--nodes data "repository" "object" "statusCheckRollup" "contexts")))
 
 ;;;; Dashboard
 

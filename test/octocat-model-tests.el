@@ -25,12 +25,14 @@
         (issue (json-parse-string
                 (concat "{\"number\":12,\"title\":\"Crash\",\"state\":\"OPEN\","
                         "\"author\":{\"login\":\"alice\",\"is_bot\":false},"
-                        "\"labels\":[],\"comments\":[{\"body\":\"me too\"}]}"))))
+                        "\"labels\":{\"nodes\":[]},"
+                        "\"comments\":{\"totalCount\":1,\"nodes\":[{\"body\":\"me too\"}]}}"))))
     (octocat-sync--write db "list"
                          (octocat-model--list-tree
                           'issues "o/r"
                           (list :items (list (json-parse-string
-                                              "{\"number\":12,\"title\":\"Old\",\"commentCount\":0}"))))
+                                              (concat "{\"number\":12,\"title\":\"Old\","
+                                                      "\"comments\":{\"totalCount\":0}}")))))
                          1.0)
     (should (member "list"
                     (octocat-sync--write
@@ -40,11 +42,11 @@
                      2.0)))
     (let ((row (aref (gethash "nodes" (car (octocat-sync--read db "list"))) 0)))
       (should (equal (gethash "title" row) "Crash"))
-      (should (= (gethash "commentCount" row) 1))
-      (should-not (gethash "comments" row)))
+      (should (= (octocat--get row "comments" "totalCount") 1))
+      (should-not (octocat--get row "comments" "nodes")))
     (let ((page (octocat-model-detail-item (car (octocat-sync--read db "issue")))))
       (should (equal (gethash "login" (gethash "author" page)) "alice"))
-      (should (equal (gethash "body" (aref (gethash "comments" page) 0)) "me too")))))
+      (should (equal (gethash "body" (aref (octocat--nodes page "comments") 0)) "me too")))))
 
 (ert-deftest octocat-model-test-parse-file-blob ()
   "A file's text is kept but for a binary, cut short or too large one."
@@ -139,36 +141,34 @@
                  "repo:o/r type:issue")))
 
 (ert-deftest octocat-model-test-parse-list-items ()
-  "Connections flatten to what the rows read; the cursor ends with the pages."
+  "The rows read GraphQL's connections; the cursor ends with the pages."
   (let* ((json "{\"data\":{\"search\":{\"nodes\":[{\"number\":5,\"labels\":{\"nodes\":[{\"name\":\"bug\",\"color\":\"d73a4a\"}]},\"comments\":{\"totalCount\":3},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":{\"state\":\"FAILURE\",\"contexts\":{\"checkRunCountsByState\":[{\"state\":\"SUCCESS\",\"count\":3},{\"state\":\"FAILURE\",\"count\":1}],\"statusContextCountsByState\":[{\"state\":\"SUCCESS\",\"count\":1}]}}}}]}},{\"number\":6,\"labels\":{\"nodes\":[]},\"comments\":{\"totalCount\":0},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":null}}]}}],\"pageInfo\":{\"hasNextPage\":true,\"endCursor\":\"Y3I\"}}}}")
          (page  (octocat-model--parse-list-items json))
          (pr    (car (plist-get page :items)))
          (bare  (cadr (plist-get page :items))))
     (should (equal (plist-get page :cursor) "Y3I"))
-    (should (equal (gethash "name" (aref (gethash "labels" pr) 0)) "bug"))
-    (should (= (gethash "commentCount" pr) 3))
-    (should (equal (gethash "ciState" pr) "FAILURE"))
+    (should (equal (gethash "name" (aref (octocat--nodes pr "labels") 0)) "bug"))
+    (should (= (octocat--get pr "comments" "totalCount") 3))
     (should (equal (substring-no-properties (octocat--ci-status pr)) "✗"))
     (should (equal (substring-no-properties (octocat--ci-count-label pr)) "✗ 4/5"))
-    (should-not (gethash "ciState" bare))
-    (should-not (gethash "commits" bare)))
+    (should-not (octocat--rollup bare)))
   (should-not (plist-get (octocat-model--parse-list-items
                           "{\"data\":{\"search\":{\"nodes\":[],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}")
                          :cursor)))
 
 (ert-deftest octocat-model-test-list-item-assignees ()
-  "A list row's assignees become a vector of their nodes, as its labels do."
+  "A list row's assignees are the nodes of their connection, as its labels are."
   (let ((item (car (plist-get
                     (octocat-model--parse-list-items
                      "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
                        \"nodes\":[{\"number\":3,
                                    \"assignees\":{\"nodes\":[{\"login\":\"a\"}]}}]}}}")
                     :items))))
-    (should (equal (mapcar (lambda (u) (gethash "login" u)) (gethash "assignees" item))
+    (should (equal (mapcar (lambda (u) (gethash "login" u)) (octocat--nodes item "assignees"))
                    '("a")))))
 
 (ert-deftest octocat-model-test-list-item-requested-reviewers ()
-  "A PR row's requested reviewers become the users and teams asked."
+  "A PR row's requested reviewers are the users and teams asked."
   (let ((item (car (plist-get
                     (octocat-model--parse-list-items
                      "{\"data\":{\"search\":{\"pageInfo\":{\"hasNextPage\":false},
@@ -176,11 +176,13 @@
                          {\"requestedReviewer\":{\"login\":\"a\"}},
                          {\"requestedReviewer\":{\"name\":\"core\"}}]}}]}}}")
                     :items))))
-    (should (equal (mapcar (lambda (r) (or (gethash "login" r) (gethash "name" r)))
-                           (gethash "requestedReviewers" item))
+    (should (equal (mapcar (lambda (r) (or (octocat--get r "requestedReviewer" "login")
+                                           (octocat--get r "requestedReviewer" "name")))
+                           (octocat--nodes item "requestedReviewers"))
                    '("a" "core")))
     ;; The team has no login to toggle.
-    (should (equal (octocat-vui-list--value-counts (list item) "requestedReviewers" "login")
+    (should (equal (octocat-vui-list--value-counts (list item) "requestedReviewers"
+                                                   '("requestedReviewer" "login"))
                    '(("a" . 1))))))
 
 (ert-deftest octocat-model-test-list-item-without-commits ()
@@ -191,7 +193,29 @@
                        \"nodes\":[{\"number\":3,\"commits\":{\"nodes\":[]}}]}}}")
                     :items))))
     (should (= (gethash "number" item) 3))
-    (should-not (gethash "ciState" item))))
+    (should-not (octocat--rollup item))))
+
+(ert-deftest octocat-model-test-pr-tree ()
+  "A PR page keeps its connections; its entity, their counts and its labels."
+  (let* ((tree (funcall (plist-get (octocat-sync--props '(pr "o/r" 7)) :parse)
+                        (octocat-model-tests--data
+                         "{\"data\":{\"repository\":{\"pullRequest\":{
+                           \"number\":7,
+                           \"labels\":{\"nodes\":[{\"name\":\"bug\",\"color\":\"d73a4a\"}]},
+                           \"comments\":{\"totalCount\":2,\"nodes\":[{\"body\":\"hi\"}]},
+                           \"commits\":{\"totalCount\":1,\"nodes\":[
+                             {\"commit\":{\"oid\":\"b2\",
+                               \"statusCheckRollup\":{\"state\":\"SUCCESS\"}}}]}}}}}")))
+         (item (octocat-sync--entity-fields (gethash "item" tree))))
+    (should (equal (octocat--get item "comments" "totalCount") 2))
+    (should-not (gethash "commits" item))
+    (should (= (length (octocat--nodes item "labels")) 1))
+    (should (equal (gethash "body" (aref (octocat--nodes tree "comments") 0)) "hi"))
+    (should (equal (octocat-pr--head-sha tree) "b2"))
+    (should (equal (substring-no-properties (octocat--ci-status tree)) "✓")))
+  (should-error (funcall (plist-get (octocat-sync--props '(pr "o/r" 7)) :parse)
+                         (octocat-model-tests--data
+                          "{\"data\":{\"repository\":{\"pullRequest\":null}}}"))))
 
 (ert-deftest octocat-model-test-list-more ()
   "The page after a cursor is asked for by the list's query and page size."
@@ -212,9 +236,9 @@
 
 (defun octocat-model-tests--page (&rest comments)
   "Return a page resource's body holding COMMENTS, JSON strings."
-  (let ((data (make-hash-table :test #'equal)))
-    (puthash "comments" (vconcat (mapcar #'json-parse-string comments)) data)
-    data))
+  (octocat--table "comments" (octocat--table "totalCount" (length comments)
+                                             "nodes" (vconcat (mapcar #'json-parse-string
+                                                                      comments)))))
 
 (ert-deftest octocat-model-test-toggle-reaction ()
   "A reaction is counted up, down to nothing, or added; the old groups stay."
@@ -236,17 +260,18 @@
   (let ((data (octocat-model-tests--page "{\"id\":\"C1\",\"body\":\"a\"}")))
     (octocat-model--put-comment data (json-parse-string "{\"id\":\"C2\",\"body\":\"b\"}"))
     (octocat-model--put-comment data (json-parse-string "{\"id\":\"C1\",\"body\":\"a2\"}"))
-    (should (equal (mapcar (lambda (c) (gethash "body" c)) (gethash "comments" data))
-                   '("a2" "b")))))
+    (should (equal (mapcar (lambda (c) (gethash "body" c)) (octocat--nodes data "comments"))
+                   '("a2" "b")))
+    (should (= (octocat--get data "comments" "totalCount") 1))))
 
 (ert-deftest octocat-model-test-set-comment-body ()
   "Only the comment of that REST id changes, and as a copy."
   (let* ((data (octocat-model-tests--page
                 "{\"url\":\"https://x/1#issuecomment-11\",\"body\":\"a\"}"
                 "{\"url\":\"https://x/1#issuecomment-22\",\"body\":\"b\"}"))
-         (old  (aref (gethash "comments" data) 0))
-         (new  (gethash "comments"
-                        (octocat-model--set-comment-body data "11" "a2" "saving"))))
+         (old  (aref (octocat--nodes data "comments") 0))
+         (new  (octocat--nodes (octocat-model--set-comment-body data "11" "a2" "saving")
+                               "comments")))
     (should (equal (gethash "body" (aref new 0)) "a2"))
     (should (equal (gethash octocat-model-pending (aref new 0)) "saving"))
     (should (equal (gethash "body" (aref new 1)) "b"))
@@ -257,7 +282,8 @@
   (let* ((data (octocat-model-tests--page
                 "{\"id\":\"C1\",\"reactionGroups\":[]}"
                 "{\"id\":\"C2\",\"reactionGroups\":[]}"))
-         (new  (gethash "comments" (octocat-model--react-comment data "C2" "HEART" t))))
+         (new  (octocat--nodes (octocat-model--react-comment data "C2" "HEART" t)
+                               "comments")))
     (should (seq-empty-p (gethash "reactionGroups" (aref new 0))))
     (should (= (octocat--get (aref (gethash "reactionGroups" (aref new 1)) 0)
                              "users" "totalCount")
@@ -498,7 +524,8 @@ env:
     (should (octocat-sync--entity-p item))
     (should (equal (octocat-sync--entity-key item) "pr:o/r#5"))
     (should-not (gethash "repository" (octocat-sync--entity-fields item)))
-    (should (equal (gethash "commentCount" (octocat-sync--entity-fields item)) 4))))
+    (should (equal (octocat--get (octocat-sync--entity-fields item) "comments" "totalCount")
+                   4))))
 
 ;;;; Users
 

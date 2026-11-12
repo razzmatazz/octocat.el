@@ -1973,39 +1973,18 @@ May be nil when only a SHA is available.")
 ;;;;; Rendering helpers
 
 (defun octocat--check-run-id (check)
-  "Return the GitHub Actions workflow run ID of the REST check-run CHECK, or nil.
+  "Return the GitHub Actions workflow run ID of CHECK, or nil.
 It is read from the check's details URL, `.../actions/runs/ID/job/...';
 a check not created by GitHub Actions has none."
-  (let ((url (or (octocat--nonempty (gethash "details_url" check))
-                 (octocat--nonempty (gethash "html_url" check)))))
+  (let ((url (octocat--nonempty (gethash "detailsUrl" check))))
     (and url (string-match "/actions/runs/\\([0-9]+\\)" url)
          (string-to-number (match-string 1 url)))))
 
 
 ;;;;; Checks section (vui)
 ;;
-;; Shared by the PR and commit pages.
-
-(defun octocat-checks-from-rest (check)
-  "Return the REST check-run CHECK in the shape of a `statusCheckRollup' entry.
-The REST API's snake_case, lowercase fields become the camelCase,
-uppercase ones `gh pr view' gives; the app name stands in for the
-workflow name, which the REST check-run does not carry."
-  (let ((entry (make-hash-table :test #'equal)))
-    (dolist (field `(("name"         . ,(gethash "name" check))
-                     ("workflowName" . ,(octocat--get check "app" "name"))
-                     ("status"       . ,(octocat--nonempty (gethash "status" check)))
-                     ("conclusion"   . ,(octocat--nonempty (gethash "conclusion" check)))
-                     ("startedAt"    . ,(octocat--nonempty (gethash "started_at" check)))
-                     ("completedAt"  . ,(octocat--nonempty (gethash "completed_at" check)))
-                     ("detailsUrl"   . ,(octocat--nonempty (gethash "html_url" check)))))
-      (when (cdr field)
-        (puthash (car field)
-                 (if (member (car field) '("status" "conclusion"))
-                     (upcase (cdr field))
-                   (cdr field))
-                 entry)))
-    entry))
+;; Shared by the PR and commit pages.  A check is a check run or a
+;; commit status, as `octocat-model--check-fields' reads them.
 
 (defconst octocat-checks--column-max '(50 30)
   "Widest the name and workflow columns of the checks list grow.")
@@ -2014,9 +1993,9 @@ workflow name, which the REST check-run does not carry."
   "Return the text columns of status CHECK (a hash-table).
 That is a list (NAME WORKFLOW DURATION STARTED); STARTED is the age,
 with the exact time on hover (see `octocat--format-ts-relative')."
-  (let ((started (octocat--get check "startedAt")))
-    (list (or (gethash "name" check) "")
-          (or (gethash "workflowName" check) "")
+  (let ((started (or (octocat--get check "startedAt") (octocat--get check "createdAt"))))
+    (list (or (octocat--get check "name") (octocat--get check "context") "")
+          (or (octocat--get check "checkSuite" "workflowRun" "workflow" "name") "")
           (or (octocat--run-duration started (octocat--get check "completedAt")) "")
           (octocat--format-ts-relative started))))
 
@@ -2064,9 +2043,9 @@ The rest expands on RET.  Nil never folds."
 
 (defun octocat-checks-rows (rollup on-visit &optional indent)
   "Return a vnode listing ROLLUP; all but a few fold away.
-ROLLUP is a `statusCheckRollup' vector, as a PR has (see
-`octocat-checks-from-rest' for a commit's check-runs).  ON-VISIT is
-called by RET on a check.  INDENT starts each row, two spaces if nil."
+ROLLUP is a vector of checks, the nodes of a commit's
+\"statusCheckRollup\" contexts.  ON-VISIT is called by RET on a check.
+INDENT starts each row, two spaces if nil."
   (let ((widths (octocat-checks--widths rollup))) ; Of all, so unfolding shifts no column.
     (vui-component 'octocat-vui-fold-rest
       :total (length rollup)
@@ -2098,36 +2077,36 @@ underlined across WIDTH columns."
 ;;;;; Page
 
 (defun octocat-checks--visit (repo check)
-  "Open the workflow run of the REST check-run CHECK of REPO.
+  "Open the workflow run of CHECK of REPO.
 A check not created by GitHub Actions opens in the browser instead."
   (let ((run-id (octocat--check-run-id check)))
     (if run-id
         (octocat-run-open repo run-id)
-      (when-let* ((url (octocat--nonempty (gethash "html_url" check))))
+      (when-let* ((url (or (octocat--nonempty (gethash "detailsUrl" check))
+                           (octocat--nonempty (gethash "targetUrl" check)))))
         (octocat-follow-url url)))))
 
 (defun octocat-checks--list (repo checks)
   "Return the vnodes of the section of the CI results of REPO, one per row.
-CHECKS is a sequence of REST check-runs."
-  (let* ((checks  (append checks nil))
-         (entries (mapcar #'octocat-checks-from-rest checks))
-         (widths  (octocat-checks--widths entries)))
+CHECKS is a sequence of checks, as `octocat-model--check-fields' reads them."
+  (let* ((checks (append checks nil))
+         (widths (octocat-checks--widths checks)))
     (cons
      (vui-text (concat (propertize (format "Check runs (%d)" (length checks))
                                    'face 'octocat-section-heading)
                        (when checks
                          (concat "  " (propertize "CI:" 'face 'octocat-dimmed)
-                                 " " (octocat--checks-ci-status entries)))))
+                                 " " (octocat--checks-ci-status checks)))))
      (if (null checks)
          (list (vui-text "  (no checks)" :face 'octocat-dimmed))
-       (cl-mapcar (lambda (check entry)
-                    (octocat-checks--row
-                     entry widths
-                     (lambda () (octocat-checks--visit repo check))
-                     (if (octocat--check-run-id check)
-                         "RET: open workflow run"
-                       "RET: open in browser")))
-                  checks entries)))))
+       (mapcar (lambda (check)
+                 (octocat-checks--row
+                  check widths
+                  (lambda () (octocat-checks--visit repo check))
+                  (if (octocat--check-run-id check)
+                      "RET: open workflow run"
+                    "RET: open in browser")))
+               checks)))))
 
 (vui-defcomponent octocat-checks--page (repo sha ref tick)
   "The check-runs of commit SHA of REPO; REF is its branch, or nil.

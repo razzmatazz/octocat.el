@@ -1723,7 +1723,7 @@ underlined across WIDTH columns."
           (vui-vstack (octocat-commit--heading "Checks" checks width) status))
         (apply #'vui-vstack
                (octocat-checks-block
-                (cl-map 'vector #'octocat-checks-from-rest (plist-get checks :data))
+                (plist-get checks :data)
                 (lambda () (octocat-checks-open repo sha nil))
                 width)))))
 

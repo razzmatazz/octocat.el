@@ -197,7 +197,7 @@ PR's reviews and commits."
                            :target comment
                            :pending (octocat--get comment octocat-model-pending)
                            :reactions (octocat--reactions-string comment)))
-                   (octocat--get obj "comments"))
+                   (octocat--nodes obj "comments"))
            extra
            (if events
                (delq nil
@@ -773,8 +773,9 @@ Every page showing it changes at once; the mode line shows it under way."
   '(("label"    "Labels"    "labels"         "name")
     ("assignee" "Assignees" "assignees"      "login")
     ;; Only pending requests: a review given can't be withdrawn.
-    ("reviewer" "Reviewers" "reviewRequests" "login"))
-  "Each FLAG of `gh ... edit --add-FLAG': prompt, item field, value key.")
+    ("reviewer" "Reviewers" "reviewRequests" "requestedReviewer" "login"))
+  "Each FLAG of `gh ... edit --add-FLAG': prompt, item field, value path.
+The field is a connection; the path is the keys of a node's value.")
 
 (defun octocat-timeline-edit-field (kind repo item flag)
   "Return the label of the FLAG field of ITEM, a button picking its values.
@@ -790,11 +791,11 @@ ITEM is an issue or PR (KIND) of REPO."
   "Pick the values of the FLAG field of NUMBER, an issue or PR (KIND) of REPO.
 FLAG is in `octocat-timeline--value-fields'.  The candidates are the
 stored ones, refetched behind the prompt (see `octocat-vui-list--stored')."
-  (pcase-let* ((`(,_ ,prompt ,field ,key) (assoc flag octocat-timeline--value-fields))
+  (pcase-let* ((`(,_ ,prompt ,field . ,path) (assoc flag octocat-timeline--value-fields))
                (labels  (equal flag "label"))
                (item    (octocat-model-detail-read (octocat-model-detail-spec kind repo number)))
-               (current (delq nil (mapcar (lambda (x) (gethash key x))
-                                          (and item (gethash field item)))))
+               (current (delq nil (mapcar (lambda (x) (apply #'octocat--get x path))
+                                          (octocat--nodes item field))))
                (at      (lambda (s) (if labels s (concat "@" s))))
                (buf     (current-buffer)))
     (funcall

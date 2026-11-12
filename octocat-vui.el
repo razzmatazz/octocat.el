@@ -2577,12 +2577,12 @@ one, move to the next item."
   (concat (if (eq kind 'pulls) "PR" "issue") (if (= n 1) "" "s")))
 
 (defconst octocat-vui-list--toggles
-  '(("label"    :button "[Label]" :name "Labels" :field "labels" :key "name"
+  '(("label"    :button "[Label]" :name "Labels" :field "labels" :key ("name")
      :resource labels :doing "Labelling" :done "Labelled")
-    ("assignee" :button "[Assign]" :name "Assignees" :field "assignees" :key "login"
+    ("assignee" :button "[Assign]" :name "Assignees" :field "assignees" :key ("login")
      :resource assignees :doing "Assigning" :done "Assigned" :prefix "@")
     ("reviewer" :button "[Request review]" :name "Reviewers"
-     :field "requestedReviewers" :key "login" :resource assignees
+     :field "requestedReviewers" :key ("requestedReviewer" "login") :resource assignees
      :doing "Requesting reviews" :done "Updated the reviewers of" :prefix "@"
      :kinds (pulls)))
   "What the Marked bar toggles on the marked items, by FLAG.
@@ -2642,12 +2642,12 @@ shown instead of the actions."
 
 (defun octocat-vui-list--value-counts (items field key)
   "Return how many of ITEMS have each value of their FIELD, as (VALUE . N).
-FIELD holds a vector of tables, KEY the name of their value."
+FIELD is a connection, KEY the path of keys to the value of a node."
   (let (counts)
     (dolist (item items)
-      (seq-doseq (x (or (gethash field item) []))
+      (seq-doseq (x (octocat--nodes item field))
         ;; A team asked to review has no login.
-        (when-let* ((value (and (hash-table-p x) (gethash key x))))
+        (when-let* ((value (apply #'octocat--get x key)))
           (let ((cell (assoc value counts)))
             (if cell (cl-incf (cdr cell)) (push (cons value 1) counts))))))
     (nreverse counts)))
@@ -2662,8 +2662,8 @@ those without it.  FIELD and KEY are as for
     (delq nil
           (mapcar
            (lambda (item)
-             (let ((has (mapcar (lambda (x) (gethash key x))
-                                (or (gethash field item) [])))
+             (let ((has (mapcar (lambda (x) (apply #'octocat--get x key))
+                                (octocat--nodes item field)))
                    add remove)
                (dolist (value picked)
                  (if (eql (cdr (assoc value counts)) all)
@@ -2892,8 +2892,8 @@ unknown: closed is then purple, or grey if \"NOT_PLANNED\", as on GitHub."
   "Return \"assigned to @login\" for the first assignee of ITEM, or nil.
 How many more there are follows, as \" +2\".  Said in words, as GitHub's
 tooltip on its avatars does: a bare login reads as the author."
-  (let ((users (gethash "assignees" item)))
-    (when (and (vectorp users) (> (length users) 0))
+  (let ((users (octocat--nodes item "assignees")))
+    (when (> (length users) 0)
       (concat (propertize "assigned to " 'face 'octocat-dimmed)
               (propertize (concat "@" (or (gethash "login" (aref users 0)) ""))
                           'face 'octocat-pr-author)
@@ -2907,12 +2907,8 @@ The keys are :title, :chips (label chips), :review, :ci, :author,
 :number \(\"owner/repo#N\");
 a cell that ITEM does not have is nil or empty.  BG is as for
 `octocat--label-face'."
-  (let* ((checks   (gethash "statusCheckRollup" item))
-         (closers  (gethash "closedByPullRequestsReferences" item))
-         ;; A list row's item has the count; a page's, the comments.
-         (comments (or (gethash "commentCount" item)
-                       (let ((c (gethash "comments" item)))
-                         (if (vectorp c) (length c) 0)))))
+  (let* ((closers  (octocat--nodes item "closedByPullRequestsReferences"))
+         (comments (or (octocat--get item "comments" "totalCount") 0)))
     (list :title  (or (gethash "title" item) "")
           :number (concat (propertize repo 'face 'octocat-repo)
                           (propertize (format "#%d" (gethash "number" item))
@@ -2920,7 +2916,7 @@ a cell that ITEM does not have is nil or empty.  BG is as for
           :date   (propertize (octocat--format-ts-relative
                                (or (gethash "createdAt" item) ""))
                               'face 'octocat-dimmed)
-          :prs    (and (vectorp closers) (> (length closers) 0)
+          :prs    (and (> (length closers) 0)
                        (propertize
                         (mapconcat (lambda (pr) (format "#%d" (gethash "number" pr)))
                                    closers " ")
@@ -2928,7 +2924,7 @@ a cell that ITEM does not have is nil or empty.  BG is as for
           :comments (and (> comments 0)
                          (propertize (format "✉ %d" comments)
                                      'face 'octocat-dimmed))
-          :chips  (octocat--format-labels (gethash "labels" item) bg)
+          :chips  (octocat--format-labels (octocat--nodes item "labels") bg)
           ;; As GitHub's list, only while open: a draft says so instead.
           :review (and (equal (upcase (or (gethash "state" item) "")) "OPEN")
                        (not (eq (gethash "isDraft" item) t))
@@ -2937,9 +2933,7 @@ a cell that ITEM does not have is nil or empty.  BG is as for
                                            ("APPROVED"          "Approved")
                                            ("CHANGES_REQUESTED" "Changes requested"))))
                          (propertize text 'face 'octocat-dimmed)))
-          :ci     (and (or (octocat--nonempty (gethash "ciState" item))
-                           (and checks (not (eq checks :null)) (> (length checks) 0)))
-                       (octocat--ci-count-label item))
+          :ci     (and (octocat--rollup item) (octocat--ci-count-label item))
           :assignees (octocat-vui--assignees item)
           :author (propertize (octocat--author-login item)
                               'face 'octocat-pr-author))))
@@ -3242,7 +3236,7 @@ See `octocat-vui--detail-header'."
          (room   (- width (string-width head) 2))
          (full   (min (string-width title) room))
          (chips  (mapcar (lambda (l) (octocat--format-label l bg))
-                         (append (octocat--get item "labels") nil)))
+                         (append (octocat--nodes item "labels") nil)))
          (tail   (seq-some
                   (lambda (n)
                     ;; Labels from the end give way to a count, then all go.

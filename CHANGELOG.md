@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A PR's newest commit shows the CI state of the page's checks, not a list's older one
+* A commit's checks name their workflow, as a PR's do, not the app that ran them
 * `[Filter files]` on a diff shows only the changed files whose path holds some text
 * Switching between Diff, Tree and Patch keeps the file or directory at point
 * The file viewer has a Diff view: the page's change, or the file's last commit's

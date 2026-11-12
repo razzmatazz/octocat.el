@@ -411,26 +411,29 @@ jobs:
     (should-not (octocat-workflow--input-errors
                  inputs (octocat-workflow--input-values inputs '(("n" . "-1.5e3") ("tag" . "v1")))))))
 
-(ert-deftest octocat-checks-test-from-rest ()
-  "A REST check-run takes the shape of a statusCheckRollup entry."
-  (let ((entry (octocat-checks-from-rest
-                (json-parse-string
-                 "{\"name\":\"test\",\"status\":\"completed\",\"conclusion\":\"success\",\"started_at\":\"2026-01-01T00:00:00Z\",\"completed_at\":null,\"app\":{\"name\":\"GitHub Actions\"}}"))))
-    (should (equal (gethash "name" entry) "test"))
-    (should (equal (gethash "workflowName" entry) "GitHub Actions"))
-    (should (equal (gethash "status" entry) "COMPLETED"))
-    (should (equal (gethash "conclusion" entry) "SUCCESS"))
-    (should (equal (gethash "startedAt" entry) "2026-01-01T00:00:00Z"))
-    (should-not (gethash "completedAt" entry))))
+(ert-deftest octocat-checks-test-fields ()
+  "A check run and a commit status show their name, workflow and start."
+  (let ((run (json-parse-string
+              (concat "{\"__typename\":\"CheckRun\",\"name\":\"test\","
+                      "\"startedAt\":\"2026-01-01T00:00:00Z\",\"completedAt\":null,"
+                      "\"checkSuite\":{\"workflowRun\":{\"workflow\":{\"name\":\"CI\"}}}}")
+              :null-object nil))
+        (status (json-parse-string
+                 (concat "{\"__typename\":\"StatusContext\",\"context\":\"ci/x\","
+                         "\"state\":\"SUCCESS\",\"createdAt\":\"2026-01-01T00:00:00Z\"}"))))
+    (should (equal (seq-take (octocat-checks--fields run) 2) '("test" "CI")))
+    (should (equal (seq-take (octocat-checks--fields status) 2) '("ci/x" "")))
+    (should (equal (substring-no-properties (nth 3 (octocat-checks--fields status)))
+                   (substring-no-properties (nth 3 (octocat-checks--fields run)))))))
 
 (ert-deftest octocat-checks-test-check-run-id ()
-  "The workflow run ID comes from the details URL, not the check suite."
+  "The workflow run ID comes from the details URL."
   (should (equal (octocat--check-run-id
                   (json-parse-string
-                   "{\"details_url\":\"https://github.com/o/r/actions/runs/38218268003/job/1\",\"check_suite\":{\"id\":103543467452}}"))
+                   "{\"detailsUrl\":\"https://github.com/o/r/actions/runs/38218268003/job/1\"}"))
                  38218268003))
   (should-not (octocat--check-run-id
-               (json-parse-string "{\"details_url\":\"https://ci.example.com/build/7\"}"))))
+               (json-parse-string "{\"detailsUrl\":\"https://ci.example.com/build/7\"}"))))
 
 (provide 'octocat-actions-tests)
 ;;; octocat-actions-tests.el ends here

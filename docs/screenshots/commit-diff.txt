@@ -12,10 +12,10 @@ Footnotes were left as their Markdown source.  Render them, and show a
 note in a popup when its reference is hovered.
 
 Checks (4)  CI: ✓
-  ✓ lint           GitHub Actions  2m00s  6 hours ago
-  ✓ test (stable)  GitHub Actions  6m00s  6 hours ago
-  ✓ test (beta)    GitHub Actions  7m00s  6 hours ago
-  ✓ docs           GitHub Actions  3m00s  6 hours ago
+  ✓ lint           CI  2m00s  6 hours ago
+  ✓ test (stable)  CI  6m00s  6 hours ago
+  ✓ test (beta)    CI  7m00s  6 hours ago
+  ✓ docs           CI  3m00s  6 hours ago
 
 Files (5)  [Collapse all]  [Filter files]
 ▾ A docs/assets/footnote-popup.png

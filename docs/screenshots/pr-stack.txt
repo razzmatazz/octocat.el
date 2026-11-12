@@ -10,7 +10,7 @@ Conversation  [Commits (1)]  [Files changed (4)]
 │
 │ Stacked on #130, whose watcher this uses.
 │
-○ @srivera committed b7d444f Skip pages whose inputs are unchanged  3 hours ago  CI: ●
+○ @srivera committed b7d444f Skip pages whose inputs are unchanged  3 hours ago  CI: ✓
 │
 [+ Add a comment]   [Close pull request]
 

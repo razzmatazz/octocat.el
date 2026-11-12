@@ -273,7 +273,9 @@
   "A detail pin cuts its title to fit, and keeps labels while half of it shows."
   (let* ((label (lambda (name) (octocat--table "name" name "color" "")))
          (item  (octocat--table "number" 7 "title" (make-string 40 ?t)
-                                "labels" (vector (funcall label "bug") (funcall label "perf"))))
+                                "labels" (octocat--table
+                                          "nodes" (vector (funcall label "bug")
+                                                          (funcall label "perf")))))
          (pin   (lambda (width) (substring-no-properties
                                  (octocat-vui-detail-pin item "open  " width nil)))))
     (should (equal (funcall pin 80) (concat "open  #7  " (make-string 40 ?t) "  bug perf")))
@@ -785,11 +787,10 @@ The marks are kept in a variable, as the page keeps them in its state."
   "Return an item NUMBER with labels NAMES, as a list holds it."
   (let ((item (make-hash-table :test #'equal)))
     (puthash "number" number item)
-    (puthash "labels" (vconcat (mapcar (lambda (name)
-                                         (let ((l (make-hash-table :test #'equal)))
-                                           (puthash "name" name l)
-                                           l))
-                                       names))
+    (puthash "labels"
+             (octocat--table "nodes" (vconcat (mapcar (lambda (name)
+                                                        (octocat--table "name" name))
+                                                      names)))
              item)
     item))
 
@@ -797,20 +798,18 @@ The marks are kept in a variable, as the page keeps them in its state."
   "A label all items have is taken off; any other is added to those without it."
   (let ((items (list (octocat-vui-tests--labelled 1 "bug" "docs")
                      (octocat-vui-tests--labelled 2 "bug"))))
-    (should (equal (octocat-vui-list--value-counts items "labels" "name")
+    (should (equal (octocat-vui-list--value-counts items "labels" '("name"))
                    '(("bug" . 2) ("docs" . 1))))
-    (should (equal (octocat-vui-list--toggle-changes items '("bug" "docs" "new") "labels" "name")
+    (should (equal (octocat-vui-list--toggle-changes items '("bug" "docs" "new") "labels" '("name"))
                    '((1 ("new") ("bug")) (2 ("docs" "new") ("bug")))))
     ;; An item with nothing to change is left out.
-    (should (equal (octocat-vui-list--toggle-changes items '("docs") "labels" "name")
+    (should (equal (octocat-vui-list--toggle-changes items '("docs") "labels" '("name"))
                    '((2 ("docs") nil))))
     ;; Assignees the same way, by login.
     (let ((assigned (list (octocat-vui-tests--labelled 1) (octocat-vui-tests--labelled 2))))
-      (puthash "assignees" (vector (let ((u (make-hash-table :test #'equal)))
-                                     (puthash "login" "a" u)
-                                     u))
+      (puthash "assignees" (octocat--table "nodes" (vector (octocat--table "login" "a")))
                (car assigned))
-      (should (equal (octocat-vui-list--toggle-changes assigned '("a") "assignees" "login")
+      (should (equal (octocat-vui-list--toggle-changes assigned '("a") "assignees" '("login"))
                      '((2 ("a") nil)))))))
 
 (ert-deftest octocat-vui-test-state-changes ()

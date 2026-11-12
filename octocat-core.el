@@ -693,6 +693,43 @@ Missing keys, non-table intermediates and JSON null all give nil."
     (setq obj (gethash (pop keys) obj)))
   (and (null keys) (not (eq obj :null)) obj))
 
+(defun octocat--nodes (obj &rest keys)
+  "Return the nodes of the GraphQL connection under KEYS in OBJ, a vector.
+It is [] when there is none."
+  (or (apply #'octocat--get obj (append keys '("nodes"))) []))
+
+(defun octocat--graphql (selections)
+  "Return SELECTIONS, GraphQL fields as s-expressions, as GraphQL's text.
+A selection is a field's symbol, or (FIELD [ARGS] SELECTION...): FIELD
+with ARGS, a plist such as (:first 100), and its own selections.
+\(... TYPE SELECTION...) selects only on TYPE.  An argument is a number
+or a symbol: an enum value, or a variable such as $id."
+  (mapconcat
+   (lambda (s)
+     (if (symbolp s)
+         (symbol-name s)
+       (let* ((name (pop s))
+              (type (and (eq name '...) (pop s)))
+              (args (and (keywordp (car-safe (car s))) (pop s))))
+         (concat (if type (format "...on %s" type) (symbol-name name))
+                 (and args
+                      (format "(%s)"
+                              (mapconcat (pcase-lambda (`(,k ,v))
+                                           (format "%s:%s" (substring (symbol-name k) 1) v))
+                                         (seq-partition args 2) ",")))
+                 (and s (format "{%s}" (octocat--graphql s)))))))
+   selections " "))
+
+(defun octocat--graphql-query (vars selections)
+  "Return a GraphQL query of SELECTIONS, as `octocat--graphql' takes them.
+VARS is a plist of the variables it declares and their types, such as
+\(:owner String! :after String)."
+  (format "query(%s){%s}"
+          (mapconcat (pcase-lambda (`(,k ,type))
+                       (format "$%s:%s" (substring (symbol-name k) 1) type))
+                     (seq-partition vars 2) ",")
+          (octocat--graphql selections)))
+
 (defun octocat--table (&rest pairs)
   "Return a hash table of PAIRS, alternating keys and values."
   (let ((h (make-hash-table :test #'equal)))
@@ -792,20 +829,29 @@ either timestamp is unavailable."
            (t             (format "%dh%02dm" (/ secs 3600) (/ (% secs 3600) 60)))))
       (error nil))))
 
+(defun octocat--head-commit (pr)
+  "Return the newest of PR's commits, as GraphQL has them, or nil.
+A list row's PR has only that one; a page's, the last 100."
+  (let ((nodes (octocat--nodes pr "commits")))
+    (and (> (length nodes) 0)
+         (octocat--get (aref nodes (1- (length nodes))) "commit"))))
+
+(defun octocat--rollup (pr)
+  "Return the \"statusCheckRollup\" of PR's head commit, or nil.
+It is nil when the commit has no checks."
+  (octocat--get (octocat--head-commit pr) "statusCheckRollup"))
+
 (defun octocat--ci-status (pr)
   "Return a one-character CI-status indicator for PR hash-table PR.
-Returns \"✓\" (success), \"✗\" (failure), or \"●\" (pending/unknown).
-A list row's PR carries GitHub's rolled-up \"ciState\" instead of the
-checks themselves (see `octocat-model--flatten-list-item')."
-  (if-let* ((state (octocat--nonempty (gethash "ciState" pr))))
-      (octocat--outcomes-ci-status (list state))
-    (octocat--checks-ci-status (gethash "statusCheckRollup" pr))))
+Returns \"✓\" (success), \"✗\" (failure), or \"●\" (pending/unknown):
+GitHub's rolled-up state of its checks, \"✓\" without checks."
+  (octocat--outcomes-ci-status (ensure-list (octocat--get (octocat--rollup pr) "state"))))
 
 (defun octocat--checks-ci-status (checks)
   "Return a CI-status indicator, as `octocat--ci-status' does.
-The status is that of CHECKS, a `statusCheckRollup' sequence, or nil or
-:null.  A check's outcome is its conclusion (a check-run) or its state
-\(a commit status); one with neither is still running."
+The status is that of CHECKS, the nodes of a check rollup's contexts,
+or nil or :null.  A check's outcome is its conclusion (a check-run) or
+its state \(a commit status); one with neither is still running."
   (octocat--outcomes-ci-status
    (and checks (not (eq checks :null))
         (mapcar (lambda (c)
@@ -832,16 +878,31 @@ Combines a dimmed \"CI:\" prefix with the coloured status icon from
           " "
           (octocat--ci-status pr)))
 
+(defun octocat--ci-counts (pr)
+  "Return (PASSED . TOTAL): PR's CI results that passed, and all of them.
+They are read from the counts by state a list row's rollup has, nil
+without them."
+  (when-let* ((ctx (octocat--get (octocat--rollup pr) "contexts"))
+              ((or (gethash "checkRunCountsByState" ctx)
+                   (gethash "statusContextCountsByState" ctx))))
+    (let ((passed 0) (total 0))
+      (dolist (kind '(("checkRunCountsByState" "SUCCESS" "NEUTRAL" "SKIPPED")
+                      ("statusContextCountsByState" "SUCCESS")))
+        (seq-doseq (c (or (gethash (car kind) ctx) []))
+          (let ((n (gethash "count" c)))
+            (setq total (+ total n))
+            (when (member (gethash "state" c) (cdr kind))
+              (setq passed (+ passed n))))))
+      (cons passed total))))
+
 (defun octocat--ci-count-label (pr)
   "Return PR's CI status as GitHub's list has it, e.g. \"✓ 5/5\".
-Without the counts (see `octocat-model--flatten-list-item') it is
-`octocat--ci-label'."
-  (if-let* ((total (gethash "ciTotal" pr))
-            ((> total 0)))
-      (concat (octocat--ci-status pr) " "
-              (propertize (format "%d/%d" (gethash "ciPassed" pr) total)
-                          'face 'octocat-dimmed))
-    (octocat--ci-label pr)))
+Without the counts (see `octocat--ci-counts') it is `octocat--ci-label'."
+  (pcase (octocat--ci-counts pr)
+    ((and `(,passed . ,total) (guard (> total 0)))
+     (concat (octocat--ci-status pr) " "
+             (propertize (format "%d/%d" passed total) 'face 'octocat-dimmed)))
+    (_ (octocat--ci-label pr))))
 
 ;;;; Settings
 ;;

@@ -15,10 +15,10 @@ templates it includes.
 Closes #97
 
 Checks (4)  CI: ✓
-  ✓ lint           GitHub Actions  2m00s  6 hours ago
-  ✓ test (stable)  GitHub Actions  6m00s  6 hours ago
-  ✓ test (beta)    GitHub Actions  7m00s  6 hours ago
-  ✓ docs           GitHub Actions  3m00s  6 hours ago
+  ✓ lint           CI  2m00s  6 hours ago
+  ✓ test (stable)  CI  6m00s  6 hours ago
+  ✓ test (beta)    CI  7m00s  6 hours ago
+  ✓ docs           CI  3m00s  6 hours ago
 
 Files (3)  [Expand all]  [Filter files]
 ▸ A src/cache.rs  +18 -0

@@ -27,7 +27,8 @@
   (let ((pr (octocat-pr-test--pr
              "{\"number\":7,\"title\":\"Fix\",\"headRefName\":\"fix\",
                \"headRepositoryOwner\":{\"login\":\"me\"},
-               \"commits\":[{\"messageHeadline\":\"a\"},{\"messageHeadline\":\"b\"}]}")))
+               \"commits\":{\"nodes\":[{\"commit\":{\"messageHeadline\":\"a\"}},
+                                       {\"commit\":{\"messageHeadline\":\"b\"}}]}}")))
     (should (equal (octocat-pr--merge-message 'merge pr)
                    "Merge pull request #7 from me/fix\n\nFix"))
     (should (equal (octocat-pr--merge-message 'squash pr) "Fix (#7)\n\n* a\n* b"))
@@ -129,15 +130,15 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
 (ert-deftest octocat-pr-test-commits ()
   "Commits are listed oldest first and read as REST commits."
   (let* ((pr (octocat-pr-test--pr
-              "{\"commits\":[
-                 {\"oid\":\"aaa\",\"messageHeadline\":\"a\",
+              "{\"commits\":{\"nodes\":[
+                 {\"commit\":{\"oid\":\"aaa\",\"messageHeadline\":\"a\",
                   \"committedDate\":\"2026-10-03T12:00:00Z\",
-                  \"authors\":[{\"login\":\"me\",\"name\":\"Me\"}]},
-                 {\"oid\":\"bbb\",\"messageHeadline\":\"b\",
+                  \"author\":{\"name\":\"Me\",\"user\":{\"login\":\"me\"}}}},
+                 {\"commit\":{\"oid\":\"bbb\",\"messageHeadline\":\"b\",
                   \"committedDate\":\"2026-10-03T12:30:00Z\",
-                  \"authors\":[{\"login\":\"\",\"name\":\"Anon\"}]},
-                 {\"oid\":\"ccc\",\"messageHeadline\":\"c\",
-                  \"committedDate\":\"2026-10-05T12:00:00Z\"}]}"))
+                  \"author\":{\"name\":\"Anon\",\"user\":null}}},
+                 {\"commit\":{\"oid\":\"ccc\",\"messageHeadline\":\"c\",
+                  \"committedDate\":\"2026-10-05T12:00:00Z\"}}]}}"))
          (commits (octocat-pr--commits pr)))
     (should (equal (mapcar (lambda (c) (gethash "sha" c)) commits) '("aaa" "bbb" "ccc")))
     (should (equal (mapcar #'octocat--commit-author (butlast commits)) '("@me" "Anon")))
@@ -231,10 +232,11 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
   (should (equal (octocat-pr--merge-rows
                   (octocat-pr-test--pr
                    "{\"reviewDecision\":\"APPROVED\",
-                     \"latestReviews\":[{\"state\":\"APPROVED\"}],
-                     \"statusCheckRollup\":[{\"conclusion\":\"SUCCESS\"},
-                                            {\"conclusion\":\"SKIPPED\"},
-                                            {\"status\":\"IN_PROGRESS\"}],
+                     \"latestReviews\":{\"nodes\":[{\"state\":\"APPROVED\"}]},
+                     \"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":{
+                       \"contexts\":{\"nodes\":[{\"conclusion\":\"SUCCESS\"},
+                                              {\"conclusion\":\"SKIPPED\"},
+                                              {\"status\":\"IN_PROGRESS\"}]}}}}]},
                      \"mergeable\":\"MERGEABLE\"}"))
                  '((ok "Changes approved" "1 approving review")
                    (wait "Some checks haven't completed yet"
@@ -271,13 +273,14 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
   "Several assignees or reviewers go on a line of their own, after the others.
 One stays on the line of the other fields; the lines follow it in order."
   (let* ((pr (json-parse-string
-              (concat "{\"latestReviews\":[{\"author\":{\"login\":\"ann\"},\"state\":\"APPROVED\"}],"
-                      "\"reviewRequests\":[{\"login\":\"bob\"}],"
-                      "\"assignees\":[{\"login\":\"cy\"},{\"login\":\"di\"}]}")))
+              (concat "{\"latestReviews\":{\"nodes\":[{\"author\":{\"login\":\"ann\"},"
+                      "\"state\":\"APPROVED\"}]},"
+                      "\"reviewRequests\":{\"nodes\":[{\"requestedReviewer\":{\"login\":\"bob\"}}]},"
+                      "\"assignees\":{\"nodes\":[{\"login\":\"cy\"},{\"login\":\"di\"}]}}")))
          (lines (octocat-pr-test--field-lines
                  (list (cons (cons "Assignees" #'ignore)
                              (cl-list* :line ", " (octocat-vui--login-items
-                                                   (gethash "assignees" pr))))
+                                                   (octocat--nodes pr "assignees"))))
                        (cons (cons "Reviewers" #'ignore)
                              (cl-list* :line ", " (octocat-pr--reviewers pr)))
                        (cons "Milestone" "v1")))))

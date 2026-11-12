@@ -231,18 +231,20 @@ The first line is the subject; a rebase keeps the commits, so has none."
                title))
       ('squash
        (concat (format "%s (#%d)" title number)
-               (let ((commits (append (octocat--get pr "commits") nil)))
+               (let ((commits (append (octocat--nodes pr "commits") nil)))
                  (and commits
                       (concat "\n\n"
                               (mapconcat (lambda (c)
-                                           (concat "* " (or (gethash "messageHeadline" c) "")))
+                                           (concat "* " (or (octocat--get c "commit"
+                                                                          "messageHeadline")
+                                                            "")))
                                          commits "\n"))))))
       (_ ""))))
 
 (defun octocat-pr--check-counts (rollup)
   "Return the outcome tally of ROLLUP: (FAILING PENDING SKIPPED SUCCESSFUL).
-ROLLUP is a `statusCheckRollup' vector; outcomes are as in
-`octocat--checks-ci-status'."
+ROLLUP is a vector of checks, as `octocat-checks-rows' takes; outcomes
+are as in `octocat--checks-ci-status'."
   (let ((counts (list 0 0 0 0)))
     (seq-doseq (c rollup)
       (let ((outcome (upcase (or (octocat--nonempty (gethash "conclusion" c))
@@ -270,10 +272,10 @@ Each is (KIND TITLE SUBTITLE BELOW), KIND as for `octocat-pr--merge-icon'
 and SUBTITLE nil or a line under TITLE; BELOW is `checks' on the row of
 the checks, listed under it, and `approval' on that of the AWAITING
 workflow runs, with the button approving them under it."
-  (let* ((checks  (or (octocat--get pr "statusCheckRollup") []))
+  (let* ((checks  (octocat--nodes (octocat--rollup pr) "contexts"))
          (counts  (octocat-pr--check-counts checks))
          (approvals (seq-count (lambda (r) (equal (gethash "state" r) "APPROVED"))
-                               (or (octocat--get pr "latestReviews") []))))
+                               (octocat--nodes pr "latestReviews"))))
     (delq nil
           (list
            (pcase (octocat--get pr "reviewDecision")
@@ -354,7 +356,7 @@ checks with a button approving them; APPROVING, a label, shows that
 under way in its place."
   (when (equal (gethash "state" pr) "OPEN")
     (let* ((draft  (eq (gethash "isDraft" pr) t))
-           (checks (or (octocat--get pr "statusCheckRollup") []))
+           (checks (octocat--nodes (octocat--rollup pr) "contexts"))
            (rows   (octocat-pr--merge-rows pr awaiting))
            (first  (car rows)))
       (append
@@ -821,15 +823,12 @@ their titles are cut to fit WIDTH."
   "Return a timeline item for each commit of PR (a hash-table) in REPO.
 Each is a RET-able line opening the commit; the newest commit also shows
 the CI status."
-  (let* ((commits  (or (octocat--get pr "commits") []))
-         (head-oid (and (> (length commits) 0)
-                        (gethash "oid" (aref commits (1- (length commits)))))))
+  (let ((head-oid (octocat-pr--head-sha pr)))
     (mapcar
-     (lambda (commit)
-       (let* ((oid     (or (gethash "oid" commit) ""))
-              (writers (octocat--get commit "authors"))
-              (login   (and writers (> (length writers) 0)
-                            (octocat--get (aref writers 0) "login"))))
+     (lambda (node)
+       (let* ((commit (gethash "commit" node))
+              (oid    (or (gethash "oid" commit) ""))
+              (login  (octocat--get commit "author" "user" "login")))
          (list :time (or (gethash "committedDate" commit) "")
                :kind 'commit
                :actor (if login (concat "@" login) "")
@@ -840,7 +839,7 @@ the CI status."
                :suffix (and (equal oid head-oid) (concat "  " (octocat--ci-label pr)))
                :on-visit (lambda () (octocat-commit-open repo oid))
                :help "RET: view commit")))
-     commits)))
+     (octocat--nodes pr "commits"))))
 
 (defun octocat-pr--review-items (pr)
   "Return a timeline item for each review of PR (a hash-table)."
@@ -858,7 +857,7 @@ the CI status."
              :body (or (octocat--get review "body") "")
              :state (downcase state)
              :reactions (octocat--reactions-string review))))
-   (or (octocat--get pr "reviews") [])))
+   (octocat--nodes pr "reviews")))
 
 (defun octocat-pr--items (repo pr events bg)
   "Return the timeline items of PR in REPO, with its EVENTS (or nil).
@@ -869,16 +868,14 @@ BG is as for `octocat--label-face'."
 
 (defun octocat-pr--head-sha (pr)
   "Return the SHA of the newest commit of PR (a hash-table), or nil."
-  (let ((commits (octocat--get pr "commits")))
-    (and commits (> (length commits) 0)
-         (gethash "oid" (aref commits (1- (length commits)))))))
+  (octocat--get (octocat--head-commit pr) "oid"))
 
-(defun octocat-pr--rest-commit (commit)
-  "Return COMMIT of `gh pr view' shaped as the REST commits endpoint has it.
+(defun octocat-pr--rest-commit (node)
+  "Return NODE, one of a PR's commits, shaped as the REST commits endpoint has it.
 That is what `octocat-vui--commit-row' reads."
-  (let* ((writers (octocat--get commit "authors"))
-         (writer  (and writers (> (length writers) 0) (aref writers 0)))
-         (login   (and writer (octocat--nonempty (octocat--get writer "login"))))
+  (let* ((commit  (gethash "commit" node))
+         (writer  (gethash "author" commit))
+         (login   (octocat--nonempty (octocat--get writer "user" "login")))
          (c       (make-hash-table :test #'equal))
          (ca      (make-hash-table :test #'equal))
          (cc      (make-hash-table :test #'equal))
@@ -901,7 +898,7 @@ That is what `octocat-vui--commit-row' reads."
 
 (defun octocat-pr--commits (pr)
   "Return the commits of PR, oldest first, shaped by `octocat-pr--rest-commit'."
-  (mapcar #'octocat-pr--rest-commit (or (octocat--get pr "commits") [])))
+  (mapcar #'octocat-pr--rest-commit (octocat--nodes pr "commits")))
 
 (defconst octocat-pr--tab-labels '("Conversation" "Commits" "Files changed")
   "The labels of a PR page's tabs (see `octocat-pr--tabs'), for its skeleton.")
@@ -958,14 +955,14 @@ TAB is the page showing it, `conversation' (the default), `commits' or
       bg width
       ;; Several assignees, reviewers or labels go on a line of their own.
       (list (cons (octocat-timeline-edit-field "pr" repo pr "assignee")
-                  (cl-list* :line ", " (octocat-vui--login-items (gethash "assignees" pr))))
+                  (cl-list* :line ", " (octocat-vui--login-items (octocat--nodes pr "assignees"))))
             (cons (octocat-timeline-edit-field "pr" repo pr "reviewer")
                   (cl-list* :line ", " reviewers))
             (cons (octocat-timeline-edit-field "pr" repo pr "label")
-                  (cl-list* :line " " (octocat-vui--label-items (gethash "labels" pr) bg))))
+                  (cl-list* :line " " (octocat-vui--label-items (octocat--nodes pr "labels") bg))))
       (list (cons "Milestone" (octocat-vui--milestone pr))
             (cons "Closes"    (octocat-vui--numbers
-                               repo (gethash "closingIssuesReferences" pr)
+                               repo (octocat--nodes pr "closingIssuesReferences")
                                (apply-partially #'octocat-open 'issue))))
       ;; The list leaves the branch out; the page shows it and its base,
       ;; once known: a header painted from a list's copy lacks them.
@@ -982,9 +979,7 @@ TAB is the page showing it, `conversation' (the default), `commits' or
       (vui-newline)
       (octocat-pr--tabs (or tab 'conversation) repo number width
                         (gethash "changedFiles" pr)
-                        ;; Absent from a header painted from a list's copy.
-                        (let ((commits (octocat--get pr "commits")))
-                          (and commits (length commits))))))))
+                        (octocat--get pr "commits" "totalCount"))))))
 
 (defun octocat-pr--use-data (repo number tick)
   "Return the snapshot of the pull request NUMBER of REPO.
@@ -998,8 +993,9 @@ it, so they share its fetch."
 Each is \"@login (state)\": the state of their latest review, or
 \"pending\" for a requested review not yet given; the login opens the
 user's page."
-  (let* ((reviews  (octocat--get pr "latestReviews"))
-         (requests (octocat--get pr "reviewRequests"))
+  (let* ((reviews  (octocat--nodes pr "latestReviews"))
+         (requests (cl-map 'vector (lambda (r) (gethash "requestedReviewer" r))
+                           (octocat--nodes pr "reviewRequests")))
          (reviewer (lambda (login name state)
                      (list (if (octocat--nonempty login)
                                (octocat-vui--login-link login)
@@ -1094,7 +1090,7 @@ again."
                                                  (alist-get 'merge mutating)
                                                  awaiting (alist-get 'approve mutating))
                       (octocat-checks-block
-                       (or (octocat--get pr "statusCheckRollup") [])
+                       (octocat--nodes (octocat--rollup pr) "contexts")
                        on-visit-check (octocat--markdown-width)))))))))))
 
 

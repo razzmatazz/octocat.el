@@ -146,7 +146,7 @@
                           "nodes" (vector (octocat-model-item
                                            'issue "O/R"
                                            (json-parse-string
-                                            "{\"number\":12,\"title\":\"Crash\",\"author\":{\"login\":\"Alice\"},\"labels\":[{\"name\":\"bug\",\"color\":\"f00\"}]}"))))
+                                            "{\"number\":12,\"title\":\"Crash\",\"author\":{\"login\":\"Alice\"},\"labels\":{\"nodes\":[{\"name\":\"bug\",\"color\":\"f00\"}]}}"))))
                          1.0)
     (should (equal (sort (mapcar #'car (sqlite-select octocat-sync--db "SELECT key FROM entity"))
                          #'string<)
@@ -155,7 +155,8 @@
       (should-not (plist-get snap :data))
       (should (equal (gethash "title" (plist-get snap :partial)) "Crash"))
       (should (equal (gethash "login" (gethash "author" (plist-get snap :partial))) "Alice"))
-      (should (equal (gethash "color" (aref (gethash "labels" (plist-get snap :partial)) 0))
+      (should (equal (gethash "color" (aref (octocat--nodes (plist-get snap :partial) "labels")
+                                            0))
                      "f00")))
     (should-not (plist-get (octocat-sync-read '(issue "o/r" 13)) :partial))))
 

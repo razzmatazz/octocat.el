@@ -27,6 +27,23 @@
     (should (equal (octocat--web-url "%s/pull/%d" "a/b" 7) "https://ghe.example/a/b/pull/7"))
     (should (equal (octocat--web-url "") "https://ghe.example/"))))
 
+(ert-deftest octocat-core-test-graphql ()
+  "Fields, arguments, nested selections and type conditions encode as GraphQL."
+  (should (equal (octocat--graphql
+                  '(id (author login)
+                       (repository (:owner $owner :name $name)
+                                   (issues (:first 10 :states OPEN) (nodes number)))
+                       (node (... User login) (... Team name slug))))
+                 (concat "id author{login} "
+                         "repository(owner:$owner,name:$name){"
+                         "issues(first:10,states:OPEN){nodes{number}}} "
+                         "node{...on User{login} ...on Team{name slug}}"))))
+
+(ert-deftest octocat-core-test-graphql-query ()
+  "A query declares its variables, with their types, before its selections."
+  (should (equal (octocat--graphql-query '(:id ID! :after String) '((node (:id $id) id)))
+                 "query($id:ID!,$after:String){node(id:$id){id}}")))
+
 (ert-deftest octocat-core-test-reactions ()
   "Reactions read from `gh' and from REST, in GitHub's order, none left out."
   (let ((gh (json-parse-string
