@@ -13,7 +13,7 @@ LICENSE                          Sort the sitemap by date, newest first         
 README.md                        Render footnotes in Markdown pages (#131)               2 hours ago
 [Browse code]
 
-README  [Contributing]  [License]
+README  [Contributing]  [License]                                                Rendered  Markdown
 rocket
 [image: CI] [image: crates.io]
 

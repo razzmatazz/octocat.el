@@ -1044,7 +1044,9 @@ again."
                                       (octocat--nonempty (gethash "headRefName" pr))))))
           (apply #'vui-vstack
                  (append
-                  (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width) nil stack))
+                  (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width) nil stack
+                                                (octocat-vui-markdown-views
+                                                 raw (octocat--markdown-width))))
                   entries
                   ;; Under the timeline, as they add to it; the checks and
                   ;; merge are about the PR as a whole.

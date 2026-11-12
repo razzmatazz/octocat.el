@@ -586,6 +586,7 @@ issue lists switch between two-line rows and a compact view of one line
 per item.
 The list pages remember the choice per repository, across Emacs
 sessions; the others go back to the default view when reopened.
+A pill at the right edge shows the views: RET on one shows it.
 
 ### Windows and `q`
 

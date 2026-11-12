@@ -2,7 +2,7 @@ acme/rocket#97  Builds of large sites are slow: templates are parsed for every p
 open    Assignees @srivera
         Labels  performance   bug   needs triage   good first issue   docs
         #128 · Milestone 0.10 · Fixed by #128
-
+                                                                                 Rendered  Markdown
 ● @pnair opened this issue  1 week ago  👍 7  👀 1
 │ Our docs site has about 1,200 pages and rocket build takes almost 10 seconds.
 │

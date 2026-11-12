@@ -1099,16 +1099,17 @@ is cut so the line fits."
 
 ;;;; Docs
 
-(defun octocat-repo-vui--doc-tabs (docs shown width)
+(defun octocat-repo-vui--doc-tabs (docs shown width &optional views)
   "Return the selector of DOCS, from `octocat-repo--docs', as GitHub's.
-SHOWN is the kind of the one shown.  See `octocat-vui-tab-row' for WIDTH."
+SHOWN is the kind of the one shown.  See `octocat-vui-tab-row' for WIDTH
+and VIEWS, the pill of the shown one's views."
   (octocat-vui-tab-row
    (mapcar (pcase-lambda (`(,kind ,label ,entry))
-             (list label (format "RET: show %s" (gethash "name" entry))
+             (list label (format "RET: show %s" (gethash "path" entry))
                    (unless (eq kind shown)
                      (lambda () (vui-set-state :kind kind)))))
            docs)
-   width))
+   width views))
 
 (defun octocat-repo--doc-text (repo ref name content raw width)
   "Return the rows of file NAME's CONTENT, rendered when it is markdown.
@@ -1158,7 +1159,12 @@ stays put no request is made."
      (docs
       (vui-vstack
        (vui-newline)
-       (octocat-repo-vui--doc-tabs docs (car doc) width)
+       (octocat-repo-vui--doc-tabs docs (car doc) width
+                                   ;; A document not rendered has one view.
+                                   (when-let* ((fmt (octocat-repo--format
+                                                     (gethash "path" entry))))
+                                     (octocat-vui-markdown-views
+                                      raw width (if (eq (cdr fmt) 'identity) "Markdown" "Org"))))
        (pcase (octocat-vui-snapshot-status blob)
          ('pending (vui-text (octocat-vui-line-skeleton)))
          ('error   (vui-text (octocat-vui-error-text blob) :face 'octocat-dimmed))

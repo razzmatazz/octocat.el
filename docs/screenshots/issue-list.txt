@@ -1,4 +1,4 @@
-acme/rocket › Issues  5 open · 61 closed
+acme/rocket › Issues  5 open · 61 closed                                              Full  Compact
 
 Filter  is:open
         [State]  [Author]  [Assignee]  [Label]

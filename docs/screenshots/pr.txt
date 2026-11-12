@@ -4,7 +4,7 @@ open    Assignees @srivera
         Labels  performance   enhancement
         template-cache → main · Approved · Milestone 0.10 · Closes #97
 
-Conversation  [Commits (7)]  [Files changed (3)]
+Conversation  [Commits (7)]  [Files changed (3)]                                 Rendered  Markdown
 ● @srivera opened this pull request  2 days ago  👍 4  🚀 2
 │ Templates were parsed again for every page, which is most of the build time on large sites.  This
 │ keeps each parsed template in a cache keyed by its path and modification time.

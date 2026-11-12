@@ -1908,6 +1908,22 @@ found in the same place."
                 (vui-text (propertize " " 'display `(space :align-to ,(- width used))))
                 (octocat-vui-segmented segments))))
 
+(defun octocat-vui-markdown-views (raw width &optional source)
+  "Return the pill of markdown's views, Rendered and SOURCE, ending at WIDTH.
+SOURCE names the text as written, \"Markdown\" by default; RAW, non-nil
+when that is shown, fills it in.  Both run `octocat-toggle-markdown', as
+there are only two."
+  (let ((source (or source "Markdown")))
+    (octocat-vui-segmented-right
+     (list (list "Rendered" (not raw)
+                 (octocat--key-help #'octocat-toggle-markdown "show it rendered")
+                 #'octocat-toggle-markdown)
+           (list source raw
+                 (octocat--key-help #'octocat-toggle-markdown
+                                    (format "show the %s as written" source))
+                 #'octocat-toggle-markdown))
+     width)))
+
 (defun octocat-vui-segmented-pin (segments)
   "Return SEGMENTS, as for `octocat-vui-segmented', as text to pin, or nil.
 It goes last in the pin, which puts it at the right edge, see
@@ -1967,19 +1983,35 @@ render, like any hook."
                  (cdr (mapcan (lambda (n) (list (vui-text "  " :face 'underline) n))
                               nodes))))))
 
-(vui-defcomponent octocat-vui-list-header (repo tab kind tick)
+(defun octocat-vui-list-views (compact width)
+  "Return the pill of a list's views, Full and Compact, ending at WIDTH.
+COMPACT fills in Compact.  Both run `octocat-vui-list-toggle-compact'."
+  (octocat-vui-segmented-right
+   (list (list "Full" (not compact)
+               (octocat--key-help #'octocat-vui-list-toggle-compact
+                                  "show two lines per item")
+               #'octocat-vui-list-toggle-compact)
+         (list "Compact" compact
+               (octocat--key-help #'octocat-vui-list-toggle-compact
+                                  "show one line per item")
+               #'octocat-vui-list-toggle-compact))
+   width))
+
+(vui-defcomponent octocat-vui-list-header (repo tab kind tick view)
   "Header for a list page: REPO, the page and, for KIND, item counts.
 TAB is the symbol of the page's tab in `octocat--repo-tabs'; only the
 repo page shows the tab strip.  KIND is `issues' or `pulls' to show
 \"N open · M closed\" (plus merged for pulls) from one API call, or nil
-for no counts.  A new TICK fetches them again."
+for no counts.  A new TICK fetches them again.  VIEW, `full' or
+`compact', ends the line with the pill of the list's views; nil, with
+none."
   :render
   (let* ((data  (plist-get (octocat-vui-use-resource (list 'counts kind repo) tick) :data))
-         (count (lambda (state) (octocat--get data "repository" state "totalCount"))))
+         (count (lambda (state) (octocat--get data "repository" state "totalCount")))
+         (width (octocat-vui-window-width)))
     (vui-fragment
      (vui-hstack :spacing 0
-                 (octocat-vui-crumbs repo (list (octocat-vui-tab-crumb repo tab))
-                                     (octocat-vui-window-width))
+                 (octocat-vui-crumbs repo (list (octocat-vui-tab-crumb repo tab)) width)
                  (when (funcall count "open")
                    (vui-text (concat
                               "  "
@@ -1990,7 +2022,8 @@ for no counts.  A new TICK fetches them again."
                                            (and (funcall count "merged")
                                                 (format "%d merged" (funcall count "merged")))))
                                " · "))
-                     :face 'octocat-dimmed)))
+                     :face 'octocat-dimmed))
+                 (and view (octocat-vui-list-views (eq view 'compact) width)))
      (vui-newline))))
 
 (vui-defcomponent octocat-vui-search-list (repo kind query row-fn line-fn compact tick
@@ -2019,7 +2052,8 @@ starts the results afresh."
     (octocat-vui-page
      (octocat-vui-crumbs-pin repo (cadr (assq kind octocat--repo-tabs)))
      (vui-vstack
-      (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick)
+      (vui-component 'octocat-vui-list-header :repo repo :tab kind :kind kind :tick tick
+                     :view (if compact 'compact 'full))
       (vui-fragment
        ;; Two rows either way, so marking the first item and unmarking
        ;; the last does not move the list.

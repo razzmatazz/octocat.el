@@ -235,9 +235,11 @@ The first line is the title, the rest the body."
 ;;
 ;; The timeline itself (items, entries, rail) is in octocat-timeline.el.
 
-(defun octocat-issue--header (repo issue bg width)
+(defun octocat-issue--header (repo issue bg width &optional views)
   "Return the vnodes above the timeline: repo, title and labels of ISSUE in REPO.
-BG is as for `octocat--label-face'; the title is cut to fit WIDTH."
+BG is as for `octocat--label-face'; the title is cut to fit WIDTH.
+VIEWS, a node or nil, is the pill of the timeline's views, on the line
+that sets the header apart from it."
   (append
    (octocat-vui--detail-header
     repo issue (octocat-vui--issue-state-label issue)
@@ -251,7 +253,7 @@ BG is as for `octocat--label-face'; the title is cut to fit WIDTH."
                              repo (octocat--nodes issue "closedByPullRequestsReferences")
                              (apply-partially #'octocat-open 'pr))))
     nil '(:comments))
-   (list (vui-newline))))
+   (list (or views (vui-newline)))))
 
 (vui-defcomponent octocat-issue--page (repo number raw tick)
   "Issue NUMBER of REPO as a timeline; RAW shows markdown bodies verbatim.
@@ -288,7 +290,9 @@ A new TICK fetches everything again."
       :render (lambda (_)
                 (apply #'vui-vstack
                        (append
-                        (delq nil (octocat-issue--header repo issue bg (octocat--markdown-width)))
+                        (delq nil (octocat-issue--header repo issue bg (octocat--markdown-width)
+                                                         (octocat-vui-markdown-views
+                                                          raw (octocat--markdown-width))))
                         entries
                         (octocat-timeline-buttons-or-action
                          (list '("+ Add a comment" "RET: write a comment" octocat-issue-add-comment)

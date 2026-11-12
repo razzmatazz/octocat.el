@@ -1,4 +1,4 @@
-acme/rocket › Pull requests  6 open · 14 closed · 108 merged
+acme/rocket › Pull requests  6 open · 14 closed · 108 merged                          Full  Compact
 
 Filter  is:open
         [State]  [Author]  [Assignee]  [Reviews]  [Label]

@@ -3,7 +3,7 @@ open    Assignees @srivera · Reviewers @jlindqvist (pending)
         Labels  performance   enhancement
         incremental-builds → serve-double-save · Review required
 
-Conversation  [Commits (1)]  [Files changed (4)]
+Conversation  [Commits (1)]  [Files changed (4)]                                 Rendered  Markdown
 ● @srivera opened this pull request  3 hours ago
 │ Each page now records the files it was built from; a build skips the pages whose inputs are all
 │ unchanged.

@@ -537,15 +537,15 @@ this differently", so a page that gains a second view binds it to
 to a key of its own, and documents it in the README's keybinding table.
 Where a page has more than one, as the file page's Preview, Code and
 Blame, `C-c C-v` cycles through them in a fixed order and says in the
-echo area which is shown.  Such a page, and one whose
-two views are both worth finding, as the commit page's Diff and Patch,
-shows a switch of them, `octocat-vui-segmented`: a pill,
+echo area which is shown.  Every page with views shows a switch of
+them, `octocat-vui-segmented`: a pill,
 its views boxed side by side into one outline, the view shown filled in, the others buttons whose hover
 text names `C-c C-v`, so the key is found from the page.
 The pill always ends its line, at the right edge
 (`octocat-vui-segmented-right`), so it is found in the same place on
-every page: the file and commit pages' top line, the tab row of a PR's
-files changed, the Jobs heading of a run.
+every page: the file and commit pages' top line, a PR's or the README's
+tab row, under an issue's header, a list's title row, a run's Jobs
+heading.  Markdown's is `octocat-vui-markdown-views`.
 
 Re-render the page in place with the new prop (`octocat-vui-update-page`),
 not a remount; see [using vui.el](using-vui.md).  Remember the choice with
