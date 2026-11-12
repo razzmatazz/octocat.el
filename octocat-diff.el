@@ -1069,7 +1069,20 @@ patch, the heading is the place scrolled to."
 The lines a link to this page named, (diff HASH FROM TO), see
 `octocat--url-lines', or (path PATH DIR-P), the file or directory a
 switch of views kept, see `octocat-diff-show-view'.  The user's refresh
-drops them.")
+drops them, see `octocat-diff-use-at-reset'.")
+
+(defun octocat-diff-use-at-reset ()
+  "Drop `octocat-diff--at' once the user refreshes the page.
+Called by the page, not a view, so it drops in every view.  Must be
+called during render, like any hook."
+  (let ((buf (current-buffer)))
+    (octocat-vui-use-view-reset
+     (lambda ()
+       (when (buffer-live-p buf)
+         (with-current-buffer buf
+           (when octocat-diff--at
+             (setq octocat-diff--at nil)
+             (octocat-vui-update-page :at nil))))))))
 
 (defvar-local octocat-diff--hide-comments nil
   "Non-nil leaves the inline comments out of this page's diff.
@@ -1138,12 +1151,7 @@ page's tab row heads the section, and carries the pill of the views."
   (let* ((buf (current-buffer))
          (_ (octocat-vui-use-view-reset
              (vui-async-callback ()
-               (vui-set-state :bulk (and fits (cons 0 t)))
-               (when (buffer-live-p buf)
-                 (with-current-buffer buf
-                   (when octocat-diff--at
-                     (setq octocat-diff--at nil)
-                     (octocat-vui-update-page :at nil)))))))
+               (vui-set-state :bulk (and fits (cons 0 t))))))
          (heading (if filter
                       (format "Files (%d of %d)" (length files) (length all))
                     (format "Files (%d)" (length files))))
@@ -1288,7 +1296,8 @@ That is in the view shown, see `octocat-diff--view'."
 
 (defun octocat-diff--goto-patch (path)
   "Move point to the diff of the first file of the Patch at or under PATH.
-Return non-nil if one is there."
+A window scrolls it to the top only if it is hidden.  Return non-nil if
+one is there."
   (let ((pos (point-min)) found)
     (while (and (not found) pos (< pos (point-max)))
       (let ((file (get-text-property pos 'octocat-diff-path)))
@@ -1299,7 +1308,8 @@ Return non-nil if one is there."
       (goto-char found)
       (dolist (win (get-buffer-window-list (current-buffer) nil t))
         (set-window-point win found)
-        (set-window-start win found))
+        (unless (pos-visible-in-window-p found win)
+          (set-window-start win found)))
       t)))
 
 (defun octocat-diff-show-view (view)
@@ -1311,9 +1321,9 @@ at the first file changed in it, its diff unfolded."
   (let ((path  (octocat-diff--path-at-point))
         (dir-p (and (eq octocat-diff--view 'tree) (eq (octocat-tree--type-at-point) 'dir)))
         (buf   (current-buffer)))
-    (setq octocat-diff--view view)
-    (when path
-      (setq octocat-diff--at (list 'path path dir-p)))
+    (setq octocat-diff--view view
+          ;; Off any file, the view starts afresh, not at one kept before.
+          octocat-diff--at (and path (list 'path path dir-p)))
     (octocat-vui-update-page :view view :at octocat-diff--at)
     (when path
       (pcase view
@@ -1772,7 +1782,8 @@ commit, its checks, its comments and the branch holding it are fetched
 independently; each shows what the store holds until then.  A new TICK
 fetches them again."
   :render
-  (let* ((width    (octocat-vui-window-width))
+  (let* ((_        (octocat-diff-use-at-reset))
+         (width    (octocat-vui-window-width))
          (commit   (octocat-vui-use-resource (list 'commit repo sha) tick))
          (checks   (octocat-vui-use-resource (list 'checks repo sha) tick))
          (comments (octocat-vui-use-resource (list 'commit-comments repo sha) tick))
@@ -2010,7 +2021,8 @@ HEAD instead, those changed marked, see `octocat-diff-head-tree';
 `octocat-diff--at'.  FILTER, if set, shows only the files whose path
 holds it, see `octocat-diff-filtered'.  A new TICK fetches it again."
   :render
-  (let* ((width    (octocat--markdown-width))
+  (let* ((_        (octocat-diff-use-at-reset))
+         (width    (octocat--markdown-width))
          (snap     (octocat-vui-use-resource (list 'compare repo base head) tick))
          (data     (plist-get snap :data))
          (text     (vui-use-memo (data view filter)

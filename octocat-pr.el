@@ -1628,7 +1628,8 @@ files whose path holds it, see `octocat-diff-filtered'.  A review being
 submitted shows in place of the submit button.  A new TICK fetches
 everything again."
   :render
-  (let* ((pr       (octocat-pr--use-data repo number tick))
+  (let* ((_        (octocat-diff-use-at-reset))
+         (pr       (octocat-pr--use-data repo number tick))
          (stack    (octocat-pr--use-stack repo number tick))
          (tab-w    (octocat--markdown-width))
          (views    (octocat-diff-views-heading (or view 'diff) tab-w))

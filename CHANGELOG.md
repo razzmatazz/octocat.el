@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `gr` on a diff's Tree or Patch no longer leaves a later switch jumping to an old file
+* Switching to Patch scrolls only if the file at point is off-screen
 * Switching views or following a link scrolls only if the file or line is off-screen
 * A PR's Diff, Tree and Patch switch sits on its tab row, at the right
 * A PR timeline's commits start with a coloured ○, or ⊕ for a merge
