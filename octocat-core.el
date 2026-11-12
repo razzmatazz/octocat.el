@@ -1893,6 +1893,9 @@ Type your markdown text, then:
       (set-buffer-modified-p nil)
       (quit-window t win))))
 
+(defvar octocat-edit-open-hook nil
+  "Hook run in an edit buffer once `octocat-edit-open' has shown it.")
+
 (defun octocat-edit-open (title submit-fn refresh-fn
                                 &optional initial-content user-data)
   "Open (or reuse) an edit buffer with TITLE, wired to SUBMIT-FN and REFRESH-FN.
@@ -1943,7 +1946,10 @@ Use \\[octocat-edit-abort] to discard."
                                  . ((window-height . 0.35))))))
       (with-current-buffer buf
         (setq octocat-edit-window win))
-      (select-window win))))
+      (select-window win)
+      (with-current-buffer buf
+        (run-hooks 'octocat-edit-open-hook))
+      win)))
 
 (provide 'octocat-core)
 ;;; octocat-core.el ends here

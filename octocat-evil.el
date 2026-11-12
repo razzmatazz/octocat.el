@@ -34,7 +34,6 @@
 
 (declare-function evil-define-key*          "ext:evil-core" (state keymap key def &rest bindings))
 (declare-function evil-normalize-keymaps    "ext:evil-core" (&optional hook))
-(declare-function evil-set-initial-state    "ext:evil-core" (mode state))
 (declare-function evil-local-set-key        "ext:evil-core" (state key def))
 ;; Defined by Evil's own macros, which `check-declare' cannot read: the
 ;; t says to check only that the file exists.
@@ -123,6 +122,14 @@ would start recording a macro."
   "Leave insert state once a field is submitted or left by RET."
   (when evil-local-mode
     (evil-normal-state)))
+
+(defun octocat-evil--edit-opened ()
+  "Start an edit buffer in insert state when empty, else in normal state.
+A new comment is typed at once; text being edited is moved around first."
+  (when evil-local-mode
+    (if (string-blank-p (buffer-string))
+        (evil-insert-state)
+      (evil-normal-state))))
 
 (defun octocat-evil-tree-l ()
   "Open the file or the directory at point, as in treemacs-evil.
@@ -276,8 +283,7 @@ The lists bind normal state per buffer, see `octocat-evil--list-setup'."
       (kbd "q")          #'octocat-quit-window))
 
   ;; ── octocat-edit-mode ─────────────────────────────────────────────────
-  ;; Comment, review and body editors open to be typed in.
-  (evil-set-initial-state 'octocat-edit-mode 'insert)
+  (add-hook 'octocat-edit-open-hook #'octocat-evil--edit-opened)
 
   ;; Refresh all octocat keymaps so the new bindings take effect in any
   ;; already-open buffers.

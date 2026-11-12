@@ -102,7 +102,9 @@ C-c C-k   discard (confirms if modified, kills edit buffer)
 ```
 
 The header line shows the action and a keyboard hint.  The source buffer
-is refreshed automatically on success.  Under Evil it opens in insert state.
+is refreshed automatically on success.  Under Evil it opens in insert
+state when empty, to type a new comment at once, and in normal state when
+it holds text to edit, such as a body or a merge message.
 
 A new issue is written in the same buffer, opened by `C-c C-n` from the
 PR and issue lists and detail pages.  It has a title and a body, so it
