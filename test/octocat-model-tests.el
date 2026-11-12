@@ -319,6 +319,61 @@
   (should (equal (octocat-model--review-args "o/r" 7 'comment "LGTM")
                  '("pr" "review" "7" "--repo" "o/r" "--comment" "--body" "LGTM"))))
 
+(defun octocat-model-tests--threads (&rest comments)
+  "Return `pr-review-threads' data, one thread of COMMENTS, a pending review."
+  (octocat--table "reviewThreads"
+                  (octocat--table "nodes" (vector (octocat--table
+                                                   "id" "T1"
+                                                   "comments" (octocat--table
+                                                               "nodes" (vconcat comments)))))
+                  "reviews" (octocat--table "nodes" (vector (octocat--table "id" "R1")))))
+
+(defun octocat-model-tests--comments (data key)
+  "Return KEY of each comment of DATA's first thread."
+  (mapcar (lambda (c) (gethash key c))
+          (octocat--get (aref (octocat--nodes data "reviewThreads") 0) "comments" "nodes")))
+
+(ert-deftest octocat-model-test-review-submit-drafts ()
+  "Submitting a review submits its drafts and leaves none pending."
+  (let ((data (octocat-model--review-submit-drafts
+               (octocat-model-tests--threads
+                (octocat--table "id" "C1" "state" "SUBMITTED")
+                (octocat--table "id" "C2" "state" "PENDING")))))
+    (should (equal (octocat-model-tests--comments data "state") '("SUBMITTED" "SUBMITTED")))
+    (should-not (octocat-model-pending-review data))))
+
+(ert-deftest octocat-model-test-review-set-body ()
+  "Only the comment edited gets the new body."
+  (let ((data (octocat-model--review-set-body
+               (octocat-model-tests--threads
+                (octocat--table "id" "C1" "body" "a")
+                (octocat--table "id" "C2" "body" "b"))
+               "C2" "new")))
+    (should (equal (octocat-model-tests--comments data "body") '("a" "new")))))
+
+(ert-deftest octocat-model-test-review-draft-send ()
+  "A draft goes to the review given, or to one started first, with its id."
+  (let (calls answer)
+    (cl-letf (((symbol-function 'octocat-model--review-graphql)
+               (lambda (name _query vars parse done)
+                 (push (cons name vars) calls)
+                 (funcall done
+                          (funcall parse
+                                   (if (equal name "review-start")
+                                       (octocat--table "addPullRequestReview"
+                                                       (octocat--table "pullRequestReview"
+                                                                       (octocat--table "id" "R9")))
+                                     (octocat--table "add" (octocat--table "node" "N"))))))))
+      (octocat-model--review-draft-send "PR" "R1" "abc" "draft" "q" '(("body" . "x"))
+                                        '("add" "node") (lambda (a) (setq answer a)))
+      (should (equal answer '("R1" . "N")))
+      (should (equal (car calls) '("draft" ("review" . "R1") ("body" . "x"))))
+      (setq calls nil)
+      (octocat-model--review-draft-send "PR" nil "abc" "draft" "q" nil
+                                        '("add" "node") (lambda (a) (setq answer a)))
+      (should (equal answer '("R9" . "N")))
+      (should (equal (mapcar #'car calls) '("draft" "review-start"))))))
+
 (ert-deftest octocat-model-test-review-parse-threads ()
   "The pages' threads join; with no pending review, there is none."
   (let* ((page (lambda (reviews threads)

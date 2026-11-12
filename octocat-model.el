@@ -981,6 +981,22 @@ when the review cannot be started."
      (lambda (review)
        (funcall k (if (eq (car-safe review) 'error) review (gethash "id" review)))))))
 
+(defun octocat-model--review-draft-send (pr-id review-id commit name query vars path done)
+  "Send draft mutation QUERY, as call NAME, to the pending review; call DONE.
+The review is REVIEW-ID, or one started at COMMIT on PR PR-ID, passed as
+$review besides VARS, as `octocat-model--review-graphql' takes them.
+DONE gets (REVIEW . NODE), NODE at PATH, a list of keys, in the answer's
+data, or (error . MESSAGE)."
+  (octocat-model--with-review
+   pr-id review-id commit
+   (lambda (review)
+     (if (eq (car-safe review) 'error)
+         (funcall done review)
+       (octocat-model--review-graphql
+        name query (cons (cons "review" review) vars)
+        (lambda (data) (cons review (apply #'octocat--get data path)))
+        done)))))
+
 (defun octocat-model--review-draft (body login)
   "Return a draft comment of BODY by LOGIN, shown until GitHub answers."
   (octocat--table "author" (octocat--table "login" login)
@@ -1066,33 +1082,27 @@ FN gets their data and returns it changed."
                 (octocat-model--review-set-threads
                  data (vconcat (octocat--nodes data "reviewThreads") (vector thread)))))))
   :send (lambda (done)
-          (octocat-model--with-review
-           pr-id review-id commit
-           (lambda (review)
-             (if (eq (car-safe review) 'error)
-                 (funcall done review)
-               (octocat-model--review-graphql
-                "review-draft-add"
-                (octocat--graphql-query
-                 '(:review ID! :path String! :body String! :line Int :side DiffSide
-                           :startLine Int :startSide DiffSide
-                           :subject PullRequestReviewThreadSubjectType)
-                 `((addPullRequestReviewThread
-                    (:input (:pullRequestReviewId $review :path $path :body $body
-                                                  :line $line :side $side
-                                                  :startLine $startLine
-                                                  :startSide $startSide
-                                                  :subjectType $subject))
-                    (thread ,@octocat-model--review-thread-fields)))
-                 'mutation)
-                `(("review" . ,review) ("path" . ,(plist-get range :path)) ("body" . ,body)
-                  ("line" . ,(plist-get range :line)) ("side" . ,(plist-get range :side))
-                  ("startLine" . ,(plist-get range :start-line))
-                  ("startSide" . ,(plist-get range :start-side))
-                  ("subject" . ,(if (plist-get range :file) "FILE" "LINE")))
-                (lambda (data)
-                  (cons review (octocat--get data "addPullRequestReviewThread" "thread")))
-                done))))))
+          (octocat-model--review-draft-send
+           pr-id review-id commit "review-draft-add"
+           (octocat--graphql-query
+            '(:review ID! :path String! :body String! :line Int :side DiffSide
+                      :startLine Int :startSide DiffSide
+                      :subject PullRequestReviewThreadSubjectType)
+            `((addPullRequestReviewThread
+               (:input (:pullRequestReviewId $review :path $path :body $body
+                                             :line $line :side $side
+                                             :startLine $startLine
+                                             :startSide $startSide
+                                             :subjectType $subject))
+               (thread ,@octocat-model--review-thread-fields)))
+            'mutation)
+           `(("path" . ,(plist-get range :path)) ("body" . ,body)
+             ("line" . ,(plist-get range :line)) ("side" . ,(plist-get range :side))
+             ("startLine" . ,(plist-get range :start-line))
+             ("startSide" . ,(plist-get range :start-side))
+             ("subject" . ,(if (plist-get range :file) "FILE" "LINE")))
+           '("addPullRequestReviewThread" "thread")
+           done)))
 
 (defun octocat-model--review-add-reply (data thread-id comment)
   "Return DATA, the `pr-review-threads', with COMMENT ending thread THREAD-ID."
@@ -1121,24 +1131,18 @@ FN gets their data and returns it changed."
                data thread-id
                (if answered (cdr answer) (octocat-model--review-draft body login))))))
   :send (lambda (done)
-          (octocat-model--with-review
-           pr-id review-id commit
-           (lambda (review)
-             (if (eq (car-safe review) 'error)
-                 (funcall done review)
-               (octocat-model--review-graphql
-                "review-draft-reply"
-                (octocat--graphql-query
-                 '(:review ID! :thread ID! :body String!)
-                 `((addPullRequestReviewThreadReply
-                    (:input (:pullRequestReviewId $review :pullRequestReviewThreadId $thread
-                                                  :body $body))
-                    (comment ,@octocat-model--review-comment-fields)))
-                 'mutation)
-                `(("review" . ,review) ("thread" . ,thread-id) ("body" . ,body))
-                (lambda (data)
-                  (cons review (octocat--get data "addPullRequestReviewThreadReply" "comment")))
-                done))))))
+          (octocat-model--review-draft-send
+           pr-id review-id commit "review-draft-reply"
+           (octocat--graphql-query
+            '(:review ID! :thread ID! :body String!)
+            `((addPullRequestReviewThreadReply
+               (:input (:pullRequestReviewId $review :pullRequestReviewThreadId $thread
+                                             :body $body))
+               (comment ,@octocat-model--review-comment-fields)))
+            'mutation)
+           `(("thread" . ,thread-id) ("body" . ,body))
+           '("addPullRequestReviewThreadReply" "comment")
+           done)))
 
 (octocat-sync-define-mutation review-reply-now (repo number thread-id comment-id body login)
   :label "Posting reply…"
@@ -1153,20 +1157,23 @@ FN gets their data and returns it changed."
             "-f" (concat "body=" body))
   :invalidates (list (octocat-model-review-threads-spec repo number)))
 
+(defun octocat-model--review-set-body (data node-id body)
+  "Return DATA, the `pr-review-threads', with BODY as comment NODE-ID's."
+  (octocat-model--review-map-comments
+   data (lambda (c)
+          (if (not (equal (gethash "id" c) node-id))
+              c
+            (let ((c (copy-hash-table c)))
+              (puthash "body" body c)
+              c)))))
+
 (octocat-sync-define-mutation review-comment-edit (repo number node-id body)
   :label "Saving comment…"
   :slot 'inline
   :edits (lambda (_answered _)
            (octocat-model--threads-edit
             repo number
-            (lambda (data)
-              (octocat-model--review-map-comments
-               data (lambda (c)
-                      (if (not (equal (gethash "id" c) node-id))
-                          c
-                        (let ((c (copy-hash-table c)))
-                          (puthash "body" body c)
-                          c)))))))
+            (lambda (data) (octocat-model--review-set-body data node-id body))))
   :graphql (octocat--graphql-query
             '(:id ID! :body String!)
             '((updatePullRequestReviewComment
@@ -1249,25 +1256,26 @@ out, as `gh' rejects an empty --body."
                 (nth 1 (assq event octocat-model-review-events)))
           (unless (string-empty-p body) (list "--body" body))))
 
+(defun octocat-model--review-submit-drafts (data)
+  "Return DATA, the `pr-review-threads', its drafts submitted, none pending."
+  (octocat-model--review-set-pending
+   (octocat-model--review-map-comments
+    data (lambda (c)
+           (if (not (equal (gethash "state" c) "PENDING"))
+               c
+             (let ((c (copy-hash-table c)))
+               (puthash "state" "SUBMITTED" c)
+               c))))
+   nil nil))
+
 (octocat-sync-define-mutation review-pr (repo number event body &optional review-id)
   :label "Submitting review…"
   :slot 'review
   :resources `((pr ,repo ,number) ,(octocat-model-review-threads-spec repo number))
-  ;; The drafts are no longer drafts.
   :edits (lambda (_answered _)
            (when review-id
              (octocat-model--threads-edit
-              repo number
-              (lambda (data)
-                (octocat-model--review-set-pending
-                 (octocat-model--review-map-comments
-                  data (lambda (c)
-                         (if (not (equal (gethash "state" c) "PENDING"))
-                             c
-                           (let ((c (copy-hash-table c)))
-                             (puthash "state" "SUBMITTED" c)
-                             c))))
-                 nil nil)))))
+              repo number #'octocat-model--review-submit-drafts)))
   ;; `gh pr review' fails while you have a pending review: it is
   ;; submitted through GraphQL instead.
   :send (lambda (done)
