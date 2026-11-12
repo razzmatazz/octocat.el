@@ -1536,9 +1536,10 @@ A REPO of nil is the buffer's."
 
 (defun octocat--goto-line-target (buf)
   "Move point in BUF, and in each window showing it, to the line a link named.
-That is the text with the `octocat-line-target' property, if any.  On
-a first mount no window shows BUF yet: `vui-mount' then shows it with
-point there."
+That is the text with the `octocat-line-target' property, if any.  A
+window scrolls only if the line is hidden, so the page's top stays in
+view when it is near.  On a first mount no window shows BUF yet:
+`vui-mount' then shows it with point there."
   (when (buffer-live-p buf)
     (with-current-buffer buf
       (when-let* ((pos (text-property-any (point-min) (point-max)
@@ -1546,7 +1547,8 @@ point there."
         (goto-char pos)
         (dolist (win (get-buffer-window-list buf nil t))
           (set-window-point win pos)
-          (with-selected-window win (recenter 3)))))))
+          (unless (pos-visible-in-window-p pos win)
+            (with-selected-window win (recenter 3))))))))
 
 (defun octocat--point-or-region ()
   "Return (BEG . END), the region's first and last characters, or point's.
