@@ -48,6 +48,10 @@ lookup by repo in `octocat-core`:
   session. It is not persisted: a directory can be moved or deleted.
 - A cached entry is checked (`file-directory-p` on its `.git`) before
   use and dropped when gone.
+- Find the root and origin with Emacs's built-in `vc-git`:
+  `vc-git-root` and `vc-git-repository-url`. These replace
+  `locate-dominating-file` and the `shell-command-to-string "git remote
+  get-url origin"` in `octocat-repo--current-repo`.
 - A defcustom `octocat-use-local-clone` (default t) turns the feature
   off.
 
@@ -73,7 +77,15 @@ runs. The page never sees the local error.
 `octocat-sync` stays independent of git. The `:local` function is
 built in `octocat-model`, where the resources live, from one helper
 there that runs git asynchronously with `make-process` and calls DONE
-with the parsed result or an error. Parsing functions are pure (string
+with the parsed result or an error. It runs `vc-git-program`, the git
+the user configured for vc, rather than a hard-coded `"git"`.
+
+vc is not used for the reads. It works on working-tree files, not
+objects by SHA: it has no `ls-tree`, and no call reads a blob by SHA.
+Its reads (`vc-git-find-revision`, `vc-git-command`) also block Emacs,
+so a hung git would freeze Emacs past any timeout.
+`vc-git-annotate-command` produces vc-annotate's display format, not
+`--porcelain`. Parsing functions are pure (string
 → table) and unit-tested on fixed `git` output.
 
 A local answer is stored like a fetched one, since the content is
@@ -107,6 +119,35 @@ the fallback to GitHub is needed, it is queued normally.
   `remote.origin.promisor` is set.
 - A shallow clone answers "missing" for old objects, which falls back
   to GitHub.
+
+### When git fails or hangs
+
+A local read must never take longer than the GitHub fetch it replaces.
+
+- **Hangs.** Causes include a slow network mount, a lock, or a
+  credential prompt. The helper starts a timer of
+  `octocat-local-git-timeout` seconds (default 2). When it fires, the
+  helper kills the process and answers `(error . "timed out")`, and
+  GitHub is fetched instead. The process gets no terminal and
+  `GIT_TERMINAL_PROMPT=0`, so it cannot wait on a prompt. Only one of
+  the timer and the process sentinel may call DONE; the second is
+  ignored.
+- **git missing.** If `git` is gone or its directory has disappeared,
+  `make-process` signals `file-missing` or `file-error` instead of
+  exiting. The helper catches these and answers an error.
+- **git failing.** Existence is checked with `git cat-file
+  --batch-check`, which prints `missing` for an absent object and
+  still exits 0. So a missing object is a normal answer, and any
+  non-zero exit means git itself is failing, for example a corrupt
+  repo, a bad config or a moved directory. Both fall back to GitHub.
+- **Dropping the clone.** A timeout, a failure to start or a non-zero
+  exit drops the clone from the session cache, so later reads go
+  straight to GitHub without waiting on git again. Opening a page from
+  inside the clone registers it again. A `missing` object does not
+  drop the clone.
+- Tests: a fake `git` script on `exec-path` that sleeps, one that
+  exits non-zero, and one that is missing. All must fall back to
+  `:gh` with DONE called once, and drop the clone.
 
 ### Tests
 
