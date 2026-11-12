@@ -393,17 +393,15 @@
 
 (ert-deftest octocat-repo-test-file-notice ()
   "A binary or large file is not shown unasked; an image or small file is."
-  (let ((head (octocat-model--repo-parse-head
-               (gethash "data" (octocat-sync--parse "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":1,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Add\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Blob\",\"oid\":\"b1\",\"byteSize\":2000000,\"isBinary\":false}}}}"))
-               "main" "dist/app.min.js")))
-    (should (equal (gethash "size" head) 2000000))
-    (should (string-match-p "too large" (octocat-repo--file-notice "dist/app.min.js" head)))
-    (should-not (octocat-repo--file-notice "docs/a.png" head))
-    (puthash "binary" t head)
-    (should (string-match-p "binary" (octocat-repo--file-notice "a.bin" head)))
-    (puthash "binary" nil head)
-    (puthash "size" 100 head)
-    (should-not (octocat-repo--file-notice "src/a.el" head))))
+  (let ((blob (octocat-sync--parse
+               "{\"__typename\":\"Blob\",\"oid\":\"b1\",\"byteSize\":2000000,\"isBinary\":false}")))
+    (should (string-match-p "too large" (octocat-repo--file-notice "dist/app.min.js" blob)))
+    (should-not (octocat-repo--file-notice "docs/a.png" blob))
+    (puthash "isBinary" t blob)
+    (should (string-match-p "binary" (octocat-repo--file-notice "a.bin" blob)))
+    (puthash "isBinary" :false blob)
+    (puthash "byteSize" 100 blob)
+    (should-not (octocat-repo--file-notice "src/a.el" blob))))
 
 (ert-deftest octocat-repo-test-compact-pr-row-marks-draft ()
   "Without the state column, a compact draft PR row says (draft) before its title."
@@ -583,6 +581,14 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
     (puthash "sha"  sha  h)
     h))
 
+(defun octocat-tree-tests--head (commit dir)
+  "Return the `repo-head' data of COMMIT, the last of 3, and DIR."
+  (octocat--table "repository"
+                  (octocat--table "object" (octocat--table
+                                            "history" (octocat--table "totalCount" 3
+                                                                      "nodes" (vector commit)))
+                                  "dir" dir)))
+
 (ert-deftest octocat-tree-test-paints-from-store ()
   "The stored listing paints without a fetch."
   (octocat-tree-tests--with-store
@@ -596,7 +602,9 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
   "Opened down to a directory, the tree asks for every listing on the way at once."
   (octocat-tree-tests--with-store
     (octocat-tree-tests--store '(tree-path "owner/repo" "main" "a/b")
-                               (octocat--table "shas" ["rootsha" "asha" "bsha"]))
+                               (octocat-sync--parse
+                                (concat "{\"repository\":{\"t0\":{\"oid\":\"rootsha\"},"
+                                        "\"t1\":{\"oid\":\"asha\"},\"t2\":{\"oid\":\"bsha\"}}}")))
     (let (requested)
       (cl-letf (((symbol-function 'octocat-sync-request)
                  (lambda (spec &rest _) (push spec requested)))
@@ -611,8 +619,11 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
 (ert-deftest octocat-repo-test-readme-fetched-with-listing ()
   "The repo page asks for the README the head names, not after the root's listing."
   (octocat-tree-tests--with-store
-    (let ((head (octocat--table "oid" "c1" "tree" "rootsha" "kind" "tree"
-                                "entries" (vector (octocat-tree-tests--entry "README.md" "blob" "b1"))))
+    (let ((head (octocat-tree-tests--head
+                 (octocat--table "oid" "c1")
+                 (octocat--table "__typename" "Tree" "oid" "rootsha"
+                                 "entries" (vector (octocat-tree-tests--entry
+                                                    "README.md" "blob" "b1")))))
           requested)
       (octocat-tree-tests--store '(repo-head "owner/repo" "main" nil) head)
       (cl-letf (((symbol-function 'octocat-sync-request)
@@ -693,15 +704,16 @@ Over 1 MB, GitHub leaves its bytes out, and its blob is fetched."
 (defun octocat-tree-tests--store-file (ref path content)
   "Store owner/repo, main by default, and file PATH at REF holding CONTENT."
   (octocat-tree-tests--store '(repo-summary "owner/repo")
-                             (octocat-tree-tests--json "{\"default-branch\":\"main\"}"))
-  (let ((head (octocat-tree-tests--json
-               "{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}"))
+                             (octocat-tree-tests--json
+                              "{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\"}}}"))
+  (let ((commit (octocat-tree-tests--json
+                 "{\"oid\":\"abc1234def\",\"messageHeadline\":\"Add the guide\",\"authoredDate\":\"2026-10-01T10:00:00Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":null}}"))
         (blob (make-hash-table :test #'equal)))
-    (puthash "tree" (concat "blob-" ref) head)
-    (puthash "kind" "blob" head)
-    (puthash "total" 3 head)
-    (octocat-tree-tests--store (list 'repo-head "owner/repo" ref path) head)
-    (puthash "base64" (base64-encode-string content) blob)
+    (octocat-tree-tests--store (list 'repo-head "owner/repo" ref path)
+                               (octocat-tree-tests--head
+                                commit (octocat--table "__typename" "Blob"
+                                                       "oid" (concat "blob-" ref))))
+    (puthash "content" (base64-encode-string content) blob)
     (octocat-tree-tests--store (list 'blob "owner/repo" (concat "blob-" ref)) blob)))
 
 (defmacro octocat-tree-tests--with-file-page (&rest body)
@@ -1349,7 +1361,8 @@ GitHub's answer then opens the right page."
                (lambda (&rest a) (push a opened))))
       (octocat-open 'ref-path "o/r" 'file '("feat" "x" "a.el") '(lines 3 3))
       (should (equal spec '(ref-split "o/r" "feat/x/a.el")))
-      (funcall answered (octocat--table "count" 2)))
+      (funcall answered (octocat-sync--parse
+                         "{\"repository\":{\"p1\":{\"oid\":\"1\"},\"p2\":{\"oid\":\"2\"}}}")))
     (should (equal (nreverse opened)
                    '(("o/r" "feat" "x/a.el" (lines 3 3))
                      ("o/r" "feat/x" "a.el" (lines 3 3)))))))

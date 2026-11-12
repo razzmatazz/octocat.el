@@ -78,8 +78,7 @@ That is (EVENTS . SNAPSHOT): EVENTS is a vector, or nil while they are
 not known; SNAPSHOT is the `timeline-events' resource's, as from
 `octocat-vui-use-resource', for TICK too.  Must be called during render."
   (let ((snap (octocat-vui-use-resource (list 'timeline-events repo number) tick)))
-    (cons (let ((data (plist-get snap :data))) (and data (gethash "events" data)))
-          snap)))
+    (cons (plist-get snap :data) snap)))
 
 
 ;;;; Model
@@ -725,7 +724,7 @@ ticked; picking one of them takes it back."
            ((eq (car-safe data) 'error) (message "Octocat: %s" (cdr data)))
            ((octocat--still-selected-p buf)
             (with-current-buffer buf
-              (let* ((given   (append (octocat--get data "given") nil))
+              (let* ((given   (octocat-model-reactions-given data))
                      (key     (car (read-multiple-choice
                                     "Toggle your reaction"
                                     (octocat-timeline--reaction-choices given))))

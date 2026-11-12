@@ -634,7 +634,9 @@ maintainer approves them."
 Nil until they are fetched, when SHA is nil, or when they cannot be,
 as for a repo without Actions.  A new TICK fetches them again.  Must be
 called during render, like any hook."
-  (append (plist-get (octocat-vui-use-resource (list 'awaiting-runs repo sha) tick) :data)
+  (append (octocat--get (plist-get (octocat-vui-use-resource (list 'awaiting-runs repo sha) tick)
+                                   :data)
+                        "workflow_runs")
           nil))
 
 ;; A stack (see https://github.com/github/gh-stack) chains PRs, each
@@ -648,7 +650,7 @@ Nil too until it is fetched, or when it cannot be.  A new TICK fetches
 it again.  Must be called during render, like any hook."
   (octocat--get (plist-get (octocat-vui-use-resource (list 'pr-stack repo number) tick)
                            :data)
-                "stack"))
+                "repository" "pullRequest" "stack"))
 
 (defun octocat-pr--stack-entries (stack)
   "Return the pull requests of STACK, top first as `gh stack view' lists them.
@@ -723,10 +725,7 @@ requests are listed bottom first."
 Nil until they are fetched, or when they cannot be, as where stacks are
 off.  A new TICK fetches them again.  Must be called during render, like
 any hook."
-  (let ((stacks (octocat--get (plist-get (octocat-vui-use-resource
-                                          (list 'repo-stacks repo) tick)
-                                         :data)
-                              "stacks")))
+  (let ((stacks (plist-get (octocat-vui-use-resource (list 'repo-stacks repo) tick) :data)))
     (vui-use-memo (stacks) (and stacks (octocat-pr--stacks-index stacks)))))
 
 (defun octocat-pr--stacks-label (index number)
@@ -1303,7 +1302,7 @@ thread also has its \"resolved\", \"resolved_by\", \"can_resolve\" and
 (defun octocat-pr-diff--pending-count (data)
   "Return the count of draft comments in DATA, the `pr-review-threads'."
   (let ((n 0))
-    (seq-doseq (thread (and data (gethash "threads" data)))
+    (seq-doseq (thread (octocat--nodes data "reviewThreads"))
       (seq-doseq (c (octocat--get thread "comments" "nodes"))
         (when (equal (gethash "state" c) "PENDING") (cl-incf n))))
     n))
@@ -1335,7 +1334,7 @@ thread also has its \"resolved\", \"resolved_by\", \"can_resolve\" and
   "Open the edit buffer of a draft comment on RANGE; return its window."
   (pcase-let* ((`(,repo . ,number) (octocat-pr--current))
                (data   (octocat-pr-diff--threads))
-               (review (gethash "pending" data)))
+               (review (octocat-model-pending-review data)))
     (octocat-timeline-prepare-comment)
     (octocat-edit-open
      (format "Comment on %s" (octocat-diff-range-label range))
@@ -1343,7 +1342,9 @@ thread also has its \"resolved\", \"resolved_by\", \"can_resolve\" and
       (lambda (body)
         `(review-draft-add ,repo ,number ,(gethash "id" data)
                            ,(and review (gethash "id" review))
-                           ,(if review (gethash "commit" review) (gethash "head" data))
+                           ,(if review
+                                (octocat--get review "commit" "oid")
+                              (gethash "headRefOid" data))
                            ,range ,body ,(octocat-pr-diff--login))))
      #'ignore)))
 
@@ -1353,7 +1354,7 @@ With a pending review the reply is a draft in it; without one, you
 pick between replying now and starting a review."
   (pcase-let* ((`(,repo . ,number) (octocat-pr--current))
                (data   (octocat-pr-diff--threads))
-               (review (gethash "pending" data))
+               (review (octocat-model-pending-review data))
                (thread (gethash "thread_id" comment))
                (draft  (or review
                            (eq (car (read-multiple-choice
@@ -1371,7 +1372,9 @@ pick between replying now and starting a review."
         (if draft
             `(review-draft-reply ,repo ,number ,(gethash "id" data)
                                  ,(and review (gethash "id" review))
-                                 ,(if review (gethash "commit" review) (gethash "head" data))
+                                 ,(if review
+                                      (octocat--get review "commit" "oid")
+                                    (gethash "headRefOid" data))
                                  ,thread ,body ,(octocat-pr-diff--login))
           `(review-reply-now ,repo ,number ,thread
                              ,(or (gethash "in_reply_to_id" comment) (gethash "id" comment))
@@ -1556,7 +1559,7 @@ PENDING is how many drafts it holds.  Return non-nil when discarded."
 That is (ID . COUNT), from the store."
   (let* ((data   (plist-get (octocat-sync-read (octocat-model-review-threads-spec repo number))
                             :data))
-         (review (and data (gethash "pending" data))))
+         (review (octocat-model-pending-review data)))
     (and review (cons (gethash "id" review) (octocat-pr-diff--pending-count data)))))
 
 (defun octocat-pr-diff-review ()
@@ -1628,16 +1631,17 @@ everything again."
          (threads  (octocat-vui-use-resource (octocat-model-review-threads-spec repo number) tick))
          (data     (plist-get threads :data))
          (comments (vui-use-memo (data)
-                     (and data (octocat-pr-diff--thread-comments (gethash "threads" data)))))
+                     (and data (octocat-pr-diff--thread-comments
+                                (octocat--nodes data "reviewThreads")))))
          (by-path  (vui-use-memo (comments) (octocat-diff-by-path comments)))
          (base     (octocat--get (plist-get pr :data) "baseRefName"))
-         (head     (and data (gethash "head" data)))
+         (head     (octocat--get data "headRefOid"))
          (revs     (vui-use-memo (base head) (octocat-pr-diff--revs repo base head)))
          (text     (vui-use-memo ((plist-get files :data) view filter)
                      (and (eq view 'patch)
                           (octocat-diff-patch-text
                            (octocat-diff-filtered (plist-get files :data) filter)))))
-         (review   (and data (gethash "pending" data)))
+         (review   (octocat-model-pending-review data))
          (pending  (and review (cons (gethash "id" review)
                                      (octocat-pr-diff--pending-count data)))))
     (octocat-vui-page

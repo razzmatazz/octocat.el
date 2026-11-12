@@ -182,21 +182,14 @@ VARS are its variables besides those, as `octocat--graphql-query' takes them."
 One request, in place of separate default-branch, fork-parent and
 issue and PR count lookups.")
 
-(defun octocat-model--parse-repo-summary (data)
-  "Return the summary in DATA, the answer to `octocat-model--repo-summary-query'.
-A table of \"default-branch\", \"fork-parent\", \"owner/repo\", each nil
-when there is none, and the counts \"open-issues\" and \"open-prs\"."
-  (let ((repo (gethash "repository" data)))
-    (octocat--table "default-branch" (octocat--get repo "defaultBranchRef" "name")
-                    "fork-parent"    (octocat--get repo "parent" "nameWithOwner")
-                    "open-issues"    (octocat--get repo "issues" "totalCount")
-                    "open-prs"       (octocat--get repo "pullRequests" "totalCount"))))
-
 (octocat-sync-define-resource repo-summary (repo)
   :max-age octocat-repo-summary-ttl
   :graphql octocat-model--repo-summary-query
-  :repo repo
-  :parse #'octocat-model--parse-repo-summary)
+  :repo repo)
+
+(defun octocat-model-default-branch (summary)
+  "Return the default branch of SUMMARY, the `repo-summary' data, or nil."
+  (octocat--get summary "repository" "defaultBranchRef" "name"))
 
 (defun octocat-model--counts-query (kind)
   "Return the GraphQL query counting items of KIND (`issues' or `pulls')."
@@ -208,22 +201,13 @@ when there is none, and the counts \"open-issues\" and \"open-prs\"."
                        (:states ,state) totalCount))
                    states))))
 
-(defun octocat-model--parse-counts (data)
-  "Return the counts in DATA, the answer to `octocat-model--counts-query'.
-A table of \"open\", \"closed\" and, of pull requests, \"merged\"."
-  (let ((counts (octocat--table)))
-    (dolist (state '("open" "closed" "merged"))
-      (when-let* ((n (octocat--get data "repository" state "totalCount")))
-        (puthash state n counts)))
-    counts))
-
+;; Its repository's "open", "closed" and, of pull requests, "merged".
 (octocat-sync-define-resource counts (kind repo)
   :poll octocat-sync-poll-slow
   ;; Without KIND, nothing to count.
   :fetch (and (null kind) (lambda (done) (funcall done (octocat--table))))
   :graphql (and kind (octocat-model--counts-query kind))
-  :repo repo
-  :parse #'octocat-model--parse-counts)
+  :repo repo)
 
 (defconst octocat-model--list-item-fields
   '((pulls  (... PullRequest number title state isDraft reviewDecision
@@ -354,15 +338,13 @@ CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
 (octocat-sync-define-resource blob (repo sha)
   :max-age octocat-model--fixed-max-age
   ;; No SHA, no file: a page asks for one before it knows it.
-  :fetch (and (null sha) (lambda (done) (funcall done (octocat--table "base64" ""))))
-  :gh (list "api" (format "repos/%s/git/blobs/%s" repo sha))
-  ;; GitHub wraps lines at 60 chars.
-  :parse (lambda (blob)
-           (octocat--table "base64" (replace-regexp-in-string "\n" "" (gethash "content" blob)))))
+  :fetch (and (null sha) (lambda (done) (funcall done (octocat--table "content" ""))))
+  :gh (list "api" (format "repos/%s/git/blobs/%s" repo sha)))
 
 (defun octocat-model-blob-content (data)
-  "Return the content of a file from DATA, the `blob' resource's."
-  (base64-decode-string (gethash "base64" data)))
+  "Return the content of a file from DATA, the `blob' or `file-bytes' data.
+The line breaks GitHub wraps the base64 in are skipped."
+  (base64-decode-string (or (gethash "content" data) "")))
 
 (defcustom octocat-repo-search-cache-ttl 3600
   "Seconds a repo search result is reused by `octocat-switch-repo'.
@@ -418,20 +400,23 @@ CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
 (octocat-sync-define-resource branches (repo)
   :fetch (lambda (done) (octocat-model--list-branches repo (octocat--then #'vconcat done))))
 
-;; How many leading segments of a github.com path PATH name a ref, as
-;; "count": a ref may have slashes.  At most ten are tried.
+;; Which leading segments of a github.com path PATH name a commit: a ref
+;; may have slashes.  At most ten are tried.
 (octocat-sync-define-resource ref-split (repo path)
   :graphql (octocat-model--ref-split-query (min 10 (length (split-string path "/"))))
   :repo repo
   :vars (let ((segments (split-string path "/")))
           (mapcar (lambda (i) (cons (format "e%d" i)
                                     (concat (string-join (seq-take segments i) "/") "^{commit}")))
-                  (number-sequence 1 (min 10 (length segments)))))
-  :parse (lambda (data)
-           (let* ((r     (gethash "repository" data))
-                  (count (and r (seq-find (lambda (i) (gethash (format "p%d" i) r))
-                                          (number-sequence (hash-table-count r) 1 -1)))))
-             (octocat--table "count" (or count 1)))))
+                  (number-sequence 1 (min 10 (length segments))))))
+
+(defun octocat-model-ref-count (data)
+  "Return how many leading segments name the ref, by DATA, or 1.
+DATA is the `ref-split' resource's: the most that name a commit win."
+  (let ((r (octocat--get data "repository")))
+    (or (and r (seq-find (lambda (i) (octocat--get r (format "p%d" i)))
+                         (number-sequence (hash-table-count r) 1 -1)))
+        1)))
 
 (defun octocat-model--ref-split-query (n)
   "Return a GraphQL query resolving N revs, $e1 and on, as p1 and on."
@@ -465,10 +450,10 @@ The parents draw the graph beside it, and mark a merge.")
   :raw t
   :parse (lambda (raw) (octocat--table "pr" (equal (string-trim raw) "true"))))
 
-;; Its "events" are those of all pages.
+;; The events of all pages, in one vector.
 (octocat-sync-define-resource timeline-events (repo number)
   :gh (list "api" "--paginate" "--slurp" (format "repos/%s/issues/%d/timeline" repo number))
-  :parse (lambda (pages) (octocat--table "events" (apply #'vconcat (append pages nil)))))
+  :parse (lambda (pages) (apply #'vconcat (append pages nil))))
 
 (defconst octocat-model-pending "octocatPending"
   "Key of what is being done to a comment, or to an item's opening post.
@@ -487,8 +472,7 @@ FN gets its data and returns it changed."
 ;; The login a comment being posted shows as its author.
 (octocat-sync-define-resource viewer ()
   :max-age 86400
-  :gh (list "api" "user")
-  :parse (lambda (user) (octocat--table "login" (gethash "login" user))))
+  :gh (list "api" "user"))
 
 (defun octocat-model--pending-comment (body login now)
   "Return the comment of BODY being posted by LOGIN (or nil) at NOW.
@@ -634,13 +618,26 @@ being done to it, as `octocat-model-pending' has it."
   :graphql (octocat--graphql-query
             '(:id ID!)
             '((node (:id $id) (... Reactable (reactionGroups content viewerHasReacted)))))
-  :vars `(("id" . ,subject))
-  :parse (lambda (data)
-           (octocat--table
-            "given" (vconcat (delq nil (mapcar (lambda (g)
-                                                 (and (eq (gethash "viewerHasReacted" g) t)
-                                                      (gethash "content" g)))
-                                               (octocat--get data "node" "reactionGroups")))))))
+  :vars `(("id" . ,subject)))
+
+(defun octocat-model-reactions-given (data)
+  "Return the contents of your reactions in DATA, `viewer-reactions' data."
+  (delq nil (mapcar (lambda (g) (and (eq (gethash "viewerHasReacted" g) t)
+                                     (gethash "content" g)))
+                    (octocat--get data "node" "reactionGroups"))))
+
+(defun octocat-model--set-given (data content add)
+  "Return DATA, `viewer-reactions' data, with your CONTENT reaction if ADD.
+Without ADD, with none of CONTENT."
+  (when-let* ((node (octocat--get data "node")))
+    (let* ((groups (append (gethash "reactionGroups" node) nil))
+           (group  (seq-find (lambda (g) (equal (gethash "content" g) content)) groups)))
+      (unless group
+        (setq group  (octocat--table "content" content)
+              groups (append groups (list group))))
+      (puthash "viewerHasReacted" (if add t :false) group)
+      (puthash "reactionGroups" (vconcat groups) node)))
+  data)
 
 (defun octocat-model--toggle-reaction (groups content add)
   "Return GROUPS, a \"reactionGroups\" vector, with one CONTENT more, or less.
@@ -687,10 +684,7 @@ SUBJECT is the comment's node id; ADD nil takes one away instead."
            (list (cons (octocat-model-detail-spec kind repo number)
                        (lambda (data) (octocat-model--react-comment data subject content add)))
                  (cons `(viewer-reactions ,subject)
-                       (lambda (data)
-                         (let ((given (remove content (append (gethash "given" data) nil))))
-                           (puthash "given" (vconcat (if add (cons content given) given)) data)
-                           data)))))
+                       (lambda (data) (octocat-model--set-given data content add)))))
   :graphql (octocat--graphql-query
             '(:id ID! :content ReactionContent!)
             `((,(if add 'addReaction 'removeReaction)
@@ -878,11 +872,10 @@ As `octocat--graphql' takes them.")
 ;; The runs of commit SHA awaiting approval.
 (octocat-sync-define-resource awaiting-runs (repo sha)
   ;; No SHA, no runs: a page asks before it knows it.
-  :fetch (and (null sha) (lambda (done) (funcall done [])))
+  :fetch (and (null sha) (lambda (done) (funcall done (octocat--table))))
   :gh (list "api" (format (concat "repos/%s/actions/runs?head_sha=%s"
                                   "&status=action_required&per_page=100")
-                          repo sha))
-  :parse (lambda (r) (or (gethash "workflow_runs" r) [])))
+                          repo sha)))
 
 (defconst octocat-model--pr-stack-query
   (octocat-model--item-query
@@ -894,24 +887,14 @@ As `octocat--graphql' takes them.")
                             (pullRequest number title state isDraft mergeable))))))
   "GraphQL query for the stack a pull request is in.")
 
-(defun octocat-model--pr-parse-stack (data)
-  "Return the stack in DATA, the answer to `octocat-model--pr-stack-query'.
-A hash-table whose \"stack\" is the stack, or :null when the pull request
-is in none."
-  (octocat--table "stack" (or (octocat--get data "repository" "pullRequest" "stack")
-                              :null)))
-
 (octocat-sync-define-resource pr-stack (repo number)
   :graphql octocat-model--pr-stack-query
   :repo repo
-  :vars `(("number" . ,number))
-  :parse #'octocat-model--pr-parse-stack)
-
+  :vars `(("number" . ,number)))
 
 ;; Newest first.
 (octocat-sync-define-resource repo-stacks (repo)
-  :gh (list "api" (format "repos/%s/stacks?per_page=100" repo))
-  :parse (lambda (stacks) (octocat--table "stacks" stacks)))
+  :gh (list "api" (format "repos/%s/stacks?per_page=100" repo)))
 
 ;;;; Reviews
 
@@ -945,25 +928,18 @@ is in none."
   "GraphQL query for a PR's review threads and your pending review.")
 
 (defun octocat-model--review-parse-threads (output)
-  "Return the review threads of OUTPUT, `gh api --paginate --slurp's pages.
-That is a table of the PR's \"id\", its \"head\" commit, the
-\"threads\" of all pages, and \"pending\", your pending review, a table
-of its \"id\" and \"commit\", or nil."
-  (let* ((pages (append (json-parse-string output) nil))
-         (pr    (octocat--get (car pages) "data" "repository" "pullRequest"))
-         (review (car (append (octocat--get pr "reviews" "nodes") nil))))
-    (octocat--table "id" (gethash "id" pr)
-                    "head" (gethash "headRefOid" pr)
-                    "pending" (and review (octocat-model--review review))
-                    "threads" (apply #'vconcat
-                                     (mapcar (lambda (p)
-                                               (octocat--get p "data" "repository" "pullRequest"
-                                                             "reviewThreads" "nodes"))
-                                             pages)))))
+  "Return the PR of OUTPUT, `gh api --paginate --slurp's pages.
+It is as `octocat-model--review-threads-query' asks for it, its
+\"reviewThreads\" those of all pages."
+  (let* ((prs (mapcar (lambda (page) (octocat--get page "data" "repository" "pullRequest"))
+                      (json-parse-string output)))
+         (pr  (or (car prs) (error "No such pull request"))))
+    (octocat-model--review-set-threads
+     pr (apply #'vconcat (mapcar (lambda (p) (octocat--nodes p "reviewThreads")) prs)))))
 
-(defun octocat-model--review (node)
-  "Return the pending review NODE, from GraphQL, as a table of id and commit."
-  (octocat--table "id" (gethash "id" node) "commit" (octocat--get node "commit" "oid")))
+(defun octocat-model-pending-review (data)
+  "Return your pending review in DATA, the `pr-review-threads', or nil."
+  (car (append (octocat--nodes data "reviews") nil)))
 
 (octocat-sync-define-resource pr-review-threads (repo number)
   :graphql octocat-model--review-threads-query
@@ -1016,9 +992,12 @@ when the review cannot be started."
 (defun octocat-model--review-map-threads (data fn)
   "Return DATA, the `pr-review-threads', its threads replaced by FN's.
 FN gets each thread and returns it, changed, or nil to drop it."
-  (when data
-    (puthash "threads" (vconcat (delq nil (mapcar fn (append (gethash "threads" data) nil))))
-             data))
+  (octocat-model--review-set-threads
+   data (vconcat (delq nil (mapcar fn (octocat--nodes data "reviewThreads"))))))
+
+(defun octocat-model--review-set-threads (data threads)
+  "Return DATA, the `pr-review-threads', with THREADS, a vector, as its threads."
+  (when data (puthash "reviewThreads" (octocat--table "nodes" threads) data))
   data)
 
 (defun octocat-model--review-map-comments (data fn)
@@ -1035,9 +1014,16 @@ thread left with no comment is dropped."
        (puthash "comments" conn thread)
        (and nodes thread)))))
 
-(defun octocat-model--review-set-pending (data review)
-  "Return DATA, the `pr-review-threads', with REVIEW as the pending one."
-  (when data (puthash "pending" review data))
+(defun octocat-model--review-set-pending (data id commit)
+  "Return DATA, the `pr-review-threads', with review ID at COMMIT pending.
+ID nil leaves none pending."
+  (when data
+    (puthash "reviews"
+             (octocat--table "nodes" (if id
+                                         (vector (octocat--table
+                                                  "id" id "commit" (octocat--table "oid" commit)))
+                                       []))
+             data))
   data)
 
 (defun octocat-model--review-new-thread (range comment)
@@ -1072,15 +1058,13 @@ FN gets their data and returns it changed."
             repo number
             (lambda (data)
               (when (and answered (not review-id))
-                (octocat-model--review-set-pending
-                 data (octocat--table "id" (car answer) "commit" commit)))
+                (octocat-model--review-set-pending data (car answer) commit))
               (let ((thread (if answered
                                 (cdr answer)
                               (octocat-model--review-new-thread
                                range (octocat-model--review-draft body login)))))
-                (when data
-                  (puthash "threads" (vconcat (gethash "threads" data) (vector thread)) data)))
-              data)))
+                (octocat-model--review-set-threads
+                 data (vconcat (octocat--nodes data "reviewThreads") (vector thread)))))))
   :send (lambda (done)
           (octocat-model--with-review
            pr-id review-id commit
@@ -1132,8 +1116,7 @@ FN gets their data and returns it changed."
             repo number
             (lambda (data)
               (when (and answered (not review-id))
-                (octocat-model--review-set-pending
-                 data (octocat--table "id" (car answer) "commit" commit)))
+                (octocat-model--review-set-pending data (car answer) commit))
               (octocat-model--review-add-reply
                data thread-id
                (if answered (cdr answer) (octocat-model--review-draft body login))))))
@@ -1239,7 +1222,7 @@ FN gets their data and returns it changed."
   (octocat-model--review-set-pending
    (octocat-model--review-map-comments
     data (lambda (c) (unless (equal (gethash "state" c) "PENDING") c)))
-   nil))
+   nil nil))
 
 (octocat-sync-define-mutation review-discard (repo number review-id)
   :label "Discarding review…"
@@ -1284,7 +1267,7 @@ out, as `gh' rejects an empty --body."
                            (let ((c (copy-hash-table c)))
                              (puthash "state" "SUBMITTED" c)
                              c))))
-                 nil)))))
+                 nil nil)))))
   ;; `gh pr review' fails while you have a pending review: it is
   ;; submitted through GraphQL instead.
   :send (lambda (done)
@@ -1326,22 +1309,19 @@ out, as `gh' rejects an empty --body."
                              '(defaultBranchRef name (compare (:headRef $sha) status)))
   "GraphQL query behind the `commit-branch' resource.")
 
-(defun octocat-model--commit-parse-branch (data)
-  "Return the branch in DATA, the answer to `octocat-model--commit-branch-query'.
-A hash-table whose \"name\" is the default branch when it holds the
-commit, the commit being behind it or at its head, else :null."
-  (let ((ref (octocat--get data "repository" "defaultBranchRef")))
-    (octocat--table "name" (if (member (octocat--get ref "compare" "status")
-                                       '("BEHIND" "IDENTICAL"))
-                               (gethash "name" ref)
-                             :null))))
-
 (octocat-sync-define-resource commit-branch (repo sha)
   :poll octocat-sync-poll-slow
   :graphql octocat-model--commit-branch-query
   :repo repo
-  :vars `(("sha" . ,sha))
-  :parse #'octocat-model--commit-parse-branch)
+  :vars `(("sha" . ,sha)))
+
+(defun octocat-model-commit-holder (data)
+  "Return the default branch if the commit is on it, else nil.
+DATA is the `commit-branch' resource's.  The commit is on it when it is
+behind its head or at it."
+  (let ((ref (octocat--get data "repository" "defaultBranchRef")))
+    (and (member (octocat--get ref "compare" "status") '("BEHIND" "IDENTICAL"))
+         (octocat--get ref "name"))))
 
 (octocat-sync-define-resource compare (repo base head)
   ;; Comparing two commits never changes, as a commit doesn't; refs move.
@@ -1442,42 +1422,28 @@ Its \"parents\" too, when it has them."
    '(dir:object (:expression $dir)
                 __typename oid
                 (... Blob byteSize isBinary)
-                (... Tree (entries name type oid))))
+                ;; Named as `tree-dir' names them, so the README can be
+                ;; fetched along with the root's listing.
+                (... Tree (entries path:name type sha:oid))))
   "GraphQL query behind the `repo-head' resource.")
 
-(defun octocat-model--repo-parse-head (data ref path)
-  "Return the head in DATA, the answer to `octocat-model--repo-head-query'.
-It is for PATH, nil for the root, at REF.  Return the last commit that
-touched PATH, as `octocat-model--commit-fields' reads it, with
-\"tree\", the SHA of PATH's tree, or its blob's when \"kind\" is
-\"blob\", and \"total\", the commits that touched PATH.  Of a blob,
-\"size\" is its bytes and \"binary\" t when it is not text; of a
-tree, \"entries\" its entries, as `tree-dir' has them but for their
-size, so the README can be fetched along with its listing."
-  (let* ((repo   (gethash "repository" data))
-         (obj    (and (hash-table-p repo) (gethash "object" repo)))
-         (dir    (and (hash-table-p repo) (gethash "dir" repo)))
-         (hist   (and (hash-table-p obj) (gethash "history" obj)))
-         (nodes  (and hist (gethash "nodes" hist)))
-         (node   (and (> (length nodes) 0) (aref nodes 0))))
-    (unless (hash-table-p obj)
-      (error "No branch, tag or commit %s" (or ref "HEAD")))
-    (unless (and (hash-table-p dir) (hash-table-p node))
-      (error "No %s at %s" path (or ref "HEAD")))
-    (let ((commit (copy-hash-table node)))
-      (puthash "tree" (gethash "oid" dir) commit)
-      (puthash "kind" (if (equal (gethash "__typename" dir) "Blob") "blob" "tree") commit)
-      (puthash "total" (gethash "totalCount" hist) commit)
-      (puthash "size" (gethash "byteSize" dir) commit)
-      (puthash "binary" (eq (gethash "isBinary" dir) t) commit)
-      (when-let* ((entries (gethash "entries" dir)))
-        (puthash "entries"
-                 (cl-map 'vector (lambda (e) (octocat--table "path" (gethash "name" e)
-                                                             "type" (gethash "type" e)
-                                                             "sha" (gethash "oid" e)))
-                         entries)
-                 commit))
-      commit)))
+(defun octocat-model--repo-check-head (data ref path)
+  "Return DATA, the answer to `octocat-model--repo-head-query', if complete.
+It is for PATH, nil for the root, at REF.  Signal an error when REF
+or PATH is not there."
+  (unless (hash-table-p (octocat--get data "repository" "object"))
+    (error "No branch, tag or commit %s" (or ref "HEAD")))
+  (unless (and (octocat-model-head-dir data) (octocat-model-head-commit data))
+    (error "No %s at %s" path (or ref "HEAD")))
+  data)
+
+(defun octocat-model-head-commit (head)
+  "Return the last commit of HEAD, the `repo-head' data, or nil."
+  (car (append (octocat--nodes head "repository" "object" "history") nil)))
+
+(defun octocat-model-head-dir (head)
+  "Return the tree or blob HEAD, the `repo-head' data, is of, or nil."
+  (octocat--get head "repository" "dir"))
 
 ;; The last commit and the tree of PATH at REF: a branch, tag or SHA, as
 ;; on github.com, nil for the default branch.  PATH nil is the root.
@@ -1488,7 +1454,7 @@ size, so the README can be fetched along with its listing."
   :vars `(("expr" . ,(concat (or ref "HEAD") "^{commit}"))
           ("dir" . ,(concat (or ref "HEAD") ":" path))
           ("path" . ,path))
-  :parse (lambda (data) (octocat-model--repo-parse-head data ref path)))
+  :parse (lambda (data) (octocat-model--repo-check-head data ref path)))
 
 (defconst octocat-model--repo-blame-query
   (octocat-model--repo-query
@@ -1601,13 +1567,12 @@ Calls CALLBACK once with a hash-table of path to commit, see
            (when (zerop (cl-decf left))
              (funcall callback (or failed out)))))))))
 
-;; The SHAs of the trees on the way to PATH at REF, the root's first, as
-;; "shas": the page fetches their listings at once, not each after its
-;; parent's.  Nil for a level that is no tree.
+;; The trees on the way to PATH at REF, the root's first: the page
+;; fetches their listings at once, not each after its parent's.
 (octocat-sync-define-resource tree-path (repo ref path)
   :max-age (and (octocat--sha-p ref) octocat-model--fixed-max-age)
   :poll nil
-  :fetch (and (null path) (lambda (done) (funcall done (octocat--table "shas" []))))
+  :fetch (and (null path) (lambda (done) (funcall done (octocat--table))))
   :graphql (octocat-model--tree-path-query (length (split-string (or path "") "/")))
   :repo repo
   :vars (let ((dirs (split-string (or path "") "/")))
@@ -1616,10 +1581,14 @@ Calls CALLBACK once with a hash-table of path to commit, see
                                           (concat ref ":" (string-join (seq-take dirs i) "/"))))
                         (number-sequence 1 (length dirs)))))
   :parse (lambda (data)
-           (let ((r (or (gethash "repository" data) (error "No such repository"))))
-             (octocat--table
-              "shas" (vconcat (mapcar (lambda (i) (octocat--get r (format "t%d" i) "oid"))
-                                      (number-sequence 0 (1- (hash-table-count r)))))))))
+           (if (gethash "repository" data) data (error "No such repository"))))
+
+(defun octocat-model-tree-shas (data)
+  "Return the SHAs of the trees in DATA, the `tree-path' resource's.
+The root's is first; a level that is no tree is nil."
+  (let ((r (octocat--get data "repository")))
+    (vconcat (mapcar (lambda (i) (octocat--get r (format "t%d" i) "oid"))
+                     (number-sequence 0 (1- (if r (hash-table-count r) 0)))))))
 
 (defun octocat-model--tree-path-query (n)
   "Return a GraphQL query of the tree SHAs of N + 1 revs, $e0 on, as t0 on."
@@ -1723,21 +1692,18 @@ one larger than `octocat--max-file-size' or one GitHub cut short."
                                 (<= (or (gethash "byteSize" blob) 0) octocat--max-file-size)
                                 (gethash "text" blob)))))
 
-;; The bytes of file PATH at REF, as "base64", and its blob's "sha", in
-;; one request: an image a page shows.  GitHub leaves out the bytes of a
-;; file over 1 MB, which is then fetched as its `blob'.
+;; The bytes of file PATH at REF, its base64 "content", and its blob's
+;; "sha", in one request: an image a page shows.  GitHub leaves out the
+;; bytes of a file over 1 MB, which is then fetched as its `blob'.
 (octocat-sync-define-resource file-bytes (repo ref path)
   :max-age (if (octocat--sha-p ref) octocat-model--fixed-max-age 3600)
   :poll nil
   :gh (list "api" "-X" "GET"
             (format "repos/%s/contents/%s" repo (octocat-model--url-path path))
             "-f" (concat "ref=" ref))
+  ;; A directory's is a list.
   :parse (lambda (file)
-           (unless (hash-table-p file)
-             (error "No file %s at %s" path ref))
-           (octocat--table "base64" (replace-regexp-in-string
-                                     "\n" "" (or (gethash "content" file) ""))
-                           "sha" (gethash "sha" file))))
+           (if (hash-table-p file) file (error "No file %s at %s" path ref))))
 
 ;; GitHub's rendering of file PATH at REF, read for the URLs of its
 ;; images on GitHub's proxy, each by the image's own URL.  The proxy's
@@ -1787,7 +1753,8 @@ or (error . MSG)."
    (lambda (head)
      (if (eq (car-safe head) 'error)
          (funcall callback head)
-       (octocat-sync-get (list 'tree-files repo (gethash "tree" head)) callback)))))
+       (octocat-sync-get (list 'tree-files repo (octocat--get (octocat-model-head-dir head) "oid"))
+                         callback)))))
 
 ;;;; Actions
 
@@ -2116,10 +2083,11 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
 (octocat-sync-define-resource checks (repo sha)
   ;; None yet: they may still start.  A commit status has no "status".
   :poll (lambda (data)
-          (if (seq-empty-p data)
-              octocat-sync-poll-interval
-            (apply #'octocat-model--poll-status
-                   (mapcar (lambda (c) (gethash "status" c)) data))))
+          (let ((checks (octocat-model-check-list data)))
+            (if (seq-empty-p checks)
+                octocat-sync-poll-interval
+              (apply #'octocat-model--poll-status
+                     (mapcar (lambda (c) (gethash "status" c)) checks)))))
   :graphql (octocat-model--repo-query
             '(:sha String!)
             `(object (:expression $sha)
@@ -2127,9 +2095,12 @@ CALLBACK is called with a list of workflow hash-tables, or a cons \\=(error . MS
                           (statusCheckRollup
                            (contexts (:first 100) (nodes ,@octocat-model--check-fields))))))
   :repo repo
-  :vars `(("sha" . ,sha))
-  :parse (lambda (data)
-           (octocat--nodes data "repository" "object" "statusCheckRollup" "contexts")))
+  :vars `(("sha" . ,sha)))
+
+(defun octocat-model-check-list (data)
+  "Return the vector of CI contexts in DATA.
+DATA is the `checks' resource's."
+  (octocat--nodes data "repository" "object" "statusCheckRollup" "contexts"))
 
 ;;;; Dashboard
 

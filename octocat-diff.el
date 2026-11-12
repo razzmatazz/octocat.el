@@ -1514,8 +1514,9 @@ For a page whose data lacks HEAD's root tree, which this looks up.
 See `octocat-diff-tree' for CONTEXT and AT."
   :render
   (let ((snap (octocat-vui-use-resource (list 'repo-head repo head nil) nil)))
-    (octocat-diff-tree repo head (octocat--get (plist-get snap :data) "tree") files
-                       context at)))
+    (octocat-diff-tree repo head
+                       (octocat--get (octocat-model-head-dir (plist-get snap :data)) "oid")
+                       files context at)))
 
 (defun octocat-diff--change-entry (repo file revs)
   "Return the Diff view of FILE, a changed file of REPO, in the file viewer.
@@ -1643,8 +1644,7 @@ Its author and committer, with their dates, then its parents and, from
 BRANCH, the `commit-branch' snapshot, the default branch when it holds
 the commit.  Each parent and the branch open their page."
   (let ((parents (append (gethash "parents" commit) nil))
-        (holder  (let ((d (plist-get branch :data)))
-                   (and d (octocat--nonempty (gethash "name" d))))))
+        (holder  (octocat--nonempty (octocat-model-commit-holder (plist-get branch :data)))))
     (delq nil
           (list
            (octocat-commit--field "Author" (octocat-commit--person commit "author"))
@@ -1693,21 +1693,23 @@ by their author.  A long one is folded as an opening post is (see
     (octocat-vui-fold-lines text (octocat-vui-line-ends text)
                             octocat-timeline-body-lines 'message-fold "")))
 
-(defun octocat-commit--async-status (snap empty)
+(defun octocat-commit--async-status (snap empty &optional items)
   "Return a dimmed vnode for the sync snapshot SNAP if failed or empty, else nil.
-EMPTY is the text shown when it is ready but has no data.  Grey bars
-while it is pending."
+EMPTY is the text shown when it is ready but has no ITEMS, by default
+its data.  Grey bars while it is pending."
   (pcase (octocat-vui-snapshot-status snap)
     ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28)))))
     ('error   (vui-text (concat "  " (octocat-vui-error-text snap)) :face 'octocat-dimmed))
-    (_ (and (zerop (length (plist-get snap :data)))
+    (_ (and (seq-empty-p (or items (plist-get snap :data)))
             (vui-text (concat "  " empty) :face 'octocat-dimmed)))))
 
-(defun octocat-commit--heading (label snap width)
+(defun octocat-commit--heading (label snap width &optional items)
   "Return the section heading LABEL, with the count of SNAP's data once known.
-It is underlined across WIDTH columns."
+ITEMS, by default its data, are what is counted.  It is underlined
+across WIDTH columns."
   (octocat-vui-section-heading (if (plist-get snap :data)
-                                   (format "%s (%d)" label (length (plist-get snap :data)))
+                                   (format "%s (%d)" label
+                                           (length (or items (plist-get snap :data))))
                                  label)
                                width))
 
@@ -1715,17 +1717,15 @@ It is underlined across WIDTH columns."
   "Return the CI section of commit SHA of REPO, or nil when it has none.
 Its check-runs are in CHECKS, a sync snapshot.  Its heading is
 underlined across WIDTH columns."
-  (unless (and (plist-get checks :data)
-               (zerop (length (plist-get checks :data))))
-    (or (and (eq (octocat-vui-snapshot-status checks) 'pending)
-             (octocat-commit--heading "Checks" checks width))
-        (when-let* ((status (octocat-commit--async-status checks "(no checks)")))
-          (vui-vstack (octocat-commit--heading "Checks" checks width) status))
-        (apply #'vui-vstack
-               (octocat-checks-block
-                (plist-get checks :data)
-                (lambda () (octocat-checks-open repo sha nil))
-                width)))))
+  (let ((runs (octocat-model-check-list (plist-get checks :data))))
+    (unless (and (plist-get checks :data) (seq-empty-p runs))
+      (or (and (eq (octocat-vui-snapshot-status checks) 'pending)
+               (octocat-commit--heading "Checks" checks width runs))
+          (when-let* ((status (octocat-commit--async-status checks "(no checks)" runs)))
+            (vui-vstack (octocat-commit--heading "Checks" checks width runs) status))
+          (apply #'vui-vstack
+                 (octocat-checks-block runs (lambda () (octocat-checks-open repo sha nil))
+                                       width))))))
 
 
 ;;;;; Patch

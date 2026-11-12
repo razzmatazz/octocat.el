@@ -126,7 +126,7 @@ Their data stays; a page showing one should refetch it.")
   "Functions called with the labels of the pending mutations, oldest first.
 Called whenever one is sent or answered; nil once none is left.")
 
-(defconst octocat-sync--schema 7
+(defconst octocat-sync--schema 8
   "Version of the store's tables, kept in SQLite's `user_version'.
 Bump it also when the shape of a resource's body changes: the store is
 then recreated, rather than read in the old shape.")

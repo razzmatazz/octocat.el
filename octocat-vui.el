@@ -1934,15 +1934,15 @@ render, like any hook."
          (summary (plist-get snap :data))
          (count   (lambda (field)
                     (pcase (octocat-vui-snapshot-status snap)
-                      ('ready   (gethash field summary))
+                      ('ready   (octocat--get summary "repository" field "totalCount"))
                       ('pending "…"))))
          (nodes
           (mapcar
            (lambda (tab)
              (pcase-let* ((`(,sym ,label ,help ,fn) tab)
                           (n     (pcase sym
-                                   ('issues (funcall count "open-issues"))
-                                   ('pulls  (funcall count "open-prs"))))
+                                   ('issues (funcall count "issues"))
+                                   ('pulls  (funcall count "pullRequests"))))
                           (label (if n (format "%s (%s)" label n) label)))
                (if (eq sym current)
                    (vui-text label :face '(octocat-section-heading underline))
@@ -1963,20 +1963,21 @@ repo page shows the tab strip.  KIND is `issues' or `pulls' to show
 \"N open · M closed\" (plus merged for pulls) from one API call, or nil
 for no counts.  A new TICK fetches them again."
   :render
-  (let ((counts (plist-get (octocat-vui-use-resource (list 'counts kind repo) tick) :data)))
+  (let* ((data  (plist-get (octocat-vui-use-resource (list 'counts kind repo) tick) :data))
+         (count (lambda (state) (octocat--get data "repository" state "totalCount"))))
     (vui-fragment
      (vui-hstack :spacing 0
                  (octocat-vui-crumbs repo (list (octocat-vui-tab-crumb repo tab))
                                      (octocat-vui-window-width))
-                 (when (and counts (gethash "open" counts))
+                 (when (funcall count "open")
                    (vui-text (concat
                               "  "
                               (string-join
                                (delq nil
-                                     (list (format "%d open" (gethash "open" counts))
-                                           (format "%d closed" (gethash "closed" counts))
-                                           (and (gethash "merged" counts)
-                                                (format "%d merged" (gethash "merged" counts)))))
+                                     (list (format "%d open" (funcall count "open"))
+                                           (format "%d closed" (funcall count "closed"))
+                                           (and (funcall count "merged")
+                                                (format "%d merged" (funcall count "merged")))))
                                " · "))
                      :face 'octocat-dimmed)))
      (vui-newline))))

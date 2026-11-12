@@ -454,7 +454,7 @@ For `octocat-image-file-function'."
    (list 'file-bytes repo ref path)
    (lambda (r)
      (cond ((eq (car-safe r) 'error) (funcall callback nil))
-           ((octocat--nonempty (gethash "base64" r))
+           ((octocat--nonempty (gethash "content" r))
             (funcall callback (octocat-model-blob-content r)))
            (t (octocat-tree--load-blob
                repo (gethash "sha" r) (lambda (b) (funcall callback (and (stringp b) b)))))))))
@@ -1051,9 +1051,9 @@ last to it (see `octocat-sync-more'), pinned to the head shown."
                  (when r (message "Octocat: %s" (cdr r))))))
             fetching 0 (octocat-vui-line-skeleton)))))))))
 
-(defun octocat-repo-vui--head-row (repo ref path commit width)
-  "Return the line atop the files: COMMIT, of PATH at REF.
-COMMIT is the last that touched PATH, nil for the root.  It shows
+(defun octocat-repo-vui--head-row (repo ref path head width)
+  "Return the line atop the files: the last commit of PATH at REF.
+HEAD is PATH's `repo-head' data, PATH nil for the root.  It shows
 `octocat-vui-commit-node' and its subject, a TAB stop, then, at the
 right of WIDTH columns, its short SHA
 and age, as GitHub's \"1a95462 · 2 hours ago\", RET opening it, and a
@@ -1061,11 +1061,13 @@ button to the commits page of PATH at REF of REPO, with the count of its
 history.
 The author is left out for room: the commit page has it.  The subject
 is cut so the line fits."
-  (let* ((sha       (or (gethash "oid" commit) ""))
+  (let* ((commit    (octocat-model-head-commit head))
+         (sha       (or (gethash "oid" commit) ""))
          (subject   (octocat-vui--subject commit))
          (date      (let ((ts (octocat--commit-date commit)))
                       (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
-         (count     (format "[%s commits]" (gethash "total" commit)))
+         (count     (format "[%s commits]"
+                            (octocat--get head "repository" "object" "history" "totalCount")))
          (tail      (+ 7 3 (string-width date) 2 (string-width count)))
          (node      (concat (octocat-vui-commit-node (octocat-vui--commit-merge-p commit))
                             " "))
@@ -1255,15 +1257,14 @@ one summary resource and the rest from the root's `repo-head' at REF."
          (current-branch (plist-get head-info :branch))
          (snap           (octocat-vui-use-resource (list 'repo-summary repo) tick))
          (summary        (plist-get snap :data))
-         (default-branch (and summary (gethash "default-branch" summary)))
+         (default-branch (octocat-model-default-branch summary))
          (shown          (or ref tracked))
-         (fork-parent    (and summary (gethash "fork-parent" summary)))
+         (fork-parent    (octocat--get summary "repository" "parent" "nameWithOwner"))
          (head-snap      (octocat-vui-use-resource (list 'repo-head repo shown nil) tick))
-         (tree           (let ((d (plist-get head-snap :data))) (and d (gethash "tree" d))))
+         (dir            (octocat-model-head-dir (plist-get head-snap :data)))
+         (tree           (octocat--get dir "oid"))
          (readme         (let ((doc (car (octocat-repo--docs
-                                          (append (octocat--get (plist-get head-snap :data)
-                                                                "entries")
-                                                  nil)))))
+                                          (append (octocat--get dir "entries") nil)))))
                            (and doc (gethash "sha" (nth 2 doc))))))
     ;; With the root's listing, not after it: the head names the README.
     (vui-use-effect (readme)
@@ -1309,7 +1310,7 @@ one summary resource and the rest from the root's `repo-head' at REF."
       (if tree
           (vui-component 'octocat-tree--dir
             :key shown :repo repo :branch (or shown default-branch "HEAD") :sha tree
-            :commit (gethash "oid" (plist-get head-snap :data))
+            :commit (octocat--get (octocat-model-head-commit (plist-get head-snap :data)) "oid")
             :on-dir (lambda (dir) (octocat-tree-open repo ref dir))
             :on-browse (lambda () (octocat-tree-open repo ref)))
         (vui-text (octocat-tree--skeleton)))
@@ -1332,13 +1333,13 @@ branch."
          (current-branch (plist-get (octocat--head-info) :branch))
          (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
                                     :data))
-         (default-branch (and summary (gethash "default-branch" summary)))
+         (default-branch (octocat-model-default-branch summary))
          (shown          (or ref tracked))
          (head-snap      (octocat-vui-use-resource (list 'repo-head repo shown nil) tick))
          (root           (plist-get head-snap :data))
          (path-snap      (octocat-vui-use-resource
                           (list 'tree-path repo (or shown "HEAD") reveal) tick))
-         (shas           (octocat--get (plist-get path-snap :data) "shas")))
+         (shas           (octocat-model-tree-shas (plist-get path-snap :data))))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
         (with-current-buffer buf
@@ -1366,7 +1367,8 @@ branch."
           (vui-component 'octocat-tree--subtree
             :key (list shown reveal)
             :repo repo :branch (or shown default-branch "HEAD")
-            :sha (gethash "tree" root) :commit (gethash "oid" root)
+            :sha (octocat--get (octocat-model-head-dir root) "oid")
+            :commit (octocat--get (octocat-model-head-commit root) "oid")
             :depth 0 :path "" :reveal reveal :focus focus)
         (vui-text (octocat-tree--skeleton)))))))
 
@@ -1387,13 +1389,14 @@ lines are clipped, see `octocat--clip-line'."
                (octocat--clip-lines (if large text (octocat-tree--fontify path text))
                                     octocat--max-line-length))))))
 
-(defun octocat-repo--file-notice (path head)
+(defun octocat-repo--file-notice (path blob)
   "Return why the file viewer does not show file PATH unasked, or nil.
-HEAD is PATH's `repo-head'.  A file that is not text, or is larger than
-`octocat--max-file-size', is not fetched; an image always is."
-  (let ((size (gethash "size" head)))
+BLOB is PATH's, as `octocat-model-head-dir' gives it.  A file that is
+not text, or is larger than `octocat--max-file-size', is not fetched;
+an image always is."
+  (let ((size (gethash "byteSize" blob)))
     (unless (octocat--image-file-p path)
-      (cond ((gethash "binary" head)
+      (cond ((eq (gethash "isBinary" blob) t)
              (format "A binary file%s; C-c C-o opens it on GitHub."
                      (if (integerp size)
                          (concat " of " (file-size-human-readable size))
@@ -1683,17 +1686,18 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
          (current-branch (plist-get (octocat--head-info) :branch))
          (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
                                     :data))
-         (default-branch (and summary (gethash "default-branch" summary)))
+         (default-branch (octocat-model-default-branch summary))
          (head-snap      (octocat-vui-use-resource (list 'repo-head repo ref path) tick))
          ;; Alongside the head, not after it: the text, while it is the
          ;; head's blob, spares fetching the blob once the head is in.
          (file-snap      (octocat-vui-use-resource (list 'file-blob repo ref path) tick))
          (head           (plist-get head-snap :data))
-         (blob           (and head (equal (gethash "kind" head) "blob")
-                              (gethash "tree" head)))
+         (dir            (octocat-model-head-dir head))
+         (blob           (and (equal (octocat--get dir "__typename") "Blob")
+                              (gethash "oid" dir)))
          (file           (plist-get file-snap :data))
          (text           (and file (equal (gethash "oid" file) blob) (gethash "text" file)))
-         (notice         (and blob (not anyway) (octocat-repo--file-notice path head)))
+         (notice         (and blob (not anyway) (octocat-repo--file-notice path dir)))
          (removed        (octocat-file--removed-p change)))
     (octocat-vui-page
      (octocat-repo--pin repo (or ref default-branch) path current-branch
@@ -1711,19 +1715,20 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
       (cond ((or diff removed)
              (vui-component 'octocat-diff-file-view
                :repo repo :path path :change change
-               :commit (and head (gethash "oid" head))))
+               :commit (octocat--get (octocat-model-head-commit head) "oid")))
             (notice
              (apply #'vui-hstack :spacing 2
                     (vui-text notice :face 'octocat-dimmed)
                     ;; Not a binary file: it would show as garbage.
-                    (unless (gethash "binary" head)
+                    (unless (eq (gethash "isBinary" dir) t)
                       (list (vui-button "[Show anyway]"
                               :no-decoration t
                               :help-echo "RET: fetch the file and show it as plain text"
                               :on-click (lambda () (vui-set-state :anyway t)))))))
             ((and blob blame)
              (vui-component 'octocat-repo-vui--file-blame
-               :key blob :repo repo :path path :blob blob :commit (gethash "oid" head)
+               :key blob :repo repo :path path :blob blob
+               :commit (octocat--get (octocat-model-head-commit head) "oid")
                :lines lines))
             (blob
              (vui-component 'octocat-repo-vui--file-content
@@ -1746,7 +1751,7 @@ touched it, as GitHub's History."
          (head-info      (octocat--head-info))
          (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
                                     :data))
-         (default-branch (and summary (gethash "default-branch" summary))))
+         (default-branch (octocat-model-default-branch summary)))
     (vui-use-effect (default-branch)
       (when (buffer-live-p buf)
         (with-current-buffer buf
@@ -1900,7 +1905,7 @@ binding outranks the button's own."
 \"HEAD\", nil or \"\", the default branch, is named when it is known."
   (if (member branch '(nil "" "HEAD"))
       (let ((summary (plist-get (octocat-sync-read (list 'repo-summary repo)) :data)))
-        (or (and summary (gethash "default-branch" summary)) "HEAD"))
+        (or (octocat-model-default-branch summary) "HEAD"))
     branch))
 
 (defun octocat-tree--open-file-by-path (repo branch path &optional at change)
@@ -1954,14 +1959,14 @@ stored branches settle which SEGMENTS it is, else GitHub, the page
 opening at once on the first segment meanwhile."
   (let* ((summary  (plist-get (octocat-sync-read (list 'repo-summary repo)) :data))
          (refs     (append (plist-get (octocat-sync-read (list 'branches repo)) :data)
-                           (and summary (list (gethash "default-branch" summary)))))
+                           (ensure-list (octocat-model-default-branch summary))))
          (count    (octocat--ref-count segments refs))
          (target   (lambda (n) (octocat-repo--ref-path-target repo kind segments n at))))
     (if count
         (apply #'octocat-open (funcall target count))
       (octocat-vui-open-settled
        (list 'ref-split repo (string-join segments "/"))
-       (lambda (data) (funcall target (if data (gethash "count" data) 1)))))))
+       (lambda (data) (funcall target (octocat-model-ref-count data)))))))
 
 (defun octocat-file-switch-branch ()
   "Open this file at another branch, in a buffer of its own."

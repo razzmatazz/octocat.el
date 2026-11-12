@@ -1764,7 +1764,7 @@ the fetched one meanwhile.  A new TICK fetches them again."
          (snap  (octocat-vui-use-resource (list 'workflow repo id) tick))
          (data  (plist-get snap :data))
          (summary (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick) :data))
-         (default-branch (and summary (gethash "default-branch" summary)))
+         (default-branch (octocat-model-default-branch summary))
          (file  (or (and data (gethash "path" data)) path)))
     (octocat-vui-page
      (if data
@@ -2124,7 +2124,9 @@ A new TICK fetches them again."
              (octocat-vui-resource-view
               checks
               :skeleton (lambda (_) (vui-text (octocat-vui-line-skeleton "  ")))
-              :render (lambda (data) (apply #'vui-vstack (octocat-checks--list repo data)))))))))
+              :render (lambda (data)
+                        (apply #'vui-vstack
+                               (octocat-checks--list repo (octocat-model-check-list data))))))))))
 
 
 ;;;;; Major mode

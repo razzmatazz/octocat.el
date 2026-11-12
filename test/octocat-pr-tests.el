@@ -36,26 +36,21 @@
 
 (defun octocat-pr-test--stack (&rest prs)
   "Return a stack of PRS, bottom first.
-It is as `octocat-model--pr-parse-stack' gives it.  Each PR is a list
-of NUMBER, STATE, DRAFT and MERGEABLE."
-  (gethash "stack"
-           (octocat-model--pr-parse-stack
-            (octocat-sync--parse
-             (json-serialize
-              `((repository
-                 (pullRequest
-                  (stack
-                   (number . 17) (baseRefName . "main")
-                   (entries
-                    (nodes
-                     . ,(vconcat
-                         (seq-map-indexed
-                          (pcase-lambda (`(,n ,state ,draft ,mergeable) i)
-                            `((position . ,(1+ i))
-                              (pullRequest (number . ,n) (title . ,(format "Layer %d" n))
-                                           (state . ,state) (isDraft . ,draft)
-                                           (mergeable . ,mergeable))))
-                          prs)))))))))))))
+It is as `octocat-pr--use-stack' gives it.  Each PR is a list of
+NUMBER, STATE, DRAFT and MERGEABLE."
+  (octocat-sync--parse
+   (json-serialize
+    `((number . 17) (baseRefName . "main")
+      (entries
+       (nodes
+        . ,(vconcat
+            (seq-map-indexed
+             (pcase-lambda (`(,n ,state ,draft ,mergeable) i)
+               `((position . ,(1+ i))
+                 (pullRequest (number . ,n) (title . ,(format "Layer %d" n))
+                              (state . ,state) (isDraft . ,draft)
+                              (mergeable . ,mergeable))))
+             prs))))))))
 
 (defun octocat-pr-test--text (nodes)
   "Return NODES rendered, each line trimmed on the right."
@@ -107,13 +102,7 @@ of NUMBER, STATE, DRAFT and MERGEABLE."
                    "  #15  Layer 15  ✗ has conflicts"
                    "  #14  (draft) Layer 14  ✗ is a draft")))
   ;; A pull request in no stack shows none.
-  (let ((none (octocat-model--pr-parse-stack
-               (octocat--get (octocat-sync--parse
-                              "{\"data\":{\"repository\":{\"pullRequest\":{\"stack\":null}}}}")
-                             "data"))))
-    (should (eq (gethash "stack" none) :null))
-    (should-not (octocat-pr--stack-section "o/r" (json-parse-string "{\"number\":15}")
-                                           (octocat--get none "stack") 80))))
+  (should-not (octocat-pr--stack-section "o/r" (json-parse-string "{\"number\":15}") nil 80)))
 
 (ert-deftest octocat-pr-test-repo-stacks ()
   "The PR list marks each PR of a stack with its place, counted from the bottom."
@@ -343,14 +332,14 @@ The thread's own fields go on its first comment; a draft is pending."
     (should (eq (gethash "pending" reply) t))
     (should (eq (gethash "can_edit" reply) t))
     (should (equal (octocat-diff--threads cs) (list cs)))
-    (let ((data (make-hash-table :test #'equal)))
-      (puthash "threads" threads data)
-      (puthash "pending" (make-hash-table) data)
+    (let ((data (octocat--table "reviewThreads" (octocat--table "nodes" threads)
+                                "reviews" (octocat--table "nodes" (vector (octocat--table))))))
       (should (= (octocat-pr-diff--pending-count data) 1))
       (setq data (octocat-model--review-drop-drafts data))
       (should (= (octocat-pr-diff--pending-count data) 0))
-      (should-not (gethash "pending" data))
-      (should (= (length (octocat--get (aref (gethash "threads" data) 0) "comments" "nodes"))
+      (should-not (octocat-model-pending-review data))
+      (should (= (length (octocat--get (aref (octocat--nodes data "reviewThreads") 0)
+                                       "comments" "nodes"))
                  1)))))
 
 ;;;; M-x octocat-pr

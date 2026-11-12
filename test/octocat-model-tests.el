@@ -66,30 +66,28 @@
 
 (ert-deftest octocat-model-test-tree-path ()
   "Each tree on the way to a path is asked for in one query, the root's first."
-  (let* ((props (octocat-sync--props '(tree-path "o/r" "main" "a/b")))
-         (parse (plist-get props :parse)))
+  (let ((props (octocat-sync--props '(tree-path "o/r" "main" "a/b"))))
     (should (equal (plist-get props :vars)
                    '(("e0" . "main:") ("e1" . "main:a") ("e2" . "main:a/b"))))
-    (should (equal (gethash "shas" (funcall parse (json-parse-string
-                                                   "{\"repository\":{\"t0\":{\"oid\":\"r\"},\"t1\":{\"oid\":\"a\"},\"t2\":{}}}"
-                                                   :null-object nil)))
+    (should (equal (octocat-model-tree-shas
+                    (octocat-sync--parse
+                     "{\"repository\":{\"t0\":{\"oid\":\"r\"},\"t1\":{\"oid\":\"a\"},\"t2\":{}}}"))
                    ["r" "a" nil]))
+    (should-error (funcall (plist-get props :parse) (octocat-sync--parse "{\"repository\":null}")))
     ;; Nothing revealed, nothing asked.
     (should (plist-get (octocat-sync--props '(tree-path "o/r" "main" nil)) :fetch))))
 
 (ert-deftest octocat-model-test-ref-split ()
   "The most leading segments GitHub resolves are the ref, else the first."
-  (let* ((props (octocat-sync--props '(ref-split "o/r" "feat/x/a.el")))
-         (parse (plist-get props :parse)))
+  (let ((props (octocat-sync--props '(ref-split "o/r" "feat/x/a.el"))))
     (should (equal (mapcar #'car (plist-get props :vars)) '("e1" "e2" "e3")))
     (should (equal (cdr (assoc "e2" (plist-get props :vars))) "feat/x^{commit}"))
-    (should (eql (gethash "count" (funcall parse (json-parse-string
-                                                  "{\"repository\":{\"p1\":{\"oid\":\"1\"},\"p2\":{\"oid\":\"2\"},\"p3\":null}}"
-                                                  :null-object nil)))
+    (should (eql (octocat-model-ref-count
+                  (octocat-sync--parse
+                   "{\"repository\":{\"p1\":{\"oid\":\"1\"},\"p2\":{\"oid\":\"2\"},\"p3\":null}}"))
                  2))
-    (should (eql (gethash "count" (funcall parse (json-parse-string "{\"repository\":null}"
-                                                                    :null-object nil)))
-                 1))))
+    (should (eql (octocat-model-ref-count (octocat-sync--parse "{\"repository\":null}")) 1))
+    (should (eql (octocat-model-ref-count nil) 1))))
 
 (ert-deftest octocat-model-test-issue-parse-created ()
   "The number is read from the URL `gh issue create' prints."
@@ -100,36 +98,21 @@
 
 ;;;; Shared resources
 
-(ert-deftest octocat-model-test-counts-query-and-parse ()
-  "Pull requests also count merged; the answer parses to a table."
+(ert-deftest octocat-model-test-counts-query ()
+  "Pull requests also count merged."
   (should (string-match-p "merged:pullRequests(states:MERGED)"
                           (octocat-model--counts-query 'pulls)))
-  (should-not (string-match-p "merged" (octocat-model--counts-query 'issues)))
-  (let ((counts (octocat-model--parse-counts
-                 (octocat-model-tests--data
-                  "{\"data\":{\"repository\":{\"open\":{\"totalCount\":2},\"closed\":{\"totalCount\":5}}}}"))))
-    (should (= (hash-table-count counts) 2))
-    (should (= (gethash "open" counts) 2))
-    (should (= (gethash "closed" counts) 5))))
+  (should-not (string-match-p "merged" (octocat-model--counts-query 'issues))))
 
-(ert-deftest octocat-model-test-parse-repo-summary-fork ()
-  "A fork's summary carries its parent, default branch and counts."
-  (let ((summary (octocat-model--parse-repo-summary
+(ert-deftest octocat-model-test-default-branch ()
+  "A summary gives its default branch, nil for an empty repository."
+  (should (equal (octocat-model-default-branch
                   (octocat-model-tests--data
-                   "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\"},\"parent\":{\"nameWithOwner\":\"up/stream\"},\"issues\":{\"totalCount\":3},\"pullRequests\":{\"totalCount\":2}}}}"))))
-    (should (equal (gethash "default-branch" summary) "main"))
-    (should (equal (gethash "fork-parent" summary) "up/stream"))
-    (should (= (gethash "open-issues" summary) 3))
-    (should (= (gethash "open-prs" summary) 2))))
-
-(ert-deftest octocat-model-test-parse-repo-summary-empty-repo ()
-  "A non-fork with no default branch yields nils, not errors."
-  (let ((summary (octocat-model--parse-repo-summary
-                  (octocat-model-tests--data
-                   "{\"data\":{\"repository\":{\"defaultBranchRef\":null,\"parent\":null,\"issues\":{\"totalCount\":0},\"pullRequests\":{\"totalCount\":0}}}}"))))
-    (should-not (gethash "default-branch" summary))
-    (should-not (gethash "fork-parent" summary))
-    (should (= (gethash "open-issues" summary) 0))))
+                   "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\"}}}}"))
+                 "main"))
+  (should-not (octocat-model-default-branch
+               (octocat-model-tests--data
+                "{\"data\":{\"repository\":{\"defaultBranchRef\":null}}}"))))
 
 (ert-deftest octocat-model-test-search-query ()
   "The query is scoped to the repo and kind; nil means open items."
@@ -337,7 +320,7 @@
                  '("pr" "review" "7" "--repo" "o/r" "--comment" "--body" "LGTM"))))
 
 (ert-deftest octocat-model-test-review-parse-threads ()
-  "The pages' threads join; with no pending review, \"pending\" is nil."
+  "The pages' threads join; with no pending review, there is none."
   (let* ((page (lambda (reviews threads)
                  (format (concat "{\"data\":{\"repository\":{\"pullRequest\":{"
                                  "\"id\":\"PR1\",\"headRefOid\":\"abc\","
@@ -351,24 +334,31 @@
                 (format "[%s]" (funcall page "{\"id\":\"R1\",\"commit\":{\"oid\":\"def\"}}"
                                         "")))))
     (should (equal (gethash "id" none) "PR1"))
-    (should (equal (gethash "head" none) "abc"))
-    (should-not (gethash "pending" none))
-    (should (equal (mapcar (lambda (th) (gethash "id" th)) (gethash "threads" none))
+    (should-not (octocat-model-pending-review none))
+    (should (equal (mapcar (lambda (th) (gethash "id" th)) (octocat--nodes none "reviewThreads"))
                    '("T1" "T2")))
-    (should (equal (octocat--get some "pending" "id") "R1"))
-    (should (equal (octocat--get some "pending" "commit") "def"))))
+    (should (equal (octocat--get (octocat-model-pending-review some) "id") "R1"))
+    (should (equal (octocat--get (octocat-model-pending-review some) "commit" "oid") "def"))))
 
 ;;;; Commits
 
-(ert-deftest octocat-model-test-commit-parse-branch ()
+(ert-deftest octocat-model-test-commit-holder ()
   "The default branch holds a commit behind its head or at it, not one ahead."
-  (dolist (case '(("BEHIND" . "main") ("IDENTICAL" . "main") ("AHEAD" . :null) ("DIVERGED" . :null)))
-    (should (equal (gethash "name"
-                            (octocat-model--commit-parse-branch
-                             (octocat-model-tests--data
-                              (format "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\",\"compare\":{\"status\":\"%s\"}}}}}"
-                                      (car case)))))
+  (dolist (case '(("BEHIND" . "main") ("IDENTICAL" . "main") ("AHEAD") ("DIVERGED")))
+    (should (equal (octocat-model-commit-holder
+                    (octocat-model-tests--data
+                     (format "{\"data\":{\"repository\":{\"defaultBranchRef\":{\"name\":\"main\",\"compare\":{\"status\":\"%s\"}}}}}"
+                             (car case))))
                    (cdr case)))))
+
+(ert-deftest octocat-model-test-set-given ()
+  "A reaction given is yours, even of a group not listed; taken back, it is not."
+  (let ((data (octocat-sync--parse
+               "{\"node\":{\"reactionGroups\":[{\"content\":\"HEART\",\"viewerHasReacted\":true}]}}")))
+    (octocat-model--set-given data "ROCKET" t)
+    (should (equal (octocat-model-reactions-given data) '("HEART" "ROCKET")))
+    (octocat-model--set-given data "HEART" nil)
+    (should (equal (octocat-model-reactions-given data) '("ROCKET")))))
 
 ;;;; Repository code
 
@@ -400,24 +390,17 @@
                  '("api" "-X" "GET" "repos/o/r/contents/docs/a%20b.md" "-f" "ref=main"
                    "-H" "Accept: application/vnd.github.raw"))))
 
-(ert-deftest octocat-model-test-repo-parse-head ()
-  "A directory at a ref has its last commit, its tree and its history count."
-  (let ((head (octocat-model--repo-parse-head
-               (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\",\"entries\":[{\"name\":\"README.md\",\"type\":\"blob\",\"oid\":\"b1\"}]}}}}")
+(ert-deftest octocat-model-test-repo-check-head ()
+  "A directory at a ref has its last commit and its tree; a missing one errs."
+  (let ((head (octocat-model--repo-check-head
+               (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":42,\"nodes\":[{\"oid\":\"abc\",\"messageHeadline\":\"Fix it\",\"authoredDate\":\"2026-10-14T13:40:36Z\",\"author\":{\"name\":\"Ann\",\"email\":\"a@x\",\"user\":{\"login\":\"ann\"}}}]}},\"dir\":{\"__typename\":\"Tree\",\"oid\":\"t1\",\"entries\":[{\"path\":\"README.md\",\"type\":\"blob\",\"sha\":\"b1\"}]}}}}")
                "main" "src")))
-    (should (equal (gethash "oid" head) "abc"))
-    (should (equal (octocat--commit-author head) "@ann"))
-    (should (equal (gethash "tree" head) "t1"))
-    (should (equal (gethash "kind" head) "tree"))
-    (should (equal (gethash "total" head) 42))
-    ;; Its entries, as `tree-dir' has them.
-    (let ((entry (aref (gethash "entries" head) 0)))
-      (should (equal (mapcar (lambda (k) (gethash k entry)) '("path" "type" "sha"))
-                     '("README.md" "blob" "b1")))))
-  (should-error (octocat-model--repo-parse-head
+    (should (equal (octocat--commit-author (octocat-model-head-commit head)) "@ann"))
+    (should (equal (gethash "oid" (octocat-model-head-dir head)) "t1")))
+  (should-error (octocat-model--repo-check-head
                  (octocat-model-tests--data "{\"data\":{\"repository\":{\"object\":null,\"dir\":null}}}")
                  "nope" nil))
-  (should-error (octocat-model--repo-parse-head
+  (should-error (octocat-model--repo-check-head
                  (octocat-model-tests--data
                   "{\"data\":{\"repository\":{\"object\":{\"history\":{\"totalCount\":0,\"nodes\":[]}},\"dir\":null}}}")
                  "main" "missing")))

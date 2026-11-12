@@ -472,19 +472,21 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
   "A reaction given or taken back shows at once, and stays once GitHub has it."
   (octocat-timeline-tests--with-issue
     (octocat-sync--write octocat-sync--db (octocat-sync-spec-key '(viewer-reactions "IC_5"))
-                         (json-parse-string "{\"given\":[\"HEART\"]}")
+                         (json-parse-string
+                          (concat "{\"node\":{\"reactionGroups\":[{\"content\":\"HEART\","
+                                  "\"viewerHasReacted\":true}]}}"))
                          (float-time))
     (cl-flet ((reactions ()
                 (mapcar (lambda (i) (and (plist-get i :reactions)
                                          (substring-no-properties (plist-get i :reactions))))
                         (octocat-timeline-items (issue) "opened this issue" nil nil)))
               (given ()
-                (octocat--get (plist-get (octocat-sync-read '(viewer-reactions "IC_5")) :data)
-                              "given")))
+                (octocat-model-reactions-given
+                 (plist-get (octocat-sync-read '(viewer-reactions "IC_5")) :data))))
       (octocat-sync-submit '(react "issue" "o/r" 7 "I_7" "HOORAY" t))
       (octocat-sync-submit '(react "issue" "o/r" 7 "IC_5" "HEART" nil))
       (should (equal (reactions) '("🎉 1" nil)))
-      (should (equal (given) []))
+      (should-not (given))
       ;; Both act on the issue: the second is sent once the first is answered.
       (should (= (length calls) 1))
       (let ((args (car (car calls))))
@@ -495,7 +497,7 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
       (octocat-timeline-tests--answer (car calls) "{}")
       (should-not octocat-sync--pending)
       (should (equal (reactions) '("🎉 1" nil)))
-      (should (equal (given) [])))))
+      (should-not (given)))))
 
 (ert-deftest octocat-timeline-test-react-picks ()
   "Picking a reaction you gave takes it back; the picker ticks it."
@@ -506,7 +508,9 @@ CALL is as `octocat-timeline-tests--with-issue' pushes it."
               ((symbol-function 'octocat-sync-get)
                (lambda (spec cb)
                  (should (equal spec '(viewer-reactions "I_7")))
-                 (funcall cb (json-parse-string "{\"given\":[\"THUMBS_UP\"]}"))))
+                 (funcall cb (json-parse-string
+                              (concat "{\"node\":{\"reactionGroups\":[{\"content\":\"THUMBS_UP\","
+                                      "\"viewerHasReacted\":true}]}}")))))
               ((symbol-function 'run-at-time) (lambda (_ _ f) (funcall f)))
               ((symbol-function 'octocat--still-selected-p) (lambda (_) t))
               ((symbol-function 'read-multiple-choice)
