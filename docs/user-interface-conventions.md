@@ -544,8 +544,8 @@ its views boxed side by side into one outline, the view shown filled in, the oth
 text names `C-c C-v`, so the key is found from the page.
 The pill always ends its line, at the right edge
 (`octocat-vui-segmented-right`), so it is found in the same place on
-every page: the file and commit pages' top line, the Files heading of a
-PR's files changed, the Jobs heading of a run.
+every page: the file and commit pages' top line, the tab row of a PR's
+files changed, the Jobs heading of a run.
 
 Re-render the page in place with the new prop (`octocat-vui-update-page`),
 not a remount; see [using vui.el](using-vui.md).  Remember the choice with

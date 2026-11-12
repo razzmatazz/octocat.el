@@ -1862,21 +1862,24 @@ nil LABEL shows VALUE alone.  Labels and separators are dimmed."
     (and parts
          (vui-text (mapconcat #'identity parts (propertize " · " 'face 'octocat-dimmed))))))
 
-(defun octocat-vui-tab-row (tabs width)
+(defun octocat-vui-tab-row (tabs width &optional end)
   "Return a row of TABS underlined across WIDTH columns, as GitHub's tab bar.
 Each tab is (LABEL HELP ON-CLICK); the current one has no ON-CLICK and is
 a heading, the others are buttons.  The underline sets the row apart from
-what is below it without a blank line."
+what is below it without a blank line.  END, a node or nil, ends the
+row, such as a pill of the tab's views."
   (let ((ul (lambda (face) (list face 'underline))))
     (apply #'octocat-vui-underlined width
-           (cdr (mapcan (pcase-lambda (`(,label ,help ,on-click))
-                          (list (vui-text "  ")
-                                (if on-click
-                                    (vui-button label :face (funcall ul 'octocat-dimmed)
-                                                :help-echo (octocat--button-help help on-click)
-                                                :on-click on-click)
-                                  (vui-text label :face (funcall ul 'octocat-section-heading)))))
-                        tabs)))))
+           (append
+            (cdr (mapcan (pcase-lambda (`(,label ,help ,on-click))
+                           (list (vui-text "  ")
+                                 (if on-click
+                                     (vui-button label :face (funcall ul 'octocat-dimmed)
+                                                 :help-echo (octocat--button-help help on-click)
+                                                 :on-click on-click)
+                                   (vui-text label :face (funcall ul 'octocat-section-heading)))))
+                         tabs))
+            (list end)))))
 
 (defun octocat-vui-segmented (segments)
   "Return SEGMENTS as one segmented control, a pill of choices.

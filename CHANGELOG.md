@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A PR's Diff, Tree and Patch switch sits on its tab row, at the right
 * A PR timeline's commits start with a coloured ○, or ⊕ for a merge
 * Timeline and feed dim their verbs, so titles, commits and people stand out
 * A job's step names are no longer dimmed

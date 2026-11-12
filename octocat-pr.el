@@ -878,12 +878,13 @@ BG is as for `octocat--label-face'."
 (defconst octocat-pr--tab-labels '("Conversation" "Commits" "Files changed")
   "The labels of a PR page's tabs (see `octocat-pr--tabs'), for its skeleton.")
 
-(defun octocat-pr--tabs (current repo number width &optional files commits)
+(defun octocat-pr--tabs (current repo number width &optional files commits views)
   "Return the \"Conversation | Commits | Files changed\" tab strip of a PR.
 CURRENT is `conversation', `commits' or `files', the tab shown by this
 buffer; the others open that page of pull request NUMBER of REPO.
 FILES and COMMITS, when non-nil, are the counts shown on their tabs, as
-GitHub does.  See `octocat-vui-tab-row' for WIDTH."
+GitHub does.  VIEWS, a node or nil, ends the strip: the pill of the
+shown tab's views.  See `octocat-vui-tab-row' for WIDTH."
   (octocat-vui-tab-row
    (list (list "Conversation" "RET: show the conversation"
                (unless (eq current 'conversation)
@@ -896,7 +897,7 @@ GitHub does.  See `octocat-vui-tab-row' for WIDTH."
                "RET: show the files changed"
                (unless (eq current 'files)
                  (lambda () (octocat-pr-diff-open repo number)))))
-   width))
+   width views))
 
 (defun octocat-pr--pin (number snap width bg)
   "Return the pin of a page of PR NUMBER, SNAP its data's snapshot.
@@ -907,7 +908,7 @@ WIDTH and BG are as for `octocat-vui-detail-pin'.  See `octocat-vui-page'."
                               width bg)
     (octocat-vui-number-pin number)))
 
-(defun octocat-pr--header (repo pr bg width &optional tab stack)
+(defun octocat-pr--header (repo pr bg width &optional tab stack views)
   "Return the vnodes above the body: repo, title, branches, labels, tabs.
 PR is the hash-table of the pull request in REPO.  BG is as for
 `octocat--label-face'.  WIDTH is that of the title and the tabs, see
@@ -915,7 +916,7 @@ PR is the hash-table of the pull request in REPO.  BG is as for
 TAB is the page showing it, `conversation' (the default), `commits' or
 `files'.  STACK, when non-nil, is the stack PR is in, from
 `octocat-pr--use-stack': where PR sits in it ends the first line, see
-`octocat-pr--stack-badge'."
+`octocat-pr--stack-badge'.  VIEWS is as for `octocat-pr--tabs'."
   (let* ((number   (gethash "number" pr))
          (state    (or (gethash "state" pr) "OPEN"))
          (head    (or (gethash "headRefName" pr) ""))
@@ -954,7 +955,8 @@ TAB is the page showing it, `conversation' (the default), `commits' or
       (vui-newline)
       (octocat-pr--tabs (or tab 'conversation) repo number width
                         (gethash "changedFiles" pr)
-                        (octocat--get pr "commits" "totalCount"))))))
+                        (octocat--get pr "commits" "totalCount")
+                        views)))))
 
 (defun octocat-pr--use-data (repo number tick)
   "Return the snapshot of the pull request NUMBER of REPO.
@@ -1629,6 +1631,7 @@ everything again."
   (let* ((pr       (octocat-pr--use-data repo number tick))
          (stack    (octocat-pr--use-stack repo number tick))
          (tab-w    (octocat--markdown-width))
+         (views    (octocat-diff-views-heading (or view 'diff) tab-w))
          (files    (octocat-vui-use-resource (list 'pr-files repo number) tick))
          (threads  (octocat-vui-use-resource (octocat-model-review-threads-spec repo number) tick))
          (data     (plist-get threads :data))
@@ -1655,39 +1658,36 @@ everything again."
         (apply #'vui-vstack
                (delq nil (octocat-pr--header
                           repo (or (plist-get pr :data) (plist-get pr :partial))
-                          (octocat--label-background) tab-w 'files stack))))
+                          (octocat--label-background) tab-w 'files stack views))))
        ((and (plist-get pr :error) (not (plist-get pr :loading)))
         (vui-vstack
          (vui-text (octocat-vui-error-text pr) :face 'error)
-         (octocat-pr--tabs 'files repo number tab-w)))
+         (octocat-pr--tabs 'files repo number tab-w nil nil views)))
        (t (vui-vstack
            (vui-text (format "%s#%d  diff" repo number)
              :face 'octocat-dimmed)
-           (octocat-pr--tabs 'files repo number tab-w))))
+           (octocat-pr--tabs 'files repo number tab-w nil nil views))))
       (pcase (octocat-vui-snapshot-status files)
         ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
         ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
         (_ (pcase view
              ('tree
-              (vui-vstack
-               (octocat-diff-views-heading view (octocat--markdown-width))
-               (if head
-                   (vui-component 'octocat-diff-head-tree
-                     :repo repo :head head :files (plist-get files :data)
-                     :context (list :revs revs
-                                    :label (format "Changes in pull request #%d" number))
-                     :at at)
-                 (vui-text (octocat-tree--skeleton)))))
+              (if head
+                  (vui-component 'octocat-diff-head-tree
+                    :repo repo :head head :files (plist-get files :data)
+                    :context (list :revs revs
+                                   :label (format "Changes in pull request #%d" number))
+                    :at at)
+                (vui-text (octocat-tree--skeleton))))
              ('patch
               (apply #'vui-vstack
                      (delq nil
-                           (list (octocat-diff-views-heading view (octocat--markdown-width))
-                                 (octocat-diff-filter-line (plist-get files :data) filter)
+                           (list (octocat-diff-filter-line (plist-get files :data) filter)
                                  (vui-text text)))))
              (_ (octocat-diff-files-section repo (plist-get files :data) by-path
                                             hide-comments raw (octocat--markdown-width) nil at
                                             (octocat--get (plist-get pr :data) "changedFiles")
-                                            revs (or view 'diff) filter)))))
+                                            revs t filter)))))
       (vui-newline)
       (octocat-diff-comments-section "Review Comments" (plist-put (copy-sequence threads)
                                                                   :data comments)

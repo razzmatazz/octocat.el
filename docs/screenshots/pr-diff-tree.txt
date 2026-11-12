@@ -4,8 +4,7 @@ open    Assignees @srivera
         Labels  performance   enhancement
         template-cache → main · Approved · Milestone 0.10 · Closes #97
 
-[Conversation]  [Commits (7)]  Files changed (3)
-                                                                                  Diff  Tree  Patch
+[Conversation]  [Commits (7)]  Files changed (3)                                  Diff  Tree  Patch
 ▸ .github/
 ▸ docs/
 ▸ examples/

@@ -1116,7 +1116,7 @@ path a switch of views kept names the first of FILES at or in it."
             (list 'diff nil))))))
 
 (vui-defcomponent octocat-diff--files
-    (repo all files filter by-path hide fits raw width underline at total revs view)
+    (repo all files filter by-path hide fits raw width underline at total revs tabbed)
   "The Files section: FILES of REPO with the review comments BY-PATH, folded.
 FILES are those of ALL whose path holds FILTER, see
 `octocat-diff-filtered'; the heading has the buttons to set or clear it.
@@ -1131,9 +1131,8 @@ path a switch of views kept, is scrolled to, see `octocat-diff--file-at';
 the user's refresh drops it.
 TOTAL, how many files changed, says at the end how many GitHub left out.
 REVS is as for `octocat-diff-open-large', for the files too large to diff.
-VIEW, when non-nil, puts the pill of the views in place of the
-heading, at the right edge of WIDTH, the buttons before it, see
-`octocat-diff-views-heading'."
+TABBED leaves the heading out, the buttons alone on their line: the
+page's tab row heads the section, and carries the pill of the views."
   :state ((bulk (and fits (cons 0 t))))
   :render
   (let* ((buf (current-buffer))
@@ -1168,9 +1167,7 @@ heading, at the right edge of WIDTH, the buttons before it, see
                    (and (> (length all) 1)
                         (octocat-diff--filter-buttons all filter)))))
        (cond
-        ;; The buttons first, the views at the right edge.
-        (view (apply #'vui-hstack :spacing 2
-                     (append after (list (octocat-diff-views-heading view width)))))
+        (tabbed (and after (apply #'vui-hstack :spacing 2 after)))
         (underline (apply #'octocat-vui-section-heading heading width after))
         (t (apply #'vui-hstack :spacing 2
                   (vui-text heading :face 'octocat-section-heading) after))))
@@ -1192,7 +1189,7 @@ heading, at the right edge of WIDTH, the buttons before it, see
          :face 'octocat-dimmed)))))
 
 (defun octocat-diff-files-section (repo files by-path hide raw width
-                                        &optional underline at total revs view filter)
+                                        &optional underline at total revs tabbed filter)
   "Return the vnode of the Files section: the heading and one entry per file.
 FILES is REPO's files vector and BY-PATH the review comments by file path,
 left out when HIDE.  Only the files whose path holds FILTER show, see
@@ -1202,7 +1199,7 @@ comments are markdown, rendered unless RAW, to fit WIDTH columns.
 UNDERLINE underlines the heading across WIDTH.  AT is as
 `octocat-diff--at'.  TOTAL is how many files changed,
 when FILES may be fewer.  REVS, the commits compared, is as for
-`octocat-diff-open-large'.  VIEW is as for `octocat-diff--files'."
+`octocat-diff-open-large'.  TABBED is as for `octocat-diff--files'."
   (let ((shown (octocat-diff-filtered files filter)))
     (vui-component 'octocat-diff--files
       :repo repo
@@ -1217,7 +1214,7 @@ when FILES may be fewer.  REVS, the commits compared, is as for
       :at at
       :total total
       :revs revs
-      :view view
+      :tabbed tabbed
       :fits (<= (octocat-diff--line-count shown) (octocat-vui-window-height)))))
 
 (defun octocat-diff-comments-section (label comments raw width)
@@ -1478,8 +1475,7 @@ entry with CONTEXT, a plist of :revs and :label, see
 
 (defun octocat-diff-views-heading (view width)
   "Return the pill of the views, VIEW filled in, at the right edge of WIDTH.
-It ends the heading of the changed files, see `octocat-diff--files',
-and the commit page's top line."
+It ends a PR's tab row and the commit and comparison pages' top line."
   (octocat-vui-segmented-right (octocat-diff--view-segments view) width))
 
 (defun octocat-diff--focus (at)
