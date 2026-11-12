@@ -834,7 +834,8 @@ the CI status."
                :text (concat "committed "
                              (propertize (substring oid 0 (min 7 (length oid)))
                                          'face 'octocat-commit-sha)
-                             " " (or (gethash "messageHeadline" commit) ""))
+                             " " (octocat--content
+                                  (gethash "messageHeadline" commit)))
                :suffix (and (equal oid head-oid) (concat "  " (octocat--ci-label pr)))
                :on-visit (lambda () (octocat-commit-open repo oid))
                :help "RET: view commit")))
@@ -973,7 +974,7 @@ user's page."
                      (list (if (octocat--nonempty login)
                                (octocat-vui--login-link login)
                              (vui-text (concat "@" (or name ""))))
-                           (vui-text (format " (%s)" state)))))
+                           (vui-text (format " (%s)" state) :face 'octocat-dimmed))))
          (parts
           (append
            (and (vectorp reviews)

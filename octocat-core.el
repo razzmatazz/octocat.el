@@ -254,6 +254,18 @@ with a floor of 1."
   "Face for secondary / de-emphasised text in octocat buffers."
   :group 'octocat)
 
+(defun octocat--dim-words (string)
+  "Return a copy of STRING with `octocat-dimmed' under its own faces.
+So octocat's words in it dim, and what they name keeps its face; mark
+user content with `octocat--content' to keep it bright."
+  (let ((copy (copy-sequence string)))
+    (add-face-text-property 0 (length copy) 'octocat-dimmed t copy)
+    copy))
+
+(defun octocat--content (string)
+  "Return STRING, user content, to stay bright in `octocat--dim-words'."
+  (propertize (or string "") 'face 'default))
+
 (defface octocat-segment
   '((((class color) (background dark))
      :inherit octocat-dimmed :box (:line-width (-1 . -1) :color "gray40"))
@@ -348,7 +360,7 @@ See \"A commit starts with ○\" in docs/user-interface-conventions.md.")
   :group 'octocat)
 
 (defface octocat-run-step-name
-  '((t :inherit shadow))
+  '((t))
   "Face for a step name in a workflow-run view."
   :group 'octocat)
 

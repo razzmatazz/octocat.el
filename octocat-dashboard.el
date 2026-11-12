@@ -77,25 +77,34 @@ Starts at `octocat-feed-limit' and grows with `octocat-feed-load-more'.")
 
 (defun octocat--dashboard-event-icon (type)
   "Return a short propertized label string for dashboard feed event TYPE."
-  (pcase type
-    ("PushEvent"                    (propertize "push        " 'face 'octocat-dimmed))
-    ("PullRequestEvent"             (propertize "pr          " 'face 'octocat-pr-state-open))
-    ("IssueCommentEvent"            (propertize "comment     " 'face 'octocat-dimmed))
-    ("IssuesEvent"                  (propertize "issue       " 'face 'octocat-dimmed))
-    ("WatchEvent"                   (propertize "star        " 'face 'octocat-dimmed))
-    ("ForkEvent"                    (propertize "fork        " 'face 'octocat-dimmed))
-    ("CreateEvent"                  (propertize "create      " 'face 'octocat-dimmed))
-    ("DeleteEvent"                  (propertize "delete      " 'face 'octocat-dimmed))
-    ("ReleaseEvent"                 (propertize "release     " 'face 'octocat-dimmed))
-    ("MemberEvent"                  (propertize "member      " 'face 'octocat-dimmed))
-    ("GollumEvent"                  (propertize "wiki        " 'face 'octocat-dimmed))
-    ("PullRequestReviewEvent"       (propertize "review      " 'face 'octocat-dimmed))
-    ("PullRequestReviewCommentEvent" (propertize "review cmt  " 'face 'octocat-dimmed))
-    ("CommitCommentEvent"           (propertize "cmt comment " 'face 'octocat-dimmed))
-    ("PublicEvent"                  (propertize "public      " 'face 'octocat-dimmed))
-    ("SponsorshipEvent"             (propertize "sponsor     " 'face 'octocat-dimmed))
-    (_                              (propertize (format "%-12s" (or type "event"))
-                                                'face 'octocat-dimmed))))
+  (propertize (format "%-12s"
+                      (pcase type
+                        ("PushEvent"                     "push")
+                        ("PullRequestEvent"              "pr")
+                        ("IssueCommentEvent"             "comment")
+                        ("IssuesEvent"                   "issue")
+                        ("WatchEvent"                    "star")
+                        ("ForkEvent"                     "fork")
+                        ("CreateEvent"                   "create")
+                        ("DeleteEvent"                   "delete")
+                        ("ReleaseEvent"                  "release")
+                        ("MemberEvent"                   "member")
+                        ("GollumEvent"                   "wiki")
+                        ("PullRequestReviewEvent"        "review")
+                        ("PullRequestReviewCommentEvent" "review cmt")
+                        ("CommitCommentEvent"            "cmt comment")
+                        ("PublicEvent"                   "public")
+                        ("SponsorshipEvent"              "sponsor")
+                        (_                               (or type "event"))))
+              'face 'octocat-dimmed))
+
+(defun octocat--dashboard-number (number)
+  "Return \" #NUMBER\" for a feed event's detail, or \"\" if NUMBER is nil."
+  (if number (concat " " (propertize (format "#%d" number) 'face 'octocat-pr-number)) ""))
+
+(defun octocat--dashboard-title (title width)
+  "Return \": TITLE\", cut to WIDTH, for a feed event's detail, or \"\"."
+  (if title (concat ": " (octocat--content (truncate-string-to-width title width nil nil "…"))) ""))
 
 (defun octocat--dashboard-event-detail (event)
   "Return a short human-readable detail string for feed EVENT hash-table.
@@ -112,12 +121,14 @@ The detail text is derived from the event type and payload fields."
        ;; and a short SHA instead of an unreliable commit count.
        (let* ((ref    (and (hash-table-p payload)
                            (octocat--nonempty (gethash "ref" payload))))
-              (branch (if ref
-                          (replace-regexp-in-string "^refs/heads/" "" ref)
-                        "?"))
+              (branch (propertize (if ref
+                                      (replace-regexp-in-string "^refs/heads/" "" ref)
+                                    "?")
+                                  'face 'octocat-branch))
               (head   (and (hash-table-p payload)
                            (octocat--nonempty (gethash "head" payload))))
-              (short  (and head (substring head 0 (min 7 (length head))))))
+              (short  (and head (propertize (substring head 0 (min 7 (length head)))
+                                            'face 'octocat-commit-sha))))
          (if short
              (format "pushed to %s (%s)" branch short)
            (format "pushed to %s" branch))))
@@ -127,8 +138,8 @@ The detail text is derived from the event type and payload fields."
               (number (and (hash-table-p pr) (gethash "number" pr))))
          (format "%s PR%s%s"
                  (or action "opened")
-                 (if number (format " #%d" number) "")
-                 (if title (format ": %s" (truncate-string-to-width title 30 nil nil "…")) ""))))
+                 (octocat--dashboard-number number)
+                 (octocat--dashboard-title title 30))))
       ("IssuesEvent"
        (let* ((issue  (and (hash-table-p payload) (gethash "issue" payload)))
               (number (and (hash-table-p issue) (gethash "number" issue)))
@@ -136,16 +147,16 @@ The detail text is derived from the event type and payload fields."
                            (octocat--nonempty (gethash "title" issue)))))
          (format "%s issue%s%s"
                  (or action "opened")
-                 (if number (format " #%d" number) "")
-                 (if title (format ": %s" (truncate-string-to-width title 35 nil nil "…")) ""))))
+                 (octocat--dashboard-number number)
+                 (octocat--dashboard-title title 35))))
       ("IssueCommentEvent"
        (let* ((issue  (and (hash-table-p payload) (gethash "issue" payload)))
               (number (and (hash-table-p issue) (gethash "number" issue)))
               (title  (and (hash-table-p issue)
                            (octocat--nonempty (gethash "title" issue)))))
          (format "commented on issue%s%s"
-                 (if number (format " #%d" number) "")
-                 (if title (format ": %s" (truncate-string-to-width title 30 nil nil "…")) ""))))
+                 (octocat--dashboard-number number)
+                 (octocat--dashboard-title title 30))))
       ("WatchEvent"   "starred")
       ("ForkEvent"    "forked")
       ("PullRequestReviewEvent"
@@ -154,25 +165,28 @@ The detail text is derived from the event type and payload fields."
               (state  (and (hash-table-p payload)
                            (octocat--nonempty (gethash "state" payload)))))
          (format "reviewed PR%s%s"
-                 (if number (format " #%d" number) "")
+                 (octocat--dashboard-number number)
                  (if state (format " (%s)" state) ""))))
       ("PullRequestReviewCommentEvent"
        (let* ((pr     (and (hash-table-p payload) (gethash "pull_request" payload)))
               (number (and (hash-table-p pr) (gethash "number" pr))))
          (format "commented on PR%s review"
-                 (if number (format " #%d" number) ""))))
+                 (octocat--dashboard-number number))))
       ("CommitCommentEvent"
        (let* ((comment (and (hash-table-p payload) (gethash "comment" payload)))
               (sha     (and (hash-table-p comment)
                             (octocat--nonempty (gethash "commit_id" comment)))))
          (format "commented on commit%s"
-                 (if sha (format " %.7s" sha) ""))))
+                 (if sha
+                     (concat " " (propertize (substring sha 0 (min 7 (length sha)))
+                                             'face 'octocat-commit-sha))
+                   ""))))
       ("GollumEvent"
        (let* ((pages (and (hash-table-p payload) (gethash "pages" payload)))
               (page  (and (vectorp pages) (> (length pages) 0) (aref pages 0)))
               (title (and (hash-table-p page)
                           (octocat--nonempty (gethash "title" page)))))
-         (format "edited wiki%s" (if title (format ": %s" title) ""))))
+         (format "edited wiki%s" (if title (concat ": " (octocat--content title)) ""))))
       ("CreateEvent"
        (let ((ref-type (and (hash-table-p payload)
                             (octocat--nonempty (gethash "ref_type" payload)))))
@@ -185,7 +199,7 @@ The detail text is derived from the event type and payload fields."
        (let* ((release (and (hash-table-p payload) (gethash "release" payload)))
               (tag     (and (hash-table-p release)
                             (octocat--nonempty (gethash "tag_name" release)))))
-         (format "released%s" (if tag (format " %s" tag) ""))))
+         (format "released%s" (if tag (concat " " (octocat--content tag)) ""))))
       ("MemberEvent"
        (format "%s member" (or action "added")))
       (_
@@ -292,9 +306,9 @@ pages' two lines, cut to WIDTH; BG is as for `octocat--label-face'."
               "  "
               (propertize (format "%-16s" actor) 'face 'octocat-pr-author)
               "  "
-              (propertize (format "%-35s" repo) 'face 'octocat-branch)
+              (propertize (format "%-35s" repo) 'face 'octocat-repo)
               "  "
-              (octocat--format-title detail)
+              (octocat--format-title (octocat--dim-words detail))
               "  "
               (propertize date 'face 'octocat-dimmed))
       'octocat-url (and (octocat--nonempty repo) (octocat--web-url "%s" repo)))

@@ -284,6 +284,16 @@ The list filters are the exception: their completions are search
 qualifier values (`author:alice`), where `@me` means you, so they keep
 the bare login.
 
+## Dim what surrounds content
+
+Decorations and labels around user content are `octocat-dimmed`, so the
+content stands out: verbs, "and", dates, field labels, hints, rails,
+`·`, `→`.  Content (people, titles, commit subjects, `#123`, SHAs,
+labels) keeps the default face or its own.  This is a guide, not a
+strict rule: a state change, "merged this", is all dim as its bullet
+carries the colour, and a status heading, "Changes approved", stays
+bright as it is what its line says.
+
 ---
 
 ## Formatting branch names in tabular rows

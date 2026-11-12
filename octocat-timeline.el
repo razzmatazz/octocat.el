@@ -88,11 +88,15 @@ not known; SNAPSHOT is the `timeline-events' resource's, as from
   (let ((login (octocat--get event "actor" "login")))
     (if (stringp login) (concat "@" login) "")))
 
+(defun octocat-timeline--login (login)
+  "Return \"@LOGIN\" in the face of a person."
+  (propertize (concat "@" login) 'face 'octocat-pr-author))
+
 (defun octocat-timeline--rename-text (from to)
   "Return the phrase for a title change FROM → TO (either may be nil)."
   (format "changed the title %s → %s"
-          (propertize (or from "") 'face 'octocat-dimmed)
-          (or to "")))
+          (octocat--content from)
+          (octocat--content to)))
 
 (defun octocat-timeline--event-text (event bg)
   "Return what timeline EVENT did as a short string, or nil to skip it.
@@ -101,19 +105,19 @@ for `octocat--label-face'."
   (let ((label (octocat--get event "label"))
         (actor (octocat--get event "actor" "login"))
         (who   (octocat--get event "assignee" "login"))
-        (asked (let ((login (octocat--get event "requested_reviewer" "login")))
-                 (if login
-                     (concat "@" login)
-                   (octocat--get event "requested_team" "name")))))
+        (asked (let ((login (octocat--get event "requested_reviewer" "login"))
+                     (team  (octocat--get event "requested_team" "name")))
+                 (cond (login (octocat-timeline--login login))
+                       (team  (octocat--content team))))))
     (pcase (gethash "event" event)
       ("labeled"   (and label (format "added the %s label" (octocat--format-label label bg))))
       ("unlabeled" (and label (format "removed the %s label" (octocat--format-label label bg))))
       ("assigned"   (and who (if (equal who actor)
                                  "self-assigned this"
-                               (format "assigned @%s" who))))
+                               (format "assigned %s" (octocat-timeline--login who)))))
       ("unassigned" (and who (if (equal who actor)
                                  "removed their assignment"
-                               (format "unassigned @%s" who))))
+                               (format "unassigned %s" (octocat-timeline--login who)))))
       ("closed"   (pcase (octocat--get event "state_reason")
                     ("not_planned" "closed this as not planned")
                     ("completed"   "closed this as completed")
@@ -124,9 +128,11 @@ for `octocat--label-face'."
                    (octocat--get event "rename" "from")
                    (octocat--get event "rename" "to")))
       ("milestoned"   (format "added this to the %s milestone"
-                              (octocat--get event "milestone" "title")))
+                              (octocat--content
+                               (octocat--get event "milestone" "title"))))
       ("demilestoned" (format "removed this from the %s milestone"
-                              (octocat--get event "milestone" "title")))
+                              (octocat--content
+                               (octocat--get event "milestone" "title"))))
       ("locked"   "locked this conversation")
       ("unlocked" "unlocked this conversation")
       ("review_requested"
@@ -141,14 +147,16 @@ for `octocat--label-face'."
       ("base_ref_changed" "changed the base branch")
       ("cross-referenced"
        (let ((num (octocat--get event "source" "issue" "number")))
-         (and num (format "mentioned this in #%d %s" num
-                          (or (octocat--get event "source" "issue" "title") "")))))
+         (and num (format "mentioned this in %s %s"
+                          (propertize (format "#%d" num) 'face 'octocat-pr-number)
+                          (octocat--content
+                           (octocat--get event "source" "issue" "title"))))))
       ("referenced"
        (let ((sha (octocat--get event "commit_id")))
          (and (stringp sha)
               (format "referenced this in commit %s"
                       (propertize (substring sha 0 (min 7 (length sha)))
-                                  'face 'octocat-branch)))))
+                                  'face 'octocat-commit-sha)))))
       (_ nil))))
 
 (defun octocat-timeline--state-fallback (obj)
@@ -436,7 +444,8 @@ under its actor.  The text carries ITEM's target in the
          (text
           (if line
               (let ((s (concat bullet " " actor (if (string-empty-p actor) "" " ")
-                               (plist-get item :text) "  " date (plist-get item :suffix))))
+                               (octocat--dim-words (plist-get item :text))
+                               "  " date (plist-get item :suffix))))
                 ;; Continuations carry the rail, as a body's lines do.
                 (if (and width (> (string-width s) width))
                     (string-join (octocat-markdown-wrap-hung

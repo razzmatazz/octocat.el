@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Timeline and feed dim their verbs, so titles, commits and people stand out
+* A job's step names are no longer dimmed
 * A pulsed change scrolled into view is no longer cut off by the page's pinned title
 * The PR list's `[Reviewer]` filter is now `[Reviews]`, with GitHub's Reviews choices
 * A PR's newest commit shows the CI state of the page's checks, not a list's older one
