@@ -830,6 +830,7 @@ the CI status."
               (login  (octocat--get commit "author" "user" "login")))
          (list :time (or (gethash "committedDate" commit) "")
                :kind 'commit
+               :merge (octocat-vui--commit-merge-p commit)
                :actor (if login (concat "@" login) "")
                :text (concat "committed "
                              (propertize (substring oid 0 (min 7 (length oid)))

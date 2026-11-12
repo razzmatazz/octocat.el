@@ -44,6 +44,7 @@
 ;;   :text    what happened (single lines)
 ;;   :suffix  extra text at the end of a single line
 ;;   :state   event name or review state, picks the colour of the bullet
+;;   :merge   non-nil for a merge commit, whose bullet is ⊕, not ○
 ;;   :target  value of the `octocat-timeline-target' text property, which
 ;;            the edit and browse commands read at point
 ;;   :pending what is being done to a box, "posting" or "saving" (see
@@ -439,8 +440,10 @@ under its actor.  The text carries ITEM's target in the
                             (propertize (concat pending "…") 'face 'octocat-dimmed))
                   (propertize (octocat--format-ts-relative (plist-get item :time))
                               'face 'octocat-dimmed)))
-         (bullet (propertize (if line "○" "●")
-                             'face (octocat-timeline--bullet-face (plist-get item :state))))
+         (bullet (if (eq (plist-get item :kind) 'commit)
+                     (octocat-vui-commit-node (plist-get item :merge))
+                   (propertize (if line "○" "●")
+                               'face (octocat-timeline--bullet-face (plist-get item :state)))))
          (text
           (if line
               (let ((s (concat bullet " " actor (if (string-empty-p actor) "" " ")

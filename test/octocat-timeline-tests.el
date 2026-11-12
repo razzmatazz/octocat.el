@@ -164,6 +164,29 @@
                                        :actor "@bob" :verb "commented" :body "hi")
                                  t 80)))))
 
+(ert-deftest octocat-timeline-test-commit-line ()
+  "A commit starts with its symbol, ⊕ for a merge; its verb dims, its subject not."
+  (let* ((commit (lambda (oid parents)
+                   (format (concat "{\"commit\":{\"oid\":\"%s\",\"messageHeadline\":\"Fix it\","
+                                   "\"committedDate\":\"2026-01-02T10:00:00Z\","
+                                   "\"parents\":{\"nodes\":[%s]}}}")
+                           oid parents)))
+         (pr (json-parse-string
+              (concat "{\"body\":\"b\",\"createdAt\":\"2026-01-01T10:00:00Z\","
+                      "\"author\":{\"login\":\"ann\"},\"commits\":{\"nodes\":["
+                      (funcall commit "aaaaaaa1" "{\"oid\":\"p\"}") ","
+                      (funcall commit "bbbbbbb2" "{\"oid\":\"p\"},{\"oid\":\"q\"}")
+                      "]}}")))
+         (lines (mapcar (lambda (item) (octocat-timeline--entry-string item nil 80))
+                        (cdr (octocat-pr--items "o/r" pr nil nil)))))
+    (should (equal (mapcar (lambda (l) (substring l 0 1)) lines) '("○" "⊕")))
+    (should (eq (get-text-property 0 'face (car lines)) 'octocat-commit-sha))
+    (let ((at (lambda (word) (get-text-property (string-search word (car lines)) 'face
+                                                (car lines)))))
+      (should (memq 'octocat-dimmed (ensure-list (funcall at "committed"))))
+      ;; `default' first, so it wins over the dimmed face under it.
+      (should (eq (car (ensure-list (funcall at "Fix it"))) 'default)))))
+
 (ert-deftest octocat-timeline-test-event-line-wraps ()
   "An event line wider than WIDTH breaks, hung under its actor on the rail."
   (let ((entry (substring-no-properties

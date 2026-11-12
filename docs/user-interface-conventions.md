@@ -367,7 +367,8 @@ toggles the markdown in comments, which GitHub does render.
 A commit, wherever shown, starts with `octocat--commit-symbol`, `○`, a
 merge with `octocat--merge-symbol`, `⊕`, in `octocat-commit-sha`, one
 space before its subject: `○ Fix the sitemap`.  In a list's graph
-(`octocat-vui-lanes`) it is the node: `┌─⊕ Merge pull request #126`.
+(`octocat-vui-lanes`) it is the node: `┌─⊕ Merge pull request #126`;
+in a timeline, the bullet: `○ @alice committed 1a2b3c4 Fix the sitemap`.
 
 ---
 
