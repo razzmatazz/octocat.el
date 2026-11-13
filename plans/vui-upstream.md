@@ -21,16 +21,3 @@ added.
   option to.
 - **Filed:** https://github.com/d12frosted/vui.el/issues/298, asking
   whether it is intended; no repro, as it needs a real window.
-
-## 2. A scroll past a sticky region loses a row after it is measured
-
-With `vui-sticky-keep-header-line` nil, the header line appears only
-as Emacs redraws, so a line scrolled to the bottom row is then hidden
-under it.
-
-- **Workaround:** `octocat-vui--show-lines` redraws after it scrolls,
-  and scrolls again if the text is still not shown whole.
-- **Ask:** a public way to sync a window's sticky header line at once,
-  or whatever upstream thinks fits better.
-- **Filed:** https://github.com/d12frosted/vui.el/issues/312, with a
-  repro on vui master 871f517.

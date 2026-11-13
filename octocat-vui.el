@@ -1026,20 +1026,15 @@ START if WIN scrolls."
     (let* ((last   (save-excursion (goto-char (max start (1- end))) (line-end-position)))
            (whole  (<= (count-screen-lines start last) (/ (window-body-height) 2)))
            (last   (if whole last start))
-           (shown  (lambda () (and (pos-visible-in-window-p start win)
-                                   (pos-visible-in-window-p last win))))
-           (scroll (lambda ()
-                     (if (and whole (> start (window-start)))
-                         (progn (goto-char last) (recenter -1))
-                       (goto-char start)
-                       (recenter 0)))))
-      (unless (funcall shown)
-        (funcall scroll)
-        ;; vui pins the title in the header line only as it redraws, so
-        ;; a scroll past the title loses a row after it is measured.
-        (redisplay)
-        (unless (funcall shown)
-          (funcall scroll))
+           (down   (and whole (> start (window-start)))))
+      (unless (and (pos-visible-in-window-p start win)
+                   (pos-visible-in-window-p last win))
+        ;; Counts the pinned title's header line a scroll brings.
+        (vui-sticky-scroll (lambda ()
+                             (if down
+                                 (progn (goto-char last) (recenter -1))
+                               (goto-char start)
+                               (recenter 0))))
         (goto-char start)))))
 
 (defun octocat-vui-pulse-change (buf prop pred &optional head)
