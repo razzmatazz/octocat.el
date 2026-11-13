@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A file's Blame shows from your local clone at once, then GitHub's when it arrives
 * The tree's last commit of each file and directory loads from your local clone
 * The repo page's local commits not on origin are headed by an underline, as sections are
 * Directories and files at a commit load from your local clone when it has them

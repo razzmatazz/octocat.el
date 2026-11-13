@@ -1490,6 +1490,10 @@ or PATH is not there."
 (octocat-sync-define-resource blame (repo commit path)
   ;; COMMIT names the history, so what it says never changes.
   :max-age octocat-model--fixed-max-age
+  ;; The clone's blame is close to GitHub's, so it shows until GitHub's
+  ;; comes.
+  :provisional t
+  :local (and commit (octocat--sha-p commit) (octocat-clone-blame repo commit path))
   :graphql octocat-model--repo-blame-query
   :repo repo
   :vars `(("expr" . ,commit) ("path" . ,path))

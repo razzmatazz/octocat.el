@@ -172,7 +172,7 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
   `(let* ((octocat-sync--db (octocat-sync-tests--db))
           (octocat-sync--fetches (make-hash-table :test #'equal))
           (octocat-sync--queue nil)
-          (octocat-sync--local-failed (make-hash-table :test #'equal))
+          (octocat-sync--skip-local (make-hash-table :test #'equal))
           (octocat-sync--poll-intervals (make-hash-table :test #'equal))
           (octocat-sync--pending nil)
           (octocat-sync--resources (make-hash-table :test #'eq))
@@ -237,6 +237,30 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
       (octocat-sync-request '(near 0))
       (should (= (length locals) 2))
       (should (assq 0 pending)))))
+
+(ert-deftest octocat-sync-test-local-provisional ()
+  "A :provisional resource's :local answer shows, outdated, until the fetch's."
+  (octocat-sync-tests--with-sync
+    (let (locals)
+      (octocat-sync-define-resource near (n)
+        :provisional t
+        :local (lambda (done) (push (cons n done) locals))
+        :fetch (lambda (done) (push (cons n done) pending)))
+      (octocat-sync-request '(near 1))
+      (should-not pending)
+      (funcall (cdr (assq 1 locals)) (octocat-sync-tests--table "n" "local"))
+      (let ((snap (octocat-sync-read '(near 1))))
+        (should (equal (gethash "n" (plist-get snap :data)) "local"))
+        (should (plist-get snap :outdated))
+        (should (plist-get snap :loading)))
+      ;; Fetched from GitHub, not read again.
+      (should (= (length locals) 1))
+      (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" "github"))
+      (let ((snap (octocat-sync-read '(near 1))))
+        (should (equal (gethash "n" (plist-get snap :data)) "github"))
+        (should-not (plist-get snap :outdated))
+        (should-not (plist-get snap :loading)))
+      (should (= (length locals) 1)))))
 
 (ert-deftest octocat-sync-test-find ()
   "Stored objects are found by a field, those fetched last first."

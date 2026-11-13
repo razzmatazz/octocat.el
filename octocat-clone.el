@@ -466,6 +466,57 @@ parent's.  Nil without a clone."
          found))
      t)))
 
+;;;; Blame
+
+(defun octocat-clone--parse-blame (out)
+  "Return the blame in OUT, as `git blame --porcelain' prints, as GitHub's.
+That is a vector of tables of \"startingLine\", \"endingLine\" and
+\"commit\", whose oid, messageHeadline, dates and author are as
+`octocat-clone--log-commit' gives them; it has no parents.  A commit's
+run of lines that git splits, where they came from apart, is one, as
+GitHub's."
+  (let ((commits (make-hash-table :test #'equal))
+        (utc (lambda (time) (format-time-string "%Y-%m-%dT%H:%M:%SZ"
+                                                (string-to-number time) t)))
+        runs commit)
+    (dolist (line (split-string (decode-coding-string out 'utf-8) "\n"))
+      (cond
+       ((string-match "\\`\\([0-9a-f]\\{40\\}\\) [0-9]+ \\([0-9]+\\) \\([0-9]+\\)\\'" line)
+        (let* ((sha   (match-string 1 line))
+               (start (string-to-number (match-string 2 line)))
+               (end   (+ start (string-to-number (match-string 3 line)) -1)))
+          (setq commit (or (gethash sha commits)
+                           (puthash sha (octocat-clone--table
+                                         "oid" sha "author" (octocat-clone--table "user" nil))
+                                    commits)))
+          (if (and runs (eq (gethash "commit" (car runs)) commit)
+                   (= (gethash "endingLine" (car runs)) (1- start)))
+              (puthash "endingLine" end (car runs))
+            (push (octocat-clone--table "startingLine" start "endingLine" end "commit" commit)
+                  runs))))
+       ;; The commit's details follow its first line's header.
+       ((string-match "\\`\\([a-z-]+\\) \\(.*\\)" line)
+        (let ((value  (match-string 2 line))
+              (author (gethash "author" commit)))
+          (pcase (match-string 1 line)
+            ("author"         (puthash "name" value author))
+            ("author-mail"    (puthash "email" (string-trim value "<" ">") author))
+            ("author-time"    (puthash "authoredDate" (funcall utc value) commit))
+            ("committer-time" (puthash "committedDate" (funcall utc value) commit))
+            ("summary"        (puthash "messageHeadline" (octocat-clone--headline value)
+                                       commit)))))))
+    (vconcat (nreverse runs))))
+
+(defun octocat-clone-blame (repo commit path)
+  "Return a :local reading the blame of file PATH at COMMIT of REPO, or nil.
+DONE gets it as `octocat-clone--parse-blame' gives it: close to GitHub's,
+not the same, as GitHub also skips the commits a .git-blame-ignore-revs
+lists.  Nil without a clone; see `octocat-clone-read'."
+  (octocat-clone-read repo (concat commit ":" path) "blob"
+                      (lambda (_sha) (list "blame" "--porcelain" commit "--" path))
+                      (lambda (out _sha _size) (octocat-clone--parse-blame out))
+                      t))
+
 (defun octocat-clone-parse-ls-tree (out)
   "Return the entries in OUT, as `git ls-tree -z' prints, as GitHub's.
 That is a list of tables of \"path\", \"mode\", \"type\" (\"blob\",

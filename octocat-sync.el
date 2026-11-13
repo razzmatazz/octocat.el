@@ -531,7 +531,8 @@ that reads the same data without the network, such as from a local
 clone, nil when it can't: tried first, outside
 `octocat-sync-max-requests', and stored as a fetch's answer.  When it
 answers (error . MESSAGE), the resource is queued to be fetched as if
-it had none."
+it had none.  With :provisional non-nil, its answer only shows until
+GitHub's: it is stored outdated, and the resource fetched at once."
   (declare (indent 2) (debug (&define name lambda-list &rest [keywordp form])))
   `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--resources))
 
@@ -589,8 +590,9 @@ request takes over a fetch running past `octocat-sync-stuck-after',
 killing its `gh' calls (see `octocat--gh-owner'), so `g' unsticks a
 hung fetch, which could otherwise hang until `octocat-gh-timeout'.")
 
-(defvar octocat-sync--local-failed (make-hash-table :test #'equal)
-  "Keys of the resources whose :local read failed, to fetch without it.")
+(defvar octocat-sync--skip-local (make-hash-table :test #'equal)
+  "Keys of the resources to fetch without their :local next.
+Its read failed, or gave a :provisional answer.")
 
 (defvar octocat-sync--offline nil
   "Non-nil when the last request found GitHub out of reach.
@@ -965,21 +967,30 @@ over calls DROPPED, if given, instead."
 
 (defun octocat-sync--start (key spec reason)
   "Start fetching SPEC, whose key is KEY, for REASON, see `octocat--gh-reason'."
-  (remhash key octocat-sync--local-failed)
+  (remhash key octocat-sync--skip-local)
   (octocat-sync--run key reason t
                      (lambda (done) (octocat-sync--fetch spec done))
                      (lambda (result) (octocat-sync--done key result))))
 
 (defun octocat-sync--start-local (key spec reason local)
   "Start reading SPEC, whose key is KEY, for REASON with LOCAL, its :local.
-When it fails, SPEC is queued again, first, to be fetched without it."
+When it fails, SPEC is queued again, first, to be fetched without it;
+when it answers for a :provisional resource, last."
   (octocat-sync--run key reason nil local
                      (lambda (result)
                        (if (not (eq (car-safe result) 'error))
-                           (octocat-sync--done key result t)
+                           (progn
+                             (octocat-sync--done key result t)
+                             (when (plist-get (octocat-sync--props spec) :provisional)
+                               ;; Shown as outdated data while GitHub's answer comes.
+                               (octocat-sync--outdate (octocat-sync--db) (list spec) (float-time))
+                               (puthash key t octocat-sync--skip-local)
+                               (octocat-sync--enqueue key spec reason)
+                               (octocat-sync--set-loading key t)
+                               (octocat-sync--pump)))
                          (octocat--debug-log (format "local read of %s failed" key) (cdr result))
                          (octocat-sync--drop-fetch key)
-                         (puthash key t octocat-sync--local-failed)
+                         (puthash key t octocat-sync--skip-local)
                          (push (list key spec reason) octocat-sync--queue)
                          (octocat-sync--pump)))))
 
@@ -990,7 +1001,7 @@ Page requests go first; a prefetch, then a timed refetch, only when
 none is queued, and only when no other prefetch or timed refetch runs."
   (dolist (entry (copy-sequence octocat-sync--queue))
     (pcase-let ((`(,key ,spec ,reason) entry))
-      (when-let* (((not (gethash key octocat-sync--local-failed)))
+      (when-let* (((not (gethash key octocat-sync--skip-local)))
                   ((memq entry octocat-sync--queue))
                   (local (plist-get (octocat-sync--props spec) :local)))
         (setq octocat-sync--queue (delq entry octocat-sync--queue))

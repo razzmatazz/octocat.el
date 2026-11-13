@@ -3,8 +3,7 @@
 ## Status
 
 - Phase 1, SHA-named resources: done, `tree-path` at a SHA included.
-- Phase 3, `tree-commits` and the email → login lookup: done.
-- Phase 3, `blame`: next.
+- Phase 3, `tree-commits`, `blame` and the email → login lookup: done.
 - Phase 2, branch-named resources: not started; needs page changes
   first (see below).
 
@@ -30,7 +29,7 @@ because a clone exists; it only shows it sooner.
 | `tree-files (repo sha)` | tree SHA | `git ls-tree -r -z SHA` | Done |
 | `file-text`, `file-blob`, `file-bytes` at a SHA ref | commit SHA + path | `git cat-file blob` of `REF:PATH` | Done |
 | `tree-commits (repo commit dir sha)` | commit + dir | `git log -1` per entry | Done |
-| `blame (repo commit path)` | commit + path | `git blame --porcelain` | Next |
+| `blame (repo commit path)` | commit + path | `git blame --porcelain` | Done |
 | `tree-path` at a SHA ref | commit SHA + path | `git cat-file --batch-check` | Done |
 | `tree-path`, `file-blob` at a branch | branch name | `origin/BRANCH` | Phase 2 |
 | `repo-head` | ref + path | none | GitHub only: history `totalCount` |
@@ -68,6 +67,11 @@ network, nil when there is no clone. `octocat-sync--pump` starts it
 first, outside `octocat-sync-max-requests`. An answer is stored as a
 fetched one; `(error . _)` queues the resource for its normal fetch.
 A local answer does not clear `octocat-sync--offline`.
+
+With `:provisional`, the answer is stored outdated and the resource
+queued for its GitHub fetch at once, which skips `:local`
+(`octocat-sync--skip-local`). The page draws it as data meanwhile, the
+mode line showing the refetch, until GitHub's replaces it.
 
 ### Why not vc for the reads
 
@@ -113,23 +117,14 @@ real repos, including rust-analyzer's merge-heavy history.
   first); a noreply email names its login. An email not seen yet has
   no user. Tree lines show no author, so nothing on screen differs,
   but the stored answer lacks that login for its 30 days.
-
-## Phase 3: blame (next)
-
-`git blame --porcelain` at COMMIT gives each line's commit, author
-name, email and times; logins come from `octocat-model--commit-users`.
-
-Before relying on it, compare it with GitHub's blame on several real
-files, large ones and ones with moved or reformatted code, as was done
-for `tree-commits`. GitHub does not document its blame options
-(whitespace, moved-line detection), so its ranges may differ from
-plain `git blame`. If they differ, find the git options that match, or
-keep blame on GitHub.
-
-Blame rows show the author, so an unknown login does show. Either
-store such an answer as outdated and refetch from GitHub, which needs
-the seeding below, or keep GitHub's blame when any author's login is
-unknown.
+- `blame` is provisional (`:provisional` in sync): the clone's answer
+  is stored outdated and shows only until GitHub's, fetched at once,
+  replaces it. So it is plain `git blame --porcelain`, read in one run,
+  with each commit's subject, dates and author from its headers and no
+  parents or logins. Compared on lsp-mode, rust-analyzer, eglot and
+  omnisharp-roslyn, GitHub's ranges were that, a commit's runs that git
+  splits joined, but skipping the commits `.git-blame-ignore-revs`
+  lists as of the blamed commit; `-w`, `-M` and `-C` differed more.
 
 ## Phase 2: branch-named resources
 
@@ -144,13 +139,9 @@ Pages still wait one round trip to turn a branch into SHAs. Seeding
 - The repo root page does not read `tree-path`, and `tree-path` with no
   path answers an empty table.
 
-So phase 2 needs:
-
-1. In sync, a way to store a seed as outdated, so it is refetched at
-   once and shows as data meanwhile. Outdated data already renders like
-   fresh data, with only the mode line showing the refetch.
-2. Pages that draw from the seeded `tree-path` and `file-blob` until
-   `repo-head` lands, the last-commit line a grey bar meanwhile.
+So phase 2 needs pages that draw from the seeded `tree-path` and
+`file-blob` until `repo-head` lands, the last-commit line a grey bar
+meanwhile. The seeds are `:provisional`, as blame is.
 
 Phase 1 already reads `tree-path` at a SHA ref from the clone.
 

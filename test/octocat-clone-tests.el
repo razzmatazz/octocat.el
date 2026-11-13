@@ -312,5 +312,71 @@
             (should-not (local (list 'tree-commits "o/r" nil "" "x")))))
       (delete-directory dir t))))
 
+(ert-deftest octocat-clone-test-parse-blame ()
+  "A blame's commits are read from its headers; a commit's runs git split are one."
+  (let* ((a (make-string 40 ?a))
+         (b (make-string 40 ?b))
+         (ranges (octocat-clone--parse-blame
+                  (encode-coding-string
+                   (mapconcat #'identity
+                              (list (concat a " 1 1 2") "author Jü" "author-mail <j@example.com>"
+                                    "author-time 1767225600" "committer-time 1767229200"
+                                    "summary Fix it" "filename a.txt" "\tone"
+                                    (concat a " 2 2") "\ttwo"
+                                    (concat a " 7 3 1") "\tauthor x"
+                                    (concat b " 1 4 1") "author B" "summary Other" "\tfour"
+                                    (concat a " 9 5 1") "\tfive")
+                              "\n")
+                   'utf-8))))
+    (should (equal (mapcar (lambda (r) (list (gethash "startingLine" r) (gethash "endingLine" r)
+                                             (octocat--get r "commit" "oid")))
+                           ranges)
+                   `((1 3 ,a) (4 4 ,b) (5 5 ,a))))
+    (let ((c (gethash "commit" (aref ranges 0))))
+      (should (eq c (gethash "commit" (aref ranges 2))))
+      (should (equal (gethash "messageHeadline" c) "Fix it"))
+      (should (equal (gethash "authoredDate" c) "2026-01-01T00:00:00Z"))
+      (should (equal (gethash "committedDate" c) "2026-01-01T01:00:00Z"))
+      (should (equal (octocat--get c "author" "name") "Jü"))
+      (should (equal (octocat--get c "author" "email") "j@example.com")))))
+
+(ert-deftest octocat-clone-test-blame ()
+  "A file's blame at a commit is read from the clone, only at a SHA."
+  (let* ((dir (file-name-as-directory (make-temp-file "octocat-clone-" t)))
+         (default-directory dir)
+         (octocat-clone--roots (make-hash-table :test #'equal)))
+    (unwind-protect
+        (cl-flet ((git (&rest args)
+                    (with-temp-buffer
+                      (should (eql 0 (apply #'process-file "git" nil t nil
+                                            "-c" "user.name=T" "-c" "user.email=t@example.com"
+                                            args)))
+                      (string-trim (buffer-string))))
+                  (local (spec) (plist-get (octocat-sync--props spec) :local)))
+          (git "init" "-q")
+          (write-region "one\ntwo\n" nil "a.txt")
+          (write-region "" nil "empty")
+          (git "add" ".")
+          (git "commit" "-q" "-m" "One")
+          (write-region "one\ntwo\nthree\n" nil "a.txt")
+          (git "commit" "-q" "-am" "Three")
+          (octocat-clone-add "o/r" dir)
+          (let ((one   (git "rev-parse" "HEAD~1"))
+                (three (git "rev-parse" "HEAD")))
+            (should (equal (mapcar (lambda (r)
+                                     (list (gethash "startingLine" r) (gethash "endingLine" r)
+                                           (octocat--get r "commit" "messageHeadline")))
+                                   (octocat-clone-tests--await
+                                    (local (list 'blame "o/r" three "a.txt"))))
+                           '((1 2 "One") (3 3 "Three"))))
+            (should (equal (octocat-clone-tests--await (local (list 'blame "o/r" three "empty")))
+                           []))
+            (should (eq 'error (car (octocat-clone-tests--await
+                                     (local (list 'blame "o/r" one "missing")))))))
+          ;; Only at a SHA: a branch can be behind GitHub.
+          (should-not (local (list 'blame "o/r" "main" "a.txt")))
+          (should (octocat-clone-root "o/r")))
+      (delete-directory dir t))))
+
 (provide 'octocat-clone-tests)
 ;;; octocat-clone-tests.el ends here
