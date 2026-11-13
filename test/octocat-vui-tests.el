@@ -251,7 +251,7 @@
   (should (equal (octocat-vui-pin "open" nil "" "acme/rocket#1") "open  acme/rocket#1"))
   (should (equal (octocat-vui-crumbs-pin "acme/rocket" "Actions" nil "CI")
                  "acme/rocket › Actions › CI"))
-  (should (equal (octocat-vui-commit-pin "acme/rocket" "abcdef0123") "acme/rocket@abcdef0"))
+  (should (equal (octocat-vui-commit-pin "acme/rocket" "abcdef0123") "acme/rocket@abcdef0123"))
   (let ((pill (octocat-vui-segmented-pin '(("Diff" t "help" ignore) ("Patch" nil "help" ignore)))))
     (should (equal pill " Diff  Patch "))
     (should (eq (get-text-property 1 'face pill) 'octocat-segment-current))

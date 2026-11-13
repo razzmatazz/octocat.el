@@ -267,6 +267,15 @@ them, its message, its checks and its files.
 [As text](commit.txt)
 <!-- /screenshot -->
 
+Scrolled down, past its title: the header line pins it with the whole
+SHA, as the top line shows it, and the pill of its views.
+
+<!-- screenshot: (commit "acme/rocket" "3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f") :name "commit-scrolled" :scroll "Files (3)" -->
+![commit-scrolled](commit-scrolled.png)
+
+[As text](commit-scrolled.txt)
+<!-- /screenshot -->
+
 Its files, unfolded, are in the diff faces, the code highlighted as
 its major mode would; here JavaScript, as `js-mode` does.  An added
 file is highlighted whole, as the file itself.  An image shows inline,

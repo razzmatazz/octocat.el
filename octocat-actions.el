@@ -2114,7 +2114,7 @@ A new TICK fetches them again."
   :render
   (let ((checks (octocat-vui-use-resource (list 'checks repo sha) tick)))
     (octocat-vui-page
-     (octocat-vui-commit-pin repo sha)
+     (octocat-vui-commit-pin repo (substring sha 0 (min 7 (length sha))))
      (apply #'vui-vstack
             (octocat-vui-commit-top-row repo sha)
             (vui-text (concat "Checks"

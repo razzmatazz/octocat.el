@@ -1157,7 +1157,10 @@ that window only, and none once the head is in view again."
     (should (= (length (octocat-repo-vui--ref-label "feature/long-name")) 12))
     (should (equal (octocat-repo-vui--ref-label (make-string 40 ?a)) "aaaaaaa"))
     (should (equal (octocat-repo-vui--picker-labels "feature/long-name" t "release/2026-10")
-                   '("[featur…-name ▾]" "[reset to releas…26-10]")))))
+                   '("[featur…-name ▾]" "[reset to releas…26-10]")))
+    (should (equal (octocat-repo--pin "o/r" "feature/long-name" "a.el" nil)
+                   "o/r  featur…-name:/a.el"))
+    (should (equal (octocat-repo--pin "o/r" (make-string 40 ?a) nil nil) "o/r  aaaaaaa"))))
 
 (ert-deftest octocat-tree-test-cut-branch-in-full-on-hover ()
   "The help of a cut branch's picker names it in full."

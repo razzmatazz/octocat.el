@@ -1216,9 +1216,10 @@ AFTER, a string or nil, follows it.  See `octocat-vui-page'; it reads
 as `octocat-repo-vui--top-line'."
   (octocat-vui-pin (propertize repo 'face 'octocat-repo)
                    (when-let* ((label (octocat--nonempty label)))
-                     (concat (propertize label 'face (if (equal label current-branch)
-                                                         'octocat-branch-current
-                                                       'octocat-branch))
+                     (concat (propertize (octocat-repo-vui--ref-label label)
+                                         'face (if (equal label current-branch)
+                                                   'octocat-branch-current
+                                                 'octocat-branch))
                              (and path ":/") path))
                    after))
 

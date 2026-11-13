@@ -1739,11 +1739,11 @@ That is `owner/repo@sha', as `owner/repo#N' is on an issue."
 
 (defun octocat-vui-commit-pin (repo sha &rest more)
   "Return the pin of a page about commit SHA of REPO, then MORE.
-See `octocat-vui-pin'."
+SHA is shown as given, so the pin reads as the page's top row.  See
+`octocat-vui-pin'."
   (apply #'octocat-vui-pin
          (concat (propertize repo 'face 'octocat-repo)
-                 (propertize (concat "@" (substring sha 0 (min 7 (length sha))))
-                             'face 'octocat-commit-sha))
+                 (propertize (concat "@" sha) 'face 'octocat-commit-sha))
          more))
 
 (defun octocat-vui--fit (text width)
