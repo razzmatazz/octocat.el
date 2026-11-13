@@ -1,5 +1,13 @@
 # Plan: Serve tree, file and blame data from the local clone
 
+## Status
+
+- Phase 1, SHA-named resources: done.
+- Phase 3, `tree-commits` and the email → login lookup: done.
+- Phase 3, `blame`: next.
+- Phase 2, branch-named resources: not started; needs page changes
+  first (see below).
+
 ## Goal
 
 When the repo has a local clone that holds the objects a page needs,
@@ -15,197 +23,155 @@ because a clone exists; it only shows it sooner.
 
 ## What can come from the clone
 
-The resources split by how they name their data:
-
-| Resource | Named by | Local source | Safe? |
+| Resource | Named by | Local source | Status |
 |---|---|---|---|
-| `tree-dir (repo sha)` | tree SHA | `git ls-tree SHA` | Yes: same SHA, same content |
-| `blob (repo sha)` | blob SHA | `git cat-file blob SHA` | Yes |
-| `tree-files (repo sha)` | tree SHA | `git ls-tree -r SHA` | Yes |
-| `file-text`, `file-blob`, `file-bytes` at a SHA ref | commit SHA + path | `git cat-file blob REF:PATH` | Yes |
-| `tree-path`, `repo-head`, `file-blob` at a branch | branch name | `origin/BRANCH` | No: can be behind GitHub |
-| `tree-commits` (last commit per entry) | commit + dir | `git log` | Partly: no GitHub login |
-| `blame (repo commit path)` | commit + path | `git blame --porcelain` | Partly: no GitHub login |
+| `tree-dir (repo sha)` | tree SHA | `git ls-tree -z --long SHA` | Done |
+| `blob (repo sha)` | blob SHA | `git cat-file blob SHA` | Done |
+| `tree-files (repo sha)` | tree SHA | `git ls-tree -r -z SHA` | Done |
+| `file-text`, `file-blob`, `file-bytes` at a SHA ref | commit SHA + path | `git cat-file blob` of `REF:PATH` | Done |
+| `tree-commits (repo commit dir sha)` | commit + dir | `git log -1` per entry | Done |
+| `blame (repo commit path)` | commit + path | `git blame --porcelain` | Next |
+| `tree-path` at a SHA ref | commit SHA + path | `git cat-file --batch-check` | Not started; exact, cheap to add |
+| `tree-path`, `file-blob` at a branch | branch name | `origin/BRANCH` | Phase 2 |
+| `repo-head` | ref + path | none | GitHub only: history `totalCount` |
 
-Only the SHA-named rows are exact. They are also the bulk of what the
-tree and file pages fetch, so phase 1 covers just those.
-
-The sync store already keeps SHA-named resources for 30 days
+The sync store keeps SHA-named resources for 30 days
 (`octocat-model--fixed-max-age`), so the gain is on first views: a new
 directory, a new file, a newly pushed commit.
 
-## Phase 1: SHA-named resources
+## How it is built
 
-### Finding the clone for a repo
+### `octocat-clone`
 
-Today `octocat-repo--local-dir-for` finds the clone only from
-`default-directory`, so a page opened from elsewhere has none. Add a
-lookup by repo in `octocat-core`:
+A standalone module below `octocat-core` (it requires only `vc-git`
+and built-ins) holds everything about the local clone:
 
-- `octocat-local-clone (repo)`: the clone's root, or nil.
-- It is filled whenever a page finds its clone, as
-  `octocat-repo--local-dir-for` does now, and kept in memory for the
-  session. It is not persisted: a directory can be moved or deleted.
-- A cached entry is checked (`file-directory-p` on its `.git`) before
-  use and dropped when gone.
-- Find the root and origin with Emacs's built-in `vc-git`:
-  `vc-git-root` and `vc-git-repository-url`. These replace
-  `locate-dominating-file` and the `shell-command-to-string "git remote
-  get-url origin"` in `octocat-repo--current-repo`.
-- A defcustom `octocat-use-local-clone` (default t) turns the feature
-  off.
+- Which GitHub repo a directory is a clone of
+  (`octocat-clone-current-repo`, via `vc-git-repository-url`), and its
+  root (`octocat-clone-dir-for`, via `vc-git-root`).
+- The checkout: unpushed commits, the tracked branch, `octocat-here`'s
+  ref.
+- The session's clones: `octocat-clone-add`, `-drop`, `-root`. A page
+  that finds its clone adds it; it is kept in memory only, and checked
+  for its `.git` before each use.
+- The reads: `octocat-clone-read` checks the object with `git cat-file
+  --batch-check`, then runs git and parses what it prints into GitHub's
+  shape.
 
-Not in scope: searching `project-known-project-roots` for matching
-remotes. It could come later if the session cache proves too narrow.
+There is no setting to turn it off, and the timeout is a constant
+(`octocat-clone-timeout`, 2 seconds).
 
 ### The `:local` resource property
 
-Add `:local` to `octocat-sync-define-resource`: a function of DONE that
-reads the resource from the clone. `octocat-sync--fetch` calls it
-first when the repo has a clone. If it answers `(error . _)`, for
-example because the object is missing, the normal `:fetch`/`:gh` path
-runs. The page never sees the local error.
+A resource's `:local` is a function of DONE that reads it without the
+network, nil when there is no clone. `octocat-sync--pump` starts it
+first, outside `octocat-sync-max-requests`. An answer is stored as a
+fetched one; `(error . _)` queues the resource for its normal fetch.
+A local answer does not clear `octocat-sync--offline`.
 
-```elisp
-(octocat-sync-define-resource tree-dir (repo sha)
-  :max-age octocat-model--fixed-max-age
-  :local (octocat-model--local repo (list "ls-tree" "-z" "--long" sha)
-                               #'octocat-model--parse-ls-tree)
-  :gh ...)
-```
+### Why not vc for the reads
 
-`octocat-sync` stays independent of git. The `:local` function is
-built in `octocat-model`, where the resources live, from one helper
-there that runs git asynchronously with `make-process` and calls DONE
-with the parsed result or an error. It runs `vc-git-program`, the git
-the user configured for vc, rather than a hard-coded `"git"`.
+vc.el supplies `vc-git-program`, `vc-git-root` and
+`vc-git-repository-url`. Its async runner, `vc-do-command` with
+`async`, does not fit the reads: before Emacs 31 it mixes stderr into
+the output, it calls nothing when git fails, it has no timeout, and it
+runs `vc-post-command-functions` after every call. Its synchronous
+reads block Emacs.
 
-vc is not used for the reads. It works on working-tree files, not
-objects by SHA: it has no `ls-tree`, and no call reads a blob by SHA.
-Its reads (`vc-git-find-revision`, `vc-git-command`) also block Emacs,
-so a hung git would freeze Emacs past any timeout.
-`vc-git-annotate-command` produces vc-annotate's display format, not
-`--porcelain`. Parsing functions are pure (string
-→ table) and unit-tested on fixed `git` output.
+### Failures
 
-A local answer is stored like a fetched one, since the content is
-identical. `:local` is then only another way to fetch, and snapshots,
-pages and polling need no changes. The cost is that blobs are kept
-twice, in git and in the store, as they already are when fetched from
-GitHub.
+- git runs with no terminal, `GIT_TERMINAL_PROMPT=0` and
+  `GIT_NO_LAZY_FETCH=1`.
+- A missing object, or one of another type, answers an error and keeps
+  the clone.
+- A non-zero exit, a failure to start, or a run past the timeout drops
+  the clone for the session. A `git log` past the timeout keeps it: a
+  long history is not a broken git.
+- A partial clone is not used on git older than 2.44, which ignores
+  `GIT_NO_LAZY_FETCH`; nor is a worktree's on old git, whose `.git` is a
+  file.
+- Stdin is closed only for a command that reads it: git can exit
+  before an EOF is sent.
 
-A local read does not count against `octocat-sync-max-requests`. If
-the fallback to GitHub is needed, it is queued normally.
+### Matching GitHub's data
 
-### Keeping the data the same shape
+Checked by comparing the local and GitHub answers field by field on
+real repos, including rust-analyzer's merge-heavy history.
 
-- `tree-dir`: `git ls-tree -z --long` gives mode, type, SHA, size and
-  name. Map these to GitHub's `path`, `type` (`blob`/`tree`/`commit`
-  for submodules), `sha`, `size` and `mode`. Sort order follows the
-  page's own sort (`octocat-tree--sorted-entries`), not git's.
-- `blob`: GitHub returns base64 `content`. Return the same, base64 of
-  the raw bytes, so `octocat-model-blob-content` and every reader stay
-  unchanged. Read with `coding-system-for-read` `binary`.
-- `tree-files`: `git ls-tree -r -z` → the same (PATH . BLOB-SHA) table.
+- `tree-commits` runs one `git log -1 -- PATH` per entry, eight at
+  once: that is what GitHub answers. One walk of the directory's
+  history differs at merges, which change a directory from every
+  parent while each file in it is one parent's.
+- Dates are converted to UTC (`…Z`), as GitHub gives them.
+- `messageHeadline` is the first line; one past 72 characters is cut
+  to 69 and "…".
+- `file-blob`'s binary test is git's: a NUL in the first 8000 bytes.
+  GitHub's `isBinary` may differ on rare files, such as UTF-16 text.
+- git has no GitHub login. `octocat-model--commit-users` finds an
+  email's user among the stored commits GitHub gave
+  (`octocat-sync-find`, SQLite JSON over the resource bodies, newest
+  first); a noreply email names its login. An email not seen yet has
+  no user. Tree lines show no author, so nothing on screen differs,
+  but the stored answer lacks that login for its 30 days.
 
-### Missing or partial objects
+## Phase 3: blame (next)
 
-- Check the object exists before reading it (`git cat-file -e SHA`, or
-  one `cat-file --batch` call that reports `missing`).
-- In a partial clone (`--filter=blob:none`), a missing blob makes git
-  fetch it from origin on its own, which is network I/O again and can
-  prompt for credentials. Run git with `GIT_NO_LAZY_FETCH=1` (git
-  2.44+). On older git, skip the local path for blobs when
-  `remote.origin.promisor` is set.
-- A shallow clone answers "missing" for old objects, which falls back
-  to GitHub.
+`git blame --porcelain` at COMMIT gives each line's commit, author
+name, email and times; logins come from `octocat-model--commit-users`.
 
-### When git fails or hangs
+Before relying on it, compare it with GitHub's blame on several real
+files, large ones and ones with moved or reformatted code, as was done
+for `tree-commits`. GitHub does not document its blame options
+(whitespace, moved-line detection), so its ranges may differ from
+plain `git blame`. If they differ, find the git options that match, or
+keep blame on GitHub.
 
-A local read must never take longer than the GitHub fetch it replaces.
-
-- **Hangs.** Causes include a slow network mount, a lock, or a
-  credential prompt. The helper starts a timer of
-  `octocat-local-git-timeout` seconds (default 2). When it fires, the
-  helper kills the process and answers `(error . "timed out")`, and
-  GitHub is fetched instead. The process gets no terminal and
-  `GIT_TERMINAL_PROMPT=0`, so it cannot wait on a prompt. Only one of
-  the timer and the process sentinel may call DONE; the second is
-  ignored.
-- **git missing.** If `git` is gone or its directory has disappeared,
-  `make-process` signals `file-missing` or `file-error` instead of
-  exiting. The helper catches these and answers an error.
-- **git failing.** Existence is checked with `git cat-file
-  --batch-check`, which prints `missing` for an absent object and
-  still exits 0. So a missing object is a normal answer, and any
-  non-zero exit means git itself is failing, for example a corrupt
-  repo, a bad config or a moved directory. Both fall back to GitHub.
-- **Dropping the clone.** A timeout, a failure to start or a non-zero
-  exit drops the clone from the session cache, so later reads go
-  straight to GitHub without waiting on git again. Opening a page from
-  inside the clone registers it again. A `missing` object does not
-  drop the clone.
-- Tests: a fake `git` script on `exec-path` that sleeps, one that
-  exits non-zero, and one that is missing. All must fall back to
-  `:gh` with DONE called once, and drop the clone.
-
-### Tests
-
-- Model tests: each parser on recorded `git` output, including
-  submodule entries, names with spaces and newlines (`-z`), and binary
-  blobs.
-- Sync tests: `:local` answering, `:local` failing and falling back,
-  and no clone at all, which must call only `:gh`.
-- An integration test that runs `git init` in a temp dir, commits two
-  files, and reads `tree-dir` and `blob` through the resource.
-- Screenshots: fixtures must not pick up the developer's checkout.
-  Bind `octocat-use-local-clone` to nil in `test/screenshots/`.
+Blame rows show the author, so an unknown login does show. Either
+store such an answer as outdated and refetch from GitHub, which needs
+the seeding below, or keep GitHub's blame when any author's login is
+unknown.
 
 ## Phase 2: branch-named resources
 
-Phase 2 is optional and should be measured after phase 1.
+Pages still wait one round trip to turn a branch into SHAs. Seeding
+`tree-path` and `file-blob` from `origin/BRANCH` alone would not help:
 
-Phase 1 still makes one round trip per page to turn a branch into SHAs
-(`repo-head`, `tree-path`, `file-blob`), so the first paint waits on
-the network. To skip that wait, show the local `origin/BRANCH` right
-away as an outdated snapshot, and refetch from GitHub at once. When
-GitHub agrees, which is the usual case after a recent fetch, nothing
-on screen changes. When it does not, the page redraws as it does on a
-poll today.
+- The tree page draws the tree only once `repo-head` is in, and uses
+  its directory SHA; `tree-path` only prefetches listings, which phase
+  1 already reads locally.
+- The file page shows `file-blob`'s text only once it matches the blob
+  SHA from `repo-head`.
+- The repo root page does not read `tree-path`, and `tree-path` with no
+  path answers an empty table.
 
-This needs a way to seed a resource as stale: store it with an old
-`fetched_at` or mark it invalidated, so the sync layer refetches it.
-`repo-head` also carries GitHub-only fields (author login, history
-`totalCount`). Seed only `tree-path` and `file-blob`, which are pure
-git data, and leave `repo-head` to the network.
+So phase 2 needs:
 
-Never seed from the local *working tree* or local branch. The page
-shows what GitHub has; unpushed work already has its own section.
+1. In sync, a way to store a seed as outdated, so it is refetched at
+   once and shows as data meanwhile. Outdated data already renders like
+   fresh data, with only the mode line showing the refetch.
+2. Pages that draw from the seeded `tree-path` and `file-blob` until
+   `repo-head` lands, the last-commit line a grey bar meanwhile.
+3. `tree-path` at a SHA ref read exactly from the clone.
 
-## Phase 3: history-derived resources
+Never seed from the local working tree or a local branch: the page
+shows what GitHub has.
 
-`tree-commits` and `blame` are the slowest GitHub calls: a GraphQL
-history walk per 50 entries, and server-side blame. Locally, one
-`git log --name-only` walk can answer a directory's last commits, and
-`git blame --porcelain` gives a file's blame in milliseconds.
+## Loose ends
 
-The catch is `octocat-model--commit-fields`: rows show
-`author.user.login`, which git does not have. Options:
+- `octocat-here` still finds the clone root with
+  `locate-dominating-file` (`octocat.el`), not `vc-git-root`.
+- No test runs from a hanging git all the way to the `gh` fetch; each
+  half is tested.
+- Not in scope: finding a clone no page was opened from, by matching
+  remotes in `project-known-project-roots`.
 
-1. Fill `login` as nil and show the author's name. The rows then
-   change once the GitHub answer replaces them.
-2. Serve ranges and SHAs locally, and fill commit details from stored
-   `commit` entities when the sync store already has them.
+## Files
 
-Decide after phase 1. Blame on large files is the case most worth it.
-
-## Files touched
-
-- `octocat-core.el`: `octocat-local-clone`, the clone cache, defcustoms.
-- `octocat-sync.el`: the `:local` property, tried first in
-  `octocat-sync--fetch`.
-- `octocat-model.el`: the async git helper, parsers, and `:local` on
-  `tree-dir`, `blob`, `tree-files` and the SHA-ref file resources.
-- `octocat-repo.el`: register the clone when a page finds it.
-- Tests as above; `CHANGELOG.md`; a short section on local clones in
-  `README.md`.
+- `octocat-clone.el`: the clone, its checkout, the git runs and
+  parsers.
+- `octocat-sync.el`: `:local`, `octocat-sync-find`.
+- `octocat-model.el`: `:local` on the resources, the GitHub-shaped
+  tables, `octocat-model--commit-users`.
+- `octocat-core.el`, `octocat-repo.el`, `octocat-search.el`,
+  `octocat.el`: callers of `octocat-clone`.
+- Tests: `test/octocat-clone-tests.el`, and the sync and model tests.
