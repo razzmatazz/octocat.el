@@ -426,8 +426,13 @@ A plist of functions, which the page's mode sets: :add of a range, see
 `octocat-diff--range', and :reply, :edit and :resolve of a comment.")
 
 (defun octocat-diff--tag (string comment)
-  "Return STRING marked as a line of COMMENT's box, see \"Threads\" above."
-  (propertize string 'octocat-comment t 'octocat-diff-comment comment))
+  "Return STRING marked as a line of COMMENT's box, see \"Threads\" above.
+It carries COMMENT's URL, unless COMMENT is a draft, which only its author sees."
+  (let ((url (gethash "html_url" comment)))
+    (if (and (stringp url) (not (gethash "pending" comment)))
+        (propertize string 'octocat-comment t 'octocat-diff-comment comment
+                    'octocat-url url)
+      (propertize string 'octocat-comment t 'octocat-diff-comment comment))))
 
 (defun octocat-diff--resolved-line (root)
   "Return the line a resolved thread ROOT folds to."

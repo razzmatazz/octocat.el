@@ -1571,8 +1571,9 @@ line-wise selection does."
 
 (defun octocat--url-at-point ()
   "Return the URL of what point is on, or else of the page, or nil.
-That is a link or reference in markdown, a row's `octocat-url' (see
-`octocat-vui-row'), or what the page's `octocat--url-function' returns."
+That is a link or reference in markdown, the text property `octocat-url'
+of a row, link or timeline entry, or what the page's
+`octocat--url-function' returns."
   (or (octocat-markdown-url-at)
       (when-let* ((ref (get-text-property (point) 'octocat-markdown-ref)))
         (octocat--ref-url ref))
@@ -1613,7 +1614,8 @@ That is a row, a comment or a link; see `octocat-copy-url'."
 
 (defun octocat-copy-url (&optional short)
   "Copy the URL of what point is on, or else of the page, to the kill ring.
-That is a link or reference in markdown, a comment, or the page itself.
+That is a link or reference in markdown, a timeline entry, a row or a
+link such as a user, or the page itself.
 With prefix argument SHORT, copy its short reference instead, such as
 owner/repo#12, where it has one."
   (interactive "P")

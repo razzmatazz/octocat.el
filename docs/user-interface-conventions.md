@@ -475,12 +475,24 @@ in the browser; no other key does (bare `o` opens in Emacs).
 `octocat-copy-url` copies that URL instead, or with `C-u` its short
 reference (`owner/repo#12`).
 
-The URL is, in order, a markdown link or reference at point, the row
-at point's (the URL argument of `octocat-vui-row`, as text property
-`octocat-url`), or what the mode's `octocat--url-function` returns,
-such as `octocat-pr--page-url`.  That may look at point too: the
-comment, or the tree entry.  A new page sets it in its mode body, and a
-new kind of row passes its URL.
+The URL is, in order, a markdown link or reference at point, the text
+property `octocat-url` at point, or what the mode's
+`octocat--url-function` returns, such as `octocat-pr--page-url`.  That
+may look at point too: the tree entry, or the diff line.  A new page
+sets it in its mode body, and anything at point with a page of its own
+carries `octocat-url`:
+
+- a row passes its URL to `octocat-vui-row`, and a link to
+  `octocat-vui--link` (`octocat-vui--login-link` gives the user's);
+- a timeline item has `:url` (a comment's, a review's
+  `#pullrequestreview-ID`, an event's `#event-ID`, a commit's under the
+  PR), which `octocat-timeline--entry-string` puts on its text;
+- a review or commit comment on a diff carries its `html_url`, through
+  `octocat-diff--tag`;
+- header labels and the milestone carry their pages in the repository.
+
+These links stay on the PR's conversation: GitHub's `url` for a review
+comment is `…/pull/N#discussion_rID`, not the files tab.
 
 | Page | URL opened |
 |---|---|

@@ -377,5 +377,32 @@ Return the (REPO NUMBER) it opened, or the message it showed."
   (cl-letf (((symbol-function 'octocat--current-branch) #'ignore))
     (should-error (octocat-pr) :type 'user-error)))
 
+(ert-deftest octocat-pr-test-timeline-urls ()
+  "A review carries its URL, a commit its place in the PR."
+  (let* ((pr (json-parse-string
+              (concat "{\"number\":5,\"url\":\"https://github.com/o/r/pull/5\","
+                      "\"reviews\":{\"nodes\":[{\"state\":\"APPROVED\",\"body\":\"\","
+                      "\"url\":\"https://github.com/o/r/pull/5#pullrequestreview-8\"}]},"
+                      "\"commits\":{\"nodes\":[{\"commit\":{\"oid\":\"abc1234\"}}]}}"))))
+    (should (equal (plist-get (car (octocat-pr--review-items pr)) :url)
+                   "https://github.com/o/r/pull/5#pullrequestreview-8"))
+    (should (equal (plist-get (car (octocat-pr--commit-items "o/r" pr)) :url)
+                   "https://github.com/o/r/pull/5/commits/abc1234"))))
+
+(ert-deftest octocat-pr-test-review-comment-url ()
+  "A review comment on the diff carries its URL; a draft does not."
+  (let* ((thread (lambda (state)
+                   (json-parse-string
+                    (format (concat "[{\"id\":\"T\",\"path\":\"a\",\"line\":1,"
+                                    "\"comments\":{\"nodes\":[{\"id\":\"C\",\"state\":\"%s\","
+                                    "\"url\":\"https://github.com/o/r/pull/5#discussion_r9\"}]}}]")
+                            state))))
+         (url (lambda (state)
+                (get-text-property 0 'octocat-url
+                                   (octocat-diff--tag
+                                    "x" (aref (octocat-pr-diff--thread-comments (funcall thread state)) 0))))))
+    (should (equal (funcall url "SUBMITTED") "https://github.com/o/r/pull/5#discussion_r9"))
+    (should-not (funcall url "PENDING"))))
+
 (provide 'octocat-pr-tests)
 ;;; octocat-pr-tests.el ends here

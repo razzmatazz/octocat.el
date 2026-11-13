@@ -27,6 +27,33 @@
   (should (equal (octocat-vui-tests--parts (octocat-vui-repo-heading "o/r" t))
                  '((link "o") "/" (link "r")))))
 
+(ert-deftest octocat-vui-test-header-urls ()
+  "A header's users, numbers, labels and milestone carry their URLs."
+  (let ((url (lambda (s) (get-text-property 0 'octocat-url s)))
+        (item (json-parse-string
+               (concat "{\"milestone\":{\"number\":3,\"title\":\"v1\"},"
+                       "\"labels\":{\"nodes\":[{\"name\":\"good first\",\"color\":\"d73a4a\"}]}}"))))
+    (should (equal (funcall url (vui-vnode-button-label (octocat-vui--login-link "ann")))
+                   "https://github.com/ann"))
+    (should (equal (funcall url (vui-vnode-button-label
+                                 (car (octocat-vui--numbers
+                                       "o/r" (json-parse-string "[{\"number\":4}]") #'ignore))))
+                   "https://github.com/o/r/issues/4"))
+    (should (equal (funcall url (car (octocat-vui--label-items
+                                      (octocat--nodes item "labels") nil "o/r")))
+                   "https://github.com/o/r/labels/good%20first"))
+    (should (equal (funcall url (octocat-vui--milestone item "o/r"))
+                   "https://github.com/o/r/milestone/3"))
+    (should-not (funcall url (octocat-vui--milestone item)))))
+
+(ert-deftest octocat-vui-test-row-keeps-text-url ()
+  "A row without a URL of its own keeps the one its text carries."
+  (let ((props (lambda (node)
+                 (vui-vnode-text-properties (car (vui-vnode-region-children node))))))
+    (should-not (plist-member (funcall props (octocat-vui-row "x" #'ignore)) 'octocat-url))
+    (should (equal (plist-get (funcall props (octocat-vui-row "x" #'ignore nil "u")) 'octocat-url)
+                   "u"))))
+
 (ert-deftest octocat-vui-test-fit-middle-keeps-both-ends ()
   (should (equal (octocat-vui--fit-middle "CI" 24) "CI"))
   (let ((cut (octocat-vui--fit-middle "Build and publish the documentation site" 24)))

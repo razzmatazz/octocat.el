@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Copy URL gives the review, event, commit, review comment, user or label at point
 * Markdown files with code blocks open much faster in diffs, raw view and Blame
 * A branch's files, tree and README show from your local clone at once, then GitHub's
 * A file's Blame shows from your local clone at once, then GitHub's when it arrives

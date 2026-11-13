@@ -172,9 +172,12 @@ own, so a segment such as a relative date keeps its own hover text
 
 (defun octocat-vui-row--text (string help-echo url)
   "Return a `vui-text' of STRING highlighted as part of a row with HELP-ECHO.
-URL, if non-nil, goes on it as the text property `octocat-url'."
-  (vui-text (octocat-vui--default-help-echo string (or help-echo "RET: view details"))
-    'mouse-face 'highlight 'octocat-url url))
+URL, if non-nil, goes on it as the text property `octocat-url'; else
+STRING keeps its own."
+  (let ((string (octocat-vui--default-help-echo string (or help-echo "RET: view details"))))
+    (if url
+        (vui-text string 'mouse-face 'highlight 'octocat-url url)
+      (vui-text string 'mouse-face 'highlight))))
 
 (defun octocat-vui--default-help-echo (string help-echo)
   "Return a copy of STRING with HELP-ECHO on the parts lacking a `help-echo'."
@@ -3468,11 +3471,12 @@ fields at the end of the first line that would take it past WIDTH."
   "Return ITEMS (vnodes or lists of them) with a `vui-text' of SEP between."
   (cdr (mapcan (lambda (item) (list (vui-text sep) item)) items)))
 
-(defun octocat-vui--link (label face action &optional help)
+(defun octocat-vui--link (label face action &optional help url)
   "Return an unbracketed `vui-button' showing LABEL in FACE: a TAB stop.
 ACTION is called on RET or a click; HELP is its hover text, by default
-\"RET: open LABEL\"."
-  (vui-button label
+\"RET: open LABEL\".  URL, if non-nil, is its page on GitHub, for
+`octocat-copy-url'."
+  (vui-button (if url (propertize label 'octocat-url url) label)
     :no-decoration t
     :face face
     :help-echo (or help (concat "RET: open " label))
@@ -3481,13 +3485,23 @@ ACTION is called on RET or a click; HELP is its hover text, by default
 (defun octocat-vui--login-link (login)
   "Return \"@LOGIN\" as a link to the page of the user LOGIN."
   (octocat-vui--link (concat "@" login) 'octocat-pr-author
-                     (lambda () (octocat-open 'user login))))
+                     (lambda () (octocat-open 'user login))
+                     nil (octocat--web-url "%s" login)))
 
-(defun octocat-vui--label-items (labels bg)
+(defun octocat-vui--label-items (labels bg &optional repo)
   "Return the chips of LABELS (a vector of label objects), or nil.
-BG is as for `octocat--label-face'."
+BG is as for `octocat--label-face'.  With REPO, each carries the URL of
+its issues in REPO, for `octocat-copy-url'."
   (and (vectorp labels)
-       (mapcar (lambda (l) (octocat--format-label l bg)) labels)))
+       (mapcar (lambda (l)
+                 (let ((chip (octocat--format-label l bg)))
+                   (if repo
+                       (propertize chip 'octocat-url
+                                   (octocat--web-url "%s/labels/%s" repo
+                                                     (url-hexify-string
+                                                      (or (gethash "name" l) ""))))
+                     chip)))
+               labels)))
 
 (defun octocat-vui--login-items (users)
   "Return the \"@login\" names of USERS (a vector of user objects), or nil.
@@ -3514,17 +3528,26 @@ REPO unless it names another, and number."
                          (where (if (and (hash-table-p owner) (gethash "login" owner))
                                     (format "%s/%s" (gethash "login" owner)
                                             (gethash "name" other))
-                                  repo)))
+                                  repo))
+                         (url   (gethash "url" r)))
                     (octocat-vui--link
                      (if (equal where repo) (format "#%d" n) (format "%s#%d" where n))
-                     'octocat-pr-number (lambda () (funcall open where n)))))
+                     'octocat-pr-number (lambda () (funcall open where n))
+                     nil
+                     ;; GitHub sends issues/N on to pull/N.
+                     (if (stringp url) url (octocat--web-url "%s/issues/%d" where n)))))
                 refs)
         " ")))
 
-(defun octocat-vui--milestone (item)
-  "Return the milestone title of ITEM, or nil."
-  (let ((m (gethash "milestone" item)))
-    (and (hash-table-p m) (octocat--nonempty (gethash "title" m)))))
+(defun octocat-vui--milestone (item &optional repo)
+  "Return the milestone title of ITEM, or nil.
+With REPO, it carries the milestone's URL, for `octocat-copy-url'."
+  (let* ((m     (gethash "milestone" item))
+         (title (and (hash-table-p m) (octocat--nonempty (gethash "title" m))))
+         (n     (and title (gethash "number" m))))
+    (if (and repo (integerp n))
+        (propertize title 'octocat-url (octocat--web-url "%s/milestone/%d" repo n))
+      title)))
 
 (defconst octocat-vui--author-max-width 30
   "Widest author column of the commit list; longer names are truncated.")

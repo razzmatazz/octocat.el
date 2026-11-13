@@ -195,14 +195,12 @@ The first line is the title, the rest the body."
   (octocat-timeline-react "issue" octocat--issue-repo octocat--issue-number))
 
 (defun octocat-issue--page-url ()
-  "Return the URL of the comment at point, or else of the whole issue."
-  (let* ((target (octocat-timeline-target))
-         (url    (and (hash-table-p target) (gethash "url" target))))
-    (cond ((stringp url) url)
-          ((and octocat--issue-repo octocat--issue-number)
-           (octocat--item-url
-            'issue octocat--issue-repo octocat--issue-number
-            (octocat-model-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))))))
+  "Return the URL of the whole issue.
+A timeline entry carries its own, see `octocat-timeline--entry-string'."
+  (and octocat--issue-repo octocat--issue-number
+       (octocat--item-url
+        'issue octocat--issue-repo octocat--issue-number
+        (octocat-model-detail-read (list 'issue octocat--issue-repo octocat--issue-number)))))
 
 (defun octocat-issue--change-state (verb)
   "Close or reopen (VERB) the current issue, after asking."
@@ -247,8 +245,9 @@ that sets the header apart from it."
     (list (cons (octocat-timeline-edit-field "issue" repo issue "assignee")
                 (cl-list* :line ", " (octocat-vui--login-items (octocat--nodes issue "assignees"))))
           (cons (octocat-timeline-edit-field "issue" repo issue "label")
-                (cl-list* :line " " (octocat-vui--label-items (octocat--nodes issue "labels") bg))))
-    (list (cons "Milestone" (octocat-vui--milestone issue))
+                (cl-list* :line " " (octocat-vui--label-items
+                                     (octocat--nodes issue "labels") bg repo))))
+    (list (cons "Milestone" (octocat-vui--milestone issue repo))
           (cons "Fixed by"  (octocat-vui--numbers
                              repo (octocat--nodes issue "closedByPullRequestsReferences")
                              (apply-partially #'octocat-open 'pr))))

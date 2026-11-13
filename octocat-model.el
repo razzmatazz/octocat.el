@@ -845,7 +845,7 @@ Pages of connections, which the lists do not share.")
              (closingIssuesReferences (:first 20)
                                       (nodes number url (repository name (owner login))))
              (reviews (:first 100)
-                      (nodes id body state submittedAt (author login)
+                      (nodes id url body state submittedAt (author login)
                              ,octocat-model--reaction-fields))
              (latestReviews (:first 100)
                             (nodes id body state submittedAt (author login)))
@@ -910,7 +910,7 @@ As `octocat--graphql' takes them.")
   :gh (list "api" "--paginate" (format "repos/%s/pulls/%d/files?per_page=100" repo number)))
 
 (defconst octocat-model--review-comment-fields
-  `(id databaseId body createdAt state viewerDidAuthor viewerCanUpdate
+  `(id databaseId url body createdAt state viewerDidAuthor viewerCanUpdate
        viewerCanDelete (author login) (replyTo databaseId)
        ,octocat-model--reaction-fields)
   "The fields of a review comment read from GraphQL.")

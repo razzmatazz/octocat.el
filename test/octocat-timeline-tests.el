@@ -117,6 +117,25 @@
     (should (eq (get-text-property (1- (length entry)) 'octocat-timeline-target entry)
                 comment))))
 
+(ert-deftest octocat-timeline-test-entry-urls ()
+  "Comments and events carry their place on GitHub, and their text shows it."
+  (let* ((issue (json-parse-string
+                 (concat "{\"number\":7,\"url\":\"https://github.com/o/r/issues/7\","
+                         "\"body\":\"\",\"createdAt\":\"2026-01-01T10:00:00Z\","
+                         "\"comments\":{\"nodes\":[{\"body\":\"c\",\"createdAt\":\"2026-01-02T10:00:00Z\","
+                         "\"url\":\"https://github.com/o/r/issues/7#issuecomment-5\"}]}}")))
+         (events (json-parse-string
+                  (concat "[{\"id\":9,\"event\":\"reopened\",\"created_at\":\"2026-01-03T10:00:00Z\","
+                          "\"actor\":{\"login\":\"ann\"}}]")))
+         (items (octocat-timeline-items issue "opened this issue" events nil)))
+    (should-not (plist-get (car items) :url))
+    (should (equal (plist-get (nth 1 items) :url)
+                   "https://github.com/o/r/issues/7#issuecomment-5"))
+    (should (equal (plist-get (nth 2 items) :url) "https://github.com/o/r/issues/7#event-9"))
+    (let ((entry (octocat-timeline--entry-string (nth 2 items) nil 80)))
+      (should (equal (get-text-property 0 'octocat-url entry)
+                     "https://github.com/o/r/issues/7#event-9")))))
+
 (ert-deftest octocat-timeline-test-copy-entry ()
   "Copying an entry leaves out the rail, and rejoins a line broken to fit."
   (let ((copy (lambda (item)

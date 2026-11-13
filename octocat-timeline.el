@@ -54,6 +54,8 @@
 ;;            shown after its date
 ;;   :on-visit  function to call when RET is pressed on a single line
 ;;   :help    its `help-echo'
+;;   :url     its place on GitHub, for `octocat-copy-url' and
+;;            `octocat-browse'
 ;;
 ;; The events come from the REST timeline endpoint
 ;; (`octocat--fetch-issue-events'), whose own comment, review and commit
@@ -184,6 +186,7 @@ timeline events or nil while they are not known.  BG colours the labels,
 see `octocat--label-face'.  EXTRA is a list of further items, such as a
 PR's reviews and commits."
   (let* ((merged (octocat--get obj "mergedAt"))
+         (url    (octocat--get obj "url"))
          (items
           (append
            (list (list :time (or (octocat--get obj "createdAt") "")
@@ -203,6 +206,7 @@ PR's reviews and commits."
                            :body (or (gethash "body" comment) "")
                            :empty "(empty)"
                            :target comment
+                           :url (octocat--get comment "url")
                            :pending (octocat--get comment octocat-model-pending)
                            :reactions (octocat--reactions-string comment)))
                    (octocat--nodes obj "comments"))
@@ -220,6 +224,9 @@ PR's reviews and commits."
                                             :actor (octocat-timeline--actor event)
                                             :text text
                                             :label (octocat--get event "label")
+                                            :url (let ((id (octocat--get event "id")))
+                                                   (and (stringp url) (integerp id)
+                                                        (format "%s#event-%d" url id)))
                                             :rename (and (equal name "renamed")
                                                          (cons (octocat--get event "rename" "from")
                                                                (octocat--get event "rename" "to")))
@@ -307,7 +314,8 @@ the last one that has a colour."
                                     :actor (plist-get (car run) :actor)
                                     :text (concat (string-join (butlast texts) ", ")
                                                   " and " (car (last texts)))
-                                    :state state))
+                                    :state state
+                                    :url (plist-get (car ordered) :url)))
                           (car run))
                         result)
                   (setq run nil))))
@@ -474,6 +482,8 @@ under its actor.  The text carries ITEM's target in the
                                 (propertize empty 'face 'octocat-dimmed)))))))))
     (when-let* ((target (plist-get item :target)))
       (put-text-property 0 (length text) 'octocat-timeline-target target text))
+    (when-let* ((url (plist-get item :url)))
+      (put-text-property 0 (length text) 'octocat-url url text))
     text))
 
 (defcustom octocat-timeline-body-lines 30

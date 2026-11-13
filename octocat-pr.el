@@ -177,14 +177,12 @@ On a field such as Labels: pick its values."
   (octocat-timeline-react "pr" octocat--pr-repo octocat--pr-number))
 
 (defun octocat-pr--page-url ()
-  "Return the URL of the comment at point, or else of the whole PR."
-  (let* ((target (octocat-timeline-target))
-         (url    (and (hash-table-p target) (gethash "url" target))))
-    (cond ((stringp url) url)
-          ((and octocat--pr-repo octocat--pr-number)
-           (octocat--item-url
-            'pr octocat--pr-repo octocat--pr-number
-            (octocat-model-detail-read (list 'pr octocat--pr-repo octocat--pr-number)))))))
+  "Return the URL of the whole PR.
+A timeline entry carries its own, see `octocat-timeline--entry-string'."
+  (and octocat--pr-repo octocat--pr-number
+       (octocat--item-url
+        'pr octocat--pr-repo octocat--pr-number
+        (octocat-model-detail-read (list 'pr octocat--pr-repo octocat--pr-number)))))
 
 (defun octocat-pr--change-state (verb)
   "Close or reopen (VERB) the current PR, after asking."
@@ -815,14 +813,17 @@ their titles are cut to fit WIDTH."
                 (vui-text (concat head (propertize title 'face 'bold) tail))
               (octocat-vui-row (concat head title tail)
                                (lambda () (octocat-pr-open repo n))
-                               (format "RET: open pull request #%d" n)))))
+                               (format "RET: open pull request #%d" n)
+                               (octocat--item-url 'pr repo n p)))))
         prs)))))
 
 (defun octocat-pr--commit-items (repo pr)
   "Return a timeline item for each commit of PR (a hash-table) in REPO.
 Each is a RET-able line opening the commit; the newest commit also shows
 the CI status."
-  (let ((head-oid (octocat-pr--head-sha pr)))
+  (let ((head-oid (octocat-pr--head-sha pr))
+        (pr-url   (let ((n (gethash "number" pr)))
+                    (and (integerp n) (octocat--item-url 'pr repo n pr)))))
     (mapcar
      (lambda (node)
        (let* ((commit (gethash "commit" node))
@@ -839,6 +840,7 @@ the CI status."
                                   (gethash "messageHeadline" commit)))
                :suffix (and (equal oid head-oid) (concat "  " (octocat--ci-label pr)))
                :on-visit (lambda () (octocat-commit-open repo oid))
+               :url (and pr-url (concat pr-url "/commits/" oid))
                :help "RET: view commit")))
      (octocat--nodes pr "commits"))))
 
@@ -857,6 +859,7 @@ the CI status."
                      (_                   "reviewed"))
              :body (or (octocat--get review "body") "")
              :state (downcase state)
+             :url (octocat--get review "url")
              :reactions (octocat--reactions-string review))))
    (octocat--nodes pr "reviews")))
 
@@ -935,8 +938,9 @@ TAB is the page showing it, `conversation' (the default), `commits' or
             (cons (octocat-timeline-edit-field "pr" repo pr "reviewer")
                   (cl-list* :line ", " reviewers))
             (cons (octocat-timeline-edit-field "pr" repo pr "label")
-                  (cl-list* :line " " (octocat-vui--label-items (octocat--nodes pr "labels") bg))))
-      (list (cons "Milestone" (octocat-vui--milestone pr))
+                  (cl-list* :line " " (octocat-vui--label-items
+                                       (octocat--nodes pr "labels") bg repo))))
+      (list (cons "Milestone" (octocat-vui--milestone pr repo))
             (cons "Closes"    (octocat-vui--numbers
                                repo (octocat--nodes pr "closingIssuesReferences")
                                (apply-partially #'octocat-open 'issue))))
@@ -1276,6 +1280,7 @@ thread also has its \"resolved\", \"resolved_by\", \"can_resolve\" and
             (puthash "login" (octocat--get c "author" "login") user)
             (puthash "id" (octocat-pr-diff--null (gethash "databaseId" c)) h)
             (puthash "node_id" (gethash "id" c) h)
+            (puthash "html_url" (gethash "url" c) h)
             (puthash "thread_id" (gethash "id" thread) h)
             (puthash "path" (gethash "path" thread) h)
             (puthash "line" line h)
