@@ -54,6 +54,18 @@
     (should (equal (plist-get (funcall props (octocat-vui-row "x" #'ignore nil "u")) 'octocat-url)
                    "u"))))
 
+(ert-deftest octocat-vui-test-line-ends-skip-folded-rows ()
+  "A folded <details> row is no line: a cut never ends the text on one."
+  (let* ((s (concat "│ ▸ summary\n"
+                    (propertize "│ hidden\n│ rows\n" 'invisible 'octocat-markdown-details)
+                    "│ after\n│ end"))
+         (ends (octocat-vui-line-ends s)))
+    (should (= (length ends) 2))
+    (should (equal (substring-no-properties (octocat-vui-take-lines s ends 1))
+                   "│ ▸ summary"))
+    (should (equal (substring-no-properties (octocat-vui-take-lines s ends 2))
+                   "│ ▸ summary\n│ hidden\n│ rows\n│ after"))))
+
 (ert-deftest octocat-vui-test-fit-middle-keeps-both-ends ()
   (should (equal (octocat-vui--fit-middle "CI" 24) "CI"))
   (let ((cut (octocat-vui--fit-middle "Build and publish the documentation site" 24)))

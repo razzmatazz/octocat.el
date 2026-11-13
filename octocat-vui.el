@@ -1290,10 +1290,14 @@ and title are one button, a TAB stop that keeps TITLE's faces and the
           (lambda (n) (list (vui-text (octocat-vui-take-lines text ends n)))))))
 
 (defun octocat-vui-line-ends (string)
-  "Return the positions of the newlines in STRING, for `octocat-vui-take-lines'."
+  "Return the positions of the newlines in STRING, for `octocat-vui-take-lines'.
+An invisible newline, ending a folded <details> row, is left out: a cut
+there would end the text on a hidden row, and the line after it, a
+fold's marker, would start without the rows' prefix."
   (let ((start 0) ends)
     (while (string-match "\n" string start)
-      (push (match-beginning 0) ends)
+      (unless (get-text-property (match-beginning 0) 'invisible string)
+        (push (match-beginning 0) ends))
       (setq start (match-end 0)))
     (nreverse ends)))
 
