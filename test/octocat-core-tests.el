@@ -19,6 +19,13 @@
       (octocat--set-mode-for-path "Rootfile")
       (should (eq major-mode 'emacs-lisp-mode)))))
 
+(ert-deftest octocat-core-test-set-mode-for-path-no-native-fences ()
+  "Fences of a Markdown file are not highlighted in their own languages."
+  (with-temp-buffer
+    (octocat--set-mode-for-path "README.md")
+    (should (local-variable-p 'markdown-fontify-code-blocks-natively))
+    (should-not (symbol-value 'markdown-fontify-code-blocks-natively))))
+
 (ert-deftest octocat-core-test-web-url ()
   "Web URLs are on the host `gh' talks to, as GH_HOST names it."
   (let ((process-environment (cons "GH_HOST" process-environment)))

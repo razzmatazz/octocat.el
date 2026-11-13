@@ -1332,6 +1332,9 @@ ARGS are those of the page's own opener, such as REPO and NUMBER for
 
 ;;;; Syntax highlighting
 
+;; From markdown-mode, when installed.
+(defvar markdown-fontify-code-blocks-natively)
+
 (defun octocat--set-mode-for-path (path)
   "Set the current buffer's major mode as for repository file PATH.
 PATH is relative to the repository root.  Mode hooks are delayed."
@@ -1339,7 +1342,10 @@ PATH is relative to the repository root.  Mode hooks are delayed."
   ;; the name.
   (with-demoted-errors "Octocat: cannot highlight: %S"
     (let ((buffer-file-name (concat "/" path)))
-      (delay-mode-hooks (set-auto-mode)))))
+      (delay-mode-hooks (set-auto-mode))))
+  ;; markdown-mode finds each fence's mode by asking tree-sitter for a
+  ;; grammar, tens of ms a fence when none is installed.
+  (setq-local markdown-fontify-code-blocks-natively nil))
 
 ;;;; github.com links
 ;;
