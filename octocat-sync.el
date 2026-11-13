@@ -688,6 +688,31 @@ resources whose data holds no entities: refs are left unresolved."
                             WHERE substr(key, 1, ?1) = ?2 AND body IS NOT NULL"
                            (list (length prefix) prefix)))))
 
+(defun octocat-sync-find (name field values)
+  "Return the stored objects under the key NAME whose FIELD is one of VALUES.
+Each is (VALUE OBJECT), those of the resources fetched last first, so
+the first of a VALUE is the newest.  Refs are left unresolved, as in
+`octocat-sync-stored'."
+  (when values
+    (let ((marks (mapconcat (lambda (_) "?") values ", "))
+          (path  (concat "$." field)))
+      (mapcar (pcase-lambda (`(,value ,object)) (list value (octocat-sync--parse object)))
+              (sqlite-select
+               (octocat-sync--db)
+               ;; A plain search first, so only the bodies holding a value are parsed.
+               (format "SELECT json_extract(j.value, ?), j.value
+                        FROM resource r, json_tree(r.body) j
+                        WHERE r.body IS NOT NULL AND (%s)
+                          AND j.key = ? AND j.type = 'object'
+                          AND json_extract(j.value, ?) IN (%s)
+                        ORDER BY r.fetched_at DESC"
+                       (mapconcat (lambda (_) "instr(r.body, ?) > 0") values " OR ")
+                       marks)
+               (append (list path)
+                       (mapcar #'octocat-sync--json values)
+                       (list name path)
+                       values))))))
+
 (defun octocat-sync--wanted-p (spec force)
   "Return non-nil if SPEC should be fetched, or FORCE.
 It is not when fetched just now, within `octocat-sync-fresh-for' or the

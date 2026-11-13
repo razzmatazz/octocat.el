@@ -1625,9 +1625,54 @@ The root's is first; a level that is no tree is nil."
            (let ((tree (gethash "tree" r)))
              (if (vectorp tree) tree (error "Unexpected tree response format")))))
 
+(defun octocat-model--commit-users (emails)
+  "Return a table of each of EMAILS to the GitHub user it links commits to.
+That user is as `octocat-model--commit-fields' reads it, nil for an
+email GitHub links to no one; an email not known is left out.  A
+noreply email names its user; others are known from the commits GitHub
+gave, that the store holds."
+  (let ((users (make-hash-table :test #'equal))
+        unknown)
+    (dolist (email (delete-dups (copy-sequence emails)))
+      (if (string-match "\\`\\(?:[0-9]+\\+\\)?\\([^@+]+\\)@users\\.noreply\\.github\\.com\\'"
+                        email)
+          (puthash email (octocat--table "login" (match-string 1 email)) users)
+        (push email unknown)))
+    ;; The newest first: its user wins.
+    (pcase-dolist (`(,email ,author) (octocat-sync-find "author" "email" unknown))
+      (when (eq (gethash email users 'unknown) 'unknown)
+        (puthash email (gethash "user" author) users)))
+    users))
+
+(defun octocat-model--with-users (commits)
+  "Return COMMITS, a table of path to commit, each author's GitHub user filled in.
+See `octocat-model--commit-users'; one it doesn't know stays nil."
+  (let ((users (octocat-model--commit-users
+                (mapcar (lambda (c) (octocat--get c "author" "email"))
+                        (hash-table-values commits)))))
+    (maphash (lambda (_ commit)
+               (let ((author (gethash "author" commit)))
+                 (puthash "user" (gethash (gethash "email" author) users) author)))
+             commits)
+    commits))
+
 (octocat-sync-define-resource tree-commits (repo commit dir sha)
   ;; COMMIT names the history, so what it says never changes.
   :max-age octocat-model--fixed-max-age
+  ;; The tree shows no author, so one whose user isn't known is no
+  ;; difference on screen.
+  :local (and commit (octocat-clone-root repo)
+              (lambda (done)
+                (octocat-sync-get
+                 (list 'tree-dir repo sha)
+                 (lambda (entries)
+                   (let ((walk (and (not (eq (car-safe entries) 'error))
+                                    (octocat-clone-last-commits
+                                     repo commit dir
+                                     (mapcar (lambda (e) (gethash "path" e)) entries)))))
+                     (cond ((eq (car-safe entries) 'error) (funcall done entries))
+                           (walk (funcall walk (octocat--then #'octocat-model--with-users done)))
+                           (t (funcall done '(error . "No local clone")))))))))
   :fetch (lambda (done)
            ;; No COMMIT yet: the page asks before it knows it.
            (if (null commit)

@@ -238,6 +238,30 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
       (should (= (length locals) 2))
       (should (assq 0 pending)))))
 
+(ert-deftest octocat-sync-test-find ()
+  "Stored objects are found by a field, those fetched last first."
+  (let ((octocat-sync--db (octocat-sync-tests--db)))
+    (cl-flet ((commit (email login)
+                (octocat-sync-tests--table
+                 "author" (octocat-sync-tests--table
+                           "email" email
+                           "user" (and login (octocat-sync-tests--table "login" login))))))
+      (octocat-sync--write octocat-sync--db "old"
+                           (octocat-sync-tests--table "nodes" (vector (commit "a@x" "old")))
+                           1.0)
+      (octocat-sync--write octocat-sync--db "new"
+                           (octocat-sync-tests--table "nodes" (vector (commit "a@x" "new")
+                                                                      (commit "b@x" nil)))
+                           2.0)
+      (let ((found (mapcar (pcase-lambda (`(,email ,author))
+                             (list email (octocat--get author "user" "login")))
+                           (octocat-sync-find "author" "email" '("a@x" "b@x" "c@x")))))
+        (should (= (length found) 3))
+        (should (equal (assoc "a@x" found) '("a@x" "new")))
+        (should (equal (assoc "b@x" found) '("b@x" nil)))
+        (should (member '("a@x" "old") found)))
+      (should-not (octocat-sync-find "author" "email" nil)))))
+
 (ert-deftest octocat-sync-test-get-and-cancel ()
   "A get calls back once its fetch lands, at once while a failure waits to
 retry, and never once cancelled."

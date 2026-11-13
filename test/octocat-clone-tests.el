@@ -231,5 +231,79 @@
             (should-not (octocat-clone-root "o/r"))))
       (delete-directory dir t))))
 
+(ert-deftest octocat-clone-test-log-commit ()
+  "A `git log' header reads as GitHub's commit: its headline, dates and parents."
+  (let ((c (octocat-clone--log-commit
+            (encode-coding-string
+             (mapconcat #'identity
+                        '("abc" "p1 p2 p3" "Jü" "j@example.com" "2026-01-02T03:04:05+02:00"
+                          "2026-01-03T00:00:00Z" "Fix it\n\nBody\n")
+                        "\x1f")
+             'utf-8))))
+    (should (equal (gethash "oid" c) "abc"))
+    (should (equal (gethash "messageHeadline" c) "Fix it"))
+    (should (equal (gethash "authoredDate" c) "2026-01-02T01:04:05Z"))
+    (should (equal (gethash "committedDate" c) "2026-01-03T00:00:00Z"))
+    (should (equal (octocat--get c "author" "name") "Jü"))
+    (should-not (octocat--get c "author" "user"))
+    (should (equal (mapcar (lambda (p) (gethash "oid" p)) (octocat--get c "parents" "nodes"))
+                   '("p1" "p2")))))
+
+(ert-deftest octocat-clone-test-headline ()
+  "A headline is the first line, cut past 72 characters as GitHub cuts it."
+  (should (equal (octocat-clone--headline "One\nTwo") "One"))
+  (should (equal (octocat-clone--headline (make-string 72 ?a)) (make-string 72 ?a)))
+  (should (equal (octocat-clone--headline (make-string 73 ?a))
+                 (concat (make-string 69 ?a) "…"))))
+
+(ert-deftest octocat-clone-test-last-commits ()
+  "Each entry's last commit comes from one walk, its author's user from the store."
+  (let* ((dir (file-name-as-directory (make-temp-file "octocat-clone-" t)))
+         (default-directory dir)
+         (octocat-clone--roots (make-hash-table :test #'equal))
+         (octocat-sync--db (octocat-sync--create (sqlite-open nil))))
+    (unwind-protect
+        (cl-flet ((git (&rest args)
+                    (with-temp-buffer
+                      (should (eql 0 (apply #'process-file "git" nil t nil
+                                            "-c" "user.name=T" "-c" "user.email=t@example.com"
+                                            args)))
+                      (string-trim (buffer-string))))
+                  (local (spec) (plist-get (octocat-sync--props spec) :local)))
+          (git "init" "-q")
+          (make-directory "src")
+          (write-region "a" nil "a.txt")
+          (write-region "x" nil "src/x.el")
+          (git "add" ".")
+          (git "commit" "-q" "-m" "One\n\nmore")
+          (write-region "y" nil "src/x.el")
+          (git "commit" "-q" "-am" "Two")
+          (write-region "b" nil "b.txt")
+          (git "add" ".")
+          (git "commit" "-q" "-m" "Three")
+          ;; GitHub gave a commit of that email before.
+          (octocat-sync--write octocat-sync--db "(other)"
+                               (octocat--table "author" (octocat--table
+                                                         "email" "t@example.com"
+                                                         "user" (octocat--table "login" "tee")))
+                               1.0)
+          (octocat-clone-add "o/r" dir)
+          (let* ((commit (git "rev-parse" "HEAD"))
+                 (root   (octocat-clone-tests--await
+                          (local (list 'tree-commits "o/r" commit "" (git "rev-parse" "HEAD^{tree}")))))
+                 (src    (octocat-clone-tests--await
+                          (local (list 'tree-commits "o/r" commit "src"
+                                       (git "rev-parse" "HEAD:src"))))))
+            (should (equal (mapcar (lambda (p) (gethash "messageHeadline" (gethash p root)))
+                                   '("a.txt" "b.txt" "src"))
+                           '("One" "Three" "Two")))
+            (should (equal (gethash "oid" (gethash "b.txt" root)) commit))
+            (should (equal (octocat--get (gethash "a.txt" root) "author" "user" "login") "tee"))
+            (should (equal (hash-table-keys src) '("src/x.el")))
+            (should (equal (gethash "messageHeadline" (gethash "src/x.el" src)) "Two"))
+            ;; No commit yet: the page asks before it knows it.
+            (should-not (local (list 'tree-commits "o/r" nil "" "x")))))
+      (delete-directory dir t))))
+
 (provide 'octocat-clone-tests)
 ;;; octocat-clone-tests.el ends here

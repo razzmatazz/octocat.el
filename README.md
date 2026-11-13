@@ -84,14 +84,19 @@ Optional extras:
 ### Local clones
 
 Once you open a page from inside a clone of the repository, octocat
-reads directories and files at a commit from that clone with `git`
-rather than from GitHub, for the rest of the session, so a page you
-have not opened before shows at once.  It reads only what a commit's
-SHA names, which is the same in the clone as on GitHub, so a page
-never shows anything different, only sooner.  Anything the clone
-lacks, such as a commit not yet fetched, is fetched from GitHub.  If
-`git` fails, or takes longer than 2 seconds, octocat stops using the
-clone until you next open a page from inside it.
+reads directories and files at a commit, and the last commit of each
+entry of a directory, from that clone with `git` rather than from
+GitHub, for the rest of the session, so a page you have not opened
+before shows at once.  It reads only what a commit's SHA names, which
+is the same in the clone as on GitHub, so a page never shows anything
+different, only sooner.  Anything the clone lacks, such as a commit
+not yet fetched, is fetched from GitHub.  If `git` fails, or takes
+longer than 2 seconds, octocat stops using the clone until you next
+open a page from inside it.
+
+Git knows a commit's author by name and email, GitHub by their
+account.  Octocat finds the account of an email in the commits it has
+fetched from GitHub; one it hasn't seen yet has none.
 
 ## Keybindings
 

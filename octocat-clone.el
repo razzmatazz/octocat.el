@@ -39,6 +39,8 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'parse-time)
+(require 'seq)
 (require 'subr-x)
 (require 'vc-git)
 
@@ -139,7 +141,7 @@ remembered, see `octocat-clone-root'."
   "Return the output lines of git ARGS run in DIR, or nil when it fails."
   (let ((default-directory dir))
     (with-temp-buffer
-      (and (eq 0 (apply #'process-file "git" nil '(t nil) nil args))
+      (and (eq 0 (apply #'process-file vc-git-program nil '(t nil) nil args))
            (split-string (buffer-string) "\n" t)))))
 
 (defun octocat-clone--parse-unpushed (lines)
@@ -195,7 +197,7 @@ the branch was never pushed: GitHub has nothing to show for it."
 (defun octocat-clone--git-ok (dir &rest args)
   "Return non-nil when git ARGS run in DIR succeeds."
   (let ((default-directory dir))
-    (eq 0 (apply #'process-file "git" nil nil nil args))))
+    (eq 0 (apply #'process-file vc-git-program nil nil nil args))))
 
 (defun octocat-clone-here-ref (dir)
   "Return (REF . REV) for what GitHub has of the checkout of the clone in DIR.
@@ -212,11 +214,15 @@ commit to the clone's git, as of the last fetch."
 
 ;;;; Reading objects
 
+(defconst octocat-clone--timed-out '(error . "git timed out")
+  "What `octocat-clone--git' answers for a git run past `octocat-clone-timeout'.")
+
 (defun octocat-clone--git (dir args input callback)
   "Run `vc-git-program' with ARGS in DIR, given INPUT; call CALLBACK.
 CALLBACK gets what git prints, as bytes, or (error . MESSAGE) when git
-can't start, exits non-zero, or runs past `octocat-clone-timeout'.
-git never prompts, nor fetches an object the clone lacks."
+can't start, exits non-zero, or runs past `octocat-clone-timeout', then
+`octocat-clone--timed-out'.  git never prompts, nor fetches an object
+the clone lacks."
   (let ((out (generate-new-buffer " *octocat-git*" t))
         (err (generate-new-buffer " *octocat-git-stderr*" t))
         called proc timer)
@@ -248,20 +254,54 @@ git never prompts, nor fetches an object the clone lacks."
                                                     (with-current-buffer err
                                                       (string-trim (buffer-string)))))))))))
             (setq timer (run-at-time octocat-clone-timeout nil
-                                     (lambda () (finish '(error . "git timed out")))))
+                                     (lambda () (finish octocat-clone--timed-out))))
             ;; Only then: git may be done, and gone, before an EOF is sent.
             (when input
               (process-send-string proc input)
               (process-send-eof proc)))
         (error (finish (cons 'error (error-message-string e))))))))
 
-(defun octocat-clone-read (repo object type args parse)
+(defconst octocat-clone--jobs 8
+  "How many git runs of one read run at once.")
+
+(defun octocat-clone--git-each (dir arg-lists callback)
+  "Run git with each of ARG-LISTS in DIR, `octocat-clone--jobs' at once.
+CALLBACK gets the list of what each prints, in order, or the first
+\(error . MESSAGE) of one, as `octocat-clone--git'.  Once one fails, no
+more are started."
+  (let* ((outs   (make-vector (length arg-lists) nil))
+         (todo   (seq-map-indexed #'cons arg-lists))
+         (left   (length arg-lists))
+         failed)
+    (cl-labels ((start ()
+                  (pcase-let ((`(,args . ,i) (pop todo)))
+                    (octocat-clone--git
+                     dir args nil
+                     (lambda (out)
+                       (cond (failed)
+                             ((stringp out)
+                              (aset outs i out)
+                              (if (zerop (cl-decf left))
+                                  (funcall callback (append outs nil))
+                                (when todo (start))))
+                             (t (setq failed t)
+                                (funcall callback out))))))))
+      (if (null todo)
+          (funcall callback nil)
+        (dotimes (_ (min octocat-clone--jobs (length todo)))
+          (start))))))
+
+(defun octocat-clone-read (repo object type args parse &optional slow)
   "Return a :local reading a resource of REPO from its clone, or nil.
 OBJECT, as `git cat-file' names it, must be there and of TYPE, such as
 \"tree\".  Then ARGS of its SHA are run, and DONE gets PARSE of what git
-prints, the object's SHA and its size in bytes.  An object missing,
-or of another type, answers an error; so does git failing, which also
-forgets the clone.  Either way the resource is fetched from GitHub."
+prints, the object's SHA and its size in bytes.  ARGS may also give a
+list of git argument lists, run at once: PARSE then gets the list of
+what each prints.  An object missing, or of another type, answers an
+error; so does git failing, which also forgets the clone.  Either way
+the resource is fetched from GitHub.  With SLOW, a walk of history that
+may run out of time on a long one with nothing wrong with git, the
+clone is kept then."
   (when-let* (((not (string-search "\n" object)))
               (dir (octocat-clone-root repo)))
     (lambda (done)
@@ -273,14 +313,18 @@ forgets the clone.  Either way the resource is fetched from GitHub."
          (lambda (check)
            (pcase (and (stringp check) (split-string check))
              (`(,sha ,(pred (equal type)) ,size)
-              (octocat-clone--git
-               dir (funcall args sha) nil
-               (lambda (out)
-                 (if (stringp out)
-                     (funcall done (condition-case e
-                                       (funcall parse out sha (string-to-number size))
-                                     (error (cons 'error (error-message-string e)))))
-                   (failed out)))))
+              (let ((runs (funcall args sha)))
+                (funcall
+                 (if (stringp (car runs))
+                     (lambda (callback) (octocat-clone--git dir runs nil callback))
+                   (lambda (callback) (octocat-clone--git-each dir runs callback)))
+                 (lambda (out)
+                   (cond ((not (eq (car-safe out) 'error))
+                          (funcall done (condition-case e
+                                            (funcall parse out sha (string-to-number size))
+                                          (error (cons 'error (error-message-string e))))))
+                         ((and slow (eq out octocat-clone--timed-out)) (funcall done out))
+                         (t (failed out)))))))
              ;; "OBJECT missing", or another type.
              ((guard (stringp check))
               (funcall done (cons 'error (format "%s not in the local clone" object))))
@@ -300,7 +344,7 @@ never called."
   (let (proc lines stopped)
     (cl-labels
         ((next (lists)
-           (if (or (null lists) (not (executable-find "git")))
+           (if (or (null lists) (not (executable-find vc-git-program)))
                (funcall callback lines)
              (let ((default-directory dir)
                    (buf (generate-new-buffer " *octocat-git*"))
@@ -308,7 +352,7 @@ never called."
                (setq proc
                      (make-process
                       :name "octocat-git" :buffer buf :stderr err :noquery t
-                      :connection-type 'pipe :command (cons "git" (car lists))
+                      :connection-type 'pipe :command (cons vc-git-program (car lists))
                       :sentinel
                       (lambda (p _event)
                         (unless (process-live-p p)
@@ -327,6 +371,73 @@ never called."
       (lambda ()
         (setq stopped t)
         (when (process-live-p proc) (delete-process proc))))))
+
+;;;; Last commits
+
+(defconst octocat-clone--log-format
+  "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cI%x1f%B"
+  "The `git log' format of a commit, as `octocat-clone--log-commit' reads.")
+
+(defun octocat-clone--table (&rest pairs)
+  "Return a hash table of PAIRS, alternating keys and values."
+  (let ((h (make-hash-table :test #'equal)))
+    (while pairs (puthash (pop pairs) (pop pairs) h))
+    h))
+
+(defun octocat-clone--headline (message)
+  "Return the headline of commit MESSAGE, as GitHub's messageHeadline.
+That is its first line, but one past 72 characters is cut to 69 and \"…\"."
+  (let ((line (car (split-string message "\n"))))
+    (if (> (length line) 72) (concat (substring line 0 69) "…") line)))
+
+(defun octocat-clone--log-commit (header)
+  "Return the commit of HEADER, as `octocat-clone--log-format' prints it.
+It is as GitHub gives a commit's oid, messageHeadline, authoredDate,
+committedDate, author's name and email, and first two parents: its
+dates in UTC, as GitHub's.  The author's \"user\", who GitHub links to
+the email, is nil: git doesn't know it."
+  (pcase-let ((`(,oid ,parents ,name ,email ,authored ,committed . ,message)
+               (split-string (decode-coding-string header 'utf-8) "\x1f"))
+              (utc (lambda (date)
+                     (format-time-string "%Y-%m-%dT%H:%M:%SZ"
+                                         (parse-iso8601-time-string date) t))))
+    (octocat-clone--table
+     "oid" oid
+     "messageHeadline" (octocat-clone--headline (string-join message "\x1f"))
+     "authoredDate" (funcall utc authored)
+     "committedDate" (funcall utc committed)
+     "author" (octocat-clone--table "name" name "email" email "user" nil)
+     "parents" (octocat-clone--table
+                "nodes" (vconcat (mapcar (lambda (p) (octocat-clone--table "oid" p))
+                                         (seq-take (split-string parents " " t) 2)))))))
+
+(defun octocat-clone-last-commits (repo commit dir names)
+  "Return a :local finding the last commit of each of NAMES in DIR of REPO.
+NAMES are DIR's entries, DIR \"\" for the root, and the history is
+COMMIT's.  DONE gets a table of each one's path, DIR/NAME, to its
+commit, as `octocat-clone--log-commit' gives it; one with none is left
+out, as GitHub does.  Each is git's last commit of that path alone, as
+GitHub's is: one walk of DIR's history would differ at merges, which
+change a directory from every parent while each file in it is one
+parent's.  Nil without a clone."
+  (let ((paths (mapcar (lambda (name)
+                         (if (equal dir "") name (concat (file-name-as-directory dir) name)))
+                       names)))
+    (octocat-clone-read
+     repo commit "commit"
+     (lambda (sha)
+       (mapcar (lambda (path)
+                 (list "-c" "log.follow=false" "log" "-1" octocat-clone--log-format sha
+                       "--" (concat ":(literal)" path)))
+               paths))
+     (lambda (outs _sha _size)
+       (let ((found (make-hash-table :test #'equal)))
+         (cl-loop for path in paths
+                  for out in outs
+                  unless (string-empty-p out)
+                  do (puthash path (octocat-clone--log-commit out) found))
+         found))
+     t)))
 
 (defun octocat-clone-parse-ls-tree (out)
   "Return the entries in OUT, as `git ls-tree -z' prints, as GitHub's.

@@ -15,8 +15,9 @@ From the bottom up:
   GitHub's markdown.
 - **`octocat-clone`**, also standalone: the repo's local clone, read
   with git.  Which GitHub repo a directory is a clone of, its checked-out
-  branch and unpushed commits, and the objects it holds, which a
-  resource named by a SHA reads before asking GitHub (its `:local`).
+  branch and unpushed commits, and the objects and history it holds,
+  which a resource named by a SHA reads before asking GitHub (its
+  `:local`).
 - **`octocat-core`**: running `gh`, faces, the helpers every page
   shares, and the edit buffer for writing a comment or body.
 - **`octocat-sync`**: the local SQLite store pages read from, and the

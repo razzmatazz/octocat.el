@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* The tree's last commit of each file and directory loads from your local clone
 * The repo page's local commits not on origin are headed by an underline, as sections are
 * Directories and files at a commit load from your local clone when it has them
 * Pinned titles show a commit's SHA and a branch as the page's top line does
