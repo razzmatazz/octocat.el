@@ -335,7 +335,8 @@ That is, only the fields `octocat--search-make-commit-candidate' reads."
 (defun octocat--search-current-ref (repo)
   "Return the branch, tag or commit of REPO on screen in this buffer.
 Nil when that is the default branch, or there is none."
-  (let ((ref (or (bound-and-true-p octocat-repo--ref)
+  (let ((ref (or (and octocat--ref-function (funcall octocat--ref-function))
+                 (bound-and-true-p octocat-repo--ref)
                  (bound-and-true-p octocat-repo--tracked)
                  (bound-and-true-p octocat-tree--file-branch)
                  (bound-and-true-p octocat--commit-sha))))

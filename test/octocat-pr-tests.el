@@ -377,6 +377,21 @@ Return the (REPO NUMBER) it opened, or the message it showed."
   (cl-letf (((symbol-function 'octocat--current-branch) #'ignore))
     (should-error (octocat-pr) :type 'user-error)))
 
+(ert-deftest octocat-pr-test-jump-ref ()
+  "`C-c C-j' on a PR's page finds files at the PR's head commit."
+  (let ((pr (json-parse-string
+             "{\"commits\":{\"nodes\":[{\"commit\":{\"oid\":\"abc1234\"}}]}}")))
+    (with-temp-buffer
+      (setq-local octocat--pr-diff-repo "o/r"
+                  octocat--pr-diff-number 5
+                  octocat--ref-function #'octocat-pr--current-head)
+      (cl-letf (((symbol-function 'octocat-model-detail-read)
+                 (lambda (spec) (and (equal spec '(pr "o/r" 5)) pr)))
+                ((symbol-function 'octocat-tree--file-ref) (lambda (_repo _ref) "main")))
+        (should (equal (octocat--search-current-ref "o/r") "abc1234"))
+        (setq pr nil)
+        (should-not (octocat--search-current-ref "o/r"))))))
+
 (ert-deftest octocat-pr-test-timeline-urls ()
   "A review carries its URL, a commit its place in the PR."
   (let* ((pr (json-parse-string

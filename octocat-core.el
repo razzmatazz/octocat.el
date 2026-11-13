@@ -1531,6 +1531,11 @@ does for the comment there.")
   "Function of no arguments returning the page's \"owner/name\" repo, or nil.
 Each page under a repository sets it, as `octocat--url-function'.")
 
+(defvar-local octocat--ref-function nil
+  "Function of no arguments returning the branch or commit the page shows, or nil.
+For a page whose ref is not in a variable `octocat-jump' reads, as a
+PR's pages, whose files are at its head.")
+
 (defun octocat--ref-url (ref)
   "Return the URL of the markdown reference REF, (KIND REPO ID), or nil.
 A REPO of nil is the buffer's."

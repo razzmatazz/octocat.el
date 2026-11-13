@@ -65,6 +65,13 @@ The buffer is one of its pages: conversation, commits or files changed."
         ((and (bound-and-true-p octocat--pr-diff-repo) octocat--pr-diff-number)
          (cons octocat--pr-diff-repo octocat--pr-diff-number))))
 
+(defun octocat-pr--current-head ()
+  "Return the SHA of the head of this buffer's PR, or nil.
+A SHA, not the branch, which a fork's PR has only in the fork."
+  (pcase-let ((`(,repo . ,number) (octocat-pr--current)))
+    (and repo (octocat-pr--head-sha
+               (octocat-model-detail-read (list 'pr repo number))))))
+
 (defun octocat-pr--busy (repo number slot)
   "Return the label of a change to PR NUMBER of REPO under way in SLOT, or nil.
 SLOT is as for `octocat-sync-define-mutation', such as `merge'."
@@ -1130,7 +1137,8 @@ A new TICK fetches them again."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-pr-refresh)
   (setq-local octocat--url-function #'octocat-pr--page-url)
-  (setq-local octocat--repo-function (lambda () octocat--pr-repo)))
+  (setq-local octocat--repo-function (lambda () octocat--pr-repo))
+  (setq-local octocat--ref-function #'octocat-pr--current-head))
 
 (defvar-local octocat--pr-number nil
   "The PR number this buffer is displaying.")
@@ -1198,7 +1206,8 @@ the background, in place: what is unfolded stays so."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-pr-commits-refresh)
   (setq-local octocat--url-function #'octocat-pr-commits--page-url)
-  (setq-local octocat--repo-function (lambda () octocat--pr-commits-repo)))
+  (setq-local octocat--repo-function (lambda () octocat--pr-commits-repo))
+  (setq-local octocat--ref-function #'octocat-pr--current-head))
 
 (defun octocat-pr-commits-refresh (&optional _ignore-auto _noconfirm)
   "Refresh the current PR commits buffer."
@@ -1736,7 +1745,8 @@ It is at the diff line of point or the region."
   (setq-local octocat--url-function #'octocat-pr-diff--page-url)
   (setq-local octocat-diff--comment-backend octocat-pr-diff--comment-backend)
   (setq-local octocat-diff--view 'diff)
-  (setq-local octocat--repo-function (lambda () octocat--pr-diff-repo)))
+  (setq-local octocat--repo-function (lambda () octocat--pr-diff-repo))
+  (setq-local octocat--ref-function #'octocat-pr--current-head))
 
 
 ;;;;; Refresh

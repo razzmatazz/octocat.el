@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `C-c C-j` on a PR's pages finds files at the PR's head, not the default branch
 * A long comment folded inside a collapsed <details> no longer loses its rail
 * RET on a timeline's "mentioned this in #N" opens that issue or PR
 * Copy URL gives the review, event, commit, review comment, user or label at point
