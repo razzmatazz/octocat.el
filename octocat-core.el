@@ -34,6 +34,7 @@
 (require 'json)
 (require 'eldoc)
 (require 'browse-url)
+(require 'vc-git)
 (require 'octocat-markdown)
 (require 'octocat-image)
 (require 'consult)
@@ -1749,9 +1750,9 @@ one to show instead of the default branch."
 Reads the \\='origin\\=' remote URL and parses both SSH and HTTPS
 GitHub remote forms.  Signals an error when the working directory
 is not inside a GitHub repository."
-  (let ((url (string-trim
-              (shell-command-to-string
-               "git remote get-url origin 2>/dev/null"))))
+  (let ((url (condition-case nil
+                 (string-trim (vc-git-repository-url default-directory))
+               (error ""))))
     (when (string-empty-p url)
       (user-error "Octocat: Could not find a Git remote named `origin'"))
     (or

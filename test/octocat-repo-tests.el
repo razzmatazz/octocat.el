@@ -14,9 +14,9 @@
 (require 'octocat)
 
 (defmacro octocat-repo-tests--with-remote (url &rest body)
-  "Evaluate BODY with `shell-command-to-string' mocked to return URL."
+  "Evaluate BODY with `vc-git-repository-url' mocked to return URL."
   (declare (indent 1))
-  `(cl-letf (((symbol-function 'shell-command-to-string) (lambda (_) ,url)))
+  `(cl-letf (((symbol-function 'vc-git-repository-url) (lambda (&rest _) ,url)))
      ,@body))
 
 (ert-deftest octocat-repo-test-ssh ()
