@@ -336,6 +336,33 @@ DONE gets PARSE of its bytes, its SHA and its size; see
 `octocat-clone-read'."
   (octocat-clone-read repo object "blob" (lambda (sha) (list "cat-file" "blob" sha)) parse))
 
+(defun octocat-clone-read-trees (repo commit paths)
+  "Return a :local finding the tree at each of PATHS at COMMIT of REPO.
+DONE gets a list of their SHAs, nil for a path that is no tree; path
+\"\" is the root.  COMMIT missing from the clone answers an error, and git
+failing forgets the clone too, as `octocat-clone-read'.  Nil without a
+clone."
+  (when-let* ((objects (cons commit (mapcar (lambda (p) (concat commit ":" p)) paths)))
+              ((not (seq-some (lambda (o) (string-search "\n" o)) objects)))
+              (dir (octocat-clone-root repo)))
+    (lambda (done)
+      (octocat-clone--git
+       dir '("cat-file" "--batch-check")
+       (encode-coding-string (mapconcat (lambda (o) (concat o "\n")) objects) 'utf-8)
+       (lambda (out)
+         (if (eq (car-safe out) 'error)
+             (progn (octocat-clone-drop repo)
+                    (funcall done out))
+           (pcase-let ((`(,head . ,trees)
+                        (mapcar #'split-string (split-string out "\n" t))))
+             (funcall done
+                      (if (and (equal (nth 1 head) "commit")
+                               (= (length trees) (length paths)))
+                          (mapcar (lambda (line)
+                                    (pcase line (`(,sha "tree" ,_) sha)))
+                                  trees)
+                        (cons 'error (format "%s not in the local clone" commit)))))))))))
+
 (defun octocat-clone-run-lines (dir arg-lists callback)
   "Run git in DIR with each of ARG-LISTS in turn, then CALLBACK.
 CALLBACK gets the output lines of all of them; a command that fails

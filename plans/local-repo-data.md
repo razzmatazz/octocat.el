@@ -2,7 +2,7 @@
 
 ## Status
 
-- Phase 1, SHA-named resources: done.
+- Phase 1, SHA-named resources: done, `tree-path` at a SHA included.
 - Phase 3, `tree-commits` and the email → login lookup: done.
 - Phase 3, `blame`: next.
 - Phase 2, branch-named resources: not started; needs page changes
@@ -31,7 +31,7 @@ because a clone exists; it only shows it sooner.
 | `file-text`, `file-blob`, `file-bytes` at a SHA ref | commit SHA + path | `git cat-file blob` of `REF:PATH` | Done |
 | `tree-commits (repo commit dir sha)` | commit + dir | `git log -1` per entry | Done |
 | `blame (repo commit path)` | commit + path | `git blame --porcelain` | Next |
-| `tree-path` at a SHA ref | commit SHA + path | `git cat-file --batch-check` | Not started; exact, cheap to add |
+| `tree-path` at a SHA ref | commit SHA + path | `git cat-file --batch-check` | Done |
 | `tree-path`, `file-blob` at a branch | branch name | `origin/BRANCH` | Phase 2 |
 | `repo-head` | ref + path | none | GitHub only: history `totalCount` |
 
@@ -151,15 +151,14 @@ So phase 2 needs:
    fresh data, with only the mode line showing the refetch.
 2. Pages that draw from the seeded `tree-path` and `file-blob` until
    `repo-head` lands, the last-commit line a grey bar meanwhile.
-3. `tree-path` at a SHA ref read exactly from the clone.
+
+Phase 1 already reads `tree-path` at a SHA ref from the clone.
 
 Never seed from the local working tree or a local branch: the page
 shows what GitHub has.
 
 ## Loose ends
 
-- `octocat-here` still finds the clone root with
-  `locate-dominating-file` (`octocat.el`), not `vc-git-root`.
 - No test runs from a hanging git all the way to the `gh` fetch; each
   half is tested.
 - Not in scope: finding a clone no page was opened from, by matching

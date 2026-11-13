@@ -1587,15 +1587,31 @@ Calls CALLBACK once with a hash-table of path to commit, see
   :max-age (and (octocat--sha-p ref) octocat-model--fixed-max-age)
   :poll nil
   :fetch (and (null path) (lambda (done) (funcall done (octocat--table))))
+  :local (when-let* (((and path (octocat--sha-p ref)))
+                     (read (octocat-clone-read-trees
+                            repo ref (octocat-model--tree-path-dirs path))))
+           (lambda (done)
+             (funcall read (octocat--then #'octocat-model--tree-path-table done))))
   :graphql (octocat-model--tree-path-query (length (split-string (or path "") "/")))
   :repo repo
-  :vars (let ((dirs (split-string (or path "") "/")))
-          (cons (cons "e0" (concat ref ":"))
-                (mapcar (lambda (i) (cons (format "e%d" i)
-                                          (concat ref ":" (string-join (seq-take dirs i) "/"))))
-                        (number-sequence 1 (length dirs)))))
+  :vars (seq-map-indexed (lambda (dir i) (cons (format "e%d" i) (concat ref ":" dir)))
+                         (octocat-model--tree-path-dirs path))
   :parse (lambda (data)
            (if (gethash "repository" data) data (error "No such repository"))))
+
+(defun octocat-model--tree-path-dirs (path)
+  "Return the directories on the way to PATH, \"\" the root's first, PATH last."
+  (let ((dirs (split-string (or path "") "/")))
+    (cons "" (mapcar (lambda (i) (string-join (seq-take dirs i) "/"))
+                     (number-sequence 1 (length dirs))))))
+
+(defun octocat-model--tree-path-table (shas)
+  "Return tree SHAS, a list with nil for no tree, as the `tree-path' query answers."
+  (let ((repo (octocat--table)))
+    (seq-do-indexed (lambda (sha i)
+                      (puthash (format "t%d" i) (if sha (octocat--table "oid" sha) :null) repo))
+                    shas)
+    (octocat--table "repository" repo)))
 
 (defun octocat-model-tree-shas (data)
   "Return the SHAs of the trees in DATA, the `tree-path' resource's.

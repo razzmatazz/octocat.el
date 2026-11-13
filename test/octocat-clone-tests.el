@@ -201,14 +201,21 @@
             (should (equal (gethash "text" (octocat-clone-tests--await
                                             (local (list 'file-text "o/r" commit "a file.txt"))))
                            "hello\n"))
+            (should (equal (octocat-model-tree-shas
+                            (octocat-clone-tests--await
+                             (local (list 'tree-path "o/r" commit "src/b.bin/c"))))
+                           (vector tree (git "rev-parse" "HEAD:src") nil nil)))
             ;; Only at a SHA: a branch can be behind GitHub.
             (should-not (local (list 'file-text "o/r" "main" "a file.txt")))
+            (should-not (local (list 'tree-path "o/r" "main" "src")))
             ;; A directory is no file, nor a missing object: GitHub is asked,
             ;; and the clone kept.
             (should (eq 'error (car (octocat-clone-tests--await
                                      (local (list 'file-blob "o/r" commit "src"))))))
             (should (eq 'error (car (octocat-clone-tests--await
-                                     (local (list 'blob "o/r" (make-string 40 ?0))))))))
+                                     (local (list 'blob "o/r" (make-string 40 ?0)))))))
+            (should (eq 'error (car (octocat-clone-tests--await
+                                     (local (list 'tree-path "o/r" (make-string 40 ?0) "src")))))))
           (should (octocat-clone-root "o/r")))
       (delete-directory dir t))))
 

@@ -151,7 +151,7 @@ the nearest directory above it that it has."
                                 (file-name-as-directory target)
                               (file-name-directory target)))
          (root   (expand-file-name
-                  (or (locate-dominating-file target ".git")
+                  (or (vc-git-root target)
                       (user-error "Octocat: %s is not in a Git clone" target))))
          (repo   (octocat-clone-current-repo))
          (rel    (file-relative-name target root))
