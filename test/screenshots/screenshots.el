@@ -145,7 +145,7 @@ PARSE-FN and CALLBACK are as there."
   (advice-add 'octocat-image-fetch :override #'octocat-screenshots--avatar)
   (advice-add 'octocat-image--fetch :override
               (lambda (_url _hops callback) (run-at-time 0 nil callback nil)))
-  (advice-add 'octocat-repo--local-dir-for :override #'ignore)
+  (advice-add 'octocat-clone-dir-for :override #'ignore)
   ;; No animations: a slide or spinner turns through `display'
   ;; properties, which the text a shot waits on to settle does not show.
   (advice-add 'octocat-power :override (lambda () 'low))

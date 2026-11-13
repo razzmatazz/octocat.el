@@ -13,37 +13,6 @@
 (require 'cl-lib)
 (require 'octocat)
 
-(defmacro octocat-repo-tests--with-remote (url &rest body)
-  "Evaluate BODY with `vc-git-repository-url' mocked to return URL."
-  (declare (indent 1))
-  `(cl-letf (((symbol-function 'vc-git-repository-url) (lambda (&rest _) ,url)))
-     ,@body))
-
-(ert-deftest octocat-repo-test-ssh ()
-  "Parse SSH remote URL."
-  (octocat-repo-tests--with-remote "git@github.com:owner/repo.git"
-    (should (equal (octocat-repo--current-repo) "owner/repo"))))
-
-(ert-deftest octocat-repo-test-ssh-no-suffix ()
-  "Parse SSH remote URL without .git suffix."
-  (octocat-repo-tests--with-remote "git@github.com:owner/repo"
-    (should (equal (octocat-repo--current-repo) "owner/repo"))))
-
-(ert-deftest octocat-repo-test-https ()
-  "Parse HTTPS remote URL."
-  (octocat-repo-tests--with-remote "https://github.com/owner/repo.git"
-    (should (equal (octocat-repo--current-repo) "owner/repo"))))
-
-(ert-deftest octocat-repo-test-https-no-suffix ()
-  "Parse HTTPS remote URL without .git suffix."
-  (octocat-repo-tests--with-remote "https://github.com/owner/repo"
-    (should (equal (octocat-repo--current-repo) "owner/repo"))))
-
-(ert-deftest octocat-repo-test-no-remote ()
-  "Signal user-error when no origin remote is found."
-  (octocat-repo-tests--with-remote ""
-    (should-error (octocat-repo--current-repo) :type 'user-error)))
-
 (ert-deftest octocat-repo-test-state-label ()
   "State labels are fixed-width words; only open PRs can be drafts."
   (should (equal (substring-no-properties (octocat-vui--state-label "OPEN")) "open  "))
@@ -205,72 +174,6 @@
       (should (memq 'octocat-marked (ensure-list (get-text-property 3 'face marked))))
       (should (eql (get-text-property 0 'octocat-vui-list-item marked) 7)))))
 
-(ert-deftest octocat-repo-test-parse-unpushed-merge ()
-  "A commit of two parents is a merge, of one or none not."
-  (should (equal (octocat-repo--parse-unpushed
-                  '("aaa\0p1 p2\0Merge x" "bbb\0p1\0One" "ccc\0\0Root"))
-                 '((:sha "aaa" :merge t :subject "Merge x")
-                   (:sha "bbb" :merge nil :subject "One")
-                   (:sha "ccc" :merge nil :subject "Root")))))
-
-(ert-deftest octocat-repo-test-unpushed ()
-  "Count local commits against the upstream, and how far it is ahead."
-  (skip-unless (executable-find "git"))
-  (let* ((root   (make-temp-file "octocat-unpushed" t))
-         (origin (expand-file-name "origin" root))
-         (clone  (expand-file-name "clone" root))
-         (git    (lambda (dir &rest args)
-                   (let ((default-directory (file-name-as-directory dir)))
-                     (apply #'call-process "git" nil nil nil
-                            "-c" "user.name=T" "-c" "user.email=t@t" args)))))
-    (unwind-protect
-        (progn
-          (make-directory origin)
-          (funcall git origin "init" "-q" "-b" "main")
-          (funcall git origin "commit" "-q" "--allow-empty" "-m" "base")
-          (funcall git root "clone" "-q" origin clone)
-          (should-not (octocat-repo--unpushed clone))
-          (funcall git clone "commit" "-q" "--allow-empty" "-m" "one")
-          (funcall git clone "commit" "-q" "--allow-empty" "-m" "two")
-          (funcall git origin "commit" "-q" "--allow-empty" "-m" "theirs")
-          (funcall git clone "fetch" "-q")
-          (let ((u (octocat-repo--unpushed clone)))
-            (should (equal (mapcar (lambda (c) (plist-get c :subject))
-                                   (plist-get u :commits))
-                           '("two" "one")))
-            (should (equal (plist-get u :upstream) "origin/main"))
-            (should (= (plist-get u :behind) 1))))
-      (delete-directory root t))))
-
-(ert-deftest octocat-repo-test-tracked-branch ()
-  "The clone's branch is followed under its name on origin, once pushed."
-  (skip-unless (executable-find "git"))
-  (let* ((root   (make-temp-file "octocat-tracked" t))
-         (origin (expand-file-name "origin" root))
-         (clone  (expand-file-name "clone" root))
-         (git    (lambda (dir &rest args)
-                   (let ((default-directory (file-name-as-directory dir)))
-                     (apply #'call-process "git" nil nil nil
-                            "-c" "user.name=T" "-c" "user.email=t@t" args)))))
-    (unwind-protect
-        (progn
-          (make-directory origin)
-          (funcall git origin "init" "-q" "-b" "main")
-          (funcall git origin "commit" "-q" "--allow-empty" "-m" "base")
-          (funcall git origin "branch" "theirs")
-          (funcall git root "clone" "-q" origin clone)
-          (should-not (octocat-repo--tracked-branch nil))
-          (should (equal (octocat-repo--tracked-branch clone) "main"))
-          (funcall git clone "checkout" "-q" "-b" "local" "origin/theirs")
-          (should (equal (octocat-repo--tracked-branch clone) "theirs"))
-          (funcall git clone "checkout" "-q" "-b" "unpushed")
-          (should-not (octocat-repo--tracked-branch clone))
-          (funcall git clone "push" "-q" "origin" "unpushed")
-          (should (equal (octocat-repo--tracked-branch clone) "unpushed"))
-          (funcall git clone "checkout" "-q" "--detach")
-          (should-not (octocat-repo--tracked-branch clone)))
-      (delete-directory root t))))
-
 (ert-deftest octocat-repo-test-here-target ()
   "A path opens its page, or the nearest directory above that the ref has."
   (let ((has (lambda (p) (member p '("src" "src/a.el" "docs" ".github" ".github/workflows"
@@ -305,32 +208,6 @@
   (should (equal (octocat-tree--find-file-start "src/a.el" 'file) '("src/" . "src/a.el")))
   (should (equal (octocat-tree--find-file-start "a.el" 'file) '(nil . "a.el")))
   (should (equal (octocat-tree--find-file-start "src/lib" 'dir) '("src/lib/"))))
-
-(ert-deftest octocat-repo-test-here-ref ()
-  "The ref is the pushed branch, a pushed detached HEAD, or the default."
-  (skip-unless (executable-find "git"))
-  (let* ((root   (make-temp-file "octocat-here" t))
-         (origin (expand-file-name "origin" root))
-         (clone  (expand-file-name "clone" root))
-         (git    (lambda (dir &rest args)
-                   (let ((default-directory (file-name-as-directory dir)))
-                     (apply #'call-process "git" nil nil nil
-                            "-c" "user.name=T" "-c" "user.email=t@t" args)))))
-    (unwind-protect
-        (progn
-          (make-directory origin)
-          (funcall git origin "init" "-q" "-b" "main")
-          (funcall git origin "commit" "-q" "--allow-empty" "-m" "base")
-          (funcall git root "clone" "-q" origin clone)
-          (should (equal (octocat-repo--here-ref clone) '("main" . "origin/main")))
-          (funcall git clone "checkout" "-q" "--detach")
-          (let ((sha (car (octocat-repo--git-lines clone "rev-parse" "HEAD"))))
-            (should (equal (octocat-repo--here-ref clone) (cons sha sha))))
-          (funcall git clone "commit" "-q" "--allow-empty" "-m" "local")
-          (should (equal (octocat-repo--here-ref clone) '(nil . "origin/HEAD")))
-          (funcall git clone "checkout" "-q" "-b" "unpushed")
-          (should (equal (octocat-repo--here-ref clone) '(nil . "origin/HEAD"))))
-      (delete-directory root t))))
 
 (ert-deftest octocat-repo-test-numbers-link ()
   "Each number opens its own issue, in its repository when another."
@@ -629,7 +506,7 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
       (cl-letf (((symbol-function 'octocat-sync-request)
                  (lambda (spec &rest _) (push spec requested)))
                 ((symbol-function 'octocat--head-info) #'ignore)
-                ((symbol-function 'octocat-repo--unpushed) #'ignore))
+                ((symbol-function 'octocat-clone-unpushed) #'ignore))
         (with-temp-buffer
           (octocat-repo-mode)
           (octocat-vui-refresh-page 'octocat-repo-vui--root "repo"

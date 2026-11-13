@@ -349,7 +349,7 @@ The thread's own fields go on its first comment; a draft is pending."
 Return the (REPO NUMBER) it opened, or the message it showed."
   (let (opened shown)
     (cl-letf (((symbol-function 'octocat--current-branch) (lambda () "topic"))
-              ((symbol-function 'octocat-repo--current-repo) (lambda () "acme/rocket"))
+              ((symbol-function 'octocat-clone-current-repo) (lambda () "acme/rocket"))
               ((symbol-function 'octocat--run-gh)
                (lambda (_name args parse callback)
                  (should (equal args '("pr" "view" "--json" "url")))

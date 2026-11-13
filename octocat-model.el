@@ -333,12 +333,18 @@ CALLBACK is called with a list of strings, or a cons \\=(error . MSG)."
 (defconst octocat-model--fixed-max-age (* 30 24 60 60)
   "Seconds to keep what a SHA names, which never changes.")
 
+(defun octocat-model--blob-table (bytes sha size)
+  "Return blob SHA of SIZE BYTES as GitHub's API gives it, in base64."
+  (octocat--table "sha" sha "size" size "encoding" "base64"
+                  "content" (base64-encode-string bytes t)))
+
 ;; The content is kept base64-encoded, as GitHub sends it, so it can be
 ;; stored as JSON: a file need not be text.
 (octocat-sync-define-resource blob (repo sha)
   :max-age octocat-model--fixed-max-age
   ;; No SHA, no file: a page asks for one before it knows it.
   :fetch (and (null sha) (lambda (done) (funcall done (octocat--table "content" ""))))
+  :local (and sha (octocat-clone-read-blob repo sha #'octocat-model--blob-table))
   :gh (list "api" (format "repos/%s/git/blobs/%s" repo sha)))
 
 (defun octocat-model-blob-content (data)
@@ -1611,6 +1617,9 @@ The root's is first; a level that is no tree is nil."
 ;; The children of directory SHA, a vector of entries.
 (octocat-sync-define-resource tree-dir (repo sha)
   :max-age octocat-model--fixed-max-age
+  :local (octocat-clone-read repo sha "tree" (lambda (sha) (list "ls-tree" "-z" "--long" sha))
+                             (lambda (out _sha _size)
+                               (vconcat (octocat-clone-parse-ls-tree out))))
   :gh (list "api" (format "repos/%s/git/trees/%s" repo sha))
   :parse (lambda (r)
            (let ((tree (gethash "tree" r)))
@@ -1643,6 +1652,13 @@ The root's is first; a level that is no tree is nil."
 
 (octocat-sync-define-resource tree-files (repo sha)
   :max-age octocat-model--fixed-max-age
+  :local (octocat-clone-read
+          repo sha "tree" (lambda (sha) (list "ls-tree" "-r" "-z" sha))
+          (lambda (out _sha _size)
+            (octocat-model--file-table
+             (cl-loop for entry in (octocat-clone-parse-ls-tree out)
+                      when (equal (gethash "type" entry) "blob")
+                      collect (cons (gethash "path" entry) (gethash "sha" entry))))))
   :fetch (lambda (done)
            (octocat-model--tree-fetch-all-files
             repo sha (octocat--then #'octocat-model--file-table done))))
@@ -1670,6 +1686,11 @@ The root's is first; a level that is no tree is nil."
 (octocat-sync-define-resource file-text (repo ref path)
   ;; A file at a commit never changes; at a branch it may.
   :max-age (and (octocat--sha-p ref) octocat-model--fixed-max-age)
+  :local (and (octocat--sha-p ref)
+              (octocat-clone-read-blob
+               repo (concat ref ":" path)
+               (lambda (bytes _sha _size)
+                 (octocat--table "text" (decode-coding-string bytes 'utf-8)))))
   :gh (octocat-model--file-args repo path ref)
   :raw t
   :parse (lambda (raw) (octocat--table "text" raw)))
@@ -1680,12 +1701,24 @@ The root's is first; a level that is no tree is nil."
 (octocat-sync-define-resource file-blob (repo ref path)
   :max-age (and ref (octocat--sha-p ref) octocat-model--fixed-max-age)
   :poll nil
+  :local (and ref (octocat--sha-p ref)
+              (octocat-clone-read-blob repo (concat ref ":" path)
+                                       #'octocat-model--file-blob-table))
   :graphql (octocat-model--repo-query
             '(:expr String!)
             '(object (:expression $expr) (... Blob oid byteSize isBinary isTruncated text)))
   :repo repo
   :vars `(("expr" . ,(concat (or ref "HEAD") ":" path)))
   :parse #'octocat-model--parse-file-blob)
+
+(defun octocat-model--file-blob-table (bytes sha size)
+  "Return blob SHA of SIZE BYTES as `octocat-model--parse-file-blob' does.
+Binary as git takes it: a NUL in its first 8000 bytes."
+  (octocat--table "oid" sha
+                  "text" (and (<= size octocat--max-file-size)
+                              (not (string-search
+                                    "\0" (substring bytes 0 (min 8000 (length bytes)))))
+                              (decode-coding-string bytes 'utf-8))))
 
 (defun octocat-model--parse-file-blob (data)
   "Return the blob in DATA, the answer to the `file-blob' query.
@@ -1706,6 +1739,8 @@ one larger than `octocat--max-file-size' or one GitHub cut short."
 (octocat-sync-define-resource file-bytes (repo ref path)
   :max-age (if (octocat--sha-p ref) octocat-model--fixed-max-age 3600)
   :poll nil
+  :local (and (octocat--sha-p ref)
+              (octocat-clone-read-blob repo (concat ref ":" path) #'octocat-model--blob-table))
   :gh (list "api" "-X" "GET"
             (format "repos/%s/contents/%s" repo (octocat-model--url-path path))
             "-f" (concat "ref=" ref))

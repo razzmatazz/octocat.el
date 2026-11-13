@@ -90,9 +90,9 @@ checkout's absolute path.  **Issue one `emacs__eval-elisp` call per phase** — 
 `nil`, so a single call with multiple phases returns `nil` whether it
 succeeded or crashed; splitting makes failures attributable.
 
-Load order: `octocat-mermaid.el` first (standalone), then
+Load order: `octocat-mermaid.el` and `octocat-clone.el` first (standalone), then
 `octocat-markdown.el` (requires mermaid), then `octocat-image.el` (requires
-that; `octocat-core.el` requires both), then
+that; `octocat-core.el` requires it and clone), then
 `octocat-core.el` (everything else depends on it), then `octocat-sync.el`,
 then `octocat-model.el` (`octocat-vui.el` requires both), then `octocat-vui.el`, then
 `octocat-repo.el` (its branch picker is the workflow page's too), then
@@ -142,7 +142,7 @@ source; `make ci` recreates `.elc`, so always delete even after a CI run):
 string rather than `ok` is an error — fix it before proceeding):
 ```elisp
 (let (results)
-  (dolist (f (list "octocat-mermaid.el" "octocat-markdown.el"
+  (dolist (f (list "octocat-mermaid.el" "octocat-clone.el" "octocat-markdown.el"
                    "octocat-image.el" "octocat-core.el" "octocat-sync.el" "octocat-model.el"
                    "octocat-vui.el"
                    "octocat-repo.el"

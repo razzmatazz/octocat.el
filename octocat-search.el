@@ -326,42 +326,6 @@ That is, only the fields `octocat--search-make-commit-candidate' reads."
                                      "author" (octocat--table "name" name)))))
                 lines)))
 
-(defun octocat--search-git (dir arg-lists callback)
-  "Run git in DIR with each of ARG-LISTS in turn, then CALLBACK.
-CALLBACK gets the output lines of all of them; a command that fails
-adds none.  Return a function that stops it, after which CALLBACK is
-never called."
-  (let (proc lines stopped)
-    (cl-labels
-        ((next (lists)
-           (if (or (null lists) (not (executable-find "git")))
-               (funcall callback lines)
-             (let ((default-directory dir)
-                   (buf (generate-new-buffer " *octocat-git*"))
-                   (err (generate-new-buffer " *octocat-git-stderr*")))
-               (setq proc
-                     (make-process
-                      :name "octocat-git" :buffer buf :stderr err :noquery t
-                      :connection-type 'pipe :command (cons "git" (car lists))
-                      :sentinel
-                      (lambda (p _event)
-                        (unless (process-live-p p)
-                          (let ((out (and (eq (process-status p) 'exit)
-                                          (eq 0 (process-exit-status p))
-                                          (with-current-buffer buf (buffer-string)))))
-                            (kill-buffer buf)
-                            ;; As `octocat--run-gh': the stderr pipe may outlive it.
-                            (when-let* ((pipe (get-buffer-process err)))
-                              (delete-process pipe))
-                            (kill-buffer err)
-                            (unless stopped
-                              (setq lines (append lines (split-string (or out "") "\n" t)))
-                              (next (cdr lists))))))))))))
-      (next arg-lists)
-      (lambda ()
-        (setq stopped t)
-        (when (process-live-p proc) (delete-process proc))))))
-
 
 ;;;; Repository file list
 
@@ -517,7 +481,7 @@ with `consult--async-min-input'."
                   (setq current query)
                   (when dir
                     (setq stop-git
-                          (octocat--search-git
+                          (octocat-clone-run-lines
                            dir (octocat--search-git-args query)
                            (lambda (lines)
                              (when (equal query current)
@@ -595,7 +559,7 @@ lists that type first."
     (unless repo
       (user-error "Octocat: Cannot determine current repository"))
     (let* ((dir    (or (bound-and-true-p octocat-repo--local-dir)
-                       (octocat-repo--local-dir-for repo)))
+                       (octocat-clone-dir-for repo)))
            (ref    (octocat--search-current-ref repo))
            (shown  (and ref (if (string-match-p "\\`[0-9a-f]\\{40\\}\\'" ref)
                                 (substring ref 0 7)

@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Directories and files at a commit load from your local clone when it has them
 * Pinned titles show a commit's SHA and a branch as the page's top line does
 * Comments and reviews start with ◆, timeline events ◇, leaving circles to commits
 * A file's Blame slides in only from Code; leaving it, or other switches, are at once

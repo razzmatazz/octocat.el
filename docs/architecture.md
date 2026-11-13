@@ -13,6 +13,10 @@ From the bottom up:
   so it can be loaded and tested on its own.  `octocat-markdown`, which
   also turns org into markdown, and `octocat-image` build on it to draw
   GitHub's markdown.
+- **`octocat-clone`**, also standalone: the repo's local clone, read
+  with git.  Which GitHub repo a directory is a clone of, its checked-out
+  branch and unpushed commits, and the objects it holds, which a
+  resource named by a SHA reads before asking GitHub (its `:local`).
 - **`octocat-core`**: running `gh`, faces, the helpers every page
   shares, and the edit buffer for writing a comment or body.
 - **`octocat-sync`**: the local SQLite store pages read from, and the
@@ -75,6 +79,7 @@ own, below.
 ```mermaid
 flowchart TD
   octocat_actions[octocat-actions]
+  octocat_clone[octocat-clone]
   octocat_core[octocat-core]
   octocat_dashboard[octocat-dashboard]
   octocat_diff[octocat-diff]
@@ -97,6 +102,7 @@ flowchart TD
   octocat_actions --> octocat_repo
   octocat_actions --> octocat_sync
   octocat_actions --> octocat_vui
+  octocat_core --> octocat_clone
   octocat_core --> octocat_image
   octocat_core --> octocat_markdown
   octocat_dashboard --> octocat_core
@@ -202,7 +208,8 @@ flowchart TD
 | Module | What it is | Requires |
 |---|---|---|
 | `octocat-actions` | GitHub Actions and commit checks for octocat | `octocat-core`, `octocat-mermaid`, `octocat-repo`, `octocat-sync`, `octocat-vui` |
-| `octocat-core` | Shared infrastructure for octocat | `octocat-image`, `octocat-markdown` |
+| `octocat-clone` | Read GitHub data from a repo's local clone |  |
+| `octocat-core` | Shared infrastructure for octocat | `octocat-clone`, `octocat-image`, `octocat-markdown` |
 | `octocat-dashboard` | GitHub account dashboard for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-diff` | Diffs, commits and comparisons for octocat | `octocat-actions`, `octocat-core`, `octocat-model`, `octocat-vui` |
 | `octocat-doctor` | Report on octocat's code, store and requests | `octocat-core`, `octocat-sync`, `octocat-vui` |

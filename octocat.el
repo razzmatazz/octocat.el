@@ -92,7 +92,7 @@ of the branch of the same name."
   (interactive)
   (let ((branch (or (octocat--current-branch)
                     (user-error "Octocat: No branch is checked out here"))))
-    (octocat-repo--current-repo)        ; signals outside a GitHub clone
+    (octocat-clone-current-repo)        ; signals outside a GitHub clone
     (message "Octocat: Looking up the pull request of %s…" branch)
     (octocat--run-gh "pr-of-branch" (list "pr" "view" "--json" "url")
                      (lambda (output) (gethash "url" (json-parse-string output)))
@@ -119,8 +119,8 @@ When invoked without a detectable working tree (or when the user supplies
 a REPO argument in a future extension), the buffer runs in \\='detached\\='
 mode with no local directory bound."
   (interactive)
-  (let* ((repo     (octocat-repo--current-repo))
-         (local-dir (octocat-repo--local-dir-for repo))
+  (let* ((repo     (octocat-clone-current-repo))
+         (local-dir (octocat-clone-dir-for repo))
          (buf-name (format "*%s*" repo))
          (buf      (get-buffer-create buf-name)))
     (octocat-display-buffer buf)
@@ -153,7 +153,7 @@ the nearest directory above it that it has."
          (root   (expand-file-name
                   (or (locate-dominating-file target ".git")
                       (user-error "Octocat: %s is not in a Git clone" target))))
-         (repo   (octocat-repo--current-repo))
+         (repo   (octocat-clone-current-repo))
          (rel    (file-relative-name target root))
          (path   (and (not (equal rel ".")) (directory-file-name rel)))
          (at     (and (equal target buffer-file-name)
@@ -166,24 +166,24 @@ the nearest directory above it that it has."
                             (list 'lines (line-number-at-pos beg) (line-number-at-pos end)))
                         (let ((n (line-number-at-pos)))
                           (list 'lines n n)))))
-         (ref+rev (octocat-repo--here-ref root))
+         (ref+rev (octocat-clone-here-ref root))
          (ref+rev (if pick
                       (let* ((default (octocat-tree--file-ref repo nil))
                              (default (unless (equal default "HEAD") default))
                              (picked  (octocat--read-branch
-                                       repo default (octocat-repo--tracked-branch root)
+                                       repo default (octocat-clone-tracked-branch root)
                                        (or (car ref+rev) default "HEAD"))))
                         (cons picked (concat "origin/" picked)))
                     ref+rev))
          (rev    (cdr ref+rev))
-         (known  (octocat-repo--git-ok root "rev-parse" "--verify" "--quiet" rev))
+         (known  (octocat-clone--git-ok root "rev-parse" "--verify" "--quiet" rev))
          (args   (octocat-repo--here-target
                   repo (car ref+rev) path dir-p at
                   (lambda (p) (or (not known)
-                                  (octocat-repo--git-ok root "cat-file" "-e"
-                                                        (concat rev ":" p))))
+                                  (octocat-clone--git-ok root "cat-file" "-e"
+                                                         (concat rev ":" p))))
                   (and (not pick) (car ref+rev)
-                       (equal (car ref+rev) (octocat-repo--tracked-branch root)))))
+                       (equal (car ref+rev) (octocat-clone-tracked-branch root)))))
          (shown  (nth 3 args))
          (notes  (delq nil
                        (list (unless (car ref+rev)
@@ -194,8 +194,8 @@ the nearest directory above it that it has."
                                   (format "%s isn't there; showing %s"
                                           path (or shown "the repository")))
                              (and (eq (car args) 'file) known
-                                  (not (octocat-repo--git-ok root "diff" "--quiet" rev
-                                                             "--" path))
+                                  (not (octocat-clone--git-ok root "diff" "--quiet" rev
+                                                              "--" path))
                                   "local changes; lines may differ")))))
     (apply #'octocat-open args)
     (when notes
@@ -234,10 +234,10 @@ the current git working tree.  A page already open isn't refreshed."
   (let* ((repo      (cond (repo)
                           ((derived-mode-p 'octocat-repo-mode) octocat-repo--repo)
                           ((derived-mode-p 'octocat-vui-list-mode) octocat-vui-list--repo)
-                          (t (octocat-repo--current-repo))))
+                          (t (octocat-clone-current-repo))))
          (local-dir (if (derived-mode-p 'octocat-repo-mode)
                         octocat-repo--local-dir
-                      (octocat-repo--local-dir-for repo)))
+                      (octocat-clone-dir-for repo)))
          (buf       (get-buffer-create (format "*%s %s*" repo name))))
     (octocat-display-buffer buf)
     (when local-dir

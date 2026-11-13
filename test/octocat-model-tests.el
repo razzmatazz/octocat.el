@@ -616,5 +616,15 @@ env:
                  '("--owner=razzmatazz")))
   (should (equal (last (octocat-model--repo-search-args "openra")) '("openra"))))
 
+(ert-deftest octocat-model-test-local-blob-tables ()
+  "A blob reads back byte for byte; binary or large files have no text."
+  (let ((bytes (unibyte-string 0 1 255 10)))
+    (should (equal (octocat-model-blob-content (octocat-model--blob-table bytes "s" 4)) bytes))
+    (should-not (gethash "text" (octocat-model--file-blob-table bytes "s" 4))))
+  (let ((text (encode-coding-string "héllo\n" 'utf-8)))
+    (should (equal (gethash "text" (octocat-model--file-blob-table text "s" (length text)))
+                   "héllo\n"))
+    (should-not (gethash "text" (octocat-model--file-blob-table text "s" (1+ octocat--max-file-size))))))
+
 (provide 'octocat-model-tests)
 ;;; octocat-model-tests.el ends here

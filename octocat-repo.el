@@ -165,105 +165,7 @@ of the file's last commit.")
   "Non-nil while the blame column slides, which a pin would cover.")
 
 
-;;;; Repo detection
-
-(defun octocat-repo--local-dir-for (repo)
-  "Return the local clone directory for REPO, or nil.
-REPO is an \"owner/repo\" string.  Returns the absolute path to the root
-of the current working tree when its \\='origin\\=' remote resolves to REPO,
-and nil in every other case — including when `default-directory' is not
-inside any git repository, when there is no \\='origin\\=' remote, or when
-the remote points to a different repository.  A clone found is
-remembered, see `octocat-local-clone'."
-  (condition-case nil
-      (when-let* ((root (vc-git-root default-directory))
-                  ((string= repo (octocat-repo--current-repo)))
-                  (root (expand-file-name root)))
-        (octocat-local-clone-add repo root)
-        root)
-    (error nil)))
-
-
-;;;; Unpushed commits
-
-(defun octocat-repo--git-lines (dir &rest args)
-  "Return the output lines of git ARGS run in DIR, or nil when it fails."
-  (let ((default-directory dir))
-    (with-temp-buffer
-      (and (eq 0 (apply #'process-file "git" nil '(t nil) nil args))
-           (split-string (buffer-string) "\n" t)))))
-
-(defun octocat-repo--parse-unpushed (lines)
-  "Parse LINES of \"SHA NUL PARENTS NUL SUBJECT\" into plists.
-:merge is t for one of more than one parent."
-  (mapcar (lambda (l)
-            (pcase-let ((`(,sha ,parents ,subject) (split-string l "\0")))
-              (list :sha sha
-                    :merge (and (cdr (split-string (or parents ""))) t)
-                    :subject subject)))
-          lines))
-
-(defun octocat-repo--unpushed (dir)
-  "Return the local commits in DIR not yet on GitHub, or nil when none.
-The result is a plist: :commits from `octocat-repo--parse-unpushed',
-newest first, :upstream the remote-tracking branch they are counted
-against (nil for a branch never pushed, counted against every origin
-branch), and :behind how many upstream commits HEAD lacks, as of the
-last fetch; non-zero means the branches diverged.  Reads git synchronously."
-  (let* ((upstream (car (octocat-repo--git-lines
-                         dir "rev-parse" "--abbrev-ref" "--symbolic-full-name" "@{u}")))
-         (log      (append '("log" "--format=%H%x00%P%x00%s")
-                           (if upstream
-                               '("@{u}..HEAD")
-                             '("HEAD" "--not" "--remotes=origin"))))
-         (commits  (octocat-repo--parse-unpushed
-                    (apply #'octocat-repo--git-lines dir log))))
-    (when commits
-      (list :commits commits
-            :upstream upstream
-            :behind (if upstream
-                        (string-to-number
-                         (or (car (octocat-repo--git-lines
-                                   dir "rev-list" "--count" "HEAD..@{u}"))
-                             "0"))
-                      0)))))
-
-;;;; Checked-out branch
-
-(defun octocat-repo--tracked-branch (dir)
-  "Return the GitHub branch the clone in DIR has checked out, or nil.
-That is its upstream on origin, or else origin's branch of the same
-name, as of the last fetch.  Nil when DIR is nil, HEAD is detached or
-the branch was never pushed: GitHub has nothing to show for it."
-  (when-let* ((dir)
-              (branch (car (octocat-repo--git-lines dir "symbolic-ref" "--short" "HEAD"))))
-    (let ((upstream (car (octocat-repo--git-lines
-                          dir "rev-parse" "--abbrev-ref" "--symbolic-full-name" "@{u}"))))
-      (cond ((and upstream (string-prefix-p "origin/" upstream))
-             (substring upstream (length "origin/")))
-            ((octocat-repo--git-lines dir "rev-parse" "--verify" "--quiet"
-                                      (concat "refs/remotes/origin/" branch))
-             branch)))))
-
 ;;;; This file or directory on GitHub, for `octocat-here'
-
-(defun octocat-repo--git-ok (dir &rest args)
-  "Return non-nil when git ARGS run in DIR succeeds."
-  (let ((default-directory dir))
-    (eq 0 (apply #'process-file "git" nil nil nil args))))
-
-(defun octocat-repo--here-ref (dir)
-  "Return (REF . REV) for what GitHub has of the checkout of the clone in DIR.
-REF names it to GitHub: the tracked branch, else a detached HEAD's SHA
-once origin has it, else nil for the default branch.  REV names that
-commit to the clone's git, as of the last fetch."
-  (if-let* ((branch (octocat-repo--tracked-branch dir)))
-      (cons branch (concat "origin/" branch))
-    (let ((sha (and (not (octocat-repo--git-ok dir "symbolic-ref" "--quiet" "HEAD"))
-                    (octocat-repo--git-lines dir "branch" "--remotes" "--contains" "HEAD"
-                                             "--list" "origin/*")
-                    (car (octocat-repo--git-lines dir "rev-parse" "HEAD")))))
-      (if sha (cons sha sha) (cons nil "origin/HEAD")))))
 
 (defun octocat-repo--here-target (repo ref path dir-p at exists-p &optional follow)
   "Return the `octocat-open' arguments to show PATH of REPO at REF.
@@ -291,7 +193,7 @@ Return the new `octocat-repo--tracked'."
   (when octocat-repo--local-dir
     ;; `octocat--head-info' reads `default-directory' at render time.
     (setq default-directory (file-name-as-directory octocat-repo--local-dir)))
-  (setq octocat-repo--tracked (octocat-repo--tracked-branch octocat-repo--local-dir)))
+  (setq octocat-repo--tracked (octocat-clone-tracked-branch octocat-repo--local-dir)))
 
 (defun octocat-repo--follow-checkout (window)
   "Refresh the page in WINDOW if its clone has checked out another branch.
@@ -300,7 +202,7 @@ elsewhere is followed; a page on a picked ref stays on it."
   (with-current-buffer (window-buffer window)
     (when (and octocat-repo--local-dir (null octocat-repo--ref) octocat-vui--page
                (not (equal octocat-repo--tracked
-                           (octocat-repo--tracked-branch octocat-repo--local-dir))))
+                           (octocat-clone-tracked-branch octocat-repo--local-dir))))
       (funcall revert-buffer-function))))
 
 
@@ -426,7 +328,7 @@ format, so README.md beats README.txt, README and README.org."
 
 
 (defun octocat-repo-vui--unpushed-row (commit)
-  "Return a line for COMMIT, a plist from `octocat-repo--parse-unpushed'.
+  "Return a line for COMMIT, a plist from `octocat-clone--parse-unpushed'.
 Not RET-able: the commit page reads from GitHub, which lacks it."
   (let ((sha (plist-get commit :sha)))
     (vui-text
@@ -903,7 +805,7 @@ arguments are as for `octocat-tree--subtree'.  A directory without a
 ;; keeps its "load more" limit (`:state').
 
 (defun octocat-repo-vui--unpushed-section (unpushed)
-  "Return the section listing UNPUSHED, from `octocat-repo--unpushed'.
+  "Return the section listing UNPUSHED, from `octocat-clone-unpushed'.
 It is apart from the commits section: the local branch need not be the
 default branch, nor sit on top of it."
   (let ((commits (plist-get unpushed :commits))
@@ -2013,7 +1915,7 @@ plain `find-file'."
                (local-dir (cond ((derived-mode-p 'octocat-repo-mode) octocat-repo--local-dir)
                                 ((derived-mode-p 'octocat-file-mode)
                                  (and octocat-tree--file-repo
-                                      (octocat-repo--local-dir-for octocat-tree--file-repo)))
+                                      (octocat-clone-dir-for octocat-tree--file-repo)))
                                 (t (user-error "Octocat: Not in a repo or file buffer")))))
     (if (not local-dir)
         (call-interactively #'find-file)
@@ -2168,7 +2070,7 @@ the top of this file)."
                                   :local-dir octocat-repo--local-dir
                                   :raw octocat--markdown-raw
                                   :unpushed (and octocat-repo--local-dir
-                                                 (octocat-repo--unpushed
+                                                 (octocat-clone-unpushed
                                                   octocat-repo--local-dir)))))
 
 (cl-defmethod octocat-open ((_kind (eql 'repo)) repo &optional ref)
@@ -2179,7 +2081,7 @@ the top of this file)."
     (unless (derived-mode-p 'octocat-repo-mode)
       (octocat-repo-mode))
     (setq octocat-repo--repo      repo
-          octocat-repo--local-dir (octocat-repo--local-dir-for repo)
+          octocat-repo--local-dir (octocat-clone-dir-for repo)
           octocat-repo--ref       ref)
     (octocat-repo-refresh)))
 
@@ -2192,7 +2094,7 @@ PATH, a directory or file, is the one the tree opens down to, with point on it."
     (unless (derived-mode-p 'octocat-tree-mode)
       (octocat-tree-mode))
     (setq octocat-repo--repo      repo
-          octocat-repo--local-dir (octocat-repo--local-dir-for repo)
+          octocat-repo--local-dir (octocat-clone-dir-for repo)
           octocat-repo--ref       ref
           octocat-repo--reveal    path
           octocat-repo--focus     path)
@@ -2222,7 +2124,7 @@ PATH, a file or directory, keeps the commits that touched it."
     (unless (derived-mode-p 'octocat-commit-list-mode)
       (octocat-commit-list-mode))
     (setq octocat-repo--repo      repo
-          octocat-repo--local-dir (octocat-repo--local-dir-for repo)
+          octocat-repo--local-dir (octocat-clone-dir-for repo)
           octocat-repo--ref       ref
           octocat-repo--path      path)
     (octocat-commit-list-refresh)))
@@ -2246,9 +2148,9 @@ PATH, a file or directory, keeps the commits that touched it."
 ;; "Entry points".  This keeps every `;;;###autoload' command funneled
 ;; through a single file, so loading any octocat entry point always loads
 ;; `octocat.el' and its `octocat--evil-init' trigger.  This file supplies
-;; everything the command needs: `octocat-repo-mode', `octocat-repo--repo',
-;; `octocat-repo--local-dir', `octocat-repo--current-repo', and
-;; `octocat-repo-refresh'.
+;; what the command needs but the clone's repo, from
+;; `octocat-clone-current-repo': `octocat-repo-mode', `octocat-repo--repo',
+;; `octocat-repo--local-dir' and `octocat-repo-refresh'.
 
 (provide 'octocat-repo)
 ;;; octocat-repo.el ends here
