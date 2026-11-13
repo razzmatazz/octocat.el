@@ -965,7 +965,7 @@ HEAD is PATH's `repo-head' data, PATH nil for the root.  It shows
 right of WIDTH columns, its short SHA
 and age, as GitHub's \"1a95462 · 2 hours ago\", RET opening it, and a
 button to the commits page of PATH at REF of REPO, with the count of its
-history.
+history, a grey bar while HEAD, read from the local clone, has none.
 The author is left out for room: the commit page has it.  The subject
 is cut so the line fits."
   (let* ((commit    (octocat-model-head-commit head))
@@ -973,8 +973,9 @@ is cut so the line fits."
          (subject   (octocat-vui--subject commit))
          (date      (let ((ts (octocat--commit-date commit)))
                       (if (string-empty-p ts) "" (octocat--format-ts-relative ts))))
-         (count     (format "[%s commits]"
-                            (octocat--get head "repository" "object" "history" "totalCount")))
+         (total     (octocat--get head "repository" "object" "history" "totalCount"))
+         ;; The local clone's head has none: GitHub's does.
+         (count     (if total (format "[%s commits]" total) (octocat-vui-skeleton '((11)))))
          (tail      (+ 7 3 (string-width date) 2 (string-width count)))
          (node      (concat (octocat-vui-commit-node (octocat-vui--commit-merge-p commit))
                             " "))

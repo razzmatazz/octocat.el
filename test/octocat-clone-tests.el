@@ -207,7 +207,6 @@
                            (vector tree (git "rev-parse" "HEAD:src") nil nil)))
             ;; Only at a SHA: a branch can be behind GitHub.
             (should-not (local (list 'file-text "o/r" "main" "a file.txt")))
-            (should-not (local (list 'tree-path "o/r" "main" "src")))
             ;; A directory is no file, nor a missing object: GitHub is asked,
             ;; and the clone kept.
             (should (eq 'error (car (octocat-clone-tests--await
@@ -217,6 +216,65 @@
             (should (eq 'error (car (octocat-clone-tests--await
                                      (local (list 'tree-path "o/r" (make-string 40 ?0) "src")))))))
           (should (octocat-clone-root "o/r")))
+      (delete-directory dir t))))
+
+(ert-deftest octocat-clone-test-branch-reads ()
+  "At a branch, the head, a file and the trees on a path are origin's, as last fetched."
+  (let* ((dir (file-name-as-directory (make-temp-file "octocat-clone-" t)))
+         (default-directory dir)
+         (octocat-clone--roots (make-hash-table :test #'equal)))
+    (unwind-protect
+        (cl-flet ((git (&rest args)
+                    (with-temp-buffer
+                      (should (eql 0 (apply #'process-file "git" nil t nil
+                                            "-c" "user.name=T" "-c" "user.email=t@example.com"
+                                            args)))
+                      (string-trim (buffer-string))))
+                  (local (spec) (plist-get (octocat-sync--props spec) :local)))
+          (git "init" "-q")
+          (make-directory "src")
+          (write-region "hello\n" nil "src/a.txt")
+          (let ((coding-system-for-write 'binary))
+            (write-region (unibyte-string 0 1 2) nil "b.bin"))
+          (git "add" ".")
+          (git "commit" "-q" "-m" "One")
+          (write-region "x" nil "c.txt")
+          (git "add" ".")
+          (git "commit" "-q" "-m" "Two")
+          (git "update-ref" "refs/remotes/origin/main" "HEAD~1")
+          (git "symbolic-ref" "refs/remotes/origin/HEAD" "refs/remotes/origin/main")
+          ;; Not pushed: origin doesn't have it.
+          (git "commit" "-q" "--allow-empty" "-m" "Local")
+          (octocat-clone-add "o/r" dir)
+          (let* ((one  (git "rev-parse" "HEAD~2"))
+                 (root (octocat-clone-tests--await (local '(repo-head "o/r" nil nil))))
+                 (file (octocat-clone-tests--await (local '(repo-head "o/r" "main" "b.bin")))))
+            (should (equal (octocat--get (octocat-model-head-commit root) "oid") one))
+            (should (equal (octocat--get (octocat-model-head-dir root) "oid")
+                           (git "rev-parse" "HEAD~2^{tree}")))
+            (should (equal (mapcar (lambda (e) (gethash "path" e))
+                                   (octocat--get (octocat-model-head-dir root) "entries"))
+                           '("b.bin" "src")))
+            (should-not (octocat--get root "repository" "object" "history" "totalCount"))
+            (let ((blob (octocat-model-head-dir file)))
+              (should (equal (gethash "__typename" blob) "Blob"))
+              (should (equal (gethash "byteSize" blob) 3))
+              (should (eq (gethash "isBinary" blob) t)))
+            (should-not (gethash "isBinary" (octocat-model-head-dir
+                                             (octocat-clone-tests--await
+                                              (local '(repo-head "o/r" "main" "src/a.txt"))))))
+            (should (equal (gethash "text" (octocat-clone-tests--await
+                                            (local '(file-blob "o/r" "main" "src/a.txt"))))
+                           "hello\n"))
+            (should (equal (octocat-model-tree-shas
+                            (octocat-clone-tests--await (local '(tree-path "o/r" "HEAD" "src"))))
+                           (vector (git "rev-parse" "HEAD~2^{tree}")
+                                   (git "rev-parse" "HEAD~2:src"))))
+            ;; Not on origin's main, nor a branch origin lacks: GitHub is asked.
+            (should (eq 'error (car (octocat-clone-tests--await
+                                     (local '(repo-head "o/r" "main" "c.txt"))))))
+            (should (eq 'error (car (octocat-clone-tests--await
+                                     (local '(repo-head "o/r" "gone" nil))))))))
       (delete-directory dir t))))
 
 (ert-deftest octocat-clone-test-git-fails ()

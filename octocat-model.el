@@ -1461,7 +1461,18 @@ or PATH is not there."
 
 ;; The last commit and the tree of PATH at REF: a branch, tag or SHA, as
 ;; on github.com, nil for the default branch.  PATH nil is the root.
+(defun octocat-model--clone-rev (ref)
+  "Return what names REF, a branch, tag or SHA, to the git of the repo's clone.
+A SHA names itself; a branch is origin's as last fetched, nil or
+\"HEAD\" the default one."
+  (cond ((and ref (octocat--sha-p ref)) ref)
+        ((member ref '(nil "HEAD")) "origin/HEAD")
+        (t (concat "origin/" ref))))
+
 (octocat-sync-define-resource repo-head (repo ref path)
+  ;; The clone's has no count of the history, and may be behind.
+  :provisional t
+  :local (octocat-clone-read-head repo (octocat-model--clone-rev ref) path)
   :graphql octocat-model--repo-head-query
   :repo repo
   ;; Peels an annotated tag to its commit.
@@ -1591,9 +1602,12 @@ Calls CALLBACK once with a hash-table of path to commit, see
   :max-age (and (octocat--sha-p ref) octocat-model--fixed-max-age)
   :poll nil
   :fetch (and (null path) (lambda (done) (funcall done (octocat--table))))
-  :local (when-let* (((and path (octocat--sha-p ref)))
+  ;; At a branch, the clone's may be behind.
+  :provisional (not (octocat--sha-p ref))
+  :local (when-let* ((path)
                      (read (octocat-clone-read-trees
-                            repo ref (octocat-model--tree-path-dirs path))))
+                            repo (octocat-model--clone-rev ref)
+                            (octocat-model--tree-path-dirs path))))
            (lambda (done)
              (funcall read (octocat--then #'octocat-model--tree-path-table done))))
   :graphql (octocat-model--tree-path-query (length (split-string (or path "") "/")))
@@ -1766,9 +1780,10 @@ See `octocat-model--commit-users'; one it doesn't know stays nil."
 (octocat-sync-define-resource file-blob (repo ref path)
   :max-age (and ref (octocat--sha-p ref) octocat-model--fixed-max-age)
   :poll nil
-  :local (and ref (octocat--sha-p ref)
-              (octocat-clone-read-blob repo (concat ref ":" path)
-                                       #'octocat-model--file-blob-table))
+  ;; At a branch, the clone's may be behind.
+  :provisional (not (and ref (octocat--sha-p ref)))
+  :local (octocat-clone-read-blob repo (concat (octocat-model--clone-rev ref) ":" path)
+                                  #'octocat-model--file-blob-table)
   :graphql (octocat-model--repo-query
             '(:expr String!)
             '(object (:expression $expr) (... Blob oid byteSize isBinary isTruncated text)))

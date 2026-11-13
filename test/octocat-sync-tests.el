@@ -260,7 +260,10 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
         (should (equal (gethash "n" (plist-get snap :data)) "github"))
         (should-not (plist-get snap :outdated))
         (should-not (plist-get snap :loading)))
-      (should (= (length locals) 1)))))
+      ;; Its data stored, maybe newer than the clone's: only GitHub's.
+      (octocat-sync-request '(near 1) t)
+      (should (= (length locals) 1))
+      (should (= (length pending) 2)))))
 
 (ert-deftest octocat-sync-test-find ()
   "Stored objects are found by a field, those fetched last first."

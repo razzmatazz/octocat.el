@@ -532,7 +532,8 @@ clone, nil when it can't: tried first, outside
 `octocat-sync-max-requests', and stored as a fetch's answer.  When it
 answers (error . MESSAGE), the resource is queued to be fetched as if
 it had none.  With :provisional non-nil, its answer only shows until
-GitHub's: it is stored outdated, and the resource fetched at once."
+GitHub's: it is stored outdated, and the resource fetched at once; and
+it is not read once the resource has data."
   (declare (indent 2) (debug (&define name lambda-list &rest [keywordp form])))
   `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--resources))
 
@@ -1003,7 +1004,15 @@ none is queued, and only when no other prefetch or timed refetch runs."
     (pcase-let ((`(,key ,spec ,reason) entry))
       (when-let* (((not (gethash key octocat-sync--skip-local)))
                   ((memq entry octocat-sync--queue))
-                  (local (plist-get (octocat-sync--props spec) :local)))
+                  (props (octocat-sync--props spec))
+                  (local (plist-get props :local))
+                  ;; Its data stored, maybe newer than the clone's, shows
+                  ;; until GitHub's comes.
+                  ((not (and (plist-get props :provisional)
+                             (sqlite-select (octocat-sync--db)
+                                            "SELECT 1 FROM resource
+                                             WHERE key = ? AND body IS NOT NULL"
+                                            (list key))))))
         (setq octocat-sync--queue (delq entry octocat-sync--queue))
         (octocat-sync--start-local key spec reason local))))
   (cl-flet ((next (reason) (seq-find (lambda (e) (eq (nth 2 e) reason)) octocat-sync--queue))

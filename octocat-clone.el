@@ -466,6 +466,43 @@ parent's.  Nil without a clone."
          found))
      t)))
 
+(defconst octocat-clone--empty-tree "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+  "The SHA of the empty tree, which a file's diff from tells if it is binary.")
+
+(defun octocat-clone-read-head (repo rev path)
+  "Return a :local reading the last commit of PATH at REV of REPO, and PATH.
+REV names a commit to the clone's git, such as \"origin/main\"; PATH nil
+is the root, else a file.  DONE gets them as GitHub's `repo-head' answer:
+the commit as `octocat-clone--log-commit' gives it, with no count of the
+history; the root's entries, or the file's size and whether it is
+binary, as git takes it.  See `octocat-clone-read'."
+  (let ((only (and path (list "--" (concat ":(literal)" path)))))
+    (octocat-clone-read
+     repo (concat rev ":" path) (if path "blob" "tree")
+     (lambda (sha)
+       (list `("-c" "log.follow=false" "log" "-1" ,octocat-clone--log-format ,rev ,@only)
+             (if path
+                 `("diff" "--numstat" ,octocat-clone--empty-tree ,rev ,@only)
+               (list "ls-tree" "-z" sha))))
+     (lambda (outs sha size)
+       (pcase-let ((`(,log ,listing) outs))
+         (when (string-empty-p log)
+           (error "No commit of %s at %s" path rev))
+         (octocat-clone--table
+          "repository"
+          (octocat-clone--table
+           "object" (octocat-clone--table
+                     "history" (octocat-clone--table
+                                "totalCount" nil
+                                "nodes" (vector (octocat-clone--log-commit log))))
+           "dir" (if path
+                     (octocat-clone--table "__typename" "Blob" "oid" sha "byteSize" size
+                                           ;; As --numstat counts a binary file's lines.
+                                           "isBinary" (string-prefix-p "-\t-\t" listing))
+                   (octocat-clone--table "__typename" "Tree" "oid" sha
+                                         "entries" (vconcat (octocat-clone-parse-ls-tree
+                                                             listing)))))))))))
+
 ;;;; Blame
 
 (defun octocat-clone--parse-blame (out)

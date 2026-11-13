@@ -4,8 +4,9 @@
 
 - Phase 1, SHA-named resources: done, `tree-path` at a SHA included.
 - Phase 3, `tree-commits`, `blame` and the email → login lookup: done.
-- Phase 2, branch-named resources: not started; needs page changes
-  first (see below).
+- Phase 2, branch-named resources: done, as a provisional `repo-head`
+  (see below); it matched GitHub's on this repo's root and a file, but
+  for the history count.
 
 ## Goal
 
@@ -31,8 +32,8 @@ because a clone exists; it only shows it sooner.
 | `tree-commits (repo commit dir sha)` | commit + dir | `git log -1` per entry | Done |
 | `blame (repo commit path)` | commit + path | `git blame --porcelain` | Done |
 | `tree-path` at a SHA ref | commit SHA + path | `git cat-file --batch-check` | Done |
-| `tree-path`, `file-blob` at a branch | branch name | `origin/BRANCH` | Phase 2 |
-| `repo-head` | ref + path | none | GitHub only: history `totalCount` |
+| `repo-head (repo ref path)` | ref + path | `git log -1` and `ls-tree` of `origin/BRANCH` | Phase 2, provisional; no history count |
+| `tree-path`, `file-blob` at a branch | branch name | `origin/BRANCH` | Phase 2, provisional |
 
 The sync store keeps SHA-named resources for 30 days
 (`octocat-model--fixed-max-age`), so the gain is on first views: a new
@@ -128,25 +129,31 @@ real repos, including rust-analyzer's merge-heavy history.
 
 ## Phase 2: branch-named resources
 
-Pages still wait one round trip to turn a branch into SHAs. Seeding
-`tree-path` and `file-blob` from `origin/BRANCH` alone would not help:
+Pages at a branch wait one round trip for `repo-head`, which turns the
+branch into the last commit and the SHA of the tree or file shown;
+the tree, file and repo root pages draw nothing below the top line
+until then. Everything after it is named by SHA, so phase 1 already
+reads it from the clone.
 
-- The tree page draws the tree only once `repo-head` is in, and uses
-  its directory SHA; `tree-path` only prefetches listings, which phase
-  1 already reads locally.
-- The file page shows `file-blob`'s text only once it matches the blob
-  SHA from `repo-head`.
-- The repo root page does not read `tree-path`, and `tree-path` with no
-  path answers an empty table.
+So `repo-head` is read from the clone too, `:provisional`: at a branch
+from `origin/BRANCH`, at nil from `origin/HEAD`, at a SHA from it.
 
-So phase 2 needs pages that draw from the seeded `tree-path` and
-`file-blob` until `repo-head` lands, the last-commit line a grey bar
-meanwhile. The seeds are `:provisional`, as blame is.
+- `git log -1` of PATH gives the last commit; `ls-tree` the root's
+  entries, or `diff --numstat` against the empty tree whether a file is
+  binary, as git takes it.
+- git has no count of PATH's history cheaply, so it is nil, and the
+  head line shows a grey bar for it until GitHub's answer.
+- A tag is not read: `origin/TAG` is missing, so GitHub is asked.
+- `file-blob` and `tree-path` at a branch read `origin/BRANCH` the same
+  way, also `:provisional`: the file page waits for `file-blob` before
+  fetching the blob itself.
+- A provisional `:local` runs only when the store has no data for the
+  resource: once it does, that data, maybe newer than the clone's,
+  shows until GitHub's comes. Otherwise each poll of a branch would
+  flash back to a stale `origin/BRANCH`.
 
-Phase 1 already reads `tree-path` at a SHA ref from the clone.
-
-Never seed from the local working tree or a local branch: the page
-shows what GitHub has.
+Never read the local working tree or a local branch: the page shows
+what GitHub has.
 
 ## Loose ends
 
