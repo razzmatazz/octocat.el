@@ -804,19 +804,22 @@ arguments are as for `octocat-tree--subtree'.  A directory without a
 ;; Each section reads its sync resource and, for the pageable ones,
 ;; keeps its "load more" limit (`:state').
 
-(defun octocat-repo-vui--unpushed-section (unpushed)
+(defun octocat-repo-vui--unpushed-section (unpushed width)
   "Return the section listing UNPUSHED, from `octocat-clone-unpushed'.
-It is apart from the commits section: the local branch need not be the
-default branch, nor sit on top of it."
+Its heading is underlined across WIDTH, as other sections'.  It is apart
+from the commits section: the local branch need not be the default
+branch, nor sit on top of it."
   (let ((commits (plist-get unpushed :commits))
         (behind  (plist-get unpushed :behind)))
     (vui-vstack
-     (vui-text
-         (concat (propertize "Local commits not on " 'face 'octocat-section-heading)
-                 (propertize (or (plist-get unpushed :upstream) "origin") 'face 'octocat-branch)
-                 (propertize (format " (%d)" (length commits)) 'face 'octocat-section-heading)
-                 (when (> behind 0)
-                   (propertize (format "  diverged, %d behind" behind) 'face 'octocat-dimmed))))
+     (octocat-vui-underlined
+      width
+      (vui-text
+          (concat (propertize "Local commits not on " 'face 'octocat-section-heading)
+                  (propertize (or (plist-get unpushed :upstream) "origin") 'face 'octocat-branch)
+                  (propertize (format " (%d)" (length commits)) 'face 'octocat-section-heading)
+                  (when (> behind 0)
+                    (propertize (format "  diverged, %d behind" behind) 'face 'octocat-dimmed)))))
      (apply #'vui-vstack (mapcar #'octocat-repo-vui--unpushed-row commits))
      (vui-newline))))
 
@@ -1216,7 +1219,7 @@ one summary resource and the rest from the root's `repo-head' at REF."
          (octocat--web-url "%s" fork-parent)))
       (vui-newline)
       (when unpushed
-        (octocat-repo-vui--unpushed-section unpushed))
+        (octocat-repo-vui--unpushed-section unpushed (octocat-vui-window-width)))
       (octocat-repo-vui--head-line repo ref nil head-snap)
       (if tree
           (vui-component 'octocat-tree--dir

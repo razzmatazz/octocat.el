@@ -174,6 +174,20 @@
       (should (memq 'octocat-marked (ensure-list (get-text-property 3 'face marked))))
       (should (eql (get-text-property 0 'octocat-vui-list-item marked) 7)))))
 
+(ert-deftest octocat-repo-test-unpushed-heading ()
+  "The unpushed commits' heading is underlined across the width, as a section's."
+  (with-temp-buffer
+    (vui-render (octocat-repo-vui--unpushed-section
+                 '(:commits ((:sha "aaaaaaaaaa" :subject "One")) :upstream "origin/main" :behind 0)
+                 40))
+    (goto-char (point-min))
+    (should (looking-at-p "Local commits not on origin/main (1)"))
+    (should (memq 'underline (ensure-list (get-text-property (point) 'face))))
+    (should (memq 'underline (ensure-list (get-text-property (1- (line-end-position)) 'face))))
+    (forward-line)
+    (should-not (memq 'underline (ensure-list (get-text-property (point) 'face))))
+    (should (string-search "aaaaaaa One" (buffer-substring (point) (line-end-position))))))
+
 (ert-deftest octocat-repo-test-here-target ()
   "A path opens its page, or the nearest directory above that the ref has."
   (let ((has (lambda (p) (member p '("src" "src/a.el" "docs" ".github" ".github/workflows"
