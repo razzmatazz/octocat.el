@@ -172,6 +172,7 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
   `(let* ((octocat-sync--db (octocat-sync-tests--db))
           (octocat-sync--fetches (make-hash-table :test #'equal))
           (octocat-sync--queue nil)
+          (octocat-sync--local-failed (make-hash-table :test #'equal))
           (octocat-sync--poll-intervals (make-hash-table :test #'equal))
           (octocat-sync--pending nil)
           (octocat-sync--resources (make-hash-table :test #'eq))
@@ -204,6 +205,38 @@ Resource `thing' (N) is defined; its fetches are pushed to `pending' as
       (octocat-sync-request '(thing 1) t)
       (should (= (octocat-sync--running) 2))
       (should (equal octocat-sync--queue '(("(thing 1)" (thing 1) page)))))))
+
+(ert-deftest octocat-sync-test-local ()
+  "A :local read is tried first, outside the cap; failing, or nil, the fetch runs."
+  (octocat-sync-tests--with-sync
+    (let ((octocat-sync-max-requests 1)
+          (octocat-sync--offline t)
+          locals)
+      (octocat-sync-define-resource near (n)
+        :local (and (> n 0) (lambda (done) (push (cons n done) locals)))
+        :fetch (lambda (done) (push (cons n done) pending)))
+      (octocat-sync-request '(thing 1))
+      (octocat-sync-request '(near 1))
+      (octocat-sync-request '(near 2))
+      (should (= (length pending) 1))
+      (should (= (length locals) 2))
+      ;; Answered: stored as fetched, offline still as it was.
+      (funcall (cdr (assq 1 locals)) (octocat-sync-tests--table "n" 1))
+      (should (= (gethash "n" (plist-get (octocat-sync-read '(near 1)) :data)) 1))
+      (should octocat-sync--offline)
+      ;; Failed: queued for the fetch, which waits for a free slot.
+      (funcall (cdr (assq 2 locals)) '(error . "missing"))
+      (should-not (plist-get (octocat-sync-read '(near 2)) :error))
+      (should (plist-get (octocat-sync-read '(near 2)) :loading))
+      (should (= (length pending) 1))
+      (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
+      (should (assq 2 pending))
+      (should (= (length locals) 2))
+      (funcall (cdr (assq 2 pending)) (octocat-sync-tests--table "n" 2))
+      ;; No :local: only the fetch.
+      (octocat-sync-request '(near 0))
+      (should (= (length locals) 2))
+      (should (assq 0 pending)))))
 
 (ert-deftest octocat-sync-test-get-and-cancel ()
   "A get calls back once its fetch lands, at once while a failure waits to

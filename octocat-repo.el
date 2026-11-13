@@ -173,12 +173,14 @@ REPO is an \"owner/repo\" string.  Returns the absolute path to the root
 of the current working tree when its \\='origin\\=' remote resolves to REPO,
 and nil in every other case — including when `default-directory' is not
 inside any git repository, when there is no \\='origin\\=' remote, or when
-the remote points to a different repository."
+the remote points to a different repository.  A clone found is
+remembered, see `octocat-local-clone'."
   (condition-case nil
-      (let ((root (locate-dominating-file default-directory ".git")))
-        (and root
-             (string= repo (octocat-repo--current-repo))
-             (expand-file-name root)))
+      (when-let* ((root (vc-git-root default-directory))
+                  ((string= repo (octocat-repo--current-repo)))
+                  (root (expand-file-name root)))
+        (octocat-local-clone-add repo root)
+        root)
     (error nil)))
 
 

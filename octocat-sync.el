@@ -526,7 +526,12 @@ commit's: within it, opening doesn't refetch, but `g' does.  :poll,
 optional, is the seconds between refetches while a page on screen
 shows the resource, nil for none, or a function of its data returning
 that; by default `octocat-sync-poll-interval'.  Either way it is at
-least :max-age."
+least :max-age.  :local, optional, is a function of DONE as :fetch
+that reads the same data without the network, such as from a local
+clone, nil when it can't: tried first, outside
+`octocat-sync-max-requests', and stored as a fetch's answer.  When it
+answers (error . MESSAGE), the resource is queued to be fetched as if
+it had none."
   (declare (indent 2) (debug (&define name lambda-list &rest [keywordp form])))
   `(puthash ',name (lambda ,args (list ,@props)) octocat-sync--resources))
 
@@ -583,6 +588,9 @@ STARTED when it started, and REASON as in `octocat-sync--queue', or
 request takes over a fetch running past `octocat-sync-stuck-after',
 killing its `gh' calls (see `octocat--gh-owner'), so `g' unsticks a
 hung fetch, which could otherwise hang until `octocat-gh-timeout'.")
+
+(defvar octocat-sync--local-failed (make-hash-table :test #'equal)
+  "Keys of the resources whose :local read failed, to fetch without it.")
 
 (defvar octocat-sync--offline nil
   "Non-nil when the last request found GitHub out of reach.
@@ -932,14 +940,36 @@ over calls DROPPED, if given, instead."
 
 (defun octocat-sync--start (key spec reason)
   "Start fetching SPEC, whose key is KEY, for REASON, see `octocat--gh-reason'."
+  (remhash key octocat-sync--local-failed)
   (octocat-sync--run key reason t
                      (lambda (done) (octocat-sync--fetch spec done))
                      (lambda (result) (octocat-sync--done key result))))
 
+(defun octocat-sync--start-local (key spec reason local)
+  "Start reading SPEC, whose key is KEY, for REASON with LOCAL, its :local.
+When it fails, SPEC is queued again, first, to be fetched without it."
+  (octocat-sync--run key reason nil local
+                     (lambda (result)
+                       (if (not (eq (car-safe result) 'error))
+                           (octocat-sync--done key result t)
+                         (octocat--debug-log (format "local read of %s failed" key) (cdr result))
+                         (octocat-sync--drop-fetch key)
+                         (puthash key t octocat-sync--local-failed)
+                         (push (list key spec reason) octocat-sync--queue)
+                         (octocat-sync--pump)))))
+
 (defun octocat-sync--pump ()
   "Start queued fetches while fewer than `octocat-sync-max-requests' run.
+Those with a :local start first, all at once, as they make no request.
 Page requests go first; a prefetch, then a timed refetch, only when
 none is queued, and only when no other prefetch or timed refetch runs."
+  (dolist (entry (copy-sequence octocat-sync--queue))
+    (pcase-let ((`(,key ,spec ,reason) entry))
+      (when-let* (((not (gethash key octocat-sync--local-failed)))
+                  ((memq entry octocat-sync--queue))
+                  (local (plist-get (octocat-sync--props spec) :local)))
+        (setq octocat-sync--queue (delq entry octocat-sync--queue))
+        (octocat-sync--start-local key spec reason local))))
   (cl-flet ((next (reason) (seq-find (lambda (e) (eq (nth 2 e) reason)) octocat-sync--queue))
             (low-running-p ()
               (cl-loop for token being the hash-values of octocat-sync--fetches
@@ -952,8 +982,10 @@ none is queued, and only when no other prefetch or timed refetch runs."
         (setq octocat-sync--queue (delq entry octocat-sync--queue))
         (apply #'octocat-sync--start entry)))))
 
-(defun octocat-sync--done (key result)
-  "Store RESULT, the outcome of fetching resource KEY, and notify."
+(defun octocat-sync--done (key result &optional local)
+  "Store RESULT, the outcome of fetching resource KEY, and notify.
+LOCAL is whether it was read with the resource's :local, which says
+nothing of whether GitHub is in reach."
   (octocat-sync--drop-fetch key)
   (let* ((db      (octocat-sync--db))
          (spec    (car (read-from-string key)))
@@ -978,7 +1010,7 @@ none is queued, and only when no other prefetch or timed refetch runs."
                             (setq octocat-sync--offline (eq kind 'offline))
                             (octocat-sync--write-error db key (cdr result) kind (float-time))
                             nil)
-                        (setq octocat-sync--offline nil)
+                        (unless local (setq octocat-sync--offline nil))
                         (octocat-sync--write db key result (float-time)))
                     ;; Say a second Emacs held the lock past the timeout: drop the write.
                     (error (octocat--debug-log (format "sync write %s failed" key)

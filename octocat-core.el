@@ -1773,6 +1773,65 @@ the git origin remote, via `octocat-repo--current-repo'."
   (or (and octocat--repo-function (funcall octocat--repo-function))
       (condition-case nil (octocat-repo--current-repo) (user-error nil))))
 
+;;;; Local clones
+;;
+;; A repo's clone serves the data GitHub names by SHA, as the same SHA
+;; is the same content (see `octocat-model--local').  It is found as
+;; pages open from inside it, and kept for the session only: a directory
+;; can move or go.
+
+(defconst octocat-local-git-timeout 2
+  "Seconds a `git' read from a local clone may take.
+Past it, git is stopped, the clone is no longer used this session, and
+the data is fetched from GitHub.")
+
+(defvar octocat--local-clones (make-hash-table :test #'equal)
+  "Each repo, \"owner/name\", to the root of its clone found this session.")
+
+(defvar octocat--git-version nil
+  "The version of `vc-git-program', as \"2.44.0\", once asked.")
+
+(defun octocat--git-version ()
+  "Return the version of `vc-git-program', \"0\" when it can't be run."
+  (or octocat--git-version
+      (setq octocat--git-version
+            (let ((out (condition-case nil
+                           (car (process-lines vc-git-program "version"))
+                         (error ""))))
+              (if (string-match "[0-9]+\\(?:\\.[0-9]+\\)+" out)
+                  (match-string 0 out)
+                "0")))))
+
+(defun octocat--lazy-clone-p (root)
+  "Return non-nil if `git' may fetch objects missing from the clone at ROOT.
+A partial clone's git fetches them from origin, unless it is 2.44 or
+later, which `GIT_NO_LAZY_FETCH' stops.  A clone whose .git is a file,
+a worktree's, may be partial too."
+  (and (version< (octocat--git-version) "2.44")
+       (let ((pack (expand-file-name ".git/objects/pack" root)))
+         (or (not (file-directory-p pack))
+             (directory-files pack nil "\\.promisor\\'" t 1)))))
+
+(defun octocat-local-clone-add (repo root)
+  "Remember ROOT as the clone of REPO for this session.
+Not one on a remote host, nor one whose git could fetch over the
+network what it lacks."
+  (unless (or (file-remote-p root) (octocat--lazy-clone-p root))
+    (puthash repo (file-name-as-directory (expand-file-name root)) octocat--local-clones)))
+
+(defun octocat-local-clone-drop (repo)
+  "Stop reading REPO from its clone this session, as its git failed."
+  (remhash repo octocat--local-clones))
+
+(defun octocat-local-clone (repo)
+  "Return the root of the clone of REPO found this session, or nil.
+A clone whose .git is gone is forgotten."
+  (when-let* ((root (gethash repo octocat--local-clones)))
+    (if (file-exists-p (expand-file-name ".git" root))
+        root
+      (octocat-local-clone-drop repo)
+      nil)))
+
 ;;;; List filters
 ;;
 ;; The PR and issue list pages are filtered by a GitHub search query

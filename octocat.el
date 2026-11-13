@@ -120,15 +120,14 @@ a REPO argument in a future extension), the buffer runs in \\='detached\\='
 mode with no local directory bound."
   (interactive)
   (let* ((repo     (octocat-repo--current-repo))
-         (local-dir (locate-dominating-file default-directory ".git"))
+         (local-dir (octocat-repo--local-dir-for repo))
          (buf-name (format "*%s*" repo))
          (buf      (get-buffer-create buf-name)))
     (octocat-display-buffer buf)
     (unless (derived-mode-p 'octocat-repo-mode)
       (octocat-repo-mode))
     (setq octocat-repo--repo      repo
-          octocat-repo--local-dir (and local-dir
-                                       (expand-file-name local-dir))
+          octocat-repo--local-dir local-dir
           octocat-repo--ref       nil)
     (octocat-repo-refresh)))
 
