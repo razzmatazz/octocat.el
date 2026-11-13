@@ -136,6 +136,26 @@
       (should (equal (get-text-property 0 'octocat-url entry)
                      "https://github.com/o/r/issues/7#event-9")))))
 
+(ert-deftest octocat-timeline-test-cross-reference-visit ()
+  "A mention opens its source, PR or issue, in its own repository, alone on its line."
+  (let* ((issue (json-parse-string "{\"number\":7,\"body\":\"\",\"createdAt\":\"2026-01-01T10:00:00Z\"}"))
+         (event (lambda (number pr)
+                  (format (concat "{\"event\":\"cross-referenced\",\"created_at\":\"2026-01-03T10:00:0%dZ\","
+                                  "\"actor\":{\"login\":\"ann\"},\"source\":{\"issue\":{\"number\":%d,"
+                                  "\"title\":\"t\",%s\"repository\":{\"full_name\":\"x/y\"}}}}")
+                          number number (if pr "\"pull_request\":{\"url\":\"\"}," ""))))
+         (events (json-parse-string
+                  (format "[%s,%s,{\"event\":\"reopened\",\"created_at\":\"2026-01-03T10:00:03Z\",\"actor\":{\"login\":\"ann\"}}]"
+                          (funcall event 1 t) (funcall event 2 nil))))
+         (items (cdr (octocat-timeline-items issue "opened this issue" events nil)))
+         opened)
+    (should (= (length items) 3))
+    (cl-letf (((symbol-function 'octocat-open) (lambda (&rest args) (push args opened))))
+      (funcall (plist-get (nth 0 items) :on-visit))
+      (funcall (plist-get (nth 1 items) :on-visit)))
+    (should (equal opened '((issue "x/y" 2) (pr "x/y" 1))))
+    (should-not (plist-get (nth 2 items) :on-visit))))
+
 (ert-deftest octocat-timeline-test-copy-entry ()
   "Copying an entry leaves out the rail, and rejoins a line broken to fit."
   (let ((copy (lambda (item)

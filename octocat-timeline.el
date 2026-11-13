@@ -162,6 +162,16 @@ for `octocat--label-face'."
                                   'face 'octocat-commit-sha)))))
       (_ nil))))
 
+(defun octocat-timeline--event-visit (event)
+  "Return a function opening the issue or PR that EVENT mentions, or nil.
+The source may be in another repository."
+  (let ((repo (octocat--get event "source" "issue" "repository" "full_name"))
+        (num  (octocat--get event "source" "issue" "number")))
+    (and (equal (gethash "event" event) "cross-referenced")
+         (stringp repo) (integerp num)
+         (let ((kind (if (octocat--get event "source" "issue" "pull_request") 'pr 'issue)))
+           (lambda () (octocat-open kind repo num))))))
+
 (defun octocat-timeline--state-fallback (obj)
   "Return a one-item list for how OBJ ended, from its own fields, or nil.
 OBJ is an issue or PR hash-table.  Used until the timeline events are
@@ -224,6 +234,9 @@ PR's reviews and commits."
                                             :actor (octocat-timeline--actor event)
                                             :text text
                                             :label (octocat--get event "label")
+                                            :on-visit (octocat-timeline--event-visit event)
+                                            :help (and (equal name "cross-referenced")
+                                                       "RET: open the mentioning issue or PR")
                                             :url (let ((id (octocat--get event "id")))
                                                    (and (stringp url) (integerp id)
                                                         (format "%s#event-%d" url id)))
@@ -273,9 +286,9 @@ Long enough to cover approving, waiting for checks, then merging.")
 (defun octocat-timeline--action-text (item)
   "Return the text of what ITEM's actor did, if it can join others on a line.
 That is a single-line event, or a review without a body, such as an
-approval."
+approval.  An event that opens something on RET stays on its own line."
   (pcase (plist-get item :kind)
-    ('event  (plist-get item :text))
+    ('event  (and (not (plist-get item :on-visit)) (plist-get item :text)))
     ('review (and (string-empty-p (string-trim (or (plist-get item :body) "")))
                   (plist-get item :verb)))))
 
