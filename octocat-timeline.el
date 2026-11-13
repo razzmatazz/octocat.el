@@ -442,7 +442,7 @@ under its actor.  The text carries ITEM's target in the
                               'face 'octocat-dimmed)))
          (bullet (if (eq (plist-get item :kind) 'commit)
                      (octocat-vui-commit-node (plist-get item :merge))
-                   (propertize (if line "○" "●")
+                   (propertize (if line "◇" "◆")
                                'face (octocat-timeline--bullet-face (plist-get item :state)))))
          (text
           (if line

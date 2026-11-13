@@ -39,7 +39,7 @@
                     '("{\"user\":{\"login\":\"a\"},\"body\":\"q\"}"
                       "{\"user\":{\"login\":\"b\"},\"body\":\"r\"}"))))
     (should (equal (substring-no-properties (octocat-diff--timeline cs nil 80))
-                   "  ● @a  \n  │ q\n  │\n  ● @b  \n  │ r"))))
+                   "  ◆ @a  \n  │ q\n  │\n  ◆ @b  \n  │ r"))))
 
 (ert-deftest octocat-diff-test-copy-thread ()
   "Copying a thread leaves out its box's edges and rails."
@@ -70,8 +70,8 @@ starts its own."
                    '((1 2 3) (4))))
     (should (equal (mapcar #'substring-no-properties
                            (octocat-diff--comment-lines (caar threads) nil 12 (cdar threads)))
-                   '("  ┌─ @a   ───" "  │ q" "  │" "  ○── @b  " "  │   r"
-                     "  │" "  ○── @a  " "  │   s" "  └─")))
+                   '("  ┌─ @a   ───" "  │ q" "  │" "  ◆── @b  " "  │   r"
+                     "  │" "  ◆── @a  " "  │   s" "  └─")))
     (should (= (octocat-diff--placed-count "@@ -1,5 +1,5 @@\n a\n b\n c\n d\n e" cs) 4))))
 
 (ert-deftest octocat-diff-test-comments-section ()
@@ -90,7 +90,7 @@ The comments come as a sync snapshot."
                                  "{\"path\":\"a.el\",\"body\":\"x\",\"created_at\":\"\"}")))))
       (should (string-search "Comments (2)" out))
       (should (string-search "(1 inline comment, in the diff above)" out))
-      (should (string-search "  ● @me" out))
+      (should (string-search "  ◆ @me" out))
       (should (string-search "  │ hi" out))
       (should-not (string-search "┌" out)))))
 

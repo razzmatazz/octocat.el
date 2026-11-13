@@ -3,7 +3,7 @@ merged  Assignees none · Reviewers none · Labels none
         watch-mode → main
 
 Conversation  [Commits (7)]  [Files changed (3)]                                 Rendered  Markdown
-● @aokafor opened this pull request  4 days ago
+◆ @aokafor opened this pull request  4 days ago
 │ rocket serve rebuilt the whole site on every save; now only the pages whose source or template
 │ changed.
 │

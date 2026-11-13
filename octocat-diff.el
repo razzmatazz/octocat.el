@@ -164,7 +164,7 @@ heading, to the middle of WIDTH."
 
 (defun octocat-diff--reply-head (reply)
   "Return the line leading into REPLY from a bubble on its box's edge."
-  (concat (propertize "  ○── " 'face (octocat-diff--edge-face reply) 'octocat-markdown-copy 'drop)
+  (concat (propertize "  ◆── " 'face (octocat-diff--edge-face reply) 'octocat-markdown-copy 'drop)
           (octocat-diff--comment-head reply)))
 
 (defun octocat-diff--bar (comment &optional indent)
@@ -202,7 +202,7 @@ a bullet then the body on a rail.  RAW and WIDTH are as for
 `octocat-diff--comment-lines'."
   (let ((rail (propertize "  │ " 'face 'octocat-dimmed 'octocat-markdown-copy 'drop)))
     (mapconcat (lambda (c)
-                 (concat (propertize "  ● " 'face 'octocat-dimmed 'octocat-markdown-copy 'drop)
+                 (concat (propertize "  ◆ " 'face 'octocat-dimmed 'octocat-markdown-copy 'drop)
                          (octocat-diff--comment-head c) "\n"
                          (octocat-diff--comment-body c rail raw width)))
                comments

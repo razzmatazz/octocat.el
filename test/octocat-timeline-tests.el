@@ -128,7 +128,7 @@
                                        :body "one two three four five six"))
                    "one two three four five six"))
     (should (string-match-p
-             "\\`○ @bob added the label one two three four five [0-9]"
+             "\\`◇ @bob added the label one two three four five [0-9]"
              (octocat-markdown-copy-text
               (octocat-timeline--entry-string
                (list :time "2026-01-04T10:00:00Z" :kind 'event :actor "@bob"
@@ -194,7 +194,7 @@
                  (list :time "" :kind 'event :actor "@bob"
                        :text "changed the title aaa bbb → ccc ddd")
                  nil 20))))
-    (should (string-prefix-p "○ @bob changed the\n│ title" entry))
+    (should (string-prefix-p "◇ @bob changed the\n│ title" entry))
     (should (cl-every (lambda (l) (<= (string-width l) 20))
                       (split-string entry "\n")))))
 

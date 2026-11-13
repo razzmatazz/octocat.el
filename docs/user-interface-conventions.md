@@ -371,6 +371,10 @@ merge with `octocat--merge-symbol`, `⊕`, in `octocat-commit-sha`, one
 space before its subject: `○ Fix the sitemap`.  In a list's graph
 (`octocat-vui-lanes`) it is the node: `┌─⊕ Merge pull request #126`;
 in a timeline, the bullet: `○ @alice committed 1a2b3c4 Fix the sitemap`.
+A timeline's other events start with `◇`, and its comments, reviews and
+opening post with `◆`, so a circle there is always a commit:
+`◇ @alice added the bug label`, `◆ @bob approved these changes`.
+A comment on a diff, or a reply in its thread, starts with `◆` too.
 
 ---
 

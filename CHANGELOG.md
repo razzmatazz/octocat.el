@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Comments and reviews start with ◆, timeline events ◇, leaving circles to commits
 * A file's Blame slides in only from Code; leaving it, or other switches, are at once
 * Issue and PR lists keep their Full and Compact pill in the pinned title
 * With Evil, editing a body, comment or merge message starts in normal state
