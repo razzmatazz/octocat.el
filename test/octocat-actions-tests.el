@@ -332,7 +332,7 @@ It has five steps, STEPS-DONE of them done and the next running."
     (with-temp-buffer
       (vui-render (apply #'vui-vstack (octocat-run--jobs-section "o/r" 9 jobs specs 'table 80))
                   (current-buffer))
-      (should (string-search "  ✓─╮  lint  success        5/5   2m00s\n    ●  test  in_progress    3/5          Step 4"
+      (should (string-search "  ✓─╮  lint  success        5/5   2m00s\n    ●  test  in progress    3/5          Step 4"
                              (buffer-string))))))
 
 (ert-deftest octocat-workflow-test-url ()

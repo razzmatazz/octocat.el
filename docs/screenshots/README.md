@@ -366,6 +366,15 @@ workflow's `needs` say; `RET` on one opens it:
 [As text](run.txt)
 <!-- /screenshot -->
 
+Scrolled down, past its header: the header line pins its state,
+workflow, number and title.
+
+<!-- screenshot: (run "acme/rocket" 9100200300) :name "run-scrolled" :scroll "Artifacts (1)" -->
+![run-scrolled](run-scrolled.png)
+
+[As text](run-scrolled.txt)
+<!-- /screenshot -->
+
 A run still going: a running job's row names the step it is on.
 
 <!-- screenshot: (run "acme/rocket" 9100200310) :name "run-in-progress" -->

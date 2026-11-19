@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Runs, jobs and steps show their state in words, as "in progress", not "in_progress"
+* A workflow run's title shows whole, on a line of its own under the breadcrumbs
 * `C-c C-j` on a PR's pages finds files at the PR's head, not the default branch
 * A long comment folded inside a collapsed <details> no longer loses its rail
 * RET on a timeline's "mentioned this in #N" opens that issue or PR

@@ -229,13 +229,17 @@ Uses bracket-checkbox glyphs to distinguish steps from job-level icons."
     'octocat-ci-neutral)
    (t 'octocat-ci-pending)))
 
+(defun octocat--job-status-label (status)
+  "Return STATUS, a run's, job's or step's from GitHub, in words, as \"in progress\"."
+  (string-replace "_" " " status))
+
 (defun octocat--job-state (data)
-  "Return the state of the job or run DATA, coloured.
+  "Return the state of the job or run DATA, in words and coloured.
 That is its conclusion, else its status."
   (let ((shown (downcase (or (octocat--nonempty (gethash "conclusion" data))
                              (octocat--nonempty (gethash "status" data))
                              "unknown"))))
-    (propertize shown 'face (octocat--job-status-face shown))))
+    (propertize (octocat--job-status-label shown) 'face (octocat--job-status-face shown))))
 
 (defun octocat--annotation-face (level)
   "Return the face for an annotation LEVEL string."
@@ -359,7 +363,8 @@ the others by BULK (see `octocat-vui-fold')."
             (propertize (truncate-string-to-width (or (gethash "name" step) "") 40 nil ?\s "…")
                         'face 'octocat-run-step-name)
             (unless (string-empty-p shown)
-              (concat "  " (propertize shown 'face (octocat--job-status-face shown))))
+              (concat "  " (propertize (octocat--job-status-label shown)
+                                       'face (octocat--job-status-face shown))))
             (when duration
               (propertize (concat "  " duration) 'face 'octocat-dimmed)))))
 
@@ -816,38 +821,48 @@ RUN is its data, or nil before it is in; without its number, the ID."
         (propertize (format "#%d" number) 'face 'octocat-pr-number)
       (format "run %s" run-id))))
 
-(defun octocat-run--crumbs (repo run)
-  "Return the crumbs of the page of RUN of REPO, see `octocat-vui-actions-header'."
-  (delq nil (list (octocat-run--workflow-crumb repo run)
-                  (list (concat (octocat-run--label (gethash "databaseId" run) run)
-                                "  " (or (gethash "displayTitle" run) ""))))))
+(defun octocat-run--crumbs (repo run &optional title)
+  "Return the crumbs of the page of RUN of REPO, see `octocat-vui-actions-header'.
+With TITLE, the last ends with RUN's title, as the pin shows it."
+  (let ((label (octocat-run--label (gethash "databaseId" run) run)))
+    (delq nil (list (octocat-run--workflow-crumb repo run)
+                    (list (if title
+                              (concat label "  " (or (gethash "displayTitle" run) ""))
+                            label))))))
 
 (defun octocat-run--header (repo run local-branch width)
   "Return the header vnodes of RUN of REPO, kept within WIDTH.
-The top row names its workflow, number and title; under it its status
-and details.  LOCAL-BRANCH, the checked-out branch, is highlighted when it
-is the run's."
+The top row names its workflow and number; under it its status heads
+its title, whole, wrapped within WIDTH, and its details.  LOCAL-BRANCH,
+the checked-out branch, is highlighted when it is the run's."
   (let* ((conclusion (octocat--nonempty (gethash "conclusion" run)))
          (created    (octocat--nonempty (gethash "createdAt" run)))
          (branch     (octocat--nonempty (gethash "headBranch" run)))
-         (sha        (octocat--nonempty (gethash "headSha" run))))
+         (sha        (octocat--nonempty (gethash "headSha" run)))
+         (title      (octocat--nonempty (gethash "displayTitle" run)))
+         (state      (octocat--job-state run)))
     (octocat-vui-actions-header
-     repo (octocat-run--crumbs repo run) width (octocat--job-state run)
-     (list (list (cons "Event"  (octocat--nonempty (gethash "event" run)))
-                 (cons "Branch" (and branch
-                                     (propertize branch 'face
-                                                 (if (equal branch local-branch)
-                                                     'octocat-branch-current
-                                                   'octocat-branch))))
-                 (cons "SHA"    (and sha (propertize (substring sha 0 (min 7 (length sha)))
-                                                     'face 'octocat-pr-number))))
-           (list (cons "Run"      (and (gethash "databaseId" run)
-                                       (format "%s" (gethash "databaseId" run))))
-                 (cons "Created"  (and created (octocat--format-ts-relative created)))
-                 (cons "Duration" (and conclusion
-                                       (octocat--run-duration
-                                        created
-                                        (octocat--nonempty (gethash "updatedAt" run))))))))))
+     repo (octocat-run--crumbs repo run) width state
+     ;; As on GitHub, the title has a line of its own, as it may be long.
+     (append
+      (and title
+           (mapcar (lambda (line) (list (cons nil (propertize line 'face 'bold))))
+                   (octocat-markdown-wrap-hung title (- width (string-width state) 2) 0)))
+      (list (list (cons "Event"  (octocat--nonempty (gethash "event" run)))
+                  (cons "Branch" (and branch
+                                      (propertize branch 'face
+                                                  (if (equal branch local-branch)
+                                                      'octocat-branch-current
+                                                    'octocat-branch))))
+                  (cons "SHA"    (and sha (propertize (substring sha 0 (min 7 (length sha)))
+                                                      'face 'octocat-pr-number))))
+            (list (cons "Run"      (and (gethash "databaseId" run)
+                                        (format "%s" (gethash "databaseId" run))))
+                  (cons "Created"  (and created (octocat--format-ts-relative created)))
+                  (cons "Duration" (and conclusion
+                                        (octocat--run-duration
+                                         created
+                                         (octocat--nonempty (gethash "updatedAt" run)))))))))))
 
 ;;;;; Jobs
 ;;
@@ -974,7 +989,8 @@ cell."
               (propertize (truncate-string-to-width name name-width nil ?\s "…")
                           'face 'octocat-run-job-name)
               "  "
-              (propertize (truncate-string-to-width shown octocat-run--status-width nil ?\s "…")
+              (propertize (truncate-string-to-width (octocat--job-status-label shown)
+                                                    octocat-run--status-width nil ?\s "…")
                           'face (octocat--job-status-face shown))
               (propertize (format "  %5s  %6s" (if (> total 0) (format "%d/%d" done total) "")
                                   (or duration ""))
@@ -1134,7 +1150,7 @@ everything, keeping what is shown until the fresh data replaces it."
                                                collect (cons (gethash "job" entry) ann)))))
     (octocat-vui-page
      (if data
-         (octocat-vui-actions-pin repo (octocat-run--crumbs repo data) (octocat--job-state data))
+         (octocat-vui-actions-pin repo (octocat-run--crumbs repo data t) (octocat--job-state data))
        (octocat-vui-actions-pin repo (list (list (octocat-run--label run-id nil)))))
      (apply
       #'vui-vstack
