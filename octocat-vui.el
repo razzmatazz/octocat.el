@@ -1080,8 +1080,9 @@ line RET was pressed on, where the rest starts."
          (unfolding (and open (not done) (not closing)))
          ;; (WINDOW START STAY) from RET, see `octocat-vui--fold-pin'
          (pin (vui-use-ref nil)))
-    ;; vui keeps point on the marker at the same screen row, so each
-    ;; frame would scroll the window by the lines it revealed.
+    ;; vui keeps the window's start only while point, on the marker,
+    ;; stays in view; past that it scrolls with the marker, and point
+    ;; is to stay where the rest starts.
     (vui-use-effect (visible)
       (pcase (car pin)
         (`(,window ,start ,stay)
