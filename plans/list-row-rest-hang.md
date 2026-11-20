@@ -39,6 +39,10 @@ automatic GC 13%: the spinner hides the cost behind redraws.
      `octocat-sync--set-loading` notifies again (data that is loading
      and outdated draws differently), and the page re-renders.
    - The same for `counts`: a third render.
+
+   The first two draw nothing new: no page reads a snapshot's
+   `:outdated`, and its `:loading` over data shows only in the mode
+   line.
 5. The list's refetch answers seconds later, and its sentinel writes 30
    PRs and re-renders once more.
 
@@ -110,72 +114,106 @@ renders of the page the user is on.
 - **Work in a sentinel blocks input as much as a synchronous call.**
   Fan-out from a store write runs on the main thread: keep it bounded.
 
-## Fixes
+## The contract between sync and pages
 
-1. **Coalesce renders.**  `octocat-vui--on-sync-change` marks each page
-   dirty and re-renders it once, from a 0-delay timer.  However many
-   notifications one write, invalidation or request sends, a page
-   renders once, after the sentinel returns, so input gets in between.
-   This replaces "with no timer" in the design: one render per page per
-   turn of the command loop, not per notification.
-2. **Notify once per change.**  `octocat-sync--invalidate` notifies the
-   outdated keys, and the force-request then notifies them again from
-   `octocat-sync--set-loading`.  Notify once.  With fix 1 this is no
-   longer a render, but it is still wasted work.
-3. **Only invalidate when a field changed value.**  `octocat-sync--merge`
-   tells a field that changed value from one only added.  Only changed
-   values notify linked resources and invalidate lists.  A PR's first
-   prefetch then renders nothing.
-4. **Find which fields differ on a busy repository.**  Log the changed
-   fields of each merge on the machine that reproduces it.  If it is
-   `updatedAt` and the like, invalidation is too broad, see below.
-5. **Make the spinner cheap.**  Fewer frames a second, only the windows
+Fixing this one path would leave the next notification to fan out the
+same way.  These rules say how a change reaches the screen.  Each is
+checked by a test or measured at run time, and `docs/sync.md` keeps
+them.
+
+1. **Sync never renders.**  A handler of `octocat-sync-change-functions`
+   only marks the pages reading the keys dirty and schedules one flush:
+   a 0-delay timer.  The flush re-renders each dirty page once.  So any
+   number of notifications in one turn of the command loop (a write, an
+   invalidation, the requests it starts, a mutation) cost one render
+   per page, after the sentinel, timer or command returns, and a render
+   can't start inside a render.
+2. **Notify only what a page draws.**  A page draws a snapshot's data,
+   its partial entity, its pending mutations, and whether it is ready,
+   pending or failed (`octocat-vui-snapshot-status`).  A change to
+   anything else, such as `:loading` or `:outdated` over shown data,
+   updates the mode and header lines only and notifies nothing.
+3. **Only an entity's changed values spread.**  A field added to an
+   entity, as a detail fetch adds to a list's copy, notifies no other
+   resource and invalidates nothing: they never asked for it.
+4. **Invalidation is for membership.**  A list row already updates
+   through its entity.  A list is refetched only when a field its filter
+   reads changed value; each entity type names those fields.  A changed
+   order waits for the list's own refresh, by `g` or by polling.
+5. **Pages not on screen don't render.**  A dirty page out of sight is
+   rendered when it is shown again.
+6. **Renders are measured.**  vui counts each page's renders and their
+   time.  `octocat-doctor` shows them, and a render over 50 ms goes to
+   the debug log with the keys that caused it, so a slow fan-out shows
+   before it freezes anyone.
+
+A prefetch may still update a page: what it finds is as real as any
+other data.  The rules keep that cheap; the design's promise that a
+prefetch "only writes the store" is dropped.
+
+## Steps
+
+Each step lands on its own, with `make ci-all` passing.
+
+1. **Measure renders (rule 6).**  Count and time `vui-rerender` per page
+   in `octocat-vui.el`, show them in `octocat-doctor`, and log slow ones
+   with their cause.  This comes first, so each later step shows its
+   effect in numbers.
+2. **Flush renders once (rule 1).**  `octocat-vui--on-sync-change` adds
+   the buffers to a dirty set and starts the flush timer unless one is
+   pending.  The flush renders each live dirty page.  Tests that read a
+   page right after a store write call the flush, through a helper, in
+   place of relying on the render being synchronous.
+3. **Drop status notifications (rule 2).**  `octocat-sync--invalidate`
+   stops notifying: it only runs `octocat-sync-invalidate-functions`.
+   `octocat-sync--set-loading` notifies only when the snapshot's status
+   changes, from failed with no data to pending, not for outdated data.
+4. **Spread only changed values (rule 3).**  `octocat-sync--merge`
+   returns whether a value it had changed, apart from fields it gained.
+   `octocat-sync--write` notifies linked resources, and
+   `octocat-sync--done` invalidates, only for changed values.
+5. **Invalidate on membership fields (rule 4).**  Each entity type
+   names the fields its lists filter on, say `state`, `isDraft`,
+   `labels`, `assignees` and the review state for a PR, and
+   `octocat-sync--done` compares only those.  First log, on the machine
+   that froze, which fields changed when it did, to check that these
+   are the ones.
+6. **Render visible pages only (rule 5).**  The flush skips pages out of
+   sight and keeps them dirty; `octocat-vui--poll-shown-changed`, which
+   sees a page come on screen, renders it.
+7. **Make the spinner cheap.**  Fewer frames a second, only the windows
    that show it rather than `(force-mode-line-update t)`, and no frame
    while `input-pending-p`.
-6. **Name the `gh` sentinel** (`octocat-core.el`) and the sync callbacks
-   that run in it, so a profile shows them.
-7. **Look into the row render cost**, about 5 ms a row, with a profile
-   of one `vui-rerender` of a 30-row list.
+8. **Name the `gh` sentinel** (`octocat-core.el`) and the sync callbacks
+   run in it, so a profile shows them.
+9. **Profile one render of a 30-row list**, about 5 ms a row, and cut
+   what dominates.
+10. **Write it down.**  `docs/sync.md` states the rules, how a change
+    reaches the screen, and how to add a resource, a notification or a
+    status without breaking them.  "Reading the sync store" in
+    `docs/using-vui.md` shortens to a link to it, as does
+    `plans/github-sync-mechanism.md` for what is built.  `AGENTS.md`
+    gains a rule: a store change never renders; see `docs/sync.md`.
+    `CHANGELOG.md` gains an entry for the fixed freeze.
 
-### Tests
+## Tests
 
-- One store write that touches several resources of one page renders it
-  once.
-- An invalidation of a page's list and counts, with their refetches
-  queued, renders it once.
-- A merge that only adds fields to an entity notifies no linked resource
+- **Rule 1:** one store write touching several resources of one page
+  renders it once; so does an invalidation of its list and counts with
+  their refetches started.
+- **Rule 2:** starting a refetch of shown data, or outdating it, renders
+  nothing.
+- **Rule 3:** a merge that only adds fields notifies no linked resource
   and invalidates nothing.
-
-## Reconsidering sync and vui
-
-The store calls into pages synchronously from wherever it changes: a
-sentinel, a timer, a command.  Every new kind of change (invalidation,
-loading, mutations) adds a notification, and each was a full render.
-To decide:
-
-- **Who flushes.**  Fix 1 puts a timer between sync and vui.  The other
-  way is a batch in sync: collect the keys changed during a sentinel,
-  notify once at its end.  The timer covers every caller without each
-  one opting in; the batch keeps sync and vui in step.  Prefer the
-  timer.
-- **Pages not on screen.**  A buried page needn't render on every
-  change.  It could render once when shown again;
-  `octocat-vui--poll-shown-changed` already knows which pages are on
-  screen.
-- **What invalidation means.**  A list is invalidated when its entity
-  changed, as the change may move it in or out of the filter.  Its row
-  already updates through the entity, so a refetch is needed only when
-  membership or order may change.  Narrow `:invalidates` to the fields
-  filters and sort read (state, draft, labels, assignees, review
-  state), or leave a list's order until the user refreshes it.
-- **What a prefetch may do.**  Either a prefetch's write never
-  invalidates, which keeps the design's promise, or it may, and fixes 1
-  to 3 keep it cheap.  Prefer the latter: data a prefetch finds is as
-  real as any other.
+- **Rule 4:** a changed `updatedAt` invalidates no list; a changed
+  `state` does.
+- **Rule 5:** a dirty page out of sight renders when shown, not before.
 
 ## To verify
 
-- On the machine that reproduces it: resting on rows of a 30-row PR
-  list of a busy repository no longer freezes, and a CPU profile shows
-  no `vui-rerender` under the sentinel.
+- On the machine that froze: resting on rows of a 30-row PR list of a
+  busy repository doesn't freeze, and a CPU profile shows no
+  `vui-rerender` under the sentinel.
+- `octocat-doctor` shows one render per page for a prefetch that
+  changed a row.
 - `make ci-all`.
