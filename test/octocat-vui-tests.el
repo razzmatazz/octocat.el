@@ -435,6 +435,34 @@ unsubscribes it."
             (should (= (hash-table-count octocat-vui--subscriptions) 0)))
         (when (buffer-live-p buf) (kill-buffer buf))))))
 
+(ert-deftest octocat-vui-test-render-count ()
+  "A page counts its renders, the first one too, and logs a slow one."
+  (let* ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
+         (octocat-sync--queue nil)
+         (octocat-sync--fetches (make-hash-table :test #'equal))
+         (octocat-sync--resources (make-hash-table :test #'eq))
+         (octocat-sync-change-functions (list #'octocat-vui--on-sync-change))
+         (octocat-sync-loading-functions (list #'octocat-vui--on-sync-loading))
+         (octocat-vui--subscriptions (make-hash-table :test #'equal))
+         (vui-render-delay nil)
+         (octocat-vui--slow-render -1)
+         (octocat-debug t)
+         (pending nil)
+         (buf (get-buffer-create "*octocat-vui-test*")))
+    (octocat-sync-define-resource thing (_n)
+      :fetch (lambda (done) (push done pending)))
+    (unwind-protect
+        (with-current-buffer buf
+          (octocat-vui-refresh-page 'octocat-vui-tests--reader 1 (list :spec '(thing 1)))
+          (let ((opened (car (octocat-vui-page-renders buf))))
+            (should (>= opened 1))
+            (funcall (car pending) (octocat--table "n" 1))
+            (should (= (car (octocat-vui-page-renders buf)) (1+ opened))))
+          (with-current-buffer "*octocat-debug*"
+            (should (string-search "(thing 1)" (buffer-string)))))
+      (kill-buffer buf)
+      (when (get-buffer "*octocat-debug*") (kill-buffer "*octocat-debug*")))))
+
 (vui-defcomponent octocat-vui-tests--counter ()
   "Counts its renders in `octocat-vui-tests--renders'."
   :render

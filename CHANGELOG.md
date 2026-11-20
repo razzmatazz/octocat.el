@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* `octocat-doctor` shows each page's renders and their time; slow ones go to the debug log
 * A PR's file tree counts each file's unresolved conversations; RET shows the first
 * PR and issue lists count comments with 💬, not ✉
 * Commit, compare and PR diff pages open in the Tree view, or the diff for a line link

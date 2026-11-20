@@ -197,16 +197,47 @@ STRING keeps its own."
 (defvar octocat-vui--subscriptions (make-hash-table :test #'equal)
   "Resource key to the (BUFFER . VERSION-REF) of each hook reading it.")
 
+;; Each page counts its renders and their time, for `octocat-doctor'; a
+;; slow one goes to the debug log with what caused it.
+
+(defconst octocat-vui--slow-render 0.05
+  "Seconds past which a render goes to the debug log.")
+
+(defvar-local octocat-vui--renders nil
+  "This page's renders so far, (COUNT SECONDS SLOWEST), or nil before any.")
+
+(defun octocat-vui-page-renders (buf)
+  "Return the renders of BUF's page, (COUNT SECONDS SLOWEST), or nil.
+SECONDS is their time in all, SLOWEST that of the slowest."
+  (buffer-local-value 'octocat-vui--renders buf))
+
+(defun octocat-vui--render (buf cause render)
+  "Call RENDER, which renders BUF's page, and count it in BUF.
+CAUSE, such as the keys of the resources that changed, is logged with
+a slow render."
+  (let ((start (float-time)))
+    (prog1 (funcall render)
+      (let ((seconds (- (float-time) start)))
+        (when (buffer-live-p buf)
+          (with-current-buffer buf
+            (pcase-let ((`(,count ,total ,slowest) (or octocat-vui--renders '(0 0 0))))
+              (setq octocat-vui--renders
+                    (list (1+ count) (+ total seconds) (max slowest seconds))))))
+        (when (> seconds octocat-vui--slow-render)
+          (octocat--debug-log (format "slow render of %s: %d ms"
+                                      (buffer-name buf) (round (* 1000 seconds)))
+                              (format "%S" cause)))))))
+
 (defun octocat-vui--on-sync-change (keys)
   "Re-render, once each, the pages reading a resource in KEYS."
-  (let (buffers)
+  (let (pages)
     (dolist (key keys)
       (pcase-dolist (`(,buf . ,version) (gethash key octocat-vui--subscriptions))
         (setcar version (1+ (car version)))
-        (cl-pushnew buf buffers)))
-    (dolist (buf buffers)
+        (cl-pushnew key (alist-get buf pages) :test #'equal)))
+    (pcase-dolist (`(,buf . ,read) (nreverse pages))
       (when-let* ((root (and (buffer-live-p buf) (vui-get-instance buf))))
-        (vui-rerender root)))))
+        (octocat-vui--render buf read (lambda () (vui-rerender root)))))))
 
 (defvar-local octocat-vui--loading-keys nil
   "Keys of the resources this buffer's page reads that are being fetched.")
@@ -257,7 +288,7 @@ new, re-renders once."
   (dolist (buf (buffer-list))
     (when-let* ((root (and (with-current-buffer buf (derived-mode-p 'octocat-page-mode))
                            (vui-get-instance buf))))
-      (vui-rerender root))))
+      (octocat-vui--render buf 'theme (lambda () (vui-rerender root))))))
 
 (defun octocat-vui--on-sync-invalidate (keys)
   "Refetch the resources of KEYS that are on a page; the rest wait to be opened."
@@ -1582,7 +1613,7 @@ keeps its state (see docs/using-vui.md); a part that must start afresh
 for the new props takes them as its :key.  Return nil when the buffer
 has no page."
   (when-let* ((root (vui-get-instance)))
-    (apply #'vui-set-props root props)
+    (octocat-vui--render (current-buffer) 'props (lambda () (apply #'vui-set-props root props)))
     t))
 
 (defun octocat-vui-open-settled (spec target)
@@ -1624,15 +1655,19 @@ keeps its state, such as what is unfolded, and point.  PROPS get a
 `octocat-vui-use-resource').  Only the first call mounts, when the page is
 opened: `vui-mount' also selects the buffer, which from an async refresh
 would pull the user back to it (see docs/using-vui.md)."
-  (let ((props (append props (list :tick (cl-incf octocat-vui--tick)))))
+  (let ((props (append props (list :tick (cl-incf octocat-vui--tick))))
+        (buf   (current-buffer)))
     (if (and (eq (nth 0 octocat-vui--page) component)
              (equal (nth 1 octocat-vui--page) id))
-        (vui-update-props (nth 2 octocat-vui--page) props)
+        (octocat-vui--render buf 'refresh
+                             (lambda () (vui-update-props (nth 2 octocat-vui--page) props)))
       (octocat-vui--listen)
       (setq octocat-vui--page
             (list component id
-                  (vui-mount (apply #'vui-component component props)
-                             (buffer-name)))))))
+                  (octocat-vui--render
+                   buf 'open
+                   (lambda ()
+                     (vui-mount (apply #'vui-component component props) (buffer-name)))))))))
 
 (defun octocat-vui-revisit-page ()
   "Fetch the current page's resources unless fresh, unlike a refresh."

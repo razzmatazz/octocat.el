@@ -62,6 +62,14 @@
   (should (equal (octocat-doctor--rate '(0 nil 2000 t mains) nil 300)
                  "stopped (idle 33 min)")))
 
+(ert-deftest octocat-doctor-test-renders ()
+  "A page's renders read as their count and time."
+  (should (equal (octocat-doctor--renders nil) "no render counted"))
+  (should (equal (octocat-doctor--renders '(1 0.0123 0.0123))
+                 "1 render, 12 ms in all, slowest 12 ms"))
+  (should (equal (octocat-doctor--renders '(3 0.2 0.15))
+                 "3 renders, 200 ms in all, slowest 150 ms")))
+
 (ert-deftest octocat-doctor-test-stale-p ()
   "A compiled file older than its source is stale."
   (let* ((dir (make-temp-file "octocat-doctor" t))

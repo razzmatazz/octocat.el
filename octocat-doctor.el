@@ -185,6 +185,15 @@ OFFLINE is whether GitHub was out of reach, and IDLE-AFTER
               ('loading "  [loading]")
               (_        "")))))
 
+(defun octocat-doctor--renders (renders)
+  "Return how a page rendered, from RENDERS, see `octocat-vui-page-renders'."
+  (pcase-let ((`(,count ,seconds ,slowest) renders))
+    (if (null count)
+        "no render counted"
+      (format "%d render%s, %d ms in all, slowest %d ms"
+              count (if (= count 1) "" "s")
+              (round (* 1000 seconds)) (round (* 1000 slowest))))))
+
 (defun octocat-doctor--refreshes (now)
   "Return the report's lines on the pages refreshing on their own, at NOW."
   (let* ((status   (octocat-vui-refresh-status))
@@ -213,7 +222,8 @@ OFFLINE is whether GitHub was out of reach, and IDLE-AFTER
      (format "  Pages       %d on screen, %d not, which don't refresh\n"
              (length pages) (plist-get status :hidden))
      (mapconcat (pcase-lambda (`(,buf . ,specs))
-                  (concat (format "  %s\n" (buffer-name buf))
+                  (concat (format "  %s  %s\n" (buffer-name buf)
+                                  (octocat-doctor--renders (octocat-vui-page-renders buf)))
                           (mapconcat (lambda (spec) (octocat-doctor--resource spec slowdown now))
                                      specs "")))
                 pages ""))))
