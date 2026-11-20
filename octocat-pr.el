@@ -1319,6 +1319,35 @@ thread also has its \"resolved\", \"resolved_by\", \"can_resolve\" and
             (push h out)))))
     (vconcat (nreverse out))))
 
+(defun octocat-pr-diff--open-threads (threads)
+  "Return the unresolved conversations of review THREADS, by file.
+That is an alist of (PATH COUNT . AT), AT the place of the first in
+the file, as `octocat-diff--at'.  As GitHub's tree counts them, an
+outdated one is left out; so is a draft's, not a conversation yet."
+  (let (by-path)
+    (seq-doseq (thread threads)
+      (unless (or (eq (gethash "isResolved" thread) t)
+                  (eq (gethash "isOutdated" thread) t)
+                  (when-let* ((root (seq-find #'identity (octocat--get thread "comments" "nodes"))))
+                    (equal (gethash "state" root) "PENDING")))
+        (push thread (alist-get (gethash "path" thread) by-path nil nil #'equal))))
+    (mapcar
+     (pcase-lambda (`(,path . ,open))
+       (let* ((get   (lambda (thread key) (octocat-pr-diff--null (gethash key thread))))
+              (first (car (seq-sort-by (lambda (th) (or (funcall get th "line") 0)) #'< open)))
+              (line  (funcall get first "line"))
+              (side  (funcall get first "diffSide"))
+              (hash  (secure-hash 'sha256 path)))
+         (cons path
+               (cons (length open)
+                     (if line
+                         (list 'diff hash
+                               (cons (or (funcall get first "startDiffSide") side)
+                                     (or (funcall get first "startLine") line))
+                               (cons side line))
+                       (list 'diff hash))))))
+     (nreverse by-path))))
+
 (defun octocat-pr-diff--pending-count (data)
   "Return the count of draft comments in DATA, the `pr-review-threads'."
   (let ((n 0))
@@ -1656,6 +1685,8 @@ everything again."
                      (and data (octocat-pr-diff--thread-comments
                                 (octocat--nodes data "reviewThreads")))))
          (by-path  (vui-use-memo (comments) (octocat-diff-by-path comments)))
+         (open     (vui-use-memo (data)
+                     (octocat-pr-diff--open-threads (octocat--nodes data "reviewThreads"))))
          (base     (octocat--get (plist-get pr :data) "baseRefName"))
          (head     (octocat--get data "headRefOid"))
          (revs     (vui-use-memo (base head) (octocat-pr-diff--revs repo base head)))
@@ -1694,7 +1725,7 @@ everything again."
                     :repo repo :head head :files (plist-get files :data)
                     :context (list :revs revs
                                    :label (format "Changes in pull request #%d" number))
-                    :at at)
+                    :at at :notes open)
                 (vui-text (octocat-tree--skeleton))))
              ('patch
               (apply #'vui-vstack

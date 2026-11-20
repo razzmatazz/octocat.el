@@ -665,6 +665,22 @@ Only that file; a hash naming none changes nothing."
   (should (eq (octocat-diff-open-view nil) 'tree))
   (should (eq (octocat-diff-open-view '(diff "abc" 3 5)) 'diff)))
 
+(ert-deftest octocat-diff-test-tree-notes ()
+  "A file's conversations follow its line in a column past the longest file's."
+  (let* ((file (lambda (name) (octocat--table "filename" name "status" "modified"
+                                              "additions" 1 "deletions" 0 "changes" 1)))
+         (changes (octocat-diff--tree-changes
+                   "o/r" "main" (vector (funcall file "a.el") (funcall file "src/long-name.el"))
+                   nil '(("a.el" 2 diff "h")))))
+    ;; "src/long-name.el" is 4 + 2 + 12 + 7 wide, so the column is at 27.
+    (should (equal (substring-no-properties (plist-get (gethash "a.el" changes) :after))
+                   (concat "  +1 -0" (make-string (- 27 (+ 2 4 7)) ?\s))))
+    (should (plist-get (gethash "a.el" changes) :button))
+    (should-not (plist-get (gethash "src/long-name.el" changes) :button))
+    (should (equal (substring-no-properties
+                    (plist-get (gethash "src/long-name.el" changes) :after))
+                   "  +1 -0"))))
+
 (ert-deftest octocat-commit-test-patch-text ()
   "A commit as a patch is as `git format-patch' writes it, binary files included."
   (let* ((commit (json-parse-string

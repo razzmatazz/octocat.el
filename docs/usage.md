@@ -528,6 +528,11 @@ comments are drafts in a pending review, which GitHub keeps and only you
 see, until you submit the review or discard it.  A review started in
 the browser shows here, and one started here can be finished there.
 
+The page opens on the Tree, where a file with unresolved conversations
+ends its line with their count, `💬 2`, in a column past the changed
+files' names.  As on GitHub, outdated conversations and your drafts are
+left out.  `RET` on the count shows the Diff at the file's first one.
+
 | Key | On | Does |
 |-----|----|------|
 | `C-c C-a` | a diff line, or a region of lines (`C-SPC` or `V` and motion) | a draft comment on them; the lines stay highlighted while you write |

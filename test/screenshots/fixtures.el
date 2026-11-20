@@ -783,6 +783,11 @@ PROPS are more fields, or ones replaced."
                      "Moved it to `Site` in the last commit, so a watch rebuild reuses it."))
               :isResolved t :resolvedBy (list :login "srivera")
               :viewerCanResolve :false :viewerCanUnresolve t)
+            ,(octocat-screenshots--review-thread
+              604 "src/main.rs" 1
+              (list (octocat-screenshots--review-comment
+                     507 "aokafor" (* 3 h)
+                     "Could the modules stay in alphabetical order once `cache` is in?")))
             ;; Your draft, in your pending review: only you see it.
             ,(octocat-screenshots--review-thread
               603 "src/build.rs" 48

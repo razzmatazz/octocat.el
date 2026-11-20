@@ -342,6 +342,31 @@ The thread's own fields go on its first comment; a draft is pending."
                                        "comments" "nodes"))
                  1)))))
 
+(ert-deftest octocat-pr-diff-test-open-threads ()
+  "A file counts its unresolved conversations, AT the first, by its lines.
+Resolved, outdated and draft threads are left out, as GitHub's tree does."
+  (let* ((thread (lambda (path line &rest props)
+                   (let ((h (octocat--table "path" path "line" (or line :null)
+                                            "diffSide" "RIGHT" "isResolved" :false
+                                            "isOutdated" :false
+                                            "comments" (octocat--table
+                                                        "nodes" (vector (octocat--table
+                                                                         "state" "SUBMITTED"))))))
+                     (while props (puthash (pop props) (pop props) h))
+                     h)))
+         (threads (vector (funcall thread "a.el" 30)
+                          (funcall thread "a.el" 12 "startLine" 10 "startDiffSide" "LEFT")
+                          (funcall thread "b.el" 4 "isResolved" t)
+                          (funcall thread "b.el" nil "isOutdated" t)
+                          (funcall thread "c.el" nil)
+                          (funcall thread "d.el" 2 "comments"
+                                   (octocat--table "nodes" (vector (octocat--table
+                                                                    "state" "PENDING"))))))
+         (hash (lambda (path) (secure-hash 'sha256 path))))
+    (should (equal (octocat-pr-diff--open-threads threads)
+                   `(("a.el" 2 diff ,(funcall hash "a.el") ("LEFT" . 10) ("RIGHT" . 12))
+                     ("c.el" 1 diff ,(funcall hash "c.el")))))))
+
 ;;;; M-x octocat-pr
 
 (defun octocat-pr-tests--branch-pr (result)

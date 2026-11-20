@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* A PR's file tree counts each file's unresolved conversations; RET shows the first
+* PR and issue lists count comments with 💬, not ✉
 * Commit, compare and PR diff pages open in the Tree view, or the diff for a line link
 * Runs, jobs and steps show their state in words, as "in progress", not "in_progress"
 * A workflow run's title shows whole, on a line of its own under the breadcrumbs

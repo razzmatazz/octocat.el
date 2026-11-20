@@ -108,13 +108,13 @@
   "Item lines read as GitHub's: the comments and assignees at the right edge."
   (let ((cells (list :title (make-string 60 ?t) :author "@a" :date "1d"
                      :chips "bug" :ci "✓ 1/1" :review "Approved" :number "#1"
-                     :assignees "@b +1" :comments "✉ 2")))
+                     :assignees "@b +1" :comments "💬 2")))
     (pcase-let ((`(,top ,bottom) (octocat-vui--item-lines "open" cells)))
-      (should (string-match-p (concat (make-string 60 ?t) "  ✓ 1/1  bug  ✉ 2  @b \\+1\\'") top))
+      (should (string-match-p (concat (make-string 60 ?t) "  ✓ 1/1  bug  💬 2  @b \\+1\\'") top))
       (should (string-suffix-p "#1 opened 1d by @a · Approved" bottom)))
     (pcase-let ((`(,top ,bottom) (octocat-vui--item-lines "open" cells 60)))
       (should (= (string-width top) 59))
-      (should (string-suffix-p "  bug  ✉ 2  @b +1" top))
+      (should (string-suffix-p "  bug  💬 2  @b +1" top))
       (should (<= (string-width bottom) 59)))
     ;; With nothing for the right edge, a short title isn't padded out.
     (let ((short (list :title "t" :author "" :date "1d" :number "#1")))

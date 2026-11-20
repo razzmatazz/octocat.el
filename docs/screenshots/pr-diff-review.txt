@@ -5,7 +5,7 @@ open    Assignees @srivera
         template-cache → main · Approved · Milestone 0.10 · Closes #97
 
 [Conversation]  [Commits (7)]  Files changed (3)                                  Tree  Diff  Patch
-[Collapse all]  [Hide comments (6)]  [Filter files]
+[Collapse all]  [Hide comments (7)]  [Filter files]
 ▾ A src/cache.rs  +18 -0
 @@ -0,0 +1,18 @@
 +use std::collections::HashMap;
@@ -79,12 +79,17 @@ open    Assignees @srivera
 ▾ M src/main.rs  +1 -0
 @@ -1,5 +1,6 @@
  mod build;
+  ┌─ @aokafor  3 hours ago ───────────────────────
+  │ Could the modules stay in alphabetical order once cache is in?
+  │
+  │ [Resolve conversation]
+  └─
 +mod cache;
  mod markdown;
  mod serve;
  mod template;
 
-Review Comments (6)
-  (6 inline review comments, in the diff above)
+Review Comments (7)
+  (7 inline review comments, in the diff above)
 
   [Submit review (1 pending)]   [Discard review]

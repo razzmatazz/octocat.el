@@ -421,7 +421,7 @@ A string COMMIT is itself what follows."
               (propertize age 'face 'octocat-dimmed))))))
 
 (defun octocat-tree--entry-line (indent name face type entry path activate
-                                        &optional commit width)
+                                        &optional commit width button)
   "Return one tree line as a vnode (no trailing newline).
 INDENT is a string of leading spaces.  NAME is the file/dir name, with
 any glyph before it, drawn in FACE.  TYPE is \\='dir or \\='file.
@@ -429,7 +429,8 @@ ENTRY is the API hash-table.  PATH is the entry's full repository path:
 the API's own \"path\" field is only the name within its directory.
 ACTIVATE is a zero-argument function run by RET on the line.  COMMIT,
 the last that touched it or `loading', follows it to fit WIDTH, see
-`octocat-tree--last-commit-text'.
+`octocat-tree--last-commit-text'.  BUTTON, a vnode, ends the line, its
+RET its own.
 
 The line is not a button, so TAB does not stop on every entry: in a
 long listing, walking the page's buttons would be walking its files.
@@ -446,15 +447,16 @@ keymaps."
                      'octocat-tree--path     path
                      'octocat-tree--activate activate)))
     (define-key map (kbd "RET") (lambda () (interactive) (funcall activate)))
-    (vui-region :keymap map
-                (vui-text (apply #'propertize
+    (let ((text (vui-text (apply #'propertize
                                  (concat indent
                                          (propertize name
                                                      'face face 'mouse-face 'highlight
                                                      'help-echo help)
                                          (octocat-tree--last-commit-text
                                           (concat indent name) commit (or width 0)))
-                                 props)))))
+                                 props))))
+      (vui-region :keymap map
+                  (if button (vui-hstack :spacing 0 text button) text)))))
 
 
 ;;;; Rendering — tree
@@ -619,7 +621,8 @@ FOCUS, an entry's path, once it is listed.  Past
 CHANGES, a hash-table of the paths a commit changed, marks them in
 place of the last commit, and dims the rest.  Each maps to a plist:
 :mark, the two columns before its name, :face, its name's, :after, the
-text after it, :open, what RET on it does, and :removed, non-nil for a
+text after it, :button, a vnode ending its line, :open, what RET on it
+does, and :removed, non-nil for a
 file the commit removed, listed where it was.  With CHANGES, a
 directory of more than `octocat-tree-dir-entries' lists only those
 and the directories on the way to them, then a button for the rest.
@@ -754,7 +757,8 @@ arguments are as for `octocat-tree--subtree'.  A directory without a
        'file entry path
        (or (plist-get change :open)
            (lambda () (octocat-tree--open-file-by-path repo branch path)))
-       (if changes (or (plist-get change :after) "") last) width))))
+       (if changes (or (plist-get change :after) "") last) width
+       (plist-get change :button)))))
 
 (defun octocat-tree--skeleton (&optional indent)
   "Return grey bars shaped like a few tree entries, each after INDENT."

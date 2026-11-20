@@ -1465,27 +1465,56 @@ Nil without FILTER: the Patch has no heading to hold its button."
   (and filter
        (apply #'vui-hstack :spacing 2 (octocat-diff--filter-buttons files filter))))
 
-(defun octocat-diff--tree-changes (repo ref files context)
+(defun octocat-diff--tree-changes (repo ref files context &optional notes)
   "Return how the tree of REPO at REF is to show FILES, the \"files\" changed.
 See `octocat-tree--subtree'.  They are as in its diff, see
 `octocat-diff--file-icon' and `octocat-diff--counts'; RET on one opens
 it in the file viewer, on its Diff view, its change being the file's
 entry with CONTEXT, a plist of :revs and :label, see
-`octocat-tree--file-change'."
-  (let ((changes (make-hash-table :test #'equal)))
+`octocat-tree--file-change'.  NOTES, an alist of (PATH COUNT . AT),
+ends a file's line with its COUNT of conversations, in a column past
+the longest changed file's, RET on it showing the Diff at AT, see
+`octocat-diff-show-at'."
+  (let* ((changes (make-hash-table :test #'equal))
+         ;; As the tree draws them: 4 columns a level, then the mark.
+         (width   (lambda (file)
+                    (let ((path (or (gethash "filename" file) "")))
+                      (+ (* 4 (cl-count ?/ path)) 2
+                         (string-width (file-name-nondirectory path))
+                         (string-width (or (octocat-diff--counts file) ""))))))
+         (column  (and notes (+ 2 (seq-reduce #'max (seq-map width files) 0)))))
     (seq-doseq (file files)
-      (let ((status (or (gethash "status" file) "modified"))
-            (path   (or (gethash "filename" file) "")))
+      (let* ((status (or (gethash "status" file) "modified"))
+             (path   (or (gethash "filename" file) ""))
+             (counts (or (octocat-diff--counts file) ""))
+             (note   (cdr (assoc path notes))))
         (puthash path
                  (list :mark    (concat (octocat-diff--file-icon status) " ")
                        :face    'octocat-diff-file-name
-                       :after   (or (octocat-diff--counts file) "")
+                       :after   (if note
+                                    (concat counts
+                                            (make-string (- column (funcall width file)) ?\s))
+                                  counts)
+                       :button  (and note (octocat-diff--note-button (car note) (cdr note)))
                        :open    (lambda ()
                                   (octocat-tree--open-file-by-path
                                    repo ref path nil (cons :file (cons file context))))
                        :removed (equal status "removed"))
                  changes)))
     changes))
+
+(defun octocat-diff--note-button (count at)
+  "Return the button of a file's COUNT conversations, showing the Diff at AT."
+  (octocat-vui--link (format "💬 %d" count) 'default
+                     (lambda () (octocat-diff-show-at at))
+                     (format "RET: show the first of %d unresolved conversation%s"
+                             count (if (= count 1) "" "s"))))
+
+(defun octocat-diff-show-at (at)
+  "Show this page's changed files as their Diff, at AT, as `octocat-diff--at'."
+  (setq octocat-diff--view 'diff
+        octocat-diff--at at)
+  (octocat-vui-update-page :view 'diff :at at))
 
 (defun octocat-diff--tree-dirs (files)
   "Return the directories of FILES, the \"files\" changed, for the tree to open."
@@ -1502,20 +1531,20 @@ It ends a PR's tab row and the commit and comparison pages' top line."
   "Return the path a switch of views kept, of AT, see `octocat-diff--at'."
   (pcase at (`(path ,path . ,_) path)))
 
-(defun octocat-diff-tree (repo ref root files context at)
+(defun octocat-diff-tree (repo ref root files context at &optional notes)
   "Return the Tree view of FILES, the \"files\" changed in REPO.
 That is the tree browser's tree at REF, the new side, its root tree
 ROOT, opened down to FILES, marked as in the diff.  See
-`octocat-diff--tree-changes' for CONTEXT.  Point moves to the path a
-switch of views kept, of AT, see `octocat-diff--at'."
+`octocat-diff--tree-changes' for CONTEXT and NOTES.  Point moves to the
+path a switch of views kept, of AT, see `octocat-diff--at'."
   (vui-component 'octocat-diff--tree :repo repo :ref ref :root root :files files
-                 :context context :focus (octocat-diff--focus at)))
+                 :context context :notes notes :focus (octocat-diff--focus at)))
 
-(vui-defcomponent octocat-diff--tree (repo ref root files context focus)
+(vui-defcomponent octocat-diff--tree (repo ref root files context notes focus)
   "The Tree view, see `octocat-diff-tree'."
   :render
-  (let ((changes (vui-use-memo (files context)
-                   (octocat-diff--tree-changes repo ref files context)))
+  (let ((changes (vui-use-memo (files context notes)
+                   (octocat-diff--tree-changes repo ref files context notes)))
         (dirs    (vui-use-memo (files) (octocat-diff--tree-dirs files))))
     (if root
         (vui-component 'octocat-tree--subtree
@@ -1524,15 +1553,15 @@ switch of views kept, of AT, see `octocat-diff--at'."
           :depth 0 :path "" :reveal dirs :focus focus :changes changes)
       (vui-text (octocat-tree--skeleton)))))
 
-(vui-defcomponent octocat-diff-head-tree (repo head files context at)
+(vui-defcomponent octocat-diff-head-tree (repo head files context at notes)
   "The Tree view of FILES changed in REPO, at HEAD, a ref or commit.
 For a page whose data lacks HEAD's root tree, which this looks up.
-See `octocat-diff-tree' for CONTEXT and AT."
+See `octocat-diff-tree' for CONTEXT, AT and NOTES."
   :render
   (let ((snap (octocat-vui-use-resource (list 'repo-head repo head nil) nil)))
     (octocat-diff-tree repo head
                        (octocat--get (octocat-model-head-dir (plist-get snap :data)) "oid")
-                       files context at)))
+                       files context at notes)))
 
 (defun octocat-diff--change-entry (repo file revs)
   "Return the Diff view of FILE, a changed file of REPO, in the file viewer.
