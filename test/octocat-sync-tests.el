@@ -365,6 +365,19 @@ retry, and never once cancelled."
       (should (equal outdated '("(thing 1)")))
       (should (plist-get (octocat-sync-read '(thing 1)) :outdated)))))
 
+(ert-deftest octocat-sync-test-status-notifies-nothing ()
+  "Outdating shown data, refetching it, and finding it the same notify nothing.
+Starting to load what has no data does: its page draws grey bars."
+  (octocat-sync-tests--with-sync
+    (octocat-sync--write octocat-sync--db "(thing 1)" (octocat-sync-tests--table "n" 1) 1.0)
+    (octocat-sync--invalidate octocat-sync--db '((thing 1)))
+    (octocat-sync-request '(thing 1) t)
+    (should (plist-get (octocat-sync-read '(thing 1)) :loading))
+    (funcall (cdr (assq 1 pending)) (octocat-sync-tests--table "n" 1))
+    (should-not notified)
+    (octocat-sync-request '(thing 2))
+    (should (equal notified '(("(thing 2)"))))))
+
 (ert-deftest octocat-sync-test-gh-calls ()
   "A :gh call is named after its resource or mutation.
 A mutation's answers nil without :parse, which reads the JSON it prints."

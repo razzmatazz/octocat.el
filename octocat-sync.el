@@ -467,9 +467,9 @@ body it is given, changed.  BODY may be changed."
 (defun octocat-sync--invalidate (db patterns)
   "Mark the resources of DB matching PATTERNS outdated, and say so.
 `octocat-sync-invalidate-functions' get their keys: a page showing one
-refetches it; the rest are refetched when next opened."
+refetches it; the rest are refetched when next opened.  No page draws
+the mark, so it is no change: the refetch's answer is."
   (when-let* ((keys (and patterns (octocat-sync--outdate db patterns (float-time)))))
-    (octocat-sync--notify keys)
     (run-hook-with-args 'octocat-sync-invalidate-functions keys)))
 
 (defun octocat-sync--spec-match-p (pattern spec)
@@ -771,15 +771,15 @@ Its `gh' calls still running are killed, and their answers dropped."
 (defun octocat-sync--set-loading (key loading &optional quiet)
   "Report that resource KEY started or stopped LOADING, unless started QUIET.
 Call it once the queue and the fetches say so.  Starting to load a
-resource with no data yet, or with outdated data, is also notified as a
-change: its page draws grey bars, or says it is refreshing outdated data."
+resource with no data yet is also notified as a change: its page draws
+grey bars where it drew an error, see `octocat-vui-snapshot-status'.
+Over data, loading shows only in the mode line."
   (unless (and loading quiet)
     (run-hook-with-args 'octocat-sync-loading-functions key loading))
   (when (and loading
              (not (eql 1 (caar (sqlite-select
                                 (octocat-sync--db)
-                                "SELECT body IS NOT NULL AND invalidated_at IS NULL
-                                 FROM resource WHERE key = ?"
+                                "SELECT body IS NOT NULL FROM resource WHERE key = ?"
                                 (list key))))))
     (octocat-sync--notify (list key))))
 
@@ -1041,13 +1041,13 @@ nothing of whether GitHub is in reach."
                                                      (list entity))))))
          (before  (funcall fields))
          (status  (car (sqlite-select
-                        db "SELECT body IS NOT NULL, error IS NOT NULL, invalidated_at IS NOT NULL
+                        db "SELECT body IS NOT NULL, error IS NOT NULL
                             FROM resource WHERE key = ?"
                         (list key))))
          (fetched (car status))
-         ;; Its page draws no data, an error and an outdated mark, so
-         ;; a change to any of them changes the snapshot.
-         (shown   (or (not (eql fetched 1)) (eql (nth 1 status) 1) (eql (nth 2 status) 1)
+         ;; Its page draws no data and an error, so a change to either
+         ;; changes the snapshot.
+         (shown   (or (not (eql fetched 1)) (eql (nth 1 status) 1)
                       (eq (car-safe result) 'error)))
          (touched (condition-case err
                       (if (eq (car-safe result) 'error)
