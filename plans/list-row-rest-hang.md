@@ -153,48 +153,62 @@ prefetch "only writes the store" is dropped.
 
 ## Steps
 
-Each step lands on its own, with `make ci-all` passing.
+Each step is a commit of its own, with `make ci-all` passing and the
+test of its rule (see "Tests").  The cheap fixes (3–5) come before the
+flush (6): they fix the freeze in small diffs, and the flush, which
+touches the most tests, lands apart from them.
 
-1. **Measure renders (rule 6).**  Count and time `vui-rerender` per page
-   in `octocat-vui.el`, show them in `octocat-doctor`, and log slow ones
-   with their cause.  This comes first, so each later step shows its
-   effect in numbers.
-2. **Flush renders once (rule 1).**  `octocat-vui--on-sync-change` adds
-   the buffers to a dirty set and starts the flush timer unless one is
-   pending.  The flush renders each live dirty page.  Tests that read a
-   page right after a store write call the flush, through a helper, in
-   place of relying on the render being synchronous.
+1. **Name the `gh` sentinel.**  The lambda in `octocat--gh`
+   (`octocat-core.el`) becomes `octocat--gh-sentinel`, the values it
+   closes over kept with `process-put`; the sync callbacks run in it
+   are named too.  No change in behaviour; every later profile reads.
+2. **Measure renders (rule 6).**  `octocat-vui--on-sync-change` and
+   `octocat-vui--rerender-pages`, the only callers of `vui-rerender`,
+   render through one function that counts and times each page's
+   renders.  `octocat-vui-refresh-status` returns them for
+   `octocat-doctor`, and a render over 50 ms goes to the debug log with
+   the keys that caused it.  Each later step shows its effect in these
+   numbers.
 3. **Drop status notifications (rule 2).**  `octocat-sync--invalidate`
    stops notifying: it only runs `octocat-sync-invalidate-functions`.
-   `octocat-sync--set-loading` notifies only when the snapshot's status
-   changes, from failed with no data to pending, not for outdated data.
+   `octocat-sync--set-loading` no longer notifies for outdated data,
+   only for a resource with none.  `octocat-sync--done` stops counting
+   `invalidated_at` as shown.  No page reads `:outdated`.
+   `CHANGELOG.md` gains the entry for the fixed freeze.
 4. **Spread only changed values (rule 3).**  `octocat-sync--merge`
-   returns whether a value it had changed, apart from fields it gained.
-   `octocat-sync--write` notifies linked resources, and
-   `octocat-sync--done` invalidates, only for changed values.
-5. **Invalidate on membership fields (rule 4).**  Each entity type
-   names the fields its lists filter on, say `state`, `isDraft`,
-   `labels`, `assignees` and the review state for a PR, and
-   `octocat-sync--done` compares only those.  First log, on the machine
-   that froze, which fields changed when it did, to check that these
-   are the ones.
-6. **Render visible pages only (rule 5).**  The flush skips pages out of
+   writes fields it gained, but reports separately whether a value it
+   had changed.  `octocat-sync--write` notifies linked resources, and
+   `octocat-sync--answered` too, only for changed values.
+5. **Invalidate on membership fields (rule 4).**  `octocat-model.el`
+   names, per entity type, the fields its lists filter on, say `state`,
+   `isDraft`, `labels`, `assignees` and the review state for a PR, next
+   to `octocat-model--item-lists`.  `octocat-sync--done` compares only
+   those, not the whole stored JSON.  First log, uncommitted, on the
+   machine that froze, which fields changed when it did, to check that
+   these are the ones.  Mutations keep their own `:invalidates`.
+6. **Flush renders once (rule 1).**  `octocat-vui--on-sync-change` adds
+   the buffers to a dirty set and starts a 0-delay timer unless one is
+   pending, as `octocat-vui--on-theme-change` does.  The flush renders
+   each live dirty page.  Our own timer: vui's deferred rendering is
+   internal, and `vui-flush-sync` covers the current buffer only.  Tests
+   that read a page right after a store write call the flush through a
+   helper: `octocat-vui-test-use-resource`, and those of search, repo
+   and timeline that do.
+7. **Render visible pages only (rule 5).**  The flush skips pages out of
    sight and keeps them dirty; `octocat-vui--poll-shown-changed`, which
    sees a page come on screen, renders it.
-7. **Make the spinner cheap.**  Fewer frames a second, only the windows
-   that show it rather than `(force-mode-line-update t)`, and no frame
-   while `input-pending-p`.
-8. **Name the `gh` sentinel** (`octocat-core.el`) and the sync callbacks
-   run in it, so a profile shows them.
+8. **Make the spinner cheap.**  `octocat--spinner-tick` draws fewer
+   frames a second, updates only the windows that show it rather than
+   `(force-mode-line-update t)`, and skips a frame while
+   `input-pending-p`.
 9. **Profile one render of a 30-row list**, about 5 ms a row, and cut
-   what dominates.
+   what dominates, a commit per cut, each with its numbers.
 10. **Write it down.**  `docs/sync.md` states the rules, how a change
     reaches the screen, and how to add a resource, a notification or a
     status without breaking them.  "Reading the sync store" in
     `docs/using-vui.md` shortens to a link to it, as does
     `plans/github-sync-mechanism.md` for what is built.  `AGENTS.md`
     gains a rule: a store change never renders; see `docs/sync.md`.
-    `CHANGELOG.md` gains an entry for the fixed freeze.
 
 ## Tests
 
