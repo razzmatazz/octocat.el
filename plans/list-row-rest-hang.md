@@ -194,9 +194,11 @@ touches the most tests, lands apart from them.
    that read a page right after a store write call the flush through a
    helper: `octocat-vui-test-use-resource`, and those of search, repo
    and timeline that do.
-7. **Render visible pages only (rule 5).**  The flush skips pages out of
-   sight and keeps them dirty; `octocat-vui--poll-shown-changed`, which
-   sees a page come on screen, renders it.
+7. **Render visible pages only (rule 5).**  Done ahead of 4–6, as it
+   needs no flush: `octocat-vui--render-page` renders a page on screen at
+   once and keeps, in `octocat-vui--stale`, what changed for one out of
+   sight; `window-buffer-change-functions` renders it once shown.  The
+   flush of step 6 renders through it.
 8. **Make the spinner cheap.**  `octocat--spinner-tick` draws fewer
    frames a second, updates only the windows that show it rather than
    `(force-mode-line-update t)`, and skips a frame while

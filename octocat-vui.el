@@ -228,6 +228,34 @@ a slow render."
                                       (buffer-name buf) (round (* 1000 seconds)))
                               (format "%S" cause)))))))
 
+;; Hundreds of pages may be open, nearly all out of sight: one renders
+;; only once shown, with what changed meanwhile.
+
+(defvar-local octocat-vui--stale nil
+  "What changed while this page was out of sight, or nil if it is up to date.
+The causes of the renders it missed, see `octocat-vui--render'.")
+
+(defun octocat-vui--render-page (buf cause)
+  "Re-render BUF's page for CAUSE now if on screen, else once it is shown."
+  (when-let* ((root (and (buffer-live-p buf) (vui-get-instance buf))))
+    (if (get-buffer-window buf 'visible)
+        (octocat-vui--render buf cause (lambda () (vui-rerender root)))
+      (with-current-buffer buf
+        (setq octocat-vui--stale (seq-union octocat-vui--stale (ensure-list cause)))))))
+
+(defun octocat-vui--render-shown ()
+  "Re-render the stale pages now on screen, see `octocat-vui--stale'."
+  (dolist (win (window-list-1 nil 'nomini 'visible))
+    (let ((buf (window-buffer win)))
+      (when-let* ((cause (buffer-local-value 'octocat-vui--stale buf)))
+        (with-current-buffer buf (setq octocat-vui--stale nil))
+        (octocat-vui--render-page buf cause)))))
+
+(defun octocat-vui--on-shown (&optional _frame)
+  "Render the stale pages now in a window, or in a frame back in focus.
+Outside the hooks, which run during redisplay."
+  (run-at-time 0 nil #'octocat-vui--render-shown))
+
 (defun octocat-vui--on-sync-change (keys)
   "Re-render, once each, the pages reading a resource in KEYS."
   (let (pages)
@@ -236,8 +264,7 @@ a slow render."
         (setcar version (1+ (car version)))
         (cl-pushnew key (alist-get buf pages) :test #'equal)))
     (pcase-dolist (`(,buf . ,read) (nreverse pages))
-      (when-let* ((root (and (buffer-live-p buf) (vui-get-instance buf))))
-        (octocat-vui--render buf read (lambda () (vui-rerender root)))))))
+      (octocat-vui--render-page buf read))))
 
 (defvar-local octocat-vui--loading-keys nil
   "Keys of the resources this buffer's page reads that are being fetched.")
@@ -266,6 +293,10 @@ Called as a page mounts, so the lower modules never name vui."
   (add-hook 'octocat-sync-invalidate-functions #'octocat-vui--on-sync-invalidate)
   (add-hook 'octocat-sync-pending-functions #'octocat-vui--on-sync-pending)
   (add-hook 'octocat-image-loading-functions #'octocat-vui--image-loading)
+  (add-hook 'window-buffer-change-functions #'octocat-vui--on-shown)
+  ;; A frame restored from minimized changes no window's buffer, but
+  ;; gets focus.
+  (add-function :after after-focus-change-function #'octocat-vui--on-shown)
   (add-hook 'enable-theme-functions #'octocat-vui--on-theme-change)
   (add-hook 'disable-theme-functions #'octocat-vui--on-theme-change))
 
@@ -283,12 +314,11 @@ new, re-renders once."
           (run-at-time 0 nil #'octocat-vui--rerender-pages))))
 
 (defun octocat-vui--rerender-pages ()
-  "Re-render every octocat page, keeping its state."
+  "Re-render the octocat pages on screen, keeping their state; the rest once shown."
   (setq octocat-vui--theme-timer nil)
   (dolist (buf (buffer-list))
-    (when-let* ((root (and (with-current-buffer buf (derived-mode-p 'octocat-page-mode))
-                           (vui-get-instance buf))))
-      (octocat-vui--render buf 'theme (lambda () (vui-rerender root))))))
+    (when (with-current-buffer buf (derived-mode-p 'octocat-page-mode))
+      (octocat-vui--render-page buf 'theme))))
 
 (defun octocat-vui--on-sync-invalidate (keys)
   "Refetch the resources of KEYS that are on a page; the rest wait to be opened."

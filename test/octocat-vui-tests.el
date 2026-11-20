@@ -463,6 +463,42 @@ unsubscribes it."
       (kill-buffer buf)
       (when (get-buffer "*octocat-debug*") (kill-buffer "*octocat-debug*")))))
 
+(ert-deftest octocat-vui-test-hidden-page-renders-when-shown ()
+  "A page out of sight renders a change once shown, not before."
+  (let* ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
+         (octocat-sync--queue nil)
+         (octocat-sync--fetches (make-hash-table :test #'equal))
+         (octocat-sync--resources (make-hash-table :test #'eq))
+         (octocat-sync-change-functions (list #'octocat-vui--on-sync-change))
+         (octocat-sync-loading-functions (list #'octocat-vui--on-sync-loading))
+         (octocat-vui--subscriptions (make-hash-table :test #'equal))
+         (vui-render-delay nil)
+         (pending nil)
+         (buf (get-buffer-create "*octocat-vui-test*"))
+         (other (get-buffer-create "*octocat-vui-test-other*")))
+    (octocat-sync-define-resource thing (_n)
+      :fetch (lambda (done) (push done pending)))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (octocat-vui-refresh-page 'octocat-vui-tests--reader 1 (list :spec '(thing 1))))
+          (switch-to-buffer other)
+          (let ((renders (car (octocat-vui-page-renders buf))))
+            (funcall (car pending) (octocat--table "n" 1))
+            (should (= (car (octocat-vui-page-renders buf)) renders))
+            (should (equal (buffer-local-value 'octocat-vui--stale buf) '("(thing 1)")))
+            (switch-to-buffer buf)
+            (octocat-vui--render-shown)
+            (should (= (car (octocat-vui-page-renders buf)) (1+ renders)))
+            (should-not (buffer-local-value 'octocat-vui--stale buf))
+            (should (string-search "n=1" (with-current-buffer buf (buffer-string))))
+            ;; Shown by a window, or a frame restored from minimized.
+            (should (memq #'octocat-vui--on-shown window-buffer-change-functions))
+            (should (advice-function-member-p #'octocat-vui--on-shown
+                                              after-focus-change-function))))
+      (kill-buffer buf)
+      (kill-buffer other))))
+
 (vui-defcomponent octocat-vui-tests--counter ()
   "Counts its renders in `octocat-vui-tests--renders'."
   :render

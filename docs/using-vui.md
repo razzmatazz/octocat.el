@@ -97,6 +97,14 @@ showing an entity (a user, an issue) whose fields changed, and each
 page reading one re-renders once from its root.  So a component that
 reads a resource must not be `:memo`, or it would keep the old snapshot.
 
+Only pages on screen re-render.  A user may keep hundreds of pages
+open, nearly all out of sight, and one change can reach many of them.
+A page out of sight keeps what changed in `octocat-vui--stale` and
+re-renders once a window shows it, or its frame, restored from
+minimized, gets focus.  Re-render a page through
+`octocat-vui--render-page`, which does this, not `vui-rerender`: work
+for a page no one sees should wait until it is seen.
+
 Issues, PRs and workflow runs are entities, and so are authors,
 assignees and labels.  A list row and the issue's page store the same entity, so the
 list shows what the page last fetched.  The page's resource keeps what
