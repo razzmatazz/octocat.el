@@ -23,7 +23,6 @@ wherever you follow them in Emacs.
 
 ## Documentation
 
-- [Using octocat.el](docs/usage.md) — every page, in detail
 - [Screenshots](docs/screenshots/README.md) — every page, pictured from made-up data
 - [CHANGELOG.md](CHANGELOG.md) — what changed in each release
 - [Architecture](docs/architecture.md) — the modules and how they depend on each other
@@ -79,8 +78,6 @@ Optional extras:
 | `M-x octocat-actions` | Open its workflow runs |
 | `M-x octocat-copy-url` | Copy the URL of the thing at point (`C-u`: its short reference, as `owner/repo#12`) |
 
-[Using octocat.el](docs/usage.md) walks through every page.
-
 ### Local clones
 
 Once you open a page from inside a clone of the repository, octocat
@@ -120,14 +117,14 @@ fetched from GitHub; one it hasn't seen yet has none.
 | `C-c C-f` | Find a file in the local clone, from the one shown |
 | `C-c C-l` | History of the file shown |
 
-Some keys do more than fits here; see [Keys in more
-depth](docs/usage.md#keys-in-more-depth).
-
 ## Reporting bugs
 
 Open an [issue](https://github.com/razzmatazz/octocat.el/issues) and
-paste in what `M-x octocat-doctor` reports; see
-[Diagnostics](docs/usage.md#diagnostics-m-x-octocat-doctor).
+paste in what `M-x octocat-doctor` reports: which files are loaded (and
+whether a compiled one is stale), the store's size and largest
+resources, which pages refresh on their own and why, and the requests
+to GitHub of the last hour.  It names the resources it stores, but not
+your token.
 
 ## License
 
