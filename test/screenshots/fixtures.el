@@ -872,6 +872,7 @@ in a cache keyed by its path and modification time, and those of the
 templates it includes.
 
 Closes #97"
+               :tree (:sha ,(octocat-screenshots--sha "root"))
                :author (:name "Sam Rivera" :email "srivera@example.com" :date ,at)
                :committer (:name "GitHub" :email "noreply@github.com" :date ,merged))
       :author ,(octocat-screenshots--user "srivera")

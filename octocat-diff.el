@@ -1263,16 +1263,21 @@ across WIDTH."
 ;;;; Views
 ;;
 ;; A page of changed files shows them three ways, as `octocat-diff--views':
-;; the Diff, its own; the Tree, the repository's files at the new side,
-;; opened down to the changes and marked as in the diff, which is the
-;; tree browser's; and the Patch, every file's diff as git writes it.
+;; the Tree, the repository's files at the new side, opened down to the
+;; changes and marked as in the diff, which is the tree browser's; the
+;; Diff, its own; and the Patch, every file's diff as git writes it.
 
-(defconst octocat-diff--views '(diff tree patch)
+(defconst octocat-diff--views '(tree diff patch)
   "The views of changed files, in the order `octocat-diff-cycle-view' goes.")
 
 (defvar-local octocat-diff--view nil
   "The view this page shows, one of `octocat-diff--views'.
-A page with views sets it, buffer-locally, to `diff'.")
+A page with views sets it, buffer-locally, see `octocat-diff-open-view'.")
+
+(defun octocat-diff-open-view (at)
+  "Return the view a page of changed files opens in, AT as `octocat-diff--at'.
+The tree, but a link to lines opens in the diff, to show them."
+  (if (eq (car-safe at) 'diff) 'diff 'tree))
 
 (defun octocat-diff--view-segments (view)
   "Return the segments of the views of a page of changed files, VIEW current.
@@ -1336,7 +1341,7 @@ at the first file changed in it, its diff unfolded."
         ('diff (octocat-vui-pulse-change buf 'octocat-line-target #'identity t))))))
 
 (defun octocat-diff-cycle-view ()
-  "Show the changed files the next way: as their diff, tree, then patch.
+  "Show the changed files the next way: as their tree, diff, then patch.
 The tree is the repository's files, opened down to those changed,
 marked as in the diff; the patch is every file's diff as git writes it."
   (interactive)
@@ -1779,7 +1784,7 @@ Its header, message, then each file's diff, see
 message, then checks, files and comments.  HIDE-COMMENTS leaves the
 inline comments out of the diff.  RAW shows markdown verbatim.  VIEW,
 of `octocat-diff--views', `tree' shows the repository's files at the
-commit instead, those it changed marked, see `octocat-diff-tree';
+commit in place of its files, those it changed marked, see `octocat-diff-tree';
 `patch' the commit as a patch, see `octocat-commit--patch-text'.
 AT is as `octocat-diff--at'.  FILTER, if set, shows only the files
 whose path holds it, see `octocat-diff-filtered'.  The
@@ -1819,16 +1824,6 @@ fetches them again."
                        (delq nil (list (octocat-diff-filter-line
                                         (or (gethash "files" data) []) filter)
                                        (vui-text text)))))
-          ((eq view 'tree)
-           (vui-fragment
-            (vui-newline)
-            (octocat-diff-tree repo (gethash "sha" data)
-                               (octocat--get data "commit" "tree" "sha")
-                               (or (gethash "files" data) [])
-                               (list :revs revs
-                                     :label (format "Changes in commit %s"
-                                                    (substring (gethash "sha" data) 0 7)))
-                               at)))
           (t
            (apply
             #'vui-vstack
@@ -1840,9 +1835,18 @@ fetches them again."
                          (vui-newline)
                          (when-let* ((section (octocat-commit--checks repo sha checks width)))
                            (vui-fragment section (vui-newline)))
-                         (octocat-diff-files-section
-                          repo (or (gethash "files" data) []) by-path hide-comments raw md-width t
-                          at nil revs nil filter)
+                         (if (eq view 'tree)
+                             (octocat-diff-tree
+                              repo (gethash "sha" data)
+                              (octocat--get data "commit" "tree" "sha")
+                              (or (gethash "files" data) [])
+                              (list :revs revs
+                                    :label (format "Changes in commit %s"
+                                                   (substring (gethash "sha" data) 0 7)))
+                              at)
+                           (octocat-diff-files-section
+                            repo (or (gethash "files" data) []) by-path hide-comments raw md-width t
+                            at nil revs nil filter))
                          ;; Most commits have none, so the section is left
                          ;; out unless there are any, or they failed to load.
                          (when (or (not (seq-empty-p (plist-get comments :data)))
@@ -1876,7 +1880,7 @@ fetches them again."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-commit-refresh)
   (setq-local octocat--url-function #'octocat-commit--page-url)
-  (setq-local octocat-diff--view 'diff)
+  (setq-local octocat-diff--view 'tree)
   (setq-local octocat--repo-function (lambda () octocat--commit-repo)))
 
 
@@ -1913,6 +1917,7 @@ See `octocat-diff--file'."
           octocat--commit-sha  sha
           octocat-diff--hide-comments nil
           octocat-diff--at at
+          octocat-diff--view (octocat-diff-open-view at)
           octocat-diff--filter nil)
     (octocat-commit-refresh)))
 
@@ -2021,7 +2026,7 @@ tabs of the views, VIEW the one shown, at the right edge of WIDTH, see
   "The comparison of BASE and HEAD of REPO: its commits, then its files.
 DOTS is as in `octocat--compare-refs'.  RAW shows markdown verbatim.
 VIEW, of `octocat-diff--views', `tree' shows the repository's files at
-HEAD instead, those changed marked, see `octocat-diff-head-tree';
+HEAD in place of its files, those changed marked, see `octocat-diff-head-tree';
 `patch' every file's diff, see `octocat-diff-patch-text'.  AT is as
 `octocat-diff--at'.  FILTER, if set, shows only the files whose path
 holds it, see `octocat-diff-filtered'.  A new TICK fetches it again."
@@ -2059,11 +2064,6 @@ holds it, see `octocat-diff-filtered'.  A new TICK fetches it again."
             (text (apply #'vui-vstack
                          (delq nil (list (octocat-diff-filter-line files filter)
                                          (vui-text text)))))
-            ((eq view 'tree)
-             (vui-fragment
-              (vui-newline)
-              (vui-component 'octocat-diff-head-tree
-                :repo repo :head head :files files :context context :at at)))
             (t
              (apply #'vui-vstack
                     (append
@@ -2071,8 +2071,11 @@ holds it, see `octocat-diff-filtered'.  A new TICK fetches it again."
                              (octocat-compare--summary data dots))
                      (list (vui-newline))
                      (octocat-compare--commits repo (or (gethash "commits" data) []) width)
-                     (list (octocat-diff-files-section
-                            repo files nil nil raw width t at nil revs nil filter)))))))))))))
+                     (list (if (eq view 'tree)
+                               (vui-component 'octocat-diff-head-tree
+                                 :repo repo :head head :files files :context context :at at)
+                             (octocat-diff-files-section
+                              repo files nil nil raw width t at nil revs nil filter))))))))))))))
 
 
 ;;;;; Major mode
@@ -2102,7 +2105,7 @@ holds it, see `octocat-diff-filtered'.  A new TICK fetches it again."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-compare-refresh)
   (setq-local octocat--url-function #'octocat-compare--page-url)
-  (setq-local octocat-diff--view 'diff)
+  (setq-local octocat-diff--view 'tree)
   (setq-local octocat--repo-function (lambda () octocat--compare-repo)))
 
 
@@ -2134,6 +2137,7 @@ AT is the lines a link named, see `octocat-diff--file'."
     (setq octocat--compare-repo repo
           octocat--compare-refs (list base dots head)
           octocat-diff--at at
+          octocat-diff--view (octocat-diff-open-view at)
           octocat-diff--filter nil)
     (octocat-compare-refresh)))
 

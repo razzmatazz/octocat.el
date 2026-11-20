@@ -1,4 +1,4 @@
-acme/rocket  main...template-cache · 7 commits · 3 files changed                  Diff  Tree  Patch
+acme/rocket  main...template-cache · 7 commits · 3 files changed                  Tree  Diff  Patch
 
 Commits (7)
 ○ Cache parsed templates by path                      @srivera  2 days ago  dc0c893
@@ -9,7 +9,20 @@ Commits (7)
 ○ Note the template cache in the changelog            @srivera  1 day ago   d83176c
 ○ Invalidate a template when one it includes changes  @srivera  1 day ago   8ee9a2c
 
-Files (3)  [Expand all]  [Filter files]
-▸ A src/cache.rs  +18 -0
-▸ M src/build.rs  +5 -2
-▸ M src/main.rs  +1 -0
+▸ .github/
+▸ docs/
+▸ examples/
+▾ src/
+    ▸ theme/
+    M build.rs  +5 -2
+    A cache.rs  +18 -0
+    M main.rs  +1 -0
+      markdown.rs
+      serve.rs
+      template.rs
+  .gitignore
+  CONTRIBUTING.md
+  Cargo.lock
+  Cargo.toml
+  LICENSE
+  README.md

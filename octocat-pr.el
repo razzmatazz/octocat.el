@@ -1744,7 +1744,7 @@ It is at the diff line of point or the region."
   (setq-local revert-buffer-function #'octocat-pr-diff-refresh)
   (setq-local octocat--url-function #'octocat-pr-diff--page-url)
   (setq-local octocat-diff--comment-backend octocat-pr-diff--comment-backend)
-  (setq-local octocat-diff--view 'diff)
+  (setq-local octocat-diff--view 'tree)
   (setq-local octocat--repo-function (lambda () octocat--pr-diff-repo))
   (setq-local octocat--ref-function #'octocat-pr--current-head))
 
@@ -1779,6 +1779,7 @@ AT is the lines a link named, see `octocat-diff--file'."
           octocat--pr-diff-number number
           octocat-diff--hide-comments nil
           octocat-diff--at at
+          octocat-diff--view (octocat-diff-open-view at)
           octocat-diff--filter nil)
     (octocat-pr-diff-refresh)))
 

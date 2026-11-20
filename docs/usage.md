@@ -310,7 +310,7 @@ to its SHA).  Below a top line like the tree browser's, the commit
 reads as `git show --format=fuller` prints it, its message unindented:
 
 ```
-owner/repo@a1b2c3d4e5f6…   Diff  Tree  Patch
+owner/repo@a1b2c3d4e5f6…   Tree  Diff  Patch
 Author:     Jane Doe <jane@example.com> @jane
 AuthorDate: Mon Oct 19 10:00:00 2026 +0300  (3 days ago)
 Commit:     GitHub <noreply@github.com> @web-flow
@@ -343,9 +343,12 @@ commit has comments.  The parent opens its own commit page, `@login` the user's 
 does, and is left out when it does not; it opens the tree at that
 branch.  `RET` on a check opens the commit's checks.
 
-Its files show as diffs, a Markdown file's too; an image unfolds to the
-image on `RET`.  The Diff | Tree | Patch switch ending the top line
-shows the commit another way, and `C-c C-v` steps through the three.
+Its files open in the Tree: the repository's files at the commit,
+opened down to those changed and marked as in the diff.  The Tree |
+Diff | Patch switch ending the top line shows the commit another way,
+and `C-c C-v` steps through the three; a link to lines of a file opens
+on the Diff instead.  In the Diff, files show as diffs, a Markdown
+file's too; an image unfolds to the image on `RET`.
 The switch keeps your place: on a file, or a directory in the Tree,
 the next view starts at it, or at the first file changed in it, its
 diff unfolded.
@@ -395,9 +398,9 @@ Files (5)  [Expand all]
 
 `RET` on a commit opens it, `C-c C-o` opens the comparison in a browser.
 As on the commit page, `C-c C-v` cycles three views, their pill at the
-right of the top line: the Diff above; the Tree, the repository's files
-at HEAD opened down to those changed, `RET` on one opening it on its
-Diff view; and the Patch, every file's diff as git writes it, to read
+right of the top line: the Tree, the repository's files at HEAD opened
+down to those changed, `RET` on one opening it on its Diff view; the
+Diff above; and the Patch, every file's diff as git writes it, to read
 or copy out.  The files can be filtered as on the commit page.
 GitHub's API only compares from the merge base (`...`), so a two-dot
 link (`BASE..HEAD`) is shown as its three-dot comparison.  The two are
@@ -574,7 +577,7 @@ the markup can be read or copied as written.  The file page has more
 than two views and cycles through them: rendered, raw and blame for
 Markdown and org, source and blame for other files (see
 [Files](#files-octocat-file-mode)).  The commit page, a comparison and
-a PR's Files changed page cycle through their files' Diff, Tree and Patch (see
+a PR's Files changed page cycle through their files' Tree, Diff and Patch (see
 [Commit detail view](#commit-detail-view-octocat-commit-mode)); on a
 comparison or a PR they are of all its commits at once, from base to
 head.  A run's

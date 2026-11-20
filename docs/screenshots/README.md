@@ -157,40 +157,40 @@ Its commits, a merge of `main` marked `⊕`:
 [As text](pr-commits.txt)
 <!-- /screenshot -->
 
-Its changed files, with `[Expand all]` pressed: a conversation boxed
-after its line, a resolved one folded to its heading, and your draft,
-**Pending** in your review, its long body folded.
+Its changed files, opened on their tree: the repository at the head of
+the PR, opened down to what it changes, all its commits in one.
 
-<!-- screenshot: (pr-diff "acme/rocket" 128) :press ("Expand all") -->
+<!-- screenshot: (pr-diff "acme/rocket" 128) -->
 ![pr-diff](pr-diff.png)
 
 [As text](pr-diff.txt)
 <!-- /screenshot -->
 
-The same files as a tree, `C-c C-v` or Tree after their heading: the
-repository at the head of the PR, opened down to what it changes, all
-its commits in one.
-
-<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-tree" :press ((:key "C-c C-v")) -->
-![pr-diff-tree](pr-diff-tree.png)
-
-[As text](pr-diff-tree.txt)
-<!-- /screenshot -->
-
 `RET` on a changed file there opens it in the file viewer, on its Diff
 view: what the PR changed in it.
 
-<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-tree-file" :press ((:key "C-c C-v") (:key "RET" "main.rs")) -->
+<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-tree-file" :press ((:key "RET" "main.rs")) -->
 ![pr-diff-tree-file](pr-diff-tree-file.png)
 
 [As text](pr-diff-tree-file.txt)
+<!-- /screenshot -->
+
+The same files as their diff, `C-c C-v` or Diff after their heading,
+with `[Expand all]` pressed: a conversation boxed after its line, a
+resolved one folded to its heading, and your draft, **Pending** in your
+review, its long body folded.
+
+<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-expanded" :press ((:key "C-c C-v") "Expand all") -->
+![pr-diff-expanded](pr-diff-expanded.png)
+
+[As text](pr-diff-expanded.txt)
 <!-- /screenshot -->
 
 Reviewing: `C-c C-a` on a line opens a comment on it below, the line
 highlighted until it is saved as a draft, and `RET` on the resolved
 conversation unfolds it.
 
-<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-review" :press ("Expand all" "Resolved by" (:key "C-c C-a" "+mod cache;")) -->
+<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-review" :press ((:key "C-c C-v") "Expand all" "Resolved by" (:key "C-c C-a" "+mod cache;")) -->
 ![pr-diff-review](pr-diff-review.png)
 
 [As text](pr-diff-review.txt)
@@ -259,7 +259,7 @@ leave half of it, a count for the rest:
 ## Commit
 
 A commit: who wrote and committed it and when, as `git show` prints
-them, its message, its checks and its files.
+them, its message, its checks and its files, opened on their tree.
 
 <!-- screenshot: (commit "acme/rocket" "3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f") -->
 ![commit](commit.png)
@@ -270,31 +270,31 @@ them, its message, its checks and its files.
 Scrolled down, past its title: the header line pins it with the whole
 SHA, as the top line shows it, and the pill of its views.
 
-<!-- screenshot: (commit "acme/rocket" "3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f") :name "commit-scrolled" :scroll "Files (3)" -->
+<!-- screenshot: (commit "acme/rocket" "3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f") :name "commit-scrolled" :press ((:key "C-c C-v")) :scroll "Files (3)" -->
 ![commit-scrolled](commit-scrolled.png)
 
 [As text](commit-scrolled.txt)
 <!-- /screenshot -->
 
-Its files, unfolded, are in the diff faces, the code highlighted as
+Its files as their diff, `C-c C-v` or Diff on its top line, unfolded,
+are in the diff faces, the code highlighted as
 its major mode would; here JavaScript, as `js-mode` does.  An added
 file is highlighted whole, as the file itself.  An image shows inline,
 fetched only once RET unfolds it, as here; another binary file, and one
 whose diff is too large for GitHub to send, show no diff:
 
-<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-diff" :press ("Expand all" "docs/assets/footnote-popup.png") -->
+<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-diff" :press ((:key "C-c C-v") "Expand all" "docs/assets/footnote-popup.png") -->
 ![commit-diff](commit-diff.png)
 
 [As text](commit-diff.txt)
 <!-- /screenshot -->
 
-The same commit as a tree, `C-c C-v` or Tree on its top line: the
-repository's files at the commit, opened down to those it changed,
+The same commit as a tree, as it opens: the repository's files at the commit, opened down to those it changed,
 which are marked as in the diff, the rest dimmed.  A directory of more
 than `octocat-tree-dir-entries` lists only its changes, and a button
 lists the rest:
 
-<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-tree" :press ((:key "C-c C-v")) -->
+<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-tree" -->
 ![commit-tree](commit-tree.png)
 
 [As text](commit-tree.txt)
@@ -311,7 +311,8 @@ then every file's diff in full, to read or copy out.
 <!-- /screenshot -->
 
 Two refs compared, as from a GitHub compare link: the commits, then the
-files.
+files, opened on their tree: the files at HEAD opened down to those
+changed.
 
 <!-- screenshot: (compare "acme/rocket" "main" "..." "template-cache") -->
 ![compare](compare.png)
@@ -319,19 +320,19 @@ files.
 [As text](compare.txt)
 <!-- /screenshot -->
 
-`C-c C-v` cycles a comparison's views as a commit's: its Tree, the
-files at HEAD opened down to those changed, then its Patch.
+`C-c C-v` cycles a comparison's views as a commit's: its Diff, then its
+Patch.
 
-<!-- screenshot: (compare "acme/rocket" "main" "..." "template-cache") :name "compare-tree" :press ((:key "C-c C-v")) -->
-![compare-tree](compare-tree.png)
+<!-- screenshot: (compare "acme/rocket" "main" "..." "template-cache") :name "compare-diff" :press ((:key "C-c C-v")) -->
+![compare-diff](compare-diff.png)
 
-[As text](compare-tree.txt)
+[As text](compare-diff.txt)
 <!-- /screenshot -->
 
 Two commits compared, as from a commit page's link: a full SHA shows as
 its short form, whole on hover.
 
-<!-- screenshot: (compare "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6" "..." "8ee9a2cbe60f637fd8e3a16e17c94d9b90f19fa1") :name "compare-shas" -->
+<!-- screenshot: (compare "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6" "..." "8ee9a2cbe60f637fd8e3a16e17c94d9b90f19fa1") :name "compare-shas" :press ((:key "C-c C-v")) -->
 ![compare-shas](compare-shas.png)
 
 [As text](compare-shas.txt)

@@ -655,10 +655,15 @@ Only that file; a hash naming none changes nothing."
                            "@@ -1 +0,0 @@\n-gone")))))
 
 (ert-deftest octocat-commit-test-view-segments ()
-  "The commit's views are Diff, Tree and Patch, in that order, VIEW current."
-  (let ((segments (octocat-diff--view-segments 'tree)))
-    (should (equal (mapcar #'car segments) '("Diff" "Tree" "Patch")))
+  "The commit's views are Tree, Diff and Patch, in that order, VIEW current."
+  (let ((segments (octocat-diff--view-segments 'diff)))
+    (should (equal (mapcar #'car segments) '("Tree" "Diff" "Patch")))
     (should (equal (mapcar #'cadr segments) '(nil t nil)))))
+
+(ert-deftest octocat-diff-test-open-view ()
+  "A page of changed files opens on its Tree, but a link to lines on its Diff."
+  (should (eq (octocat-diff-open-view nil) 'tree))
+  (should (eq (octocat-diff-open-view '(diff "abc" 3 5)) 'diff)))
 
 (ert-deftest octocat-commit-test-patch-text ()
   "A commit as a patch is as `git format-patch' writes it, binary files included."
@@ -740,7 +745,7 @@ Only that file; a hash naming none changes nothing."
                        "*octocat-compare-test*")
             (with-current-buffer "*octocat-compare-test*"
               (should (string-search "Files (1)" (buffer-string)))
-              (should (string-search " Diff  Tree  Patch " (buffer-string)))))
+              (should (string-search " Tree  Diff  Patch " (buffer-string)))))
         (kill-buffer "*octocat-compare-test*"))
       ;; The Patch view shows every file's diff as git writes it.
       (unwind-protect

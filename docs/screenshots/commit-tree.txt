@@ -1,4 +1,21 @@
-acme/rocket@1a954628a960aaef81d7b2d4521929579f3541e6                              Diff  Tree  Patch
+acme/rocket@1a954628a960aaef81d7b2d4521929579f3541e6                              Tree  Diff  Patch
+Author:     Mei Chen <mchen@example.com> @mchen
+AuthorDate: Fri Oct 23 10:00:00 2026 +0000  (2 hours ago)
+Commit:     GitHub <noreply@github.com> @web-flow
+CommitDate: Fri Oct 23 10:00:00 2026 +0000  (2 hours ago)
+Parent:     3f9c2a1
+Branch:     main
+
+Render footnotes in Markdown pages (#131)
+
+Footnotes were left as their Markdown source.  Render them, and show a
+note in a popup when its reference is hovered.
+
+Checks (4)  CI: ✓
+  ✓ lint           CI  2m00s  6 hours ago
+  ✓ test (stable)  CI  6m00s  6 hours ago
+  ✓ test (beta)    CI  7m00s  6 hours ago
+  ✓ docs           CI  3m00s  6 hours ago
 
 ▸ .github/
 ▾ docs/
