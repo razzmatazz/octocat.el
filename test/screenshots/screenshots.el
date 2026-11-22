@@ -346,12 +346,16 @@ With PNG, a file name, save the window there too, when graphic."
 (defun octocat-screenshots--open (page)
   "Open PAGE, (COMMAND ARGS...), and return its buffer."
   (pcase-let ((`(,command . ,args) page))
-    (save-window-excursion
-      (if (eq command 'dashboard)
-          (octocat)
-        (let ((open (intern (format "octocat-%s-open" command))))
-          (apply (if (fboundp open) open (intern (format "octocat-%s" command))) args)))
-      (window-buffer (selected-window)))))
+    (let ((buffer (save-window-excursion
+                    (if (eq command 'dashboard)
+                        (octocat)
+                      (let ((open (intern (format "octocat-%s-open" command))))
+                        (apply (if (fboundp open) open (intern (format "octocat-%s" command)))
+                               args)))
+                    (window-buffer (selected-window)))))
+      ;; On screen, as a page out of sight doesn't render.
+      (set-window-buffer (selected-window) buffer)
+      buffer)))
 
 (defun octocat-screenshots-shoot (page &optional press png scroll)
   "Return the text of PAGE, (COMMAND ARGS...), after pressing PRESS.
