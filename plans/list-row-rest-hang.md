@@ -1,5 +1,20 @@
 # Plan: Emacs hangs when point rests on a list row
 
+## Status
+
+- Done: steps 1 (232cad3), 2 (3ad197f), 3 (70197a8), 7 (b61e712),
+  8 (d1732f7), and of step 9 the `git` calls (ef70ab4).
+- Order, by what helps every page most (see "What helps most"):
+  1. Fewer renders: 4 and 5, which remove the renders a hover still
+     causes, then 6.  First check, on a busy list, the render counts in
+     `octocat-doctor` and the slow renders in the debug log.
+  2. Renders that cost what changed: 10, entity versions and memo.
+  3. Then 9's remaining cuts, and 11.
+- Measure compiled: the developer's Emacs runs octocat uncompiled, 2.5
+  times slower with twice the allocation of what users run.
+- Step 7 broke `make screenshots`, which opened pages out of sight;
+  2556fae fixed the harness.
+
 ## Problem
 
 On a PR list of 30 rows, resting point on a row freezes Emacs for about
@@ -66,7 +81,185 @@ A PR's first prefetch, with no invalidation, cost 100 ms: an 80 ms
 re-render of the list, for fields only the detail page reads.  A second
 prefetch of unchanged data cost 16 ms.
 
-One render of the list costs about 5 ms a row.
+One render of the list costs about 5 ms a row.  Step 9's profile shows
+most of that was GC and code loaded uncompiled; see "Profile of a
+render".
+
+### Profile of a render
+
+Renders timed by calling `vui-rerender` on the page's root, in a batch
+Emacs on `test/screenshots/fixtures.el` (the PR list repeated to 30
+rows), and in the developer's Emacs on a cached 15-row list:
+
+| Where | One render |
+|---|---|
+| Developer's Emacs, 15 rows, uncompiled | 7 ms, and a 50 ms GC every other render |
+| Batch, 30 rows, uncompiled | 12 ms, 0.4 ms a row |
+| Batch, 30 rows, byte-compiled | 4.8 ms, 0.16 ms a row |
+
+- The developer's Emacs runs octocat uncompiled, as the reload in
+  `AGENTS.md` evaluates the source: 2.5 times slower and twice the
+  allocation of an installed package.
+- A render allocates about 1 MB of conses and 110 KB of string text.
+  In a large heap that costs a GC of 50 ms every other render, seven
+  times the render.  Fewer renders (steps 4–6) save more than cheaper
+  ones.
+
+Where a compiled render's time goes (CPU profile of 400 renders):
+
+| Part | Share |
+|---|---|
+| GC | 33% |
+| Building rows, `octocat-vui--pr-row` | 40% |
+| – `truncate-string-to-width` | 10% |
+| – `octocat--key-help` → `where-is-internal`, the Full/Compact hint, every render | 7% |
+| – parsing timestamps for ages, `date-to-time` | 6% |
+| – label colours | 5% |
+| vui's commit: diff, widening, region properties | 19% |
+
+Cuts, smallest first: compute the key hint once; parse each timestamp
+once; allocate less per row.  Together perhaps 20–30% of a 5 ms render.
+Memoizing rows (step 10) saves more than all of them.
+
+#### Memoizing rows
+
+Every render rebuilds every row: `octocat-vui--pr-row` runs for all 30
+when one changed, or none.  React skips such rows with `React.memo`,
+which compares a row's props by identity: an immutable store makes a
+new object only for what changed, so the other rows' props are the same
+objects as before.
+
+vui has the same: `:memo t` on a component skips its render while its
+props are shallow-equal, compared with `equal`.  A row as a component:
+
+```elisp
+(vui-defcomponent octocat-vui--pr-row-memo (repo pr width bg compact stack marked)
+  :memo t
+  :render (octocat-vui--pr-row repo pr width bg compact nil stack marked))
+```
+
+As things are, it would never skip.  `octocat-vui-use-resource` keeps
+its read while the resource's version is unchanged, so a page's memos
+hold between notifications; but once one PR changes, the list is read
+again whole, and `equal` compares hash tables by identity, so all 30
+rows get a new `pr`.  Two ways out:
+
+1. **A version per entity (chosen).**  The `entity` table gains a
+   `version`, bumped by `octocat-sync--write` when a value really
+   changes, the same signal step 4 needs.  A read gives each table its
+   version.  A row's props are its key and version, plus what else it
+   draws: width, background, compact, marked, stack, and its pending
+   edits, which change what it shows without a write.  Comparing them
+   is a few `eq` checks.  A missed version only renders too often:
+   slower, never wrong.
+2. **The store returns the same table while an entity is unchanged**,
+   as an immutable store shares structure in React.  Rejected: our
+   tables are mutable (`octocat-sync--edit` may change a body, and code
+   `puthash`es what it reads), so a change on one page would leak to
+   every page sharing the table.
+
+A render where one row changed then builds one row, not 30, and
+allocates as much less, so GC less.  To check first: that vui leaves a
+skipped row's buffer text as it is, without rewriting it; else only the
+building is saved, not the commit (19%).
+
+### What helps most
+
+Across octocat.el, two layers, each helping every page:
+
+1. **Fewer renders** (steps 3–7): a store change re-renders only the
+   pages that draw what changed, once each, and only on screen.  Most
+   of the cost found came from renders that should not have happened.
+   It decides how often anything renders, so it comes first.
+2. **Renders that cost what changed** (step 10): with entity versions,
+   any component drawing one entity can be `:memo`: the rows of PR,
+   issue, run, commit and search lists, the dashboard's items.  Lists
+   and the dashboard gain most; a PR page is mostly one entity, and its
+   timeline entries are memoized on their item already.
+
+Step 9's cuts help one list's render by 20–30%, and come after.
+
+### A faster GC: Emacs's MPS branch
+
+Emacs's GC walks the whole heap: in a 60 MB session each collection
+takes 60–80 ms, and a render allocating 1 MB triggers one every other
+render.  The `feature/igc3` branch replaces it with an incremental,
+generational GC on Ravenbrook's MPS.  We timed it on commit
+`898bbc7d9f` (2026-11-22), built with and without MPS from the same
+source, in a Linux container under podman; octocat and its
+dependencies byte-compiled, with 60 MB of long-lived data held to stand
+in for a session.  Two runs agreed:
+
+| Render | Without MPS: median / p95 / max | With MPS |
+|---|---|---|
+| PR list, 30 rows | 4.1 / 4.7 / 74 ms | 5.5 / 21 / 68 ms |
+| Long PR page (1,004 lines) | 10.8 / 15 / 83 ms | 32 / 148 / 1,141 ms |
+| That PR's markdown, all entries | 50 / 126 / 126 ms | 59 / 64 / 64 ms |
+
+- It removes the occasional full GC where many strings are built in
+  one pass, the markdown: its worst case halves.
+- It slows the typical render, and the PR page stalls past a second;
+  with 200 MB held, once for 4.3 s.  Without MPS the worst was one
+  258 ms GC.
+- Caveats: a branch still being stabilized; MPS relies on page
+  protection faults, which cost more in a VM than on bare metal; and it
+  reports no `gcs-done` or `gc-elapsed`, so its stalls are seen only
+  in wall time.  Not looked into: whether the stalls are the collector
+  or how vui writes the buffer.
+
+So a faster GC won't rescue us soon.  Fewer renders and less
+allocation per render help under either collector.
+
+The harness, not in the repository: a Dockerfile cloning the branch and
+building it twice (`--with-mps=yes` and `no`, `--without-x
+--without-native-compilation --with-sqlite3`; MPS ships in the
+branch), and a bench script that loads the screenshot fixtures, holds
+the ballast, and times re-renders of the list and the PR page.
+
+#### A long PR timeline
+
+PR #128 of the fixtures grown to 60 comments and 10 reviews, each a
+markdown body with a list, a code block and a quote, and 30 commits:
+101 items, 1,004 lines.  Batch, byte-compiled:
+
+| Render | Time |
+|---|---|
+| Re-render, no item changed | 17 ms |
+| – `octocat--current-branch`, from `octocat-pr--header` | 9 ms |
+| Building every entry's text, when all items change | 55 ms |
+| – markdown, nearly all `string-match` in `octocat-markdown--inline` | 50 ms |
+
+- `octocat-pr--header` runs `git symbolic-ref` synchronously on every
+  render, 9 ms in a clone or not, in batch and in the developer's
+  Emacs: half of each re-render of every PR page.
+- **Local git state bypasses the sync layer.**  The sync store holds
+  GitHub's data, fetched async through `gh`; the clone's branch and
+  HEAD are read by `octocat--current-branch` and `octocat--head-info`
+  with `shell-command-to-string`, synchronous, through the shell.  They
+  came with "Indicate current branch" (bfb9227, June 2026), before the
+  store, and their docstrings call them cheap enough for render time.
+  Callers at render time:
+
+  | Page | Call | Per render? |
+  |---|---|---|
+  | PR header, `octocat-pr--header` | `octocat--current-branch` | yes |
+  | Repo root, tree, file, blame, commits (`octocat-repo-vui--*`) | `octocat--head-info` | yes |
+  | Run list and run page, `octocat-actions.el` | `octocat--current-branch` | no, `vui-use-memo` once per mount |
+
+  Done (ef70ab4): HEAD is the `clone-head` resource, read with git
+  without waiting as a :local and polled every 10 s; pages read it
+  with `octocat-vui-use-clone-head`, the run pages too.
+  `octocat--head-info` stays for commands.  Still synchronous, but not
+  per render: the repo page's `octocat-clone-tracked-branch` when its
+  window is selected, and `octocat-clone-unpushed` on refresh.
+- Each entry's text is memoized on its item (compared with `equal`),
+  so only changed items rebuild it.  A body costs about 0.8 ms of
+  markdown; the first render pays it for all of them.
+- The rest is vui: widening, commit, restoring point, 15–20%.
+
+Opening `razzmatazz/octocat.el` #5, the largest PR in the developer's
+store, through `emacsclient --eval` blocked over 20 s and opened
+nothing.  Not looked into yet.
 
 ## How we got here
 
@@ -199,13 +392,20 @@ touches the most tests, lands apart from them.
    once and keeps, in `octocat-vui--stale`, what changed for one out of
    sight; `window-buffer-change-functions` renders it once shown.  The
    flush of step 6 renders through it.
-8. **Make the spinner cheap.**  `octocat--spinner-tick` draws fewer
-   frames a second, updates only the windows that show it rather than
-   `(force-mode-line-update t)`, and skips a frame while
-   `input-pending-p`.
-9. **Profile one render of a 30-row list**, about 5 ms a row, and cut
-   what dominates, a commit per cut, each with its numbers.
-10. **Write it down.**  `docs/sync.md` states the rules, how a change
+8. **Make the spinner cheap.**  Done: it first turns after 0.3 s
+   (`octocat--spinner-delay`), so most fetches never redraw for it, and
+   `octocat--spinner-tick` skips a frame while `input-pending-p`.  It
+   keeps 10 frames a second, as spinner.el does, and already updated
+   only the mode lines showing it: `(force-mode-line-update t)` runs
+   only while a change is sent, when every mode line shows it.
+9. **Cut what dominates a render**, profiled in "Profile of a render",
+   a commit per cut, each with its numbers.  Done: the `git` calls of
+   PR and repo pages.  Left: the list's key hint, timestamps and
+   allocation.
+10. **Memoize rows**, see "Memoizing rows": entities get a version,
+    and rows become `:memo` components on it.  Measure, compiled, a
+    render where one row changed, before and after.
+11. **Write it down.**  `docs/sync.md` states the rules, how a change
     reaches the screen, and how to add a resource, a notification or a
     status without breaking them.  "Reading the sync store" in
     `docs/using-vui.md` shortens to a link to it, as does
