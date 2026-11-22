@@ -715,6 +715,17 @@ render, like any hook."
             (plist-put (copy-sequence snap) :data (octocat-model-detail-item data))
           snap)))))
 
+(defun octocat-vui-use-clone-head (tick)
+  "Return HEAD of the clone the page's directory is in, or nil.
+As `octocat-clone-head-info' gives it; nil outside a clone and until
+git has answered, see the `clone-head' resource.  TICK is as for
+`octocat-vui-use-resource'.  Must be called during render, like any
+hook."
+  (octocat-clone-head-info
+   (plist-get (octocat-vui-use-resource
+               (list 'clone-head (expand-file-name default-directory)) tick)
+              :data)))
+
 (defun octocat-vui-skeleton-bar (n)
   "Return a grey bar N columns wide (at least one) standing in for content."
   (propertize (make-string (max 1 n) ?\s) 'face 'octocat-skeleton))

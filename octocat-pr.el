@@ -918,11 +918,12 @@ WIDTH and BG are as for `octocat-vui-detail-pin'.  See `octocat-vui-page'."
                               width bg)
     (octocat-vui-number-pin number)))
 
-(defun octocat-pr--header (repo pr bg width &optional tab stack views)
+(defun octocat-pr--header (repo pr bg width local &optional tab stack views)
   "Return the vnodes above the body: repo, title, branches, labels, tabs.
 PR is the hash-table of the pull request in REPO.  BG is as for
 `octocat--label-face'.  WIDTH is that of the title and the tabs, see
-`octocat-pr--tabs'.
+`octocat-pr--tabs'.  LOCAL is the clone's branch, which the head
+branch shows as when it is the same, or nil.
 TAB is the page showing it, `conversation' (the default), `commits' or
 `files'.  STACK, when non-nil, is the stack PR is in, from
 `octocat-pr--use-stack': where PR sits in it ends the first line, see
@@ -931,7 +932,6 @@ TAB is the page showing it, `conversation' (the default), `commits' or
          (state    (or (gethash "state" pr) "OPEN"))
          (head    (or (gethash "headRefName" pr) ""))
          (base     (or (gethash "baseRefName" pr) ""))
-         (local    (octocat--current-branch))
          (reviewers (octocat-pr--reviewers pr)))
     (append
      (octocat-vui--detail-header
@@ -1016,6 +1016,7 @@ again."
          (bg       (octocat--label-background))
          (snap     (octocat-pr--use-data repo number tick))
          (stack    (octocat-pr--use-stack repo number tick))
+         (local    (plist-get (octocat-vui-use-clone-head tick) :branch))
          (timeline (octocat-timeline-use-events repo number tick))
          (pr       (plist-get snap :data))
          (mutating (plist-get snap :mutating))
@@ -1043,7 +1044,7 @@ again."
                       (apply #'vui-vstack
                              (append (delq nil (octocat-pr--header repo partial bg
                                                                    (octocat--markdown-width)
-                                                                   nil stack))
+                                                                   local nil stack))
                                      (list (vui-text (octocat-vui-post-skeleton width)))))
                     (vui-text (octocat-vui-detail-skeleton repo number width
                                                            octocat-pr--tab-labels))))
@@ -1055,7 +1056,8 @@ again."
                                       (octocat--nonempty (gethash "headRefName" pr))))))
           (apply #'vui-vstack
                  (append
-                  (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width) nil stack
+                  (delq nil (octocat-pr--header repo pr bg (octocat--markdown-width) local
+                                                nil stack
                                                 (octocat-vui-markdown-views
                                                  raw (octocat--markdown-width))))
                   entries
@@ -1091,6 +1093,7 @@ A new TICK fetches them again."
   (let* ((width (octocat--markdown-width))
          (snap  (octocat-pr--use-data repo number tick))
          (stack (octocat-pr--use-stack repo number tick))
+         (local (plist-get (octocat-vui-use-clone-head tick) :branch))
          (pr    (plist-get snap :data))
          (commits (and pr (octocat-pr--commits pr))))
     (octocat-vui-page
@@ -1108,7 +1111,7 @@ A new TICK fetches them again."
           (apply #'vui-vstack
                  (append
                   (delq nil (octocat-pr--header repo pr (octocat--label-background) width
-                                                'commits stack))
+                                                local 'commits stack))
                   (mapcar (lambda (c)
                             (octocat-vui--commit-row repo c nil author-w subject-w date-w))
                           commits)))))))))
@@ -1676,6 +1679,7 @@ everything again."
   (let* ((_        (octocat-diff-use-at-reset))
          (pr       (octocat-pr--use-data repo number tick))
          (stack    (octocat-pr--use-stack repo number tick))
+         (local    (plist-get (octocat-vui-use-clone-head tick) :branch))
          (tab-w    (octocat--markdown-width))
          (views    (octocat-diff-views-heading (or view 'diff) tab-w))
          (files    (octocat-vui-use-resource (list 'pr-files repo number) tick))
@@ -1706,7 +1710,7 @@ everything again."
         (apply #'vui-vstack
                (delq nil (octocat-pr--header
                           repo (or (plist-get pr :data) (plist-get pr :partial))
-                          (octocat--label-background) tab-w 'files stack views))))
+                          (octocat--label-background) tab-w local 'files stack views))))
        ((and (plist-get pr :error) (not (plist-get pr :loading)))
         (vui-vstack
          (vui-text (octocat-vui-error-text pr) :face 'error)

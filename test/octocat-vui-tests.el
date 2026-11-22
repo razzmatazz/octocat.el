@@ -435,6 +435,44 @@ unsubscribes it."
             (should (= (hash-table-count octocat-vui--subscriptions) 0)))
         (when (buffer-live-p buf) (kill-buffer buf))))))
 
+(vui-defcomponent octocat-vui-tests--head-reader (tick)
+  "Show the branch of the clone of `default-directory'."
+  :render
+  (vui-text (format "branch=%S" (plist-get (octocat-vui-use-clone-head tick) :branch))))
+
+(ert-deftest octocat-vui-test-use-clone-head ()
+  "A page reads the clone's HEAD through the store: git runs, but no render waits for it."
+  (let* ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))
+         (octocat-sync--queue nil)
+         (octocat-sync--fetches (make-hash-table :test #'equal))
+         (octocat-sync-change-functions (list #'octocat-vui--on-sync-change))
+         (octocat-sync-loading-functions (list #'octocat-vui--on-sync-loading))
+         (octocat-vui--subscriptions (make-hash-table :test #'equal))
+         (vui-render-delay nil)
+         (default-directory "/made-up/clone/")
+         (pending nil)
+         (buf nil))
+    (cl-letf (((symbol-function 'octocat-clone-head)
+               (lambda (dir done) (push (cons dir done) pending)))
+              ((symbol-function 'process-file)
+               (lambda (&rest _) (error "A render waited for git")))
+              ((symbol-function 'shell-command-to-string)
+               (lambda (&rest _) (error "A render waited for git"))))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'octocat-vui-tests--head-reader :tick 1)
+                       "*octocat-vui-test*")
+            (setq buf (get-buffer "*octocat-vui-test*"))
+            (cl-flet ((text () (with-current-buffer buf
+                                 (string-trim (buffer-substring-no-properties
+                                               (point-min) (point-max))))))
+              (should (equal (mapcar #'car pending) '("/made-up/clone/")))
+              (should (equal (text) "branch=nil"))
+              (funcall (cdar pending)
+                       (octocat-clone-parse-head "HEAD -> topic, origin/topic\0abc1234\0Fix"))
+              (should (equal (text) "branch=\"topic\""))))
+        (when (buffer-live-p buf) (kill-buffer buf))))))
+
 (ert-deftest octocat-vui-test-render-count ()
   "A page counts its renders, the first one too, and logs a slow one."
   (let* ((octocat-sync--db (octocat-sync--create (sqlite-open nil)))

@@ -413,9 +413,8 @@ MacPorts install it: a GUI Emacs on macOS does not get the shell's PATH."
 (defun octocat--current-branch ()
   "Return the name of the currently checked-out local git branch, or nil.
 Returns nil when HEAD is detached, the working directory is not a git
-repository, or git is not on PATH.  Calls git synchronously — this is
-intentional because the result is needed at render time and `git
-symbolic-ref' completes in milliseconds."
+repository, or git is not on PATH.  Waits for git, so it is for
+commands: a page reads `octocat-vui-use-clone-head'."
   (let ((branch (string-trim
                  (shell-command-to-string
                   "git symbolic-ref --short HEAD 2>/dev/null"))))
@@ -424,24 +423,11 @@ symbolic-ref' completes in milliseconds."
 (defun octocat--head-info ()
   "Return a plist describing the current local HEAD, or nil.
 The plist has the keys :branch (string or nil when detached), :hash
-\(7-character abbreviated commit hash), and :subject (one-line commit
-message).  Returns nil when the working directory is not a git
-repository or git is not on PATH.  Uses a single `git log' call so it
-is cheap enough to call at render time."
-  (let ((raw (string-trim
-              (shell-command-to-string
-               "git log -1 --abbrev=11 --format=%D%x00%h%x00%s HEAD 2>/dev/null"))))
-    (when (not (string-empty-p raw))
-      (let* ((parts   (split-string raw "\0"))
-             (refs    (nth 0 parts))
-             (hash    (nth 1 parts))
-             (subject (nth 2 parts))
-             ;; Extract the branch name from the refs field (e.g. "HEAD ->
-             ;; main, origin/main" → "main").  Falls back to nil for detached
-             ;; HEAD where the refs field has no "HEAD ->" component.
-             (branch  (when (string-match "HEAD -> \\([^,\n]+\\)" refs)
-                        (match-string 1 refs))))
-        (list :branch branch :hash hash :subject subject)))))
+\(abbreviated commit hash), and :subject (one-line commit message).
+Returns nil when the working directory is not a git repository or git
+is not on PATH.  Waits for git, so it is for commands: a page reads
+`octocat-vui-use-clone-head'."
+  (octocat-clone-head-info (octocat-clone-head-now default-directory)))
 
 (defun octocat--author-login (obj)
   "Return \"@LOGIN\" for the GitHub author of OBJ, or \"\" when unavailable.

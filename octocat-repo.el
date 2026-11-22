@@ -191,7 +191,7 @@ the repo and tree pages are then given no ref, to follow the checkout."
   "Re-read the local clone's checkout into this page's state.
 Return the new `octocat-repo--tracked'."
   (when octocat-repo--local-dir
-    ;; `octocat--head-info' reads `default-directory' at render time.
+    ;; `octocat-vui-use-clone-head' reads the clone of `default-directory'.
     (setq default-directory (file-name-as-directory octocat-repo--local-dir)))
   (setq octocat-repo--tracked (octocat-clone-tracked-branch octocat-repo--local-dir)))
 
@@ -902,7 +902,7 @@ touched PATH, or all of them when nil.  The top line is the picker of
 the ref, highlighted when it is the local CURRENT-BRANCH, then PATH,
 whose directories show their own commits, how many commits there are,
 and a button back to DEFAULT-BRANCH when REF is another.
-HEAD-INFO is the plist from `octocat--head-info', used to highlight
+HEAD-INFO is the plist from `octocat-vui-use-clone-head', used to highlight
 the local HEAD commit.  The
 commits are a sync resource; \"load more\" appends the page after the
 last to it (see `octocat-sync-more'), pinned to the head shown."
@@ -1172,7 +1172,7 @@ the default branch.  RAW shows markdown verbatim.  The header comes from
 one summary resource and the rest from the root's `repo-head' at REF."
   :render
   (let* ((buf            (current-buffer))
-         (head-info      (octocat--head-info))
+         (head-info      (octocat-vui-use-clone-head tick))
          (current-branch (plist-get head-info :branch))
          (snap           (octocat-vui-use-resource (list 'repo-summary repo) tick))
          (summary        (plist-get snap :data))
@@ -1249,7 +1249,7 @@ or SHA, nil for TRACKED, the clone's branch, or else the default
 branch."
   :render
   (let* ((buf            (current-buffer))
-         (current-branch (plist-get (octocat--head-info) :branch))
+         (current-branch (plist-get (octocat-vui-use-clone-head tick) :branch))
          (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
                                     :data))
          (default-branch (octocat-model-default-branch summary))
@@ -1602,7 +1602,7 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
                               (with-current-buffer buf
                                 (setq octocat-tree--file-lines nil)
                                 (octocat-vui-update-page :lines nil))))))
-         (current-branch (plist-get (octocat--head-info) :branch))
+         (current-branch (plist-get (octocat-vui-use-clone-head tick) :branch))
          (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
                                     :data))
          (default-branch (octocat-model-default-branch summary))
@@ -1667,7 +1667,7 @@ else the default branch.  PATH, when non-nil, keeps the commits that
 touched it, as GitHub's History."
   :render
   (let* ((buf            (current-buffer))
-         (head-info      (octocat--head-info))
+         (head-info      (octocat-vui-use-clone-head tick))
          (summary        (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick)
                                     :data))
          (default-branch (octocat-model-default-branch summary)))

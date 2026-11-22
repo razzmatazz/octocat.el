@@ -1138,7 +1138,7 @@ The choice is remembered for every run."
 VIEW is how its jobs show, `graph' or `table'.  A new TICK refetches
 everything, keeping what is shown until the fresh data replaces it."
   :render
-  (let* ((local-branch (vui-use-memo () (octocat--current-branch)))
+  (let* ((local-branch (plist-get (octocat-vui-use-clone-head tick) :branch))
          (width (octocat-vui-window-width))
          (run   (octocat-vui-use-detail (list 'run repo run-id) tick))
          (data  (or (plist-get run :data) (plist-get run :partial)))
@@ -1776,7 +1776,7 @@ NAME shows while it loads, and PATH, its file or nil, stands in for
 the fetched one meanwhile.  A new TICK fetches them again."
   :render
   (let* ((width (octocat-vui-window-width))
-         (local-branch (vui-use-memo () (octocat--current-branch)))
+         (local-branch (plist-get (octocat-vui-use-clone-head tick) :branch))
          (snap  (octocat-vui-use-resource (list 'workflow repo id) tick))
          (data  (plist-get snap :data))
          (summary (plist-get (octocat-vui-use-resource (list 'repo-summary repo) tick) :data))

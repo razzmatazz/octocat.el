@@ -499,7 +499,7 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
     (let (requested)
       (cl-letf (((symbol-function 'octocat-sync-request)
                  (lambda (spec &rest _) (push spec requested)))
-                ((symbol-function 'octocat--head-info) #'ignore))
+                ((symbol-function 'octocat-clone-head) #'ignore))
         (with-temp-buffer
           (octocat-tree-mode)
           (octocat-vui-refresh-page 'octocat-repo-vui--tree-page "tree"
@@ -519,7 +519,7 @@ FOCUS is where point goes, as for `octocat-tree--subtree'."
       (octocat-tree-tests--store '(repo-head "owner/repo" "main" nil) head)
       (cl-letf (((symbol-function 'octocat-sync-request)
                  (lambda (spec &rest _) (push spec requested)))
-                ((symbol-function 'octocat--head-info) #'ignore)
+                ((symbol-function 'octocat-clone-head) #'ignore)
                 ((symbol-function 'octocat-clone-unpushed) #'ignore))
         (with-temp-buffer
           (octocat-repo-mode)
@@ -613,7 +613,7 @@ A refresh asks GitHub again, which never answers."
   (declare (indent 0))
   `(octocat-tree-tests--with-store
      (cl-letf (((symbol-function 'octocat--run-gh) #'ignore)
-               ((symbol-function 'octocat--head-info) #'ignore)
+               ((symbol-function 'octocat-clone-head) #'ignore)
                ((symbol-function 'octocat-display-buffer) #'set-buffer))
        ,@body)))
 

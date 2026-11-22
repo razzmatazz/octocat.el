@@ -1352,6 +1352,16 @@ behind its head or at it."
 
 ;;;; Repository code
 
+;; HEAD of the local clone DIR is in, read with git and never from
+;; GitHub, so pages render without waiting for git.  Polled often: a
+;; checkout changes outside Emacs.  Read as :local, so it neither waits
+;; behind GitHub's requests nor says whether GitHub is in reach; its
+;; :fetch only runs should that read signal.
+(octocat-sync-define-resource clone-head (dir)
+  :local (lambda (done) (octocat-clone-head dir done))
+  :fetch (lambda (done) (octocat-clone-head dir done))
+  :poll 10)
+
 (defconst octocat-model--repo-history-query
   (octocat-model--repo-query
    '(:ref String! :limit Int! :after String :path String)

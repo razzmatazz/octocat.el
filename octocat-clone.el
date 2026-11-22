@@ -212,6 +212,55 @@ commit to the clone's git, as of the last fetch."
                     (car (octocat-clone--git-lines dir "rev-parse" "HEAD")))))
       (if sha (cons sha sha) (cons nil "origin/HEAD")))))
 
+(defconst octocat-clone--head-args
+  '("log" "-1" "--abbrev=11" "--format=%D%x00%h%x00%s" "HEAD")
+  "The git arguments printing HEAD, as `octocat-clone-parse-head' reads.")
+
+(defun octocat-clone-parse-head (out)
+  "Return a table of HEAD from OUT, what git prints for `octocat-clone--head-args'.
+Its keys are \"hash\", \"subject\" and \"branch\", the last missing
+when HEAD is detached; the table is empty when OUT is."
+  (let ((head (make-hash-table :test #'equal)))
+    (pcase-let ((`(,refs ,hash ,subject) (split-string (string-trim out) "\0")))
+      (when (and hash (not (string-empty-p hash)))
+        (puthash "hash" hash head)
+        (puthash "subject" (or subject "") head)
+        ;; "HEAD -> main, origin/main" names the branch; a detached
+        ;; HEAD has no "HEAD ->".
+        (when (string-match "HEAD -> \\([^,\n]+\\)" refs)
+          (puthash "branch" (match-string 1 refs) head))))
+    head))
+
+(defun octocat-clone-head (dir callback)
+  "Read HEAD of the clone DIR is in, and call CALLBACK with its table.
+See `octocat-clone-parse-head'.  git runs without waiting for it.  DIR
+in no clone, or git failing, gives an empty table, not an error: there
+is no HEAD to show."
+  (octocat-clone--git dir octocat-clone--head-args nil
+                      (lambda (out)
+                        (funcall callback (octocat-clone-parse-head
+                                           (if (stringp out)
+                                               (decode-coding-string out 'utf-8)
+                                             ""))))))
+
+(defun octocat-clone-head-now (dir)
+  "Return HEAD of the clone DIR is in, as `octocat-clone-head' does.
+Waits for git, so it is for commands."
+  (octocat-clone-parse-head
+   (or (car (condition-case nil
+                (let ((coding-system-for-read 'utf-8))
+                  (apply #'octocat-clone--git-lines dir octocat-clone--head-args))
+              (file-error nil)))
+       "")))
+
+(defun octocat-clone-head-info (head)
+  "Return HEAD, a table from `octocat-clone-parse-head', as a plist, or nil.
+The plist has :branch, nil when detached, :hash and :subject; nil
+when HEAD is nil or empty."
+  (when-let* (((hash-table-p head))
+              (hash (gethash "hash" head)))
+    (list :branch (gethash "branch" head) :hash hash :subject (gethash "subject" head))))
+
 ;;;; Reading objects
 
 (defconst octocat-clone--timed-out '(error . "git timed out")

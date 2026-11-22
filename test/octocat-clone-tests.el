@@ -136,6 +136,38 @@
           (should (equal (octocat-clone-here-ref clone) '(nil . "origin/HEAD"))))
       (delete-directory root t))))
 
+(ert-deftest octocat-clone-test-parse-head ()
+  "HEAD reads as its branch, hash and subject; detached, without the branch."
+  (should (equal (octocat-clone-head-info
+                  (octocat-clone-parse-head "HEAD -> main, origin/main\0abc1234\0Fix it\n"))
+                 '(:branch "main" :hash "abc1234" :subject "Fix it")))
+  (should (equal (octocat-clone-head-info (octocat-clone-parse-head "HEAD\0abc1234\0Fix it"))
+                 '(:branch nil :hash "abc1234" :subject "Fix it")))
+  (should (zerop (hash-table-count (octocat-clone-parse-head ""))))
+  (should-not (octocat-clone-head-info (octocat-clone-parse-head "")))
+  (should-not (octocat-clone-head-info nil)))
+
+(ert-deftest octocat-clone-test-head ()
+  "The `clone-head' resource reads HEAD with git; outside a clone it is empty."
+  (skip-unless (executable-find "git"))
+  (let ((dir (file-name-as-directory (make-temp-file "octocat-head" t))))
+    (unwind-protect
+        (cl-flet ((read (dir)
+                    (octocat-clone-head-info
+                     (octocat-clone-tests--await
+                      (plist-get (octocat-sync--props (list 'clone-head dir)) :local)))))
+          (should-not (read dir))
+          (should-not (read (expand-file-name "missing/" dir)))
+          (let ((default-directory dir))
+            (call-process "git" nil nil nil "init" "-q" "-b" "topic")
+            (call-process "git" nil nil nil "-c" "user.name=T" "-c" "user.email=t@t"
+                          "commit" "-q" "--allow-empty" "-m" "Ünïcode subject"))
+          (let ((head (read dir)))
+            (should (equal (plist-get head :branch) "topic"))
+            (should (equal (plist-get head :subject) "Ünïcode subject"))
+            (should (equal (octocat-clone-head-info (octocat-clone-head-now dir)) head))))
+      (delete-directory dir t))))
+
 (ert-deftest octocat-clone-test-parse-ls-tree ()
   "Entries read as GitHub's: a submodule, sizes, and names with spaces and newlines."
   (let ((entries (octocat-clone-parse-ls-tree

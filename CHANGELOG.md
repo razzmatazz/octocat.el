@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* PR, repo and run pages no longer wait for git on each redraw to show your branch
 * Pages out of sight no longer redraw on each change, only once shown again
 * Resting on a row of a busy repository's list no longer freezes Emacs as often
 * `octocat-doctor` shows each page's renders and their time; slow ones go to the debug log
