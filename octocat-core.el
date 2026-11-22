@@ -1167,12 +1167,16 @@ As in the changes being sent, see `octocat-mode-line-writes'.")
 (defvar octocat--spinner-index 0)
 (defvar octocat--spinner-timer nil)
 
+(defconst octocat--spinner-delay 0.3
+  "Seconds before the spinner first turns.
+Most fetches are done by then, and never redraw a mode line for it.")
+
 (defun octocat--spinner-start ()
   "Start the spinner timer unless it is running, or on low battery.
 Without it, spinners stand still on their first frame."
   (unless (or (timerp octocat--spinner-timer) (eq (octocat-power) 'low))
     (setq octocat--spinner-timer
-          (run-at-time 0.1 0.1 #'octocat--spinner-tick))))
+          (run-at-time octocat--spinner-delay 0.1 #'octocat--spinner-tick))))
 
 (defun octocat--mode-line-busy-p (buf)
   "Return non-nil if the mode line of BUF has the spinner."
@@ -1201,24 +1205,27 @@ Return nil, and forget BUF, once it has none."
 
 (defun octocat--spinner-tick ()
   "Advance the spinner in every visible mode line and page.
-Stop the timer once no buffer shows it."
-  (setq octocat--spinner-index
-        (% (1+ octocat--spinner-index) (length octocat--spinner-frames))
-        octocat--spinner
-        (aref octocat--spinner-frames octocat--spinner-index))
-  (let ((busy octocat--spinner-global))
-    (when busy (force-mode-line-update t))
-    (dolist (buf (buffer-list))
-      (when (octocat--mode-line-busy-p buf)
-        (setq busy t)
-        (when (get-buffer-window buf 'visible)
-          (with-current-buffer buf (force-mode-line-update))))
-      (when (and (buffer-local-value 'octocat--page-spinner buf)
-                 (octocat--turn-page-spinners buf))
-        (setq busy t)))
-    (unless (and busy (not (eq (octocat-power) 'low)))
-      (cancel-timer octocat--spinner-timer)
-      (setq octocat--spinner-timer nil))))
+Stop the timer once no buffer shows it.  Skip a frame while input is
+pending: a mode line, such as Doom's, can take long to redraw, and a
+key must not wait for it."
+  (unless (input-pending-p)
+    (setq octocat--spinner-index
+          (% (1+ octocat--spinner-index) (length octocat--spinner-frames))
+          octocat--spinner
+          (aref octocat--spinner-frames octocat--spinner-index))
+    (let ((busy octocat--spinner-global))
+      (when busy (force-mode-line-update t))
+      (dolist (buf (buffer-list))
+        (when (octocat--mode-line-busy-p buf)
+          (setq busy t)
+          (when (get-buffer-window buf 'visible)
+            (with-current-buffer buf (force-mode-line-update))))
+        (when (and (buffer-local-value 'octocat--page-spinner buf)
+                   (octocat--turn-page-spinners buf))
+          (setq busy t)))
+      (unless (and busy (not (eq (octocat-power) 'low)))
+        (cancel-timer octocat--spinner-timer)
+        (setq octocat--spinner-timer nil)))))
 
 (defun octocat-mode-line-busy (label)
   "Return a `mode-line-process' of a spinner, then LABEL, such as \":loading\".

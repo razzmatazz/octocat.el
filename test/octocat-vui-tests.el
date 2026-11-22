@@ -271,6 +271,29 @@
       (should (octocat--turn-page-spinners (current-buffer)))
       (should (equal (get-text-property 1 'display) "▗ [image]")))))
 
+(ert-deftest octocat-vui-test-spinner-delay ()
+  "The spinner first turns after its delay, so a quick fetch never redraws for it."
+  (let ((octocat--spinner-timer nil)
+        started)
+    (cl-letf (((symbol-function 'octocat-power) (lambda () 'mains))
+              ((symbol-function 'run-at-time)
+               (lambda (time repeat fn) (setq started (list time repeat fn)) 'timer))
+              ((symbol-function 'timerp) (lambda (x) (eq x 'timer))))
+      (octocat--spinner-start)
+      (should (equal started (list octocat--spinner-delay 0.1 #'octocat--spinner-tick))))))
+
+(ert-deftest octocat-vui-test-spinner-skips-input ()
+  "A spinner frame waits while input is pending: no mode line redraws."
+  (let ((octocat--spinner-index 0)
+        (octocat--spinner (aref octocat--spinner-frames 0))
+        (octocat--spinner-global t)
+        (redraws 0))
+    (cl-letf (((symbol-function 'force-mode-line-update) (lambda (&rest _) (cl-incf redraws)))
+              ((symbol-function 'input-pending-p) (lambda (&rest _) t)))
+      (octocat--spinner-tick)
+      (should (= redraws 0))
+      (should (equal octocat--spinner (aref octocat--spinner-frames 0))))))
+
 (ert-deftest octocat-vui-test-header-notice ()
   "Only a failed refresh over shown data gets a notice; offline names the time."
   (let ((h (make-hash-table)))
