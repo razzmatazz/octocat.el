@@ -11,8 +11,8 @@ open    Assignees @srivera
 ▾ src/
     ▸ theme/
     M build.rs  +5 -2
-    A cache.rs  +18 -0  💬 1
-    M main.rs  +1 -0    💬 1
+    A cache.rs  +18 -0  ✉ 1
+    M main.rs  +1 -0    ✉ 1
       markdown.rs
       serve.rs
       template.rs

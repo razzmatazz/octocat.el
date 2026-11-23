@@ -5,11 +5,11 @@ Filter  is:open
 
   open    Build fails when a page's front matter has a BOM   bug   needs triage
           #134 opened 1 hour ago by @tgarcia
-  open    Live reload doesn't pick up changes to templ…   bug   #130  💬 3  assigned to @jlindqvist
+  open    Live reload doesn't pick up changes to templa…   bug   #130  ✉ 3  assigned to @jlindqvist
           #129 opened 1 day ago by @jlindqvist
-  open    Builds of large sites are slow: templat…   performance   #128  💬 5  assigned to @srivera
+  open    Builds of large sites are slow: template…   performance   #128  ✉ 5  assigned to @srivera
           #97 opened 1 week ago by @pnair
-  open    Support a dark variant in the default theme   enhancement   good first issue         💬 1
+  open    Support a dark variant in the default theme   enhancement   good first issue          ✉ 1
           #88 opened 2 weeks ago by @kwong
   open    Explain how to deploy to GitHub Pages   docs
           #74 opened 1 month ago by @aokafor

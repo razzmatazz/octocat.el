@@ -97,7 +97,7 @@ is that line's conversation, which can be resolved and can go outdated.
   replies, edits, resolving, submitting and discarding work.
 - The PR diff, like the commit and compare pages, opens on its Tree; a
   link to lines opens on the Diff instead (`octocat-diff-open-view`).
-- The Tree counts each file's unresolved conversations, `💬 N`,
+- The Tree counts each file's unresolved conversations, `✉ N`,
   leaving out outdated ones and drafts, as GitHub's tree does
   (`octocat-pr-diff--open-threads`); `RET` on the count shows the Diff
   at the first (`octocat-diff-show-at`).
@@ -131,7 +131,7 @@ that the next opening overwrites.  The key gains the origin:
 | Opened from | Buffer | Diff shows | Comments |
 |---|---|---|---|
 | tree browser, link, `C-c C-j` | `*acme/rocket@main:src/main.rs*` | the file's last commit | none |
-| PR #128's Tree or 💬 | `*acme/rocket#128:src/main.rs*` | the PR, base to head | PR #128's threads, review commands |
+| PR #128's Tree or ✉ | `*acme/rocket#128:src/main.rs*` | the PR, base to head | PR #128's threads, review commands |
 | a commit's Tree | `*acme/rocket@3f9c2a1:src/main.rs*` | that commit | its commit comments, later (step 9 of pr-reviews.md) |
 | a comparison's Tree | `*acme/rocket@main...topic:src/main.rs*` | that comparison | none |
 
@@ -151,19 +151,19 @@ Blame there show the file at the PR's current head.
   Files changed page, `Your review: 2 pending  [Submit on the PR]`:
   submitting and discarding stay there, in one place.
 
-**What stays on the PR's Files changed page:** the Tree with its 💬,
+**What stays on the PR's Files changed page:** the Tree with its ✉,
 the Patch, "Review Comments" (the threads no file's diff can place, as
 outdated ones), and `[Submit review]` / `[Discard review]`.
 
 **What opens the file buffer:**
 - RET on a changed file in the PR's Tree, on its Diff;
-- 💬, at the file's first conversation;
+- ✉, at the file's first conversation;
 - a link to lines of a PR's files (`…/pull/128/files#diff-HASHR12`), at
   them;
 - the timeline's review comments (3 below), at their thread.
 
 Both pages read one resource, `pr-review-threads`, so a reply, resolve
-or draft in a file buffer updates the Tree's 💬 and the pending count
+or draft in a file buffer updates the Tree's ✉ and the pending count
 at once.
 
 **What is stored, and what the model and sync need first.**  A PR's
@@ -216,7 +216,7 @@ What has to change:
    sha)`, which exists.
 
 **Moving between files:** no keys for the next or previous changed
-file; `q` goes back to the Tree, whose 💬 show where to go next.
+file; `q` goes back to the Tree, whose ✉ show where to go next.
 
 **Steps:**
 1. The model: the origin lookup and the PR's ref from it, and the
@@ -226,7 +226,7 @@ file; `q` goes back to the Tree, whose 💬 show where to go next.
 3. A PR origin's Diff draws the PR's threads and takes the review
    commands, with the pending line.  Screenshot of a file with a thread
    and a draft.
-4. Route the entry points above to it; 💬 and PR line links stop
+4. Route the entry points above to it; ✉ and PR line links stop
    targeting the PR's Diff.
 5. Drop the Diff view of the PR, commit and compare pages:
    `octocat-diff--views`, the pill, `octocat-diff-open-view`, the
@@ -244,7 +244,7 @@ the commit's file buffers (1 above).
 
 The Comments pill is the Diff's `[Hide comments (N)]` button, which
 moves into the PR's file buffers (1 above).  Its open count should match
-the Tree's 💬, so it counts with `octocat-pr-diff--open-threads`.
+the Tree's ✉, so it counts with `octocat-pr-diff--open-threads`.
 
 ### 3. Outdated threads show where they were
 

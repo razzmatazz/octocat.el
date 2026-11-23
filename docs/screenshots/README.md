@@ -158,7 +158,7 @@ Its commits, a merge of `main` marked `⊕`:
 <!-- /screenshot -->
 
 Its changed files, opened on their tree: the repository at the head of
-the PR, opened down to what it changes, all its commits in one.  💬
+the PR, opened down to what it changes, all its commits in one.  ✉
 counts a file's unresolved conversations; `RET` on it shows the first.
 
 <!-- screenshot: (pr-diff "acme/rocket" 128) -->

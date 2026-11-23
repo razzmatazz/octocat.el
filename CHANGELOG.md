@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Comment counts show ✉ again, not 💬, which made their lines taller
 * Long diffs open, and follow a font or width change, at once, not after seconds
 * Large files show at once in the file viewer and blame, highlighted by a second Emacs
 * `octocat-doctor` shows that second Emacs and the work it did

@@ -3075,7 +3075,7 @@ unknown: closed is then purple, or grey if \"NOT_PLANNED\", as on GitHub."
 ;; review.  The title gives way to the rest.  The branch is left to the
 ;; page.
 ;;
-;;   open  Another dummy PR  ✓ 4/5  duplicate enhancement  💬 3  assigned to @you +1
+;;   open  Another dummy PR  ✓ 4/5  duplicate enhancement  ✉ 3  assigned to @you +1
 ;;         #5 opened 3 days ago by @me · Review required
 
 (defun octocat-vui--assignees (item)
@@ -3112,7 +3112,7 @@ a cell that ITEM does not have is nil or empty.  BG is as for
                                    closers " ")
                         'face 'octocat-pr-number))
           :comments (and (> comments 0)
-                         (propertize (format "💬 %d" comments)
+                         (propertize (format "✉ %d" comments)
                                      'face 'octocat-dimmed))
           :chips  (octocat--format-labels (octocat--nodes item "labels") bg)
           ;; As GitHub's list, only while open: a draft says so instead.

@@ -1488,7 +1488,7 @@ the longest changed file's, RET on it showing the Diff at AT, see
 
 (defun octocat-diff--note-button (count at)
   "Return the button of a file's COUNT conversations, showing the Diff at AT."
-  (octocat-vui--link (format "💬 %d" count) 'default
+  (octocat-vui--link (format "✉ %d" count) 'default
                      (lambda () (octocat-diff-show-at at))
                      (format "RET: show the first of %d unresolved conversation%s"
                              count (if (= count 1) "" "s"))))
