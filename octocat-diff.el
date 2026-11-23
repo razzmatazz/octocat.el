@@ -656,32 +656,12 @@ A note is a `\\ No newline at end of file'."
         ((string-prefix-p "\\" line) 'note)
         (t                           'context)))
 
-(defun octocat-diff--faces-only (text)
-  "Return TEXT with no property but its faces, `font-lock-face' as `face'."
-  (let ((pos 0) (end (length text)) (face-next 0) (flf-next 0) out)
-    (while (< pos end)
-      ;; Each next change is looked for only once passed: looking from
-      ;; every position for a property not there would scan to the end.
-      (when (<= face-next pos)
-        (setq face-next (next-single-property-change pos 'face text end)))
-      (when (<= flf-next pos)
-        (setq flf-next (next-single-property-change pos 'font-lock-face text end)))
-      (let ((next (min face-next flf-next))
-            (face (or (get-text-property pos 'face text)
-                      (get-text-property pos 'font-lock-face text))))
-        (push (if face
-                  (propertize (substring-no-properties text pos next) 'face face)
-                (substring-no-properties text pos next))
-              out)
-        (setq pos next)))
-    (apply #'concat (nreverse out))))
-
 (defun octocat-diff--fontify (path texts)
   "Return the lines of each of TEXTS, highlighted as PATH's major mode would.
 Return nil when PATH's mode, if any, does not highlight.  The mode is
 set up once, with its hooks delayed, as for a file being visited."
   (with-temp-buffer
-    (octocat--set-mode-for-path path)
+    (octocat-fontify-set-mode path)
     (when (font-lock-specified-p major-mode)
       (mapcar (lambda (text)
                 (erase-buffer)
@@ -689,7 +669,7 @@ set up once, with its hooks delayed, as for a file being visited."
                 ;; A mode's broken font-lock rules should not lose the text.
                 (with-demoted-errors "Octocat: cannot highlight: %S"
                   (font-lock-ensure))
-                (split-string (octocat-diff--faces-only (buffer-string)) "\n"))
+                (split-string (octocat-fontify-faces-only (buffer-string)) "\n"))
               texts))))
 
 (defun octocat-diff--bodies (lines kinds path)

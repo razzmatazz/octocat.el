@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Large files show at once in the file viewer and blame, highlighted by a second Emacs
+* `octocat-doctor` shows that second Emacs and the work it did
 * The busy spinner starts only for fetches past 0.3 s, and never delays a key press
 * PR, repo and run pages no longer wait for git on each redraw to show your branch
 * Pages out of sight no longer redraw on each change, only once shown again

@@ -2,10 +2,12 @@
 
 ## Status
 
-- Branch `async-render`.  Step 1 built, not committed:
-  `octocat-async.el`, `test/octocat-async-tests.el`.
-- Done: step 1 (9fb4ea8), step 2.
-- Next: step 3 (cache), step 4 (file viewer and blame).
+- Branch `async-render`.
+- Done: step 1 (9fb4ea8), step 2 (bde0e0f), step 4.  Step 3 built,
+  then dropped: see why there.
+- Next: step 5 (diffs).  Their slowness was mostly not highlighting:
+  `octocat-diff--segments` joined lines in quadratic time, 2.8 s for a
+  2,500-line added file, again on each width change.
 - `octocat-clone-test-git-fails` can die of SIGPIPE: its fake git exits
   before `octocat-clone.el` writes to it.  Seen once on Emacs 30.2.
 
@@ -116,24 +118,52 @@ A section "Background work, last hour", next to the requests one:
   and slowest wall time, parent and worker time, jobs run here.
 - The most recent 20 jobs.
 
-## 3. Cache in the sync store
+## 3. Cache in the sync store (dropped)
 
-Results in a table of the sync store, so a file shown before is never
-highlighted again, across sessions too.
+Built and measured, then reverted: with the worker, it saves little.
+Results were kept in a `memo` table of the store, keyed by a SHA-1 of
+the job, its arguments, the Emacs version and the job file's mtime.
 
-- Key: a hash of the job's function, arguments, Emacs version and the
-  mtime of the job's code.  Faces are symbols, so a theme change
-  doesn't stale it.
-- TTL: `octocat-sync-collect` deletes rows unused for some days.
-- Reading one back is a `read`: 1–2 ms per 100 KB.
-- Sync is above `octocat-async`, so the lookup is in the page's hook
-  calling it, not in the runner.
+| Input  | Here   | Worker: UI stall | Store hit | Storing a value |
+|--------|--------|------------------|-----------|-----------------|
+| 183 KB | 73 ms  | 5–16 ms          | 5 ms      | 6 ms, on the UI |
+| 1.2 MB | 541 ms | 28–43 ms         | 43 ms     | 41–53 ms        |
 
-## 4. File viewer and blame
+- A hit's UI cost is about the worker's: reading a large value back is
+  itself a large `read`.  What it saves is the wait with plain text
+  shown, and the worker's CPU, on a repeat the page's own state
+  doesn't cover: across restarts, rarely the same file at the same
+  commit.
+- It costs a schema bump (dropping every user's store once), twice the
+  text's size on disk, a write on the UI per miss, and values stale
+  for up to 14 days when a mode or config changes.
 
-`octocat-tree--fontify` through `octocat-async-call`.  A page shows
-the plain text first, and the highlighted text once it lands; the
-result is dropped when its page shows other content by then.
+If repeats within a session show in the doctor, a small in-memory LRU
+gives hits in under 1 ms, with none of that.  A store cache may pay for
+rendering (step 6), if it repeats across sessions; its keys then hold
+width and theme colours.
+
+## 4. File viewer and blame (done)
+
+`octocat-fontify.el`, on `octocat-async` alone so the worker loads it
+cheaply, holds the highlighting: `octocat-fontify` (faces only, as the
+diff's already was) and `octocat-fontify-async`, which runs it in the
+worker from 20 KB on.  The hook `octocat-vui-use-fontified` returns a
+small text highlighted at once, in the same render, and a large one nil
+until the worker's result lands, which re-renders the page; a job whose
+text is no longer shown is cancelled.  The file viewer and blame show
+the plain text meanwhile.
+
+Measured, the file viewer mounted in batch `emacs -Q`:
+
+| File   | Before: UI blocked | First paint | Stall as it lands | Highlighted |
+|--------|--------------------|-------------|-------------------|-------------|
+| 25 KB  | 13–29 ms           | 3.5 ms      | none              | 17 ms       |
+| 75 KB  | 45–58 ms           | 6 ms        | 9–10 ms           | 56 ms       |
+| 184 KB | 101–104 ms         | 14 ms       | 19–35 ms          | 114–130 ms  |
+
+The stall as it lands is reading the result and re-rendering the page
+with it; not yet broken down.
 
 ## 5. Diffs
 
