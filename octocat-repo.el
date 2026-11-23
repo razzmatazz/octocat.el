@@ -143,7 +143,8 @@ Read by `octocat-repo--sync-checkout' on each refresh; a page with no
   "Branch/ref name for the file being displayed, \"HEAD\" for the default.")
 
 (defvar-local octocat-tree--file-lines nil
-  "The lines a link named, (START . END), highlighted and scrolled to, or nil.")
+  "The lines a link named, (START . END), highlighted and scrolled to, or nil.
+In the Diff view each is (SIDE . LINE), see `octocat-diff-file-view'.")
 
 (defvar-local octocat-tree--file-blame nil
   "Non-nil when the file viewer shows the blame, see `octocat-file-cycle-view'.")
@@ -1594,7 +1595,8 @@ The Diff view is `octocat-diff-file-view', of the diff pages above this
 module, which `octocat.el' loads.  A file too large to
 show unasked, see `octocat-repo--file-notice', has a button to show it
 ANYWAY.  LINES, (START . END), a link named: they are highlighted and
-scrolled to, until the user's refresh, see `octocat-vui-refresh'."
+scrolled to, until the user's refresh, see `octocat-vui-refresh'; a
+diff's, of (SIDE . LINE), only in the Diff view."
   :state ((anyway nil))
   :render
   (let* ((buf            (current-buffer))
@@ -1636,7 +1638,8 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
       (cond ((or diff removed)
              (vui-component 'octocat-diff-file-view
                :repo repo :path path :change change
-               :commit (octocat--get (octocat-model-head-commit head) "oid")))
+               :commit (octocat--get (octocat-model-head-commit head) "oid")
+               :lines (and (consp (car lines)) lines)))
             (notice
              (apply #'vui-hstack :spacing 2
                     (vui-text notice :face 'octocat-dimmed)
@@ -1650,14 +1653,14 @@ scrolled to, until the user's refresh, see `octocat-vui-refresh'."
              (vui-component 'octocat-repo-vui--file-blame
                :key blob :repo repo :path path :blob blob
                :commit (octocat--get (octocat-model-head-commit head) "oid")
-               :lines lines))
+               :lines (and (integerp (car lines)) lines)))
             (blob
              (vui-component 'octocat-repo-vui--file-content
                :key blob :repo repo :ref (or ref default-branch "HEAD")
                :path path :blob blob :text text
                :wait (and (not text) (eq (octocat-vui-snapshot-status file-snap) 'pending)
                           (not (plist-get (octocat-sync-read (list 'blob repo blob)) :data)))
-               :raw raw :lines lines))
+               :raw raw :lines (and (integerp (car lines)) lines)))
             ;; The head line says why there is none.
             ((eq (octocat-vui-snapshot-status head-snap) 'pending)
              (vui-text (octocat-tree--skeleton))))))))
@@ -1836,7 +1839,8 @@ Each ref of a file has a buffer of its own, named after both.  AT,
 those lines and scrolls to them; a rendered file shows its code.
 CHANGE, the file's on the page it is opened from, see
 `octocat-tree--file-change', opens it on its Diff view, unless an
-image, which has none."
+image, which has none; AT, (diff HASH FROM TO), then highlights lines
+FROM to TO of the diff."
   (let* ((branch (octocat-tree--file-ref repo branch))
          (buf    (get-buffer-create (format "*%s@%s:%s*" repo branch path))))
     (octocat-display-buffer buf)
@@ -1850,10 +1854,13 @@ image, which has none."
     (when octocat-tree--file-diff
       (setq octocat-tree--file-blame nil
             octocat--cap-extra 0))
-    (when at
-      (setq octocat-tree--file-lines (cons (nth 1 at) (nth 2 at)))
-      (when (octocat-repo--format path)
-        (setq octocat--markdown-raw t)))
+    (pcase at
+      (`(lines ,start ,end)
+       (setq octocat-tree--file-lines (cons start end))
+       (when (octocat-repo--format path)
+         (setq octocat--markdown-raw t)))
+      (`(diff ,_ ,from ,to)
+       (setq octocat-tree--file-lines (and from (cons from to)))))
     (octocat-file-refresh)))
 
 (cl-defmethod octocat-open ((_kind (eql 'file)) repo branch path &optional at)

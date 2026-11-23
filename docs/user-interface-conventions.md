@@ -234,11 +234,11 @@ having to read the README's key table.  Build the hint with
 it stays right when the user rebinds the command:
 
 ```elisp
-(vui-button "Show comments (3)"
-            :help-echo (octocat--key-help #'octocat-diff-toggle-comments
-                                          "show the comments in the diff")
-            :on-click #'octocat-diff-toggle-comments)
-;; point rests on it → echo area: "RET: show the comments in the diff"
+(vui-button "Compact"
+            :help-echo (octocat--key-help #'octocat-vui-list-toggle-compact
+                                          "show one line per item")
+            :on-click #'octocat-vui-list-toggle-compact)
+;; point rests on it → echo area: "RET: show one line per item"
 ```
 
 Builders that take a button's command, such as `octocat-timeline-buttons`

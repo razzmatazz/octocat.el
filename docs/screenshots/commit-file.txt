@@ -1,0 +1,33 @@
+acme/rocket  [1a95462 ▾]:/src/theme/footnotes.js                                  Code  Blame  Diff
+
+○ Render footnotes in Markdown pages (#131)                       1a95462 · 2 hours ago  [1 commits]
+Changes in commit 1a95462
+▾ A src/theme/footnotes.js  +27 -0
+@@ -0,0 +1,27 @@
++/**
++ * Footnote previews: hovering a footnote's reference shows the note in
++ * a popup, so readers need not jump to the end of the page.
++ */
++export function initFootnotes(root) {
++  for (const ref of root.querySelectorAll(".footnote-ref a")) {
++    const note = document.getElementById(ref.hash.slice(1));
++    if (!note) continue;
++    ref.addEventListener("mouseenter", () => show(ref, note));
++    ref.addEventListener("mouseleave", hide);
++  }
++}
++
++let popup = null;
++
++function show(ref, note) {
++  hide();
++  popup = document.createElement("aside");
++  popup.className = "footnote-popup";
++  popup.innerHTML = note.innerHTML;
++  ref.after(popup);
++}
++
++function hide() {
++  popup?.remove();
++  popup = null;
++}

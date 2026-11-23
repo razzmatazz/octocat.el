@@ -1,4 +1,4 @@
-acme/rocket  main...template-cache · 7 commits · 3 files changed                  Tree  Diff  Patch
+acme/rocket  main...template-cache · 7 commits · 3 files changed                        Tree  Patch
 
 Commits (7)
 ○ Cache parsed templates by path                      @srivera  2 days ago  dc0c893

@@ -1265,9 +1265,8 @@ the background, in place: what is unfolded stays so."
 ;;;;; Data fetching
 
 ;; The review comments are read as GitHub's threads, from GraphQL: REST
-;; has no thread, whose id replying and resolving need, and no drafts.
-;; Your drafts are the comments of your pending review, which only you
-;; see; they come with the threads.
+;; has no drafts.  Your drafts are the comments of your pending review,
+;; which only you see; they come with the threads.
 
 (defun octocat-pr-diff--null (v)
   "Return V, or nil for JSON's null."
@@ -1275,51 +1274,20 @@ the background, in place: what is unfolded stays so."
 
 (defun octocat-pr-diff--thread-comments (threads)
   "Return the comments of review THREADS, from GraphQL, as `octocat-diff' takes.
-That is a vector in the REST shape (\"id\", \"path\", \"line\",
-\"side\", \"user\", \"in_reply_to_id\" the first comment's id...), each
-also carrying its \"node_id\" and \"thread_id\", \"pending\" for a
-draft and \"can_edit\" for one you may edit.  The first comment of a
-thread also has its \"resolved\", \"resolved_by\", \"can_resolve\" and
-\"can_unresolve\"."
+That is a vector in the REST shape (\"path\", \"line\", \"user\",
+\"body\"...), each thread's comments in turn, a draft's with \"pending\"."
   (let (out)
     (seq-doseq (thread threads)
-      (let ((root-id nil))
-        (seq-doseq (c (octocat--get thread "comments" "nodes"))
-          (let ((h    (make-hash-table :test #'equal))
-                (user (make-hash-table :test #'equal))
-                (line  (octocat-pr-diff--null (gethash "line" thread)))
-                (start (octocat-pr-diff--null (gethash "startLine" thread))))
-            (puthash "login" (octocat--get c "author" "login") user)
-            (puthash "id" (octocat-pr-diff--null (gethash "databaseId" c)) h)
-            (puthash "node_id" (gethash "id" c) h)
-            (puthash "html_url" (gethash "url" c) h)
-            (puthash "thread_id" (gethash "id" thread) h)
-            (puthash "path" (gethash "path" thread) h)
-            (puthash "line" line h)
-            (puthash "side" (octocat-pr-diff--null (gethash "diffSide" thread)) h)
-            (when (and start (not (eql start line)))
-              (puthash "start_line" start h)
-              (puthash "start_side" (octocat-pr-diff--null (gethash "startDiffSide" thread)) h))
-            (puthash "subject_type"
-                     (downcase (or (octocat-pr-diff--null (gethash "subjectType" thread)) "line"))
-                     h)
-            (puthash "body" (string-replace "\r\n" "\n" (or (gethash "body" c) "")) h)
-            (puthash "created_at" (gethash "createdAt" c) h)
-            (puthash "user" user h)
-            (puthash "reactionGroups" (gethash "reactionGroups" c) h)
-            (puthash "pending" (equal (gethash "state" c) "PENDING") h)
-            (puthash "can_edit" (eq (gethash "viewerCanUpdate" c) t) h)
-            (if root-id
-                (puthash "in_reply_to_id" root-id h)
-              (setq root-id (or (gethash "id" h) 0))
-              (puthash "resolved" (eq (gethash "isResolved" thread) t) h)
-              (puthash "resolved_by" (octocat--get thread "resolvedBy" "login") h)
-              ;; A draft's thread is not one yet.
-              (puthash "can_resolve" (and (eq (gethash "viewerCanResolve" thread) t)
-                                          (not (gethash "pending" h)))
-                       h)
-              (puthash "can_unresolve" (eq (gethash "viewerCanUnresolve" thread) t) h))
-            (push h out)))))
+      (seq-doseq (c (octocat--get thread "comments" "nodes"))
+        (push (octocat--table
+               "path" (gethash "path" thread)
+               "line" (octocat-pr-diff--null (gethash "line" thread))
+               "body" (string-replace "\r\n" "\n" (or (gethash "body" c) ""))
+               "created_at" (gethash "createdAt" c)
+               "user" (octocat--table "login" (octocat--get c "author" "login"))
+               "reactionGroups" (gethash "reactionGroups" c)
+               "pending" (equal (gethash "state" c) "PENDING"))
+              out)))
     (vconcat (nreverse out))))
 
 (defun octocat-pr-diff--open-threads (threads)
@@ -1358,147 +1326,6 @@ outdated one is left out; so is a draft's, not a conversation yet."
       (seq-doseq (c (octocat--get thread "comments" "nodes"))
         (when (equal (gethash "state" c) "PENDING") (cl-incf n))))
     n))
-
-
-;;;;; The page's comment backend
-;;
-;; The diff's commands (`octocat-diff-add-comment' and the others) call
-;; these through `octocat-diff--comment-backend'.
-
-(defun octocat-pr-diff--threads ()
-  "Return the stored `pr-review-threads' of this page's PR, or signal."
-  (pcase-let ((`(,repo . ,number) (octocat-pr--current)))
-    (or (plist-get (octocat-sync-read (octocat-model-review-threads-spec repo number)) :data)
-        (user-error "Octocat: The review comments are still loading"))))
-
-(defun octocat-pr-diff--login ()
-  "Return your login, as the store has it, or nil."
-  (octocat--get (plist-get (octocat-sync-read '(viewer)) :data) "login"))
-
-(defun octocat-pr-diff--submitter (make-spec)
-  "Return an edit buffer's submit function sending (MAKE-SPEC BODY)."
-  (lambda (body source on-success _on-error)
-    (with-current-buffer source
-      (octocat-sync-submit (funcall make-spec body)))
-    (funcall on-success)))
-
-(defun octocat-pr-diff--add (range)
-  "Open the edit buffer of a draft comment on RANGE; return its window."
-  (pcase-let* ((`(,repo . ,number) (octocat-pr--current))
-               (data   (octocat-pr-diff--threads))
-               (review (octocat-model-pending-review data)))
-    (octocat-timeline-prepare-comment)
-    (octocat-edit-open
-     (format "Comment on %s" (octocat-diff-range-label range))
-     (octocat-pr-diff--submitter
-      (lambda (body)
-        `(review-draft-add ,repo ,number ,(gethash "id" data)
-                           ,(and review (gethash "id" review))
-                           ,(if review
-                                (octocat--get review "commit" "oid")
-                              (gethash "headRefOid" data))
-                           ,range ,body ,(octocat-pr-diff--login))))
-     #'ignore)))
-
-(defun octocat-pr-diff--reply (comment)
-  "Open the edit buffer of a reply to the thread of COMMENT.
-With a pending review the reply is a draft in it; without one, you
-pick between replying now and starting a review."
-  (pcase-let* ((`(,repo . ,number) (octocat-pr--current))
-               (data   (octocat-pr-diff--threads))
-               (review (octocat-model-pending-review data))
-               (thread (gethash "thread_id" comment))
-               (draft  (or review
-                           (eq (car (read-multiple-choice
-                                     "Reply: " '((?n "now" "post the reply at once")
-                                                 (?r "review" "start a review with it"))))
-                               ?r))))
-    (octocat-timeline-prepare-comment)
-    (octocat-edit-open
-     (format "Reply on %s" (octocat-diff-range-label
-                            (list :path (gethash "path" comment)
-                                  :line (or (gethash "line" comment) 0)
-                                  :side (gethash "side" comment))))
-     (octocat-pr-diff--submitter
-      (lambda (body)
-        (if draft
-            `(review-draft-reply ,repo ,number ,(gethash "id" data)
-                                 ,(and review (gethash "id" review))
-                                 ,(if review
-                                      (octocat--get review "commit" "oid")
-                                    (gethash "headRefOid" data))
-                                 ,thread ,body ,(octocat-pr-diff--login))
-          `(review-reply-now ,repo ,number ,thread
-                             ,(or (gethash "in_reply_to_id" comment) (gethash "id" comment))
-                             ,body ,(octocat-pr-diff--login)))))
-     #'ignore)))
-
-(defvar octocat-pr-diff-comment-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c C-d") #'octocat-pr-diff-delete-comment)
-    map)
-  "Keymap for `octocat-pr-diff-comment-mode'.")
-
-(define-minor-mode octocat-pr-diff-comment-mode
-  "Delete the review comment being edited in its edit buffer."
-  :keymap octocat-pr-diff-comment-mode-map)
-
-(defun octocat-pr-diff--delete (source node-id)
-  "Delete review comment NODE-ID of the PR of SOURCE, after asking."
-  (when (y-or-n-p "Delete this comment? ")
-    (pcase-let ((`(,repo . ,number) (with-current-buffer source (octocat-pr--current))))
-      (octocat-sync-submit `(review-comment-delete ,repo ,number ,node-id)))
-    t))
-
-(defun octocat-pr-diff-delete-comment ()
-  "Delete the review comment this buffer edits, after asking."
-  (interactive)
-  (when (octocat-pr-diff--delete octocat-edit-source-buffer
-                                 (plist-get octocat-edit-user-data :node-id))
-    (set-buffer-modified-p nil)
-    (quit-window t octocat-edit-window)))
-
-(defun octocat-pr-diff--edit (comment)
-  "Open the edit buffer of your review COMMENT."
-  (pcase-let* ((`(,repo . ,number) (octocat-pr--current))
-               (node-id (gethash "node_id" comment))
-               (title   (format "Edit comment on %s"
-                                (octocat-diff-range-label
-                                 (list :path (gethash "path" comment)
-                                       :line (or (gethash "line" comment) 0)
-                                       :side (gethash "side" comment)))))
-               (win (octocat-edit-open
-                     title
-                     (lambda (body source on-success on-error)
-                       (cond ((not (string-empty-p body))
-                              (octocat-sync-submit
-                               `(review-comment-edit ,repo ,number ,node-id ,body))
-                              (funcall on-success))
-                             ((octocat-pr-diff--delete source node-id)
-                              (funcall on-success))
-                             (t (funcall on-error "Nothing to save"))))
-                     #'ignore
-                     (gethash "body" comment)
-                     (list :node-id node-id :allow-empty t))))
-    (with-current-buffer (window-buffer win)
-      (octocat-pr-diff-comment-mode 1)
-      (setq header-line-format
-            (concat (octocat-edit-header-line title) "   "
-                    (propertize "C-c C-d" 'face 'help-key-binding) "  delete")))
-    win))
-
-(defun octocat-pr-diff--resolve (root)
-  "Resolve the thread of ROOT, its first comment, or unresolve it."
-  (pcase-let ((`(,repo . ,number) (octocat-pr--current)))
-    (octocat-sync-submit `(review-thread-resolve ,repo ,number ,(gethash "thread_id" root)
-                                                 ,(not (eq (gethash "resolved" root) t))))))
-
-(defconst octocat-pr-diff--comment-backend
-  (list :add #'octocat-pr-diff--add
-        :reply #'octocat-pr-diff--reply
-        :edit #'octocat-pr-diff--edit
-        :resolve #'octocat-pr-diff--resolve)
-  "The PR diff's comments, drafts in your pending review, see `octocat-diff'.")
 
 
 ;;;;; Review submission
@@ -1666,41 +1493,41 @@ The diff is from their merge base, looked up only when needed."
        (cons (lambda (k) (octocat-diff--merge-base repo base head k))
              head)))
 
-(vui-defcomponent octocat-pr-diff--page (repo number hide-comments raw view at filter tick)
+(vui-defcomponent octocat-pr-diff--page (repo number raw view at tick)
   "The diff of pull request NUMBER of REPO, under the PR page's header.
-HIDE-COMMENTS leaves the review comments out of the diff, and RAW shows
-their markdown verbatim.  VIEW, of `octocat-diff--views', shows the
-files as a tree or a patch instead, from base to head, all commits in
-one.  AT is as `octocat-diff--at'.  FILTER, if set, shows only the
-files whose path holds it, see `octocat-diff-filtered'.  A review being
-submitted shows in place of the submit button.  A new TICK fetches
-everything again."
+VIEW, of `octocat-diff--views', shows the files as a tree or a patch,
+from base to head, all commits in one; the review comments follow,
+their markdown verbatim with RAW.  AT is as `octocat-diff--at'; a
+link's lines open in the file viewer, see `octocat-diff-use-link'.  A
+review being submitted shows in place of the submit button.  A new
+TICK fetches everything again."
   :render
   (let* ((_        (octocat-diff-use-at-reset))
          (pr       (octocat-pr--use-data repo number tick))
          (stack    (octocat-pr--use-stack repo number tick))
          (local    (plist-get (octocat-vui-use-clone-head tick) :branch))
          (tab-w    (octocat--markdown-width))
-         (views    (octocat-diff-views-heading (or view 'diff) tab-w))
+         (views    (octocat-diff-views-heading (or view 'tree) tab-w))
          (files    (octocat-vui-use-resource (list 'pr-files repo number) tick))
          (threads  (octocat-vui-use-resource (octocat-model-review-threads-spec repo number) tick))
          (data     (plist-get threads :data))
          (comments (vui-use-memo (data)
                      (and data (octocat-pr-diff--thread-comments
                                 (octocat--nodes data "reviewThreads")))))
-         (by-path  (vui-use-memo (comments) (octocat-diff-by-path comments)))
          (open     (vui-use-memo (data)
                      (octocat-pr-diff--open-threads (octocat--nodes data "reviewThreads"))))
          (base     (octocat--get (plist-get pr :data) "baseRefName"))
          (head     (octocat--get data "headRefOid"))
          (revs     (vui-use-memo (base head) (octocat-pr-diff--revs repo base head)))
-         (text     (vui-use-memo ((plist-get files :data) view filter)
+         (context  (list :revs revs
+                         :label (format "Changes in pull request #%d" number)))
+         (text     (vui-use-memo ((plist-get files :data) view)
                      (and (eq view 'patch)
-                          (octocat-diff-patch-text
-                           (octocat-diff-filtered (plist-get files :data) filter)))))
+                          (octocat-diff-patch-text (plist-get files :data)))))
          (review   (octocat-model-pending-review data))
          (pending  (and review (cons (gethash "id" review)
                                      (octocat-pr-diff--pending-count data)))))
+    (octocat-diff-use-link repo head (plist-get files :data) context at)
     (octocat-vui-page
      (octocat-pr--pin number pr tab-w (octocat--label-background))
      (vui-vstack
@@ -1722,24 +1549,12 @@ everything again."
       (pcase (octocat-vui-snapshot-status files)
         ('pending (vui-text (octocat-vui-skeleton '(("  " 40) ("  " 28) ("  " 34)))))
         ('error   (vui-text (concat "  " (octocat-vui-error-text files)) :face 'error))
-        (_ (pcase view
-             ('tree
-              (if head
-                  (vui-component 'octocat-diff-head-tree
+        (_ (cond
+            (text (vui-text text))
+            (head (vui-component 'octocat-diff-head-tree
                     :repo repo :head head :files (plist-get files :data)
-                    :context (list :revs revs
-                                   :label (format "Changes in pull request #%d" number))
-                    :at at :notes open)
-                (vui-text (octocat-tree--skeleton))))
-             ('patch
-              (apply #'vui-vstack
-                     (delq nil
-                           (list (octocat-diff-filter-line (plist-get files :data) filter)
-                                 (vui-text text)))))
-             (_ (octocat-diff-files-section repo (plist-get files :data) by-path
-                                            hide-comments raw (octocat--markdown-width) nil at
-                                            (octocat--get (plist-get pr :data) "changedFiles")
-                                            revs t filter)))))
+                    :context context :at at :notes open))
+            (t (vui-text (octocat-tree--skeleton))))))
       (vui-newline)
       (octocat-diff-comments-section "Review Comments" (plist-put (copy-sequence threads)
                                                                   :data comments)
@@ -1752,18 +1567,14 @@ everything again."
 ;;;;; Major mode
 
 (defun octocat-pr-diff--page-url ()
-  "Return the URL of the files changed of this pull request.
-It is at the diff line of point or the region."
+  "Return the URL of the files changed of this pull request."
   (and octocat--pr-diff-repo octocat--pr-diff-number
-       (concat (octocat--web-url "%s/pull/%d/files" octocat--pr-diff-repo
-                                 octocat--pr-diff-number)
-               (octocat-diff--url-fragment))))
+       (octocat--web-url "%s/pull/%d/files" octocat--pr-diff-repo
+                         octocat--pr-diff-number)))
 
 (defvar octocat-pr-diff-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map octocat-page-mode-map)
-    (define-key map (kbd "C-c C-a") #'octocat-diff-add-comment)
-    (define-key map (kbd "C-c C-e") #'octocat-diff-edit-comment)
     (define-key map (kbd "C-c C-r") #'octocat-pr-diff-review)
     (define-key map (kbd "C-c C-m") #'octocat-pr-merge)
     (define-key map (kbd "C-c C-v") #'octocat-diff-cycle-view)
@@ -1778,7 +1589,6 @@ It is at the diff line of point or the region."
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function #'octocat-pr-diff-refresh)
   (setq-local octocat--url-function #'octocat-pr-diff--page-url)
-  (setq-local octocat-diff--comment-backend octocat-pr-diff--comment-backend)
   (setq-local octocat-diff--view 'tree)
   (setq-local octocat--repo-function (lambda () octocat--pr-diff-repo))
   (setq-local octocat--ref-function #'octocat-pr--current-head))
@@ -1797,25 +1607,22 @@ in place."
                             (cons octocat--pr-diff-repo octocat--pr-diff-number)
                             (list :repo octocat--pr-diff-repo
                                   :number octocat--pr-diff-number
-                                  :hide-comments octocat-diff--hide-comments
                                   :raw octocat--markdown-raw
                                   :view octocat-diff--view
-                                  :at octocat-diff--at
-                                  :filter octocat-diff--filter)))
+                                  :at octocat-diff--at)))
 
 (defun octocat-pr-diff-open (repo number &optional at)
-  "Show the diff of pull request NUMBER of REPO in its own buffer.
-AT is the lines a link named, see `octocat-diff--file'."
+  "Show the diff of pull request NUMBER of REPO in its own buffer, on its Tree.
+AT, the lines a link named, opens them in the file viewer, see
+`octocat-diff-use-link'."
   (let ((buf (get-buffer-create (format "*%s pr %d diff*" repo number))))
     (octocat-display-buffer buf)
     (unless (derived-mode-p 'octocat-pr-diff-mode)
       (octocat-pr-diff-mode))
     (setq octocat--pr-diff-repo   repo
           octocat--pr-diff-number number
-          octocat-diff--hide-comments nil
           octocat-diff--at at
-          octocat-diff--view (octocat-diff-open-view at)
-          octocat-diff--filter nil)
+          octocat-diff--view 'tree)
     (octocat-pr-diff-refresh)))
 
 (cl-defmethod octocat-open ((_kind (eql 'pr-diff)) repo number &optional at)

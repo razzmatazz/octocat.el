@@ -1,0 +1,24 @@
+acme/rocket  [8ee9a2c ▾]:/src/cache.rs                                            Code  Blame  Diff
+
+○ Cache parsed templates between builds (#128)                    3f9c2a1 · 6 hours ago  [3 commits]
+Changes in pull request #128
+▾ A src/cache.rs  +18 -0
+@@ -0,0 +1,18 @@
++use std::collections::HashMap;
++use std::path::PathBuf;
++use std::time::SystemTime;
++
++use crate::template::Template;
++
++/// Parsed templates, kept between builds.
++#[derive(Default)]
++pub struct Cache {
++    entries: HashMap<PathBuf, (SystemTime, Template)>,
++}
++
++impl Cache {
++    pub fn get(&self, path: &PathBuf, modified: SystemTime) -> Option<&Template> {
++        let (at, template) = self.entries.get(path)?;
++        (*at == modified).then_some(template)
++    }
++}

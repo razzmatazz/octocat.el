@@ -159,7 +159,8 @@ Its commits, a merge of `main` marked `⊕`:
 
 Its changed files, opened on their tree: the repository at the head of
 the PR, opened down to what it changes, all its commits in one.  ✉
-counts a file's unresolved conversations; `RET` on it shows the first.
+counts a file's unresolved conversations; `RET` on it opens the file at
+the first.  The review comments are listed under the files.
 
 <!-- screenshot: (pr-diff "acme/rocket" 128) -->
 ![pr-diff](pr-diff.png)
@@ -176,25 +177,13 @@ view: what the PR changed in it.
 [As text](pr-diff-tree-file.txt)
 <!-- /screenshot -->
 
-The same files as their diff, `C-c C-v` or Diff after their heading,
-with `[Expand all]` pressed: a conversation boxed after its line, a
-resolved one folded to its heading, and your draft, **Pending** in your
-review, its long body folded.
+`RET` on a file's ✉ opens it the same way, its first conversation's
+lines highlighted.
 
-<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-expanded" :press ((:key "C-c C-v") "Expand all") -->
-![pr-diff-expanded](pr-diff-expanded.png)
+<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-conversation" :press ((:key "RET" "✉ 1")) -->
+![pr-diff-conversation](pr-diff-conversation.png)
 
-[As text](pr-diff-expanded.txt)
-<!-- /screenshot -->
-
-Reviewing: `C-c C-a` on a line opens a comment on it below, the line
-highlighted until it is saved as a draft, and `RET` on the resolved
-conversation unfolds it.
-
-<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-review" :press ((:key "C-c C-v") "Expand all" "Resolved by" (:key "C-c C-a" "+mod cache;")) -->
-![pr-diff-review](pr-diff-review.png)
-
-[As text](pr-diff-review.txt)
+[As text](pr-diff-conversation.txt)
 <!-- /screenshot -->
 
 A pull request in a stack, the stack listed before the merge box, and a
@@ -271,29 +260,17 @@ them, its message, its checks and its files, opened on their tree.
 Scrolled down, past its title: the header line pins it with the whole
 SHA, as the top line shows it, and the pill of its views.
 
-<!-- screenshot: (commit "acme/rocket" "3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f") :name "commit-scrolled" :press ((:key "C-c C-v")) :scroll "Files (3)" -->
+<!-- screenshot: (commit "acme/rocket" "3f9c2a1e8b7d6c5f4a3b2c1d0e9f8a7b6c5d4e3f") :name "commit-scrolled" :scroll "Checks (4)" -->
 ![commit-scrolled](commit-scrolled.png)
 
 [As text](commit-scrolled.txt)
 <!-- /screenshot -->
 
-Its files as their diff, `C-c C-v` or Diff on its top line, unfolded,
-are in the diff faces, the code highlighted as
-its major mode would; here JavaScript, as `js-mode` does.  An added
-file is highlighted whole, as the file itself.  An image shows inline,
-fetched only once RET unfolds it, as here; another binary file, and one
-whose diff is too large for GitHub to send, show no diff:
-
-<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-diff" :press ((:key "C-c C-v") "Expand all" "docs/assets/footnote-popup.png") -->
-![commit-diff](commit-diff.png)
-
-[As text](commit-diff.txt)
-<!-- /screenshot -->
-
-The same commit as a tree, as it opens: the repository's files at the commit, opened down to those it changed,
-which are marked as in the diff, the rest dimmed.  A directory of more
-than `octocat-tree-dir-entries` lists only its changes, and a button
-lists the rest:
+Another commit's tree, as it opens: the repository's files at the
+commit, opened down to those it changed, which are marked as in the
+diff, the rest dimmed.  A directory of more than
+`octocat-tree-dir-entries` lists only its changes, and a button lists
+the rest:
 
 <!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-tree" -->
 ![commit-tree](commit-tree.png)
@@ -301,11 +278,22 @@ lists the rest:
 [As text](commit-tree.txt)
 <!-- /screenshot -->
 
-The same commit as a patch, `C-c C-v` twice or Patch on its top line, as GitHub's
+`RET` on a changed file opens its diff in the file viewer, in the diff
+faces, the code highlighted as its major mode would; here JavaScript,
+as `js-mode` does.  An added file is highlighted whole, as the file
+itself:
+
+<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-file" :press ((:key "RET" "footnotes.js")) -->
+![commit-file](commit-file.png)
+
+[As text](commit-file.txt)
+<!-- /screenshot -->
+
+The same commit as a patch, `C-c C-v` or Patch on its top line, as GitHub's
 `.patch`: its header and message as `git format-patch` writes them,
 then every file's diff in full, to read or copy out.
 
-<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-patch" :press ((:key "C-c C-v") (:key "C-c C-v")) -->
+<!-- screenshot: (commit "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6") :name "commit-patch" :press ((:key "C-c C-v")) -->
 ![commit-patch](commit-patch.png)
 
 [As text](commit-patch.txt)
@@ -321,19 +309,18 @@ changed.
 [As text](compare.txt)
 <!-- /screenshot -->
 
-`C-c C-v` cycles a comparison's views as a commit's: its Diff, then its
-Patch.
+`C-c C-v` shows a comparison's Patch, as a commit's.
 
-<!-- screenshot: (compare "acme/rocket" "main" "..." "template-cache") :name "compare-diff" :press ((:key "C-c C-v")) -->
-![compare-diff](compare-diff.png)
+<!-- screenshot: (compare "acme/rocket" "main" "..." "template-cache") :name "compare-patch" :press ((:key "C-c C-v")) -->
+![compare-patch](compare-patch.png)
 
-[As text](compare-diff.txt)
+[As text](compare-patch.txt)
 <!-- /screenshot -->
 
 Two commits compared, as from a commit page's link: a full SHA shows as
 its short form, whole on hover.
 
-<!-- screenshot: (compare "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6" "..." "8ee9a2cbe60f637fd8e3a16e17c94d9b90f19fa1") :name "compare-shas" :press ((:key "C-c C-v")) -->
+<!-- screenshot: (compare "acme/rocket" "1a954628a960aaef81d7b2d4521929579f3541e6" "..." "8ee9a2cbe60f637fd8e3a16e17c94d9b90f19fa1") :name "compare-shas" -->
 ![compare-shas](compare-shas.png)
 
 [As text](compare-shas.txt)

@@ -1,0 +1,51 @@
+acme/rocket  main...template-cache · 7 commits · 3 files changed                        Tree  Patch
+diff --git a/src/cache.rs b/src/cache.rs
+new file mode 100644
+--- /dev/null
++++ b/src/cache.rs
+@@ -0,0 +1,18 @@
++use std::collections::HashMap;
++use std::path::PathBuf;
++use std::time::SystemTime;
++
++use crate::template::Template;
++
++/// Parsed templates, kept between builds.
++#[derive(Default)]
++pub struct Cache {
++    entries: HashMap<PathBuf, (SystemTime, Template)>,
++}
++
++impl Cache {
++    pub fn get(&self, path: &PathBuf, modified: SystemTime) -> Option<&Template> {
++        let (at, template) = self.entries.get(path)?;
++        (*at == modified).then_some(template)
++    }
++}
+diff --git a/src/build.rs b/src/build.rs
+--- a/src/build.rs
++++ b/src/build.rs
+@@ -41,9 +41,12 @@ pub fn build(site: &Site, out: &Path) -> Result<()> {
+     let pages = site.pages()?;
++    let mut cache = Cache::default();
+     for page in &pages {
+-        let template = Template::parse(&page.template_path())?;
+-        let html = template.render(page)?;
++        let path = page.template_path();
++        let template = match cache.get(&path, modified(&path)?) {
++            Some(t) => t,
++            None => cache.insert(path.clone(), Template::parse(&path)?),
++        };
++        let html = template.render(page)?;
+         write_page(out, page, &html)?;
+     }
+     Ok(())
+diff --git a/src/main.rs b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,5 +1,6 @@
+ mod build;
++mod cache;
+ mod markdown;
+ mod serve;
+ mod template;

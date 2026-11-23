@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Commit, compare and PR diff pages drop their Diff view: Tree and Patch; RET opens a file's diff
+* Line links and ✉ open the file's diff in the file viewer, at its lines
+* PR review comments are listed under the files, no longer in the diff, until reviewing moves to files
 * Comment counts show ✉ again, not 💬, which made their lines taller
 * Long diffs open, and follow a font or width change, at once, not after seconds
 * Large files show at once in the file viewer and blame, highlighted by a second Emacs

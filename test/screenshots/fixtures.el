@@ -1271,6 +1271,16 @@ jobs:
        (:data (:repository (:object (:history (:totalCount 9 :nodes [,(octocat-screenshots--history-node
                                                                        (nth 1 octocat-screenshots--commits))]))
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "src/main.rs"))))))
+      ;; The file ✉ opens, at its first conversation.
+      ("repo-head" (,(format "dir=%s:src/cache.rs" octocat-screenshots--pr-head))
+       (:data (:repository (:object (:history (:totalCount 3 :nodes [,(octocat-screenshots--history-node
+                                                                       (nth 1 octocat-screenshots--commits))]))
+                            :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "src/cache.rs"))))))
+      ;; The file `RET' opens from a commit's Tree.
+      ("repo-head" (,(format "dir=%s:src/theme/footnotes.js" octocat-screenshots--head))
+       (:data (:repository (:object (:history (:totalCount 1 :nodes [,(octocat-screenshots--history-node
+                                                                       (car octocat-screenshots--commits))]))
+                            :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "footnotes.js"))))))
       ("repo-head" (,(format "dir=%s:" octocat-screenshots--pr-head))
        (:data (:repository (:object (:history (:totalCount 98 :nodes [,(octocat-screenshots--history-node
                                                                         (nth 1 octocat-screenshots--commits))]))
@@ -1295,6 +1305,11 @@ jobs:
       ("file-blob" (,(format "expr=%s:src/main.rs" octocat-screenshots--pr-head))
        ,(octocat-screenshots--file-blob
          "src/main.rs" "mod build;\nmod cache;\nmod markdown;\nmod serve;\nmod template;\n"))
+      ("file-blob" (,(format "expr=%s:src/cache.rs" octocat-screenshots--pr-head))
+       ,(octocat-screenshots--file-blob "src/cache.rs" octocat-screenshots--cache-rs))
+      ("file-blob" (,(format "expr=%s:src/theme/footnotes.js" octocat-screenshots--head))
+       ,(octocat-screenshots--file-blob "src/theme/footnotes.js"
+                                        "export function initFootnotes(root) {\n}\n"))
       ("repo-head" ("dir=main:docs/guide.md")
        (:data (:repository (:object (:history (:totalCount 12 :nodes [,(octocat-screenshots--history-node
                                                                         (nth 2 octocat-screenshots--commits))]))

@@ -153,9 +153,8 @@ PARSE-FN and CALLBACK are as there."
               (lambda () (time-convert octocat-screenshots-now 'list)))
   (advice-add 'float-time :around
               (lambda (fn &optional time) (funcall fn (or time octocat-screenshots-now))))
-  ;; So a page is as wide and tall whatever the window.
+  ;; So a page is as wide whatever the window.
   (advice-add 'octocat-vui-window-width :override (lambda () octocat-screenshots-width))
-  (advice-add 'octocat-vui-window-height :override (lambda () 40))
   (advice-add 'octocat--markdown-width :override (lambda () octocat-screenshots-width))
   (when (display-graphic-p)
     ;; Dark, but dim enough to sit well on GitHub's light pages too:

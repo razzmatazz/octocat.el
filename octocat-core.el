@@ -1445,17 +1445,6 @@ SIDE \"LEFT\" or \"RIGHT\" as `octocat-diff-line' anchors name it."
   "Return non-nil if HASH, of a #diff- fragment, names the file at PATH."
   (member hash (list (secure-hash 'sha256 path) (secure-hash 'md5 path))))
 
-(defun octocat--diff-fragment (path &optional from to)
-  "Return the fragment naming file PATH of a diff, or lines FROM to TO of it.
-FROM and TO are (SIDE . LINE), as `octocat--url-lines' reads them back;
-TO defaults to FROM."
-  (let ((end (lambda (at) (format "%s%d" (if (equal (car at) "LEFT") "L" "R") (cdr at)))))
-    (concat "diff-" (secure-hash 'sha256 path)
-            (when from
-              (concat (funcall end from)
-                      (when (and to (not (equal to from)))
-                        (concat "-" (funcall end to))))))))
-
 (defun octocat--split-ref-path (segments count)
   "Split SEGMENTS of a github.com path into (REF . PATH), COUNT of them the ref.
 PATH is the rest joined by slashes, or nil when none is left."

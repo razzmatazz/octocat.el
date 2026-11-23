@@ -4,7 +4,7 @@ open    Assignees @srivera
         Labels  performance   enhancement
         template-cache → main · Approved · Milestone 0.10 · Closes #97
 
-[Conversation]  [Commits (7)]  Files changed (3)                                  Tree  Diff  Patch
+[Conversation]  [Commits (7)]  Files changed (3)                                        Tree  Patch
 ▸ .github/
 ▸ docs/
 ▸ examples/
@@ -24,6 +24,38 @@ open    Assignees @srivera
   README.md
 
 Review Comments (7)
-  (7 inline review comments, in the diff above)
+  ◆ @mchen  src/cache.rs:L16  1 day ago  👍 1
+  │ Comparing modification times is enough here: a build never runs while a template is half
+  │ written.
+  │
+  ◆ @srivera  src/cache.rs:L16  1 day ago
+  │ Agreed. rocket serve writes them atomically too, so a watch rebuild is safe.
+  │
+  ◆ @mchen  src/cache.rs:L16  1 day ago
+  │ Good, then this is fine as it is.
+  │
+  ◆ @mchen  src/build.rs:L42  1 day ago
+  │ A cache per build means rocket serve starts cold after every save. Could it live on Site?
+  │
+  ◆ @srivera  src/build.rs:L42  20 hours ago
+  │ Moved it to Site in the last commit, so a watch rebuild reuses it.
+  │
+  ◆ @aokafor  src/main.rs:L1  3 hours ago
+  │ Could the modules stay in alphabetical order once cache is in?
+  │
+  ◆ @jlindqvist  src/build.rs:L48  Pending
+  │ modified(&path)? reads the file's time once per page, and a site has far more pages than
+  │ templates. Could the times be read once per build, before the loop?
+  │
+  │  let times: HashMap<PathBuf, SystemTime> = pages
+  │      .iter()
+  │      .map(|p| p.template_path())
+  │      .collect::<HashSet<_>>()
+  │      .into_iter()
+  │      .map(|p| Ok((p.clone(), modified(&p)?)))
+  │      .collect::<Result<_>>()?;
+  │
+  │ Not a blocker: the calls are cheap next to parsing, and the OS caches
+  │ the times anyway.  But a site with a few thousand pages would notice.
 
   [Submit review (1 pending)]   [Discard review]

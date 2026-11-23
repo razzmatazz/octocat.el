@@ -92,21 +92,22 @@ is that line's conversation, which can be resolved and can go outdated.
 
 ## Where octocat stands
 
-- The PR diff reads `reviewThreads` (`pr-review-threads` in
-  `octocat-model.el`) and draws them through `octocat-diff`; drafts,
-  replies, edits, resolving, submitting and discarding work.
-- The PR diff, like the commit and compare pages, opens on its Tree; a
-  link to lines opens on the Diff instead (`octocat-diff-open-view`).
+- The PR, commit and compare pages show their files as Tree and Patch
+  only (step 1 below, done).  A link to lines opens the file viewer's
+  Diff at them (`octocat-diff-use-link`).
+- The PR's Files changed page reads `reviewThreads`
+  (`pr-review-threads` in `octocat-model.el`) and lists every comment
+  under the files, in "Review Comments", with its `path:Lnn`;
+  submitting and discarding the pending review work.  Adding,
+  replying, editing and resolving are gone until step 4.
 - The Tree counts each file's unresolved conversations, `✉ N`,
   leaving out outdated ones and drafts, as GitHub's tree does
-  (`octocat-pr-diff--open-threads`); `RET` on the count shows the Diff
-  at the first (`octocat-diff-show-at`).
+  (`octocat-pr-diff--open-threads`); `RET` on the count opens the
+  file viewer's Diff at the first (`octocat-diff--open-change`).
 - The file viewer's Diff, opened from a Tree, shows the file's change
-  with no comments and no review commands
-  (`octocat-diff--change-entry`).
-- An outdated thread has no line, so the diff places it nowhere and it
-  falls into the "Review Comments" list under the files, with no hunk
-  and no sign of where it was.  The thread query asks for neither
+  with no comments and no review commands (`octocat-diff-file-view`).
+- An outdated thread has no line; in "Review Comments" it shows no
+  hunk and no sign of where it was.  The thread query asks for neither
   `originalLine` nor `diffHunk`.
 - The timeline shows a review as a box with its body; its inline
   comments aren't listed there or linked to.
@@ -115,11 +116,12 @@ is that line's conversation, which can be resolved and can go outdated.
 
 ## Improvements
 
-### 1. Review in the file viewer; pages of changes drop their Diff view
+### 1. Pages of changes drop their Diff view; review in the file viewer
 
-A PR's Files changed page, a commit page and a comparison keep two
-views, Tree and Patch.  A change is read in the file viewer, a file at
-a time, as GitHub's single-file view, and reviewing moves there:
+The Diff view goes, outright: a PR's Files changed page, a commit page
+and a comparison show just Tree and Patch, and the pill reads
+`Tree | Patch` on every one.  A change is read in the file viewer, a
+file at a time, as GitHub's single-file view, and reviewing moves there:
 opening a changed file from the PR shows its diff with the PR's
 conversations, and the review commands work there.
 
@@ -219,20 +221,61 @@ What has to change:
 file; `q` goes back to the Tree, whose ✉ show where to go next.
 
 **Steps:**
-1. The model: the origin lookup and the PR's ref from it, and the
-   comment backend taking `(repo number)`.  No visible change; tests.
-2. Key file buffers by origin, which names them and replaces the change
+1. **Done.**  Drop the Diff view of the PR, commit and compare pages, first and on
+   its own: `octocat-diff--views` becomes `(tree patch)`, so the pill
+   and `octocat-diff-cycle-view` show only those; `octocat-diff-open-view`
+   and the Files section's `[Expand all]` and filter go.  The pages open
+   on the Tree; ✉ and a link to lines open the file viewer's Diff at
+   them, as RET on a Tree file does today.  "Review Comments" and
+   `[Submit review]` / `[Discard review]` move under the Tree.  Until
+   step 4, the PR's threads show only in "Review Comments", and new
+   drafts can't be added.  Screenshots, CHANGELOG.
+
+   Everything left without a caller goes, with its tests and
+   docstring mentions; nothing is kept dormant for later steps, which
+   recover what they need from git history, reshaped for the file
+   buffer:
+   - the Diff view: `octocat-diff--files`, `octocat-diff-files-section`,
+     `octocat-diff--file-at`, `octocat-diff-open-view`,
+     `octocat-diff-show-at` (✉ opens the file viewer instead),
+     `octocat-diff--line-count`, the `diff` branches of
+     `octocat-diff--path-at-point` and `octocat-diff-show-view`;
+   - the filter, set only from the Diff's heading: `octocat-diff--filter`,
+     `octocat-diff-filtered`, `-set-filter`, `--ask-filter`,
+     `--filter-candidates`, `--filter-default`, `--filter-buttons`,
+     `-filter-line`, and the `filter` arguments of the three pages;
+   - comments in a diff, which only the Diff drew: the `comments`
+     argument of `octocat-diff--file` and what places them
+     (`octocat-diff--thread`, `--folded-body`, `--placed-count`,
+     `octocat-diff-by-path`), hiding them (`octocat-diff--hide-comments`,
+     `-toggle-comments`, `--comments-switch`, the pages' `hide-comments`),
+     and adding or editing on a diff line (`octocat-diff-add-comment`,
+     `-edit-comment`, `-comment-at-point`, `--backend`, `--anchors`,
+     `--range`, `--mark-lines`, the `C-c C-a`/`C-c C-e` bindings,
+     Evil's too);
+   - the comment backend, read only by those: `octocat-diff--comment-backend`,
+     `octocat-pr-diff--comment-backend` and its `octocat-pr-diff--add`,
+     `--reply`, `--edit`, `--resolve`, and their sync mutations if
+     nothing else submits them;
+   - whatever these alone called, found by a compile and
+     `make lint` after each removal.
+
+   What still has callers stays: `octocat-diff--file` for the file
+   viewer's Diff, `octocat-diff--line-anchor` and `--url-fragment` for
+   copied URLs (from the file viewer only once the Diff is gone, so check
+   each page's), `octocat-vui-expand-all-button` (the Actions page),
+   "Review Comments" (a plain timeline), submitting and discarding the
+   review, and `octocat-diff-cycle-view` over the two views left.
+2. The model: the origin lookup and the PR's ref from it.  No visible
+   change; tests.
+3. Key file buffers by origin, which names them and replaces the change
    snapshot.  No visible change but buffer names.
-3. A PR origin's Diff draws the PR's threads and takes the review
-   commands, with the pending line.  Screenshot of a file with a thread
+4. A PR origin's Diff draws the PR's threads and takes the review
+   commands, with the pending line, bringing back from history what
+   step 1 removed, the comment backend now taking `(repo number)`.  Screenshot of a file with a thread
    and a draft.
-4. Route the entry points above to it; ✉ and PR line links stop
-   targeting the PR's Diff.
-5. Drop the Diff view of the PR, commit and compare pages:
-   `octocat-diff--views`, the pill, `octocat-diff-open-view`, the
-   Files section's `[Expand all]` and filter.  A link to lines of a
-   commit or comparison opens the file buffer at them, as a PR's does.
-   Screenshots, CHANGELOG.
+5. Route the entry points above to the PR's file buffer, at the thread
+   or lines.
 
 ### 2. Unfinished steps of pr-reviews.md
 
