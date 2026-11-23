@@ -18,6 +18,9 @@ From the bottom up:
   branch and unpushed commits, and the objects and history it holds,
   which a resource named by a SHA reads before asking GitHub (its
   `:local`).
+- **`octocat-async`**, also standalone: runs work too slow for the UI
+  in a worker, a child Emacs kept for the session, falling back to this
+  Emacs when the worker fails, so a caller gets the result either way.
 - **`octocat-core`**: running `gh`, faces, the helpers every page
   shares, and the edit buffer for writing a comment or body.
 - **`octocat-sync`**: the local SQLite store pages read from, and the
@@ -80,6 +83,7 @@ own, below.
 ```mermaid
 flowchart TD
   octocat_actions[octocat-actions]
+  octocat_async[octocat-async]
   octocat_clone[octocat-clone]
   octocat_core[octocat-core]
   octocat_dashboard[octocat-dashboard]
@@ -152,6 +156,7 @@ flowchart TD
   octocat_vui --> octocat_model
   octocat_vui --> octocat_sync
   octocat --> octocat_actions
+  octocat --> octocat_async
   octocat --> octocat_core
   octocat --> octocat_dashboard
   octocat --> octocat_doctor
@@ -209,6 +214,7 @@ flowchart TD
 | Module | What it is | Requires |
 |---|---|---|
 | `octocat-actions` | GitHub Actions and commit checks for octocat | `octocat-core`, `octocat-mermaid`, `octocat-repo`, `octocat-sync`, `octocat-vui` |
+| `octocat-async` | Run work in a child Emacs, off the UI |  |
 | `octocat-clone` | Read GitHub data from a repo's local clone |  |
 | `octocat-core` | Shared infrastructure for octocat | `octocat-clone`, `octocat-image`, `octocat-markdown` |
 | `octocat-dashboard` | GitHub account dashboard for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |
@@ -227,7 +233,7 @@ flowchart TD
 | `octocat-timeline` | GitHub-style timeline for issue and PR views | `octocat-core`, `octocat-model`, `octocat-sync`, `octocat-vui` |
 | `octocat-user` | GitHub user / organization page for octocat | `octocat-core`, `octocat-vui` |
 | `octocat-vui` | vui.el helpers and components for octocat | `octocat-core`, `octocat-model`, `octocat-sync` |
-| `octocat` | GitHub Client powered by the gh CLI | `octocat-actions`, `octocat-core`, `octocat-dashboard`, `octocat-doctor`, `octocat-image`, `octocat-issue`, `octocat-model`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-sync`, `octocat-timeline`, `octocat-user`, `octocat-vui`, `octocat-evil` (lazily) |
+| `octocat` | GitHub Client powered by the gh CLI | `octocat-actions`, `octocat-async`, `octocat-core`, `octocat-dashboard`, `octocat-doctor`, `octocat-image`, `octocat-issue`, `octocat-model`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-sync`, `octocat-timeline`, `octocat-user`, `octocat-vui`, `octocat-evil` (lazily) |
 <!-- /module-list -->
 
 ## Updating
