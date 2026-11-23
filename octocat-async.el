@@ -137,8 +137,9 @@ running it; WORKER-MS the worker's.")
 
 (defun octocat-async--init-message ()
   "Return the worker's first message.
-It holds `octocat-async--vars', and the autoloads of the modes they
-name, as this Emacs has them."
+It holds `octocat-async--vars', and the autoloads of the modes and
+functions they name, as this Emacs has them: a `magic-mode-alist'
+function void in the worker fails `set-auto-mode' for every file."
   (let* ((vars (delq nil (mapcar (lambda (v)
                                    (and (boundp v)
                                         (cons v (seq-filter #'octocat-async--readable
@@ -148,7 +149,9 @@ name, as this Emacs has them."
                                    append (cl-loop for e in value
                                                    for m = (if (consp e) (cdr e) e)
                                                    for m1 = (if (consp m) (car m) m)
-                                                   when (and m1 (symbolp m1)) collect m1))))
+                                                   when (and m1 (symbolp m1)) collect m1
+                                                   when (and (consp e) (car e) (symbolp (car e)))
+                                                   collect (car e)))))
          (autoloads (cl-loop for m in modes
                              for f = (and (fboundp m) (symbol-function m))
                              when (autoloadp f) collect (list m (cadr f))

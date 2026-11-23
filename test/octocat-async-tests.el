@@ -261,5 +261,13 @@ job gets a new worker."
         (should (equal (octocat-async--readable m) m))
         (should (member '(octocat-async-tests--foo-mode "foo-mode") (nth 2 m)))))))
 
+(ert-deftest octocat-async-test-init-message-magic-predicate ()
+  "The worker gets the autoload of a `magic-mode-alist' function, not only its mode."
+  (let ((magic-mode-alist (list (cons 'octocat-async-tests--foo-p 'fundamental-mode))))
+    (cl-letf (((symbol-function 'octocat-async-tests--foo-p)
+               (list 'autoload "foo-mode" nil nil nil)))
+      (should (member '(octocat-async-tests--foo-p "foo-mode")
+                      (nth 2 (octocat-async--init-message)))))))
+
 (provide 'octocat-async-tests)
 ;;; octocat-async-tests.el ends here
