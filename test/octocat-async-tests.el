@@ -151,7 +151,15 @@ job gets a new worker."
     (should (equal (octocat-async-tests--run 'message 2) '(worker . 2)))
     (should (equal (octocat-async-tests--outcomes) '(ok ok)))
     (should (string-match-p "unexpected message: noise"
-                            (plist-get (octocat-async-status) :stderr)))))
+                            (plist-get (octocat-async-status) :stderr)))
+    (should (octocat-async-tests--wait
+             (lambda () (string-match-p "to stderr" (plist-get (octocat-async-status) :stderr)))))
+    ;; What it printed outlives it, without a note of its end.
+    (octocat-async--stop)
+    (octocat-async-tests--wait (lambda () nil) 0.2)
+    (let ((stderr (plist-get (octocat-async-status) :stderr)))
+      (should (string-match-p "to stderr" stderr))
+      (should-not (string-match-p "finished" stderr)))))
 
 (ert-deftest octocat-async-test-no-start-falls-back ()
   "A worker that cannot start fails the job, which runs here."

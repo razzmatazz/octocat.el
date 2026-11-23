@@ -86,8 +86,9 @@ They load Emacs and the job's libraries.")
   "The worker's process, or nil.")
 
 (defvar octocat-async--worker-info nil
-  "The worker's (:pid :started :jobs :files), or nil.
-FILES are its code's, each (FILE . MODIFIED) as it loaded them.")
+  "The worker's (:pid :started :jobs :busy :files), or nil.
+BUSY is the ms its jobs took it; FILES its code's, each (FILE .
+MODIFIED) as it loaded them.")
 
 (defvar octocat-async--queue nil
   "Jobs waiting for the worker, oldest first.")
@@ -262,8 +263,8 @@ A job the worker runs finishes there, its result unread."
   "Return the worker's state, for `octocat-doctor': a plist.
 :off is nil or (TIME . REASON), :failures the failures in a row,
 :queued and :running the jobs waiting and running, :worker nil or the
-worker's (:pid :started :jobs), :attributes its `process-attributes',
-:stderr the end of what it printed there."
+worker's (:pid :started :jobs :busy), :attributes its
+`process-attributes', :stderr the end of what workers printed there."
   (let ((proc octocat-async--worker))
     (list :off octocat-async--off
           :failures octocat-async--failures
@@ -314,9 +315,12 @@ worker's (:pid :started :jobs), :attributes its `process-attributes',
 (defun octocat-async--start ()
   "Start the worker and return it, or nil if it cannot start."
   (condition-case err
-      (let* ((stderr (with-current-buffer (get-buffer-create " *octocat-async stderr*")
-                       (erase-buffer)
-                       (current-buffer)))
+      (let* ((stderr (make-pipe-process
+                      :name "octocat-async stderr"
+                      :buffer (octocat-async--stderr-buffer)
+                      :noquery t
+                      ;; Not the default, which notes its end in the buffer.
+                      :sentinel #'ignore))
              (proc (make-process
                     :name "octocat-async"
                     :buffer (generate-new-buffer " *octocat-async*")
@@ -331,7 +335,7 @@ worker's (:pid :started :jobs), :attributes its `process-attributes',
                     :sentinel #'octocat-async--sentinel)))
         (setq octocat-async--worker proc
               octocat-async--worker-info
-              (list :pid (process-id proc) :started (float-time) :jobs 0 :fresh t
+              (list :pid (process-id proc) :started (float-time) :jobs 0 :busy 0.0 :fresh t
                     :files (list (cons octocat-async--file
                                        (octocat-async--modified octocat-async--file)))))
         (process-send-string proc (octocat-async--print (octocat-async--init-message)))
@@ -484,8 +488,9 @@ Turn the worker off once `octocat-async--max-failures' are in a row."
        (when (and job (eql id (octocat-async--job-id job)))
          (octocat-async--finish job)
          (setq octocat-async--worker-info
-               (plist-put octocat-async--worker-info :jobs
-                          (1+ (plist-get octocat-async--worker-info :jobs))))
+               (plist-put (plist-put octocat-async--worker-info :jobs
+                                     (1+ (plist-get octocat-async--worker-info :jobs)))
+                          :busy (+ (or (plist-get octocat-async--worker-info :busy) 0) ms)))
          (if (eq kind 'error)
              (octocat-async--fail job 'error value (octocat-async--job-entry job))
            (setq octocat-async--failures 0)
@@ -502,9 +507,17 @@ Turn the worker off once `octocat-async--max-failures' are in a row."
     (_ (when (eq proc octocat-async--worker)
          (octocat-async--debug "unexpected message" message)))))
 
+(defun octocat-async--stderr-buffer ()
+  "Return the buffer of what workers printed on stderr, trimmed to its end.
+It outlives each worker, so the doctor shows what a crashed one said."
+  (with-current-buffer (get-buffer-create " *octocat-async stderr*")
+    (when (> (buffer-size) 4000)
+      (delete-region (point-min) (- (point-max) 2000)))
+    (current-buffer)))
+
 (defun octocat-async--debug (what value)
   "Note WHAT, VALUE, in the worker's stderr buffer, for the doctor."
-  (with-current-buffer (get-buffer-create " *octocat-async stderr*")
+  (with-current-buffer (octocat-async--stderr-buffer)
     (goto-char (point-max))
     (insert (format "%s: %.200S\n" what value))))
 

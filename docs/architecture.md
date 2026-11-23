@@ -117,6 +117,7 @@ flowchart TD
   octocat_diff --> octocat_core
   octocat_diff --> octocat_model
   octocat_diff --> octocat_vui
+  octocat_doctor --> octocat_async
   octocat_doctor --> octocat_core
   octocat_doctor --> octocat_sync
   octocat_doctor --> octocat_vui
@@ -219,7 +220,7 @@ flowchart TD
 | `octocat-core` | Shared infrastructure for octocat | `octocat-clone`, `octocat-image`, `octocat-markdown` |
 | `octocat-dashboard` | GitHub account dashboard for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-diff` | Diffs, commits and comparisons for octocat | `octocat-actions`, `octocat-core`, `octocat-model`, `octocat-vui` |
-| `octocat-doctor` | Report on octocat's code, store and requests | `octocat-core`, `octocat-sync`, `octocat-vui` |
+| `octocat-doctor` | Report on octocat's code, store and requests | `octocat-async`, `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-evil` | Evil keybindings for octocat | `octocat-actions`, `octocat-core`, `octocat-dashboard`, `octocat-diff`, `octocat-doctor`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-user`, `octocat-vui` |
 | `octocat-image` | Show images uploaded to GitHub in markdown | `octocat-markdown` |
 | `octocat-issue` | Issue detail view for octocat | `octocat-core`, `octocat-model`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |

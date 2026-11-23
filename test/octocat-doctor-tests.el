@@ -46,6 +46,33 @@
                           (octocat-doctor--requests
                            (list (vector 990.0 991.0 "checks" t 'poll)) 1000.0))))
 
+(ert-deftest octocat-doctor-test-async ()
+  "Background jobs are summed by kind and outcome, the worker described."
+  (let* ((log (list (vector 990.0 nil 'fontify 200000 nil 1.0 nil nil)
+                    (vector 950.0 950.1 'fontify 200000 'ok 8.0 70.0 nil)
+                    (vector 900.0 902.0 'fontify 50000 'timeout 2.0 nil "no answer in 2.0 s")
+                    (vector 900.0 900.05 'fontify 10000 'in-thread 50.0 nil nil)
+                    (vector 100.0 100.3 'markdown 1000 'ok 4.0 250.0 nil)))
+         (status (list :off nil :failures 1 :queued 2 :running 1
+                       :worker '(:pid 42 :started 700.0 :jobs 9 :busy 812.4)
+                       :attributes '((rss . 40960))
+                       :stderr "Loading foo...\nOctocat: oops"))
+         (text (octocat-doctor--async status log 1000.0)))
+    (should (string-match-p "Worker      pid 42, up 5 min, 9 jobs done in 812 ms, RSS 42 MB" text))
+    (should (string-match-p "Jobs        1 running, 2 queued; 1 failed in a row" text))
+    (should (string-match-p
+             "Last 5 min  fontify 4 (in-thread 1, ok 1, timeout 1), in the worker 100 ms median, 100 ms slowest; this Emacs 60 ms, worker 70 ms"
+             text))
+    (should (string-match-p "Last hour   markdown 1 (ok 1)" text))
+    (should (string-match-p "    Octocat: oops" text))
+    (should (string-match-p "fontify      50 kB   2000 ms  this Emacs    2.0 ms  worker +timeout: no answer"
+                            text)))
+  (let ((text (octocat-doctor--async (list :off '(400.0 . "crash: exited") :failures 3
+                                           :queued 0 :running 0)
+                                     nil 1000.0)))
+    (should (string-match-p "Worker      off for 10 min: crash: exited; turn it back on" text))
+    (should (string-match-p "Last 5 min  none" text))))
+
 (ert-deftest octocat-doctor-test-busy ()
   "Requests running at once count once; running ones not at all."
   (should (= (octocat-doctor--busy
