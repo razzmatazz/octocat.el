@@ -4,8 +4,10 @@
 
 - Branch `async-render`.  Step 1 built, not committed:
   `octocat-async.el`, `test/octocat-async-tests.el`.
-- Next: step 2 (doctor), step 3 (cache), step 4 (file viewer and
-  blame).
+- Done: step 1 (9fb4ea8), step 2.
+- Next: step 3 (cache), step 4 (file viewer and blame).
+- `octocat-clone-test-git-fails` can die of SIGPIPE: its fake git exits
+  before `octocat-clone.el` writes to it.  Seen once on Emacs 30.2.
 
 ## Problem
 
@@ -105,8 +107,11 @@ A section "Background work, last hour", next to the requests one:
 
 - State: on, or off since when and why; failures in a row; running and
   queued.
-- The worker: pid, uptime, jobs run, RSS and CPU time (from
-  `process-attributes`), the end of its stderr.
+- The worker: pid, uptime, jobs run and the time they took it, RSS
+  (from `process-attributes`), the end of what workers printed on
+  stderr, kept across restarts.  Not `process-attributes`'s CPU time:
+  on Apple silicon Emacs reports it in Mach ticks, 40 times too small.
+- When off, a button turns it back on.
 - Per kind, last 5 min and last hour: jobs, failures by outcome, median
   and slowest wall time, parent and worker time, jobs run here.
 - The most recent 20 jobs.
