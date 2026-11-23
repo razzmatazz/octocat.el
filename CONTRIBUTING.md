@@ -171,6 +171,7 @@ Emacs.  Dependencies come from the `Package-Requires` header of
 | `make ci` | Compile, lint and test on Emacs 31.1 |
 | `make ci EMACS=29.1` | The same on another release |
 | `make ci-all` | 29.1, 30.2 and 31.1 at once, as CI does; logs in `.ci/VERSION.log`, and each check's in `.ci/VERSION-CHECK.log` |
+| `make deps` | Fetch and upgrade the dependencies; `ci` does it only when `Eldev`, `Package-Requires` or the image changed, or a day passed, as the package archives rate-limit |
 | `make melpazoid` | MELPA's review checks, not part of `ci` as they take minutes; reports in `.ci/melpazoid-*.txt` |
 | `make screenshots` | Redraw [docs/screenshots](docs/screenshots/README.md) (see [Updating](docs/screenshots/README.md#updating)) |
 

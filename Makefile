@@ -31,7 +31,7 @@ RUN_ONLINE = $(DOCKER) run $(ISOLATED) -e CI \
 RUN = $(DOCKER) run $(ISOLATED) --network=none \
   -v "$(CURDIR)":/src:ro -v "$(CURDIR)/.eldev":/src/.eldev -w /src $(IMAGE)
 
-.PHONY: ci ci-all image deps clean compile lint test melpazoid melpazoid-prepare \
+.PHONY: ci ci-all image deps deps-if-stale clean compile lint test melpazoid melpazoid-prepare \
   melpazoid-image melpazoid-check screenshots update-architecture-md format
 
 # What ci runs at once.  Not melpazoid, which takes minutes: run `make
@@ -47,7 +47,7 @@ CI_CHECKS ?= compile lint test
 CI_NOISE := ^ *passed |: no warnings$$|^Indenting region|^Running linter|^$$
 ci: clean
 	$(MAKE) image
-	$(MAKE) deps
+	$(MAKE) deps-if-stale
 	@mkdir -p .ci
 	@for c in $(CI_CHECKS); do \
 	  ( $(MAKE) -s $$c > .ci/$(EMACS)-$$c.log 2>&1; echo $$? > .ci/$(EMACS)-$$c.status ) & \
@@ -93,6 +93,24 @@ image:
 deps:
 	@mkdir -p .eldev
 	$(RUN_ONLINE) sh -c 'eldev prepare build test lint exec && eldev upgrade'
+	@mkdir -p .eldev/$(EMACS) && $(DEPS_KEY) > $(DEPS_STAMP)
+
+# What decides the dependencies: Eldev, octocat.el's Package-Requires and
+# the image, so the Emacs build.  `make deps' stamps it.
+DEPS_KEY = { cat Eldev; grep '^;; Package-Requires' octocat.el; \
+  $(DOCKER) image inspect --format '{{.Id}}' $(IMAGE); } | cksum
+DEPS_STAMP = .eldev/$(EMACS)/deps.stamp
+# Minutes a stamp stays good: the upgrade then sees the day's vui.
+DEPS_MAX_AGE ?= 1440
+
+# deps, unless its stamp is current: what ci runs, so a run does not ask
+# the package archives, which rate-limit, again.
+deps-if-stale:
+	@if [ -d .eldev/$(EMACS)/packages ] && [ -f $(DEPS_STAMP) ] \
+	    && [ "$$($(DEPS_KEY))" = "$$(cat $(DEPS_STAMP))" ] \
+	    && [ -n "$$(find $(DEPS_STAMP) -mmin -$(DEPS_MAX_AGE))" ]; then \
+	  echo "deps: unchanged since $$(date -r $(DEPS_STAMP) '+%F %R' 2>/dev/null), not fetched; make deps does"; \
+	else $(MAKE) deps; fi
 
 clean:
 	find . -maxdepth 1 -name '*.elc' -delete
