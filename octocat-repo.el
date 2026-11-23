@@ -370,20 +370,6 @@ URL is shown by file PATH of REPO at REF.  For
   (octocat-sync-get (list 'proxied-urls repo ref path)
                     (lambda (r) (funcall callback (and (hash-table-p r) (gethash url r))))))
 
-;;;; Syntax highlighting
-
-(defun octocat-tree--fontify (path content)
-  "Return CONTENT string with face properties from the appropriate major mode.
-PATH, relative to the repository root, is used only to select the mode
-via `auto-mode-alist'."
-  (with-temp-buffer
-    (insert content)
-    (octocat--set-mode-for-path path)
-    ;; A mode's broken font-lock rules should not lose the file's text.
-    (with-demoted-errors "Octocat: cannot highlight: %S" (font-lock-ensure))
-    (buffer-string)))
-
-
 ;;;; Rendering helpers
 
 (defun octocat-tree--last-commit-text (label commit width)
@@ -1291,22 +1277,29 @@ branch."
             :depth 0 :path "" :reveal reveal :focus focus)
         (vui-text (octocat-tree--skeleton)))))))
 
-(defun octocat-repo--file-text (repo ref path content raw width)
+(defun octocat-repo--highlight-p (path content raw)
+  "Return non-nil if the file viewer is to highlight file PATH's CONTENT.
+That is, it shows it as code: not rendered (see RAW), nor an image, nor
+larger than `octocat--max-file-size'."
+  (let ((large (> (length content) octocat--max-file-size)))
+    (not (or large
+             (and (not raw) (octocat-repo--format path))
+             (octocat--image-file-p path)))))
+
+(defun octocat-repo--file-text (repo ref path content raw width &optional highlighted)
   "Return file PATH's CONTENT as the file viewer is to show it.
 Markdown, or another format of `octocat-repo--formats', is rendered,
 unless RAW, its relative links into REPO at REF, to fit WIDTH; an
-image is shown, see `octocat--image-text'; anything else is
-highlighted as its major mode would.  A file larger
-than `octocat--max-file-size', shown when asked, is plain text.  Long
-lines are clipped, see `octocat--clip-line'."
+image is shown, see `octocat--image-text'; anything else is code,
+HIGHLIGHTED if given, see `octocat-repo--highlight-p', else plain.
+Long lines are clipped, see `octocat--clip-line'."
   (let ((large (> (length content) octocat--max-file-size)))
     (cond ((and (not raw) (not large) (octocat-repo--format path))
            (octocat-repo--doc-text repo ref path content nil width))
           ((octocat--image-file-p path)
            (octocat--image-text content width))
-          (t (let ((text (decode-coding-string content 'utf-8)))
-               (octocat--clip-lines (if large text (octocat-tree--fontify path text))
-                                    octocat--max-line-length))))))
+          (t (octocat--clip-lines (or highlighted (decode-coding-string content 'utf-8))
+                                  octocat--max-line-length)))))
 
 (defun octocat-repo--file-notice (path blob)
   "Return why the file viewer does not show file PATH unasked, or nil.
@@ -1475,11 +1468,9 @@ and START's line has `octocat-line-target', for the page to scroll to."
         (setq n (1+ n) beg end)))
     text))
 
-(defun octocat-repo--source-text (path content)
-  "Return file PATH's CONTENT highlighted, its long lines clipped."
-  (string-remove-suffix
-   "\n" (octocat--clip-lines (octocat-tree--fontify path (decode-coding-string content 'utf-8))
-                             octocat--max-line-length)))
+(defun octocat-repo--source-text (text)
+  "Return a file's TEXT as blame is to show it: its long lines clipped."
+  (string-remove-suffix "\n" (octocat--clip-lines text octocat--max-line-length)))
 
 (vui-defcomponent octocat-repo-vui--file-blame (repo path blob commit lines)
   "The blame of file PATH, BLOB, of REPO at COMMIT: its source, highlighted,
@@ -1494,13 +1485,18 @@ LINES are as for `octocat-repo--mark-lines'."
          ;; The page's width, but short of the window's edge, which
          ;; would mark the line cut.
          (edge  (if (and win (>= width (window-body-width win))) (1- width) width))
+         (source (vui-use-memo ((plist-get file :data))
+                   (and (plist-get file :data)
+                        (decode-coding-string
+                         (octocat-model-blob-content (plist-get file :data)) 'utf-8))))
+         ;; Plain until highlighted, which a large file is off the UI.
+         (highlighted (octocat-vui-use-fontified path source))
          ;; The source shows at once, grey bars beside it until the blame lands.
-         (text  (vui-use-memo ((plist-get file :data) (plist-get snap :data) edge lines)
-                  (and (plist-get file :data)
+         (text  (vui-use-memo (source (plist-get snap :data) edge lines (and highlighted t))
+                  (and source
                        (octocat-repo--mark-lines
                         (octocat-repo--blame-text
-                         repo (octocat-repo--source-text
-                               path (octocat-model-blob-content (plist-get file :data)))
+                         repo (octocat-repo--source-text (or highlighted source))
                          (plist-get snap :data) edge)
                         lines))))
          (ready (and text t)))
@@ -1539,9 +1535,15 @@ is.  In the code view, LINES are as for `octocat-repo--mark-lines'."
          (width   (octocat--markdown-width))
          (code    (and (eq (octocat-file--view path raw nil) 'code)
                        (not (octocat--image-file-p path))))
-         (shown   (vui-use-memo (content raw width lines)
+         (source  (vui-use-memo (content path raw)
+                    (and content (octocat-repo--highlight-p path content raw)
+                         (decode-coding-string content 'utf-8))))
+         ;; Plain until highlighted, which a large file is off the UI.
+         (highlighted (octocat-vui-use-fontified path source))
+         (shown   (vui-use-memo (content raw width lines (and highlighted t))
                     (when content
-                      (let ((shown (octocat-repo--file-text repo ref path content raw width)))
+                      (let ((shown (octocat-repo--file-text repo ref path content raw width
+                                                            highlighted)))
                         (if code (octocat-repo--mark-lines shown lines) shown)))))
          (ready   (and shown t)))
     (vui-use-effect (lines ready)

@@ -21,6 +21,9 @@ From the bottom up:
 - **`octocat-async`**, also standalone: runs work too slow for the UI
   in a worker, a child Emacs kept for the session, falling back to this
   Emacs when the worker fails, so a caller gets the result either way.
+- **`octocat-fontify`**, on `octocat-async` alone: a file's text
+  highlighted as its major mode would, in the worker when it is large.
+  The worker loads only it to highlight, so it requires nothing else.
 - **`octocat-core`**: running `gh`, faces, the helpers every page
   shares, and the edit buffer for writing a comment or body.
 - **`octocat-sync`**: the local SQLite store pages read from, and the
@@ -89,6 +92,7 @@ flowchart TD
   octocat_dashboard[octocat-dashboard]
   octocat_diff[octocat-diff]
   octocat_doctor[octocat-doctor]
+  octocat_fontify[octocat-fontify]
   octocat_image[octocat-image]
   octocat_issue[octocat-issue]
   octocat_markdown[octocat-markdown]
@@ -108,6 +112,7 @@ flowchart TD
   octocat_actions --> octocat_sync
   octocat_actions --> octocat_vui
   octocat_core --> octocat_clone
+  octocat_core --> octocat_fontify
   octocat_core --> octocat_image
   octocat_core --> octocat_markdown
   octocat_dashboard --> octocat_core
@@ -121,6 +126,7 @@ flowchart TD
   octocat_doctor --> octocat_core
   octocat_doctor --> octocat_sync
   octocat_doctor --> octocat_vui
+  octocat_fontify --> octocat_async
   octocat_image --> octocat_markdown
   octocat_issue --> octocat_core
   octocat_issue --> octocat_model
@@ -217,11 +223,12 @@ flowchart TD
 | `octocat-actions` | GitHub Actions and commit checks for octocat | `octocat-core`, `octocat-mermaid`, `octocat-repo`, `octocat-sync`, `octocat-vui` |
 | `octocat-async` | Run work in a child Emacs, off the UI |  |
 | `octocat-clone` | Read GitHub data from a repo's local clone |  |
-| `octocat-core` | Shared infrastructure for octocat | `octocat-clone`, `octocat-image`, `octocat-markdown` |
+| `octocat-core` | Shared infrastructure for octocat | `octocat-clone`, `octocat-fontify`, `octocat-image`, `octocat-markdown` |
 | `octocat-dashboard` | GitHub account dashboard for octocat | `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-diff` | Diffs, commits and comparisons for octocat | `octocat-actions`, `octocat-core`, `octocat-model`, `octocat-vui` |
 | `octocat-doctor` | Report on octocat's code, store and requests | `octocat-async`, `octocat-core`, `octocat-sync`, `octocat-vui` |
 | `octocat-evil` | Evil keybindings for octocat | `octocat-actions`, `octocat-core`, `octocat-dashboard`, `octocat-diff`, `octocat-doctor`, `octocat-issue`, `octocat-pr`, `octocat-repo`, `octocat-search`, `octocat-user`, `octocat-vui` |
+| `octocat-fontify` | Highlight a file's text as its major mode does | `octocat-async` |
 | `octocat-image` | Show images uploaded to GitHub in markdown | `octocat-markdown` |
 | `octocat-issue` | Issue detail view for octocat | `octocat-core`, `octocat-model`, `octocat-sync`, `octocat-timeline`, `octocat-vui` |
 | `octocat-markdown` | GitHub markdown renderer | `octocat-mermaid` |

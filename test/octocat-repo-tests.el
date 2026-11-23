@@ -399,20 +399,6 @@
                    "https://camo.githubusercontent.com/a/b"))
     (should (= (hash-table-count table) 1))))
 
-(ert-deftest octocat-tree-test-fontify-plain-text ()
-  "octocat-tree--fontify returns the content string unchanged for plain text."
-  (let ((content "hello world\n"))
-    (should (equal content (octocat-tree--fontify "plain.txt" content)))))
-
-(ert-deftest octocat-tree-test-fontify-el ()
-  "octocat-tree--fontify returns a string with face properties for Elisp."
-  (let* ((content ";; hello\n(defun foo () nil)\n")
-         (result (octocat-tree--fontify "foo.el" content)))
-    ;; The result must be a string (face properties may or may not apply
-    ;; depending on font-lock support in the test environment).
-    (should (stringp result))
-    (should (= (length content) (length result)))))
-
 (defmacro octocat-tree-tests--with-store (&rest body)
   "Evaluate BODY with an empty in-memory sync store and queue."
   (declare (indent 0))

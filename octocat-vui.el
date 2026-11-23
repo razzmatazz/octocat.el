@@ -726,6 +726,30 @@ hook."
                (list 'clone-head (expand-file-name default-directory)) tick)
               :data)))
 
+(defun octocat-vui-use-fontified (path text)
+  "Return TEXT highlighted as by `octocat-fontify' for PATH, or nil.
+A small TEXT is highlighted at once.  A large one is highlighted in the
+worker, see `octocat-fontify-async': nil until it is, and the page
+re-renders then; its job is cancelled once TEXT changes.  A nil TEXT
+gives nil.  Must be called during render, like any hook."
+  (let* ((here (and text (octocat-fontify-here-p text)))
+         ;; At once, so a small file never shows plain, nor costs a
+         ;; second render, as resolving `vui-use-async' does.
+         (now  (vui-use-memo (path (and here text))
+                 (and here (let (value)
+                             (octocat-fontify-async path text (lambda (v) (setq value v)))
+                             value))))
+         (job  (vui-use-ref nil))
+         (later (vui-use-async (list 'octocat-fontify path (and (not here) text))
+                  (lambda (resolve _reject)
+                    (if (or here (null text))
+                        (funcall resolve nil)
+                      (setcar job (octocat-fontify-async path text resolve)))))))
+    (vui-use-effect (path text)
+      (let ((this (car job)))
+        (lambda () (octocat-async-cancel this))))
+    (or now (plist-get later :data))))
+
 (defun octocat-vui-skeleton-bar (n)
   "Return a grey bar N columns wide (at least one) standing in for content."
   (propertize (make-string (max 1 n) ?\s) 'face 'octocat-skeleton))

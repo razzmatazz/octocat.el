@@ -35,6 +35,7 @@
 (require 'eldoc)
 (require 'browse-url)
 (require 'octocat-clone)
+(require 'octocat-fontify)
 (require 'octocat-markdown)
 (require 'octocat-image)
 (require 'consult)
@@ -1333,22 +1334,6 @@ may belong to a pull request: the page opened settles which."
 ARGS are those of the page's own opener, such as REPO and NUMBER for
 `octocat-pr-open'.  KIND is as `octocat--github-url-target' returns.")
 
-;;;; Syntax highlighting
-
-;; From markdown-mode, when installed.
-(defvar markdown-fontify-code-blocks-natively)
-
-(defun octocat--set-mode-for-path (path)
-  "Set the current buffer's major mode as for repository file PATH.
-PATH is relative to the repository root.  Mode hooks are delayed."
-  ;; Rooted, as some patterns, such as Dockerfile's, need a "/" before
-  ;; the name.
-  (with-demoted-errors "Octocat: cannot highlight: %S"
-    (let ((buffer-file-name (concat "/" path)))
-      (delay-mode-hooks (set-auto-mode))))
-  ;; markdown-mode finds each fence's mode by asking tree-sitter for a
-  ;; grammar, tens of ms a fence when none is installed.
-  (setq-local markdown-fontify-code-blocks-natively nil))
 
 ;;;; github.com links
 ;;
