@@ -160,7 +160,8 @@ Its commits, a merge of `main` marked `⊕`:
 Its changed files, opened on their tree: the repository at the head of
 the PR, opened down to what it changes, all its commits in one.  ✉
 counts a file's unresolved conversations; `RET` on it opens the file at
-the first.  The review comments are listed under the files.
+the first.  The review comments are in the files' diffs; those none can
+place, as outdated ones, are listed under the files.
 
 <!-- screenshot: (pr-diff "acme/rocket" 128) -->
 ![pr-diff](pr-diff.png)
@@ -169,7 +170,10 @@ the first.  The review comments are listed under the files.
 <!-- /screenshot -->
 
 `RET` on a changed file there opens it in the file viewer, on its Diff
-view: what the PR changed in it.
+view: what the PR changed in it, a conversation boxed after its line,
+and how many drafts your pending review holds, which you submit on the
+PR's files.  The buffer is the PR's, named after its number, so a push
+updates it.
 
 <!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-tree-file" :press ((:key "RET" "main.rs")) -->
 ![pr-diff-tree-file](pr-diff-tree-file.png)
@@ -184,6 +188,17 @@ lines highlighted.
 ![pr-diff-conversation](pr-diff-conversation.png)
 
 [As text](pr-diff-conversation.txt)
+<!-- /screenshot -->
+
+Reviewing there: `C-c C-a` on a line opens a comment on it below, the
+line highlighted until it is saved as a draft; in a conversation it
+replies, `C-c C-e` edits your own, and the button under it resolves it.
+Your draft on `build.rs` shows **Pending**, its long body folded.
+
+<!-- screenshot: (pr-diff "acme/rocket" 128) :name "pr-diff-review" :press ((:key "RET" "build.rs") (:key "C-c C-a" "+        let path")) -->
+![pr-diff-review](pr-diff-review.png)
+
+[As text](pr-diff-review.txt)
 <!-- /screenshot -->
 
 A pull request in a stack, the stack listed before the merge box, and a

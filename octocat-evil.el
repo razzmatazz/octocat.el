@@ -257,7 +257,12 @@ The lists bind normal state per buffer, see `octocat-evil--list-setup'."
     (kbd "C-c C-f") #'octocat-tree-find-file
     (kbd "C-c C-l") #'octocat-file-log-open
     (kbd "C-c C-b") #'octocat-file-switch-branch
-    (kbd "C-c C-v") #'octocat-file-cycle-view)
+    (kbd "C-c C-v") #'octocat-file-cycle-view
+    (kbd "C-c C-a") #'octocat-diff-add-comment
+    (kbd "C-c C-e") #'octocat-diff-edit-comment)
+  ;; A region of lines, marked with `V', is commented on as one.
+  (evil-define-key* 'visual octocat-file-mode-map
+    (kbd "C-c C-a") #'octocat-diff-add-comment)
   (evil-define-key* 'motion octocat-file-mode-map
     (kbd "gr")      #'octocat-vui-refresh)
 

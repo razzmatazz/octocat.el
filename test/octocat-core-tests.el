@@ -322,7 +322,17 @@ It gives no stateReason, so a closed issue is purple, as completed."
   (dolist (span '((12 . 12) (12 . 20)))
     (should (equal (octocat--url-lines
                     (concat "u#" (octocat--lines-fragment (car span) (cdr span))))
-                   (list 'lines (car span) (cdr span))))))
+                   (list 'lines (car span) (cdr span)))))
+  (let ((h (secure-hash 'sha256 "a.el")))
+    (dolist (case `((nil                              (diff ,h))
+                    ((("RIGHT" . 4))                  (diff ,h ("RIGHT" . 4) ("RIGHT" . 4)))
+                    ((("LEFT" . 3) ("LEFT" . 3))      (diff ,h ("LEFT" . 3) ("LEFT" . 3)))
+                    ((("LEFT" . 3) ("RIGHT" . 9))     (diff ,h ("LEFT" . 3) ("RIGHT" . 9)))))
+      (should (equal (octocat--url-lines
+                      (concat "u#" (apply #'octocat--diff-fragment "a.el" (car case))))
+                     (cadr case))))
+    (should (equal (octocat--diff-fragment "a.el" '("LEFT" . 3) '("RIGHT" . 9))
+                   (concat "diff-" h "L3-R9")))))
 
 (ert-deftest octocat-core-test-browse-url-lines ()
   "`octocat-browse-url' passes the lines a link names to the page's opener.

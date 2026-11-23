@@ -834,35 +834,53 @@ The top line has a tab for each view, the one shown plain."
               (should (string-match-p "^Guide$" (buffer-string))))
           (kill-buffer))))))
 
+(ert-deftest octocat-tree-test-file-buffer-name ()
+  "A file opened from a page of changes has a buffer of that origin's.
+A PR's is named after its number, which a push keeps."
+  (should (equal (octocat-tree--file-buffer-name "o/r" "main" "a.el" nil) "*o/r@main:a.el*"))
+  (should (equal (octocat-tree--file-buffer-name "o/r" "h1" "a.el" '(pr "o/r" 5))
+                 "*o/r#5:a.el*"))
+  (should (equal (octocat-tree--file-buffer-name
+                  "o/r" "abcdef123" "a.el" '(commit "o/r" "abcdef123"))
+                 "*o/r@abcdef1:a.el*"))
+  (should (equal (octocat-tree--file-buffer-name
+                  "o/r" "topic" "a.el" '(compare "o/r" "main" "..." "topic"))
+                 "*o/r@main...topic:a.el*")))
+
 (ert-deftest octocat-tree-test-file-change ()
-  "A file opened with its change starts on its Diff; a removed one has only that."
+  "A file opened from a commit starts on its Diff; a removed one has only that.
+The commit's change of it is looked up in the store; its buffer is the
+commit's."
   (octocat-tree-tests--with-file-page
     (octocat-tree-tests--store-file "abc" "src/a.el" "(a)\n")
-    (let ((file (octocat-tree-tests--json
-                 (concat "{\"filename\":\"src/gone.el\",\"status\":\"removed\","
-                         "\"additions\":0,\"deletions\":1,\"changes\":1,"
-                         "\"patch\":\"@@ -1 +0,0 @@\\n-(gone)\"}"))))
-      (save-current-buffer
-        (octocat-tree--open-file-by-path "owner/repo" "abc" "src/gone.el" nil
-                                         (list :file file :label "Changes in commit abc"))
-        (unwind-protect
-            (let ((text (buffer-substring-no-properties (point-min) (point-max))))
-              (should (string-match-p ":/src/gone.el +Diff \n\nChanges in commit abc\n" text))
-              (should (string-match-p "^-(gone)$" text))
-              (should-error (octocat-file-cycle-view) :type 'user-error))
-          (kill-buffer))))
+    (octocat-tree-tests--store
+     '(commit "owner/repo" "abc")
+     (octocat-tree-tests--json
+      (concat "{\"sha\":\"abc\",\"parents\":[{\"sha\":\"p\"}],\"files\":["
+              "{\"filename\":\"src/gone.el\",\"status\":\"removed\","
+              "\"additions\":0,\"deletions\":1,\"changes\":1,"
+              "\"patch\":\"@@ -1 +0,0 @@\\n-(gone)\"},"
+              "{\"filename\":\"src/a.el\",\"status\":\"added\","
+              "\"additions\":1,\"deletions\":0,\"changes\":1,"
+              "\"patch\":\"@@ -0,0 +1 @@\\n+(a)\"}]}")))
     (save-current-buffer
-      (octocat-tree--open-file-by-path
-       "owner/repo" "abc" "src/a.el" nil
-       (list :file (octocat-tree-tests--json
-                    (concat "{\"filename\":\"src/a.el\",\"status\":\"added\","
-                            "\"additions\":1,\"deletions\":0,\"changes\":1,"
-                            "\"patch\":\"@@ -0,0 +1 @@\\n+(a)\"}"))
-             :label "Changes in pull request #1"))
+      (octocat-tree--open-file-by-path "owner/repo" "abc" "src/gone.el" nil
+                                       '(commit "owner/repo" "abc"))
+      (unwind-protect
+          (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+            (should (equal (buffer-name) "*owner/repo@abc:src/gone.el*"))
+            (should (string-match-p ":/src/gone.el +Diff \n\nChanges in commit abc\n" text))
+            (should (string-match-p "^-(gone)$" text))
+            (should-error (octocat-file-cycle-view) :type 'user-error))
+        (kill-buffer)))
+    (save-current-buffer
+      (octocat-tree--open-file-by-path "owner/repo" "abc" "src/a.el" nil
+                                       '(commit "owner/repo" "abc"))
       (unwind-protect
           (progn
             (should (string-match-p "Code  Blame  Diff $" (buffer-string)))
-            (should (string-match-p "^Changes in pull request #1$" (buffer-string)))
+            (should (string-match-p "^Changes in commit abc$" (buffer-string)))
+            (should (string-match-p "^\\+(a)$" (buffer-string)))
             (octocat-file-cycle-view)
             (should (string-match-p "^(a)$" (buffer-string))))
         (kill-buffer)))))

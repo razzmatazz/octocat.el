@@ -93,21 +93,21 @@ is that line's conversation, which can be resolved and can go outdated.
 ## Where octocat stands
 
 - The PR, commit and compare pages show their files as Tree and Patch
-  only (step 1 below, done).  A link to lines opens the file viewer's
-  Diff at them (`octocat-diff-use-link`).
-- The PR's Files changed page reads `reviewThreads`
-  (`pr-review-threads` in `octocat-model.el`) and lists every comment
-  under the files, in "Review Comments", with its `path:Lnn`;
-  submitting and discarding the pending review work.  Adding,
-  replying, editing and resolving are gone until step 4.
+  only.  A changed file opens in the file viewer, in a buffer of its
+  origin's (`octocat-tree--file-origin`), on its Diff view; ✉ and a
+  link to lines open it at them (`octocat-diff-use-link`).  Item 1
+  below is done.
+- A PR's file buffer (`octocat-pr-file-diff`) draws the file's threads
+  in its diff and takes the review commands, through the PR's backend
+  (`octocat-pr-diff--comment-backend`); a line shows the pending
+  review's drafts, with a button to the PR's files, where it is
+  submitted or discarded.  Its Code and Blame are at the PR's head.
 - The Tree counts each file's unresolved conversations, `✉ N`,
   leaving out outdated ones and drafts, as GitHub's tree does
-  (`octocat-pr-diff--open-threads`); `RET` on the count opens the
-  file viewer's Diff at the first (`octocat-diff--open-change`).
-- The file viewer's Diff, opened from a Tree, shows the file's change
-  with no comments and no review commands (`octocat-diff-file-view`).
-- An outdated thread has no line; in "Review Comments" it shows no
-  hunk and no sign of where it was.  The thread query asks for neither
+  (`octocat-pr-diff--open-threads`).
+- "Review Comments" on the PR's files lists the comments no diff
+  places (`octocat-pr-diff--unplaced`), as outdated ones, with no hunk
+  and no sign of where they were.  The thread query asks for neither
   `originalLine` nor `diffHunk`.
 - The timeline shows a review as a box with its body; its inline
   comments aren't listed there or linked to.
@@ -266,16 +266,20 @@ file; `q` goes back to the Tree, whose ✉ show where to go next.
    each page's), `octocat-vui-expand-all-button` (the Actions page),
    "Review Comments" (a plain timeline), submitting and discarding the
    review, and `octocat-diff-cycle-view` over the two views left.
-2. The model: the origin lookup and the PR's ref from it.  No visible
-   change; tests.
-3. Key file buffers by origin, which names them and replaces the change
-   snapshot.  No visible change but buffer names.
-4. A PR origin's Diff draws the PR's threads and takes the review
-   commands, with the pending line, bringing back from history what
-   step 1 removed, the comment backend now taking `(repo number)`.  Screenshot of a file with a thread
-   and a draft.
-5. Route the entry points above to the PR's file buffer, at the thread
-   or lines.
+2. **Done.**  The model: the origin lookup and the PR's ref from it.
+   No visible change; tests.
+3. **Done.**  Key file buffers by origin, which names them and replaces
+   the change snapshot.  Whether the origin removed the file, which
+   decides the views, is read from the store, where the Tree found it.
+4. **Done.**  A PR origin's Diff draws the PR's threads and takes the
+   review commands, with the pending line, bringing back from history
+   what step 1 removed, the comment backend now taking `(repo number)`.
+   `[Hide comments (N)]` counts the file's conversations; matching ✉'s
+   open count is item 2's.  Screenshot of a file with a thread and a
+   draft.
+5. **Done.**  Route the entry points above to the PR's file buffer, at
+   the thread or lines: the Tree, ✉ and links.  The timeline's review
+   comments are item 4's.
 
 ### 2. Unfinished steps of pr-reviews.md
 

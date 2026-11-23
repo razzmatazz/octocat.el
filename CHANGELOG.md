@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Review a PR in its files: `C-c C-a` comments on lines, replies; `C-c C-e` edits; resolve
+* A file opened from a PR has a buffer of its own, which follows the PR's pushes
+* Copy URL in a file opened from a PR, commit or comparison names that diff's lines
 * Commit, compare and PR diff pages drop their Diff view: Tree and Patch; RET opens a file's diff
 * Line links and ✉ open the file's diff in the file viewer, at its lines
 * PR review comments are listed under the files, no longer in the diff, until reviewing moves to files

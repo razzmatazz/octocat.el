@@ -306,23 +306,32 @@ Fields that would take the first line past the width get one too."
   (should-not (plist-get (octocat-pr-diff--review-data 'request-changes "R" 2) :allow-empty)))
 
 (ert-deftest octocat-pr-diff-test-thread-comments ()
-  "GraphQL's threads become REST-shaped comments, each with its thread's place.
-A draft is pending."
+  "GraphQL's threads become REST-shaped comments, replies pointing at the first.
+The thread's own fields go on its first comment; a draft is pending."
   (let* ((threads (json-parse-string
-                   (concat "[{\"isResolved\":true,\"path\":\"a.el\",\"line\":9,"
-                           "\"comments\":{\"nodes\":["
-                           "{\"body\":\"x\\r\\ny\",\"state\":\"SUBMITTED\","
-                           "\"author\":{\"login\":\"a\"}},"
-                           "{\"body\":\"z\",\"state\":\"PENDING\","
+                   (concat "[{\"id\":\"T1\",\"isResolved\":true,\"path\":\"a.el\","
+                           "\"line\":9,\"startLine\":7,\"diffSide\":\"RIGHT\","
+                           "\"startDiffSide\":\"LEFT\",\"subjectType\":\"LINE\","
+                           "\"viewerCanResolve\":false,\"viewerCanUnresolve\":true,"
+                           "\"resolvedBy\":{\"login\":\"b\"},\"comments\":{\"nodes\":["
+                           "{\"id\":\"C1\",\"databaseId\":11,\"body\":\"x\\r\\ny\","
+                           "\"state\":\"SUBMITTED\",\"author\":{\"login\":\"a\"}},"
+                           "{\"id\":\"C2\",\"databaseId\":12,\"body\":\"z\","
+                           "\"state\":\"PENDING\",\"viewerCanUpdate\":true,"
                            "\"author\":{\"login\":\"me\"}}]}}]")
                    :null-object :null))
          (cs (append (octocat-pr-diff--thread-comments threads) nil))
          (root (car cs)) (reply (cadr cs)))
-    (should (equal (mapcar (lambda (k) (gethash k root)) '("path" "line" "body" "pending"))
-                   '("a.el" 9 "x\ny" nil)))
+    (should (equal (mapcar (lambda (k) (gethash k root))
+                           '("id" "node_id" "thread_id" "path" "line" "start_line"
+                             "side" "start_side" "subject_type" "body" "resolved"
+                             "resolved_by" "can_unresolve" "pending"))
+                   '(11 "C1" "T1" "a.el" 9 7 "RIGHT" "LEFT" "line" "x\ny" t "b" t nil)))
     (should (equal (octocat--get root "user" "login") "a"))
-    (should (equal (mapcar (lambda (k) (gethash k reply)) '("path" "line" "body" "pending"))
-                   '("a.el" 9 "z" t)))
+    (should (equal (gethash "in_reply_to_id" reply) 11))
+    (should (eq (gethash "pending" reply) t))
+    (should (eq (gethash "can_edit" reply) t))
+    (should (equal (octocat-diff--threads cs) (list cs)))
     (let ((data (octocat--table "reviewThreads" (octocat--table "nodes" threads)
                                 "reviews" (octocat--table "nodes" (vector (octocat--table))))))
       (should (= (octocat-pr-diff--pending-count data) 1))
@@ -419,6 +428,21 @@ Return the (REPO NUMBER) it opened, or the message it showed."
                    "https://github.com/o/r/pull/5#pullrequestreview-8"))
     (should (equal (plist-get (car (octocat-pr--commit-items "o/r" pr)) :url)
                    "https://github.com/o/r/pull/5/commits/abc1234"))))
+
+(ert-deftest octocat-pr-test-review-comment-url ()
+  "A review comment on the diff carries its URL; a draft does not."
+  (let* ((thread (lambda (state)
+                   (json-parse-string
+                    (format (concat "[{\"id\":\"T\",\"path\":\"a\",\"line\":1,"
+                                    "\"comments\":{\"nodes\":[{\"id\":\"C\",\"state\":\"%s\","
+                                    "\"url\":\"https://github.com/o/r/pull/5#discussion_r9\"}]}}]")
+                            state))))
+         (url (lambda (state)
+                (get-text-property 0 'octocat-url
+                                   (octocat-diff--tag
+                                    "x" (aref (octocat-pr-diff--thread-comments (funcall thread state)) 0))))))
+    (should (equal (funcall url "SUBMITTED") "https://github.com/o/r/pull/5#discussion_r9"))
+    (should-not (funcall url "PENDING"))))
 
 (provide 'octocat-pr-tests)
 ;;; octocat-pr-tests.el ends here

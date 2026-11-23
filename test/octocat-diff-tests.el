@@ -20,13 +20,15 @@
     (should (equal (octocat-diff--comment-body c "  │ " t 80) "  │ **hi**"))))
 
 (ert-deftest octocat-diff-test-comment-head ()
-  "A comment's heading names its file and line, if any, then its reactions."
+  "A comment's heading names its file and line, if asked, then its reactions."
   (let ((c (json-parse-string
             (concat "{\"user\":{\"login\":\"me\"},\"body\":\"hi\",\"created_at\":\"\","
                     "\"path\":\"a.el\",\"line\":4,"
                     "\"reactions\":{\"total_count\":1,\"heart\":1}}"))))
+    (should (equal (substring-no-properties (octocat-diff--comment-head c t))
+                   "@me  a.el:L4    ❤️ 1"))
     (should (equal (substring-no-properties (octocat-diff--comment-head c))
-                   "@me  a.el:L4    ❤️ 1"))))
+                   "@me    ❤️ 1"))))
 
 (ert-deftest octocat-diff-test-timeline ()
   "Comments hang off one rail, a rail row between them."
@@ -43,6 +45,19 @@
                       "{\"user\":{\"login\":\"b\"},\"body\":\"r\"}"))))
     (should (equal (octocat-markdown-copy-text (octocat-diff--timeline cs nil 80))
                    "@a  \nq\n\n@b  \nr"))))
+
+(ert-deftest octocat-diff-test-threads ()
+  "A reply joins the thread of the comment it answers.
+A reply to a reply joins the same thread; one whose comment is missing
+starts its own."
+  (let* ((cs (mapcar #'json-parse-string
+                     '("{\"id\":1,\"line\":3,\"user\":{\"login\":\"a\"},\"body\":\"q\"}"
+                       "{\"id\":2,\"in_reply_to_id\":1,\"user\":{\"login\":\"b\"},\"body\":\"r\"}"
+                       "{\"id\":3,\"in_reply_to_id\":2,\"user\":{\"login\":\"a\"},\"body\":\"s\"}"
+                       "{\"id\":4,\"in_reply_to_id\":9,\"line\":5,\"body\":\"t\"}")))
+         (threads (octocat-diff--threads cs)))
+    (should (equal (mapcar (lambda (th) (mapcar (lambda (c) (gethash "id" c)) th)) threads)
+                   '((1 2 3) (4))))))
 
 (ert-deftest octocat-diff-test-comments-section ()
   "Comments are a timeline, an inline one naming its place.
@@ -143,6 +158,74 @@ A line added whole, and a change of spaces alone, are not."
                   1)
                  '(diff-removed))))
 
+(ert-deftest octocat-diff-test-walk-note ()
+  "A `\\ No newline' note takes no line of the new file."
+  (let (seen)
+    (octocat-diff--walk "@@ -1 +1,2 @@\n-a\n\\ No newline at end of file\n+a\n+b"
+                        (octocat-diff--index
+                         (list (json-parse-string "{\"line\":2,\"body\":\"x\"}")))
+                        (lambda (line placed _anchor) (when placed (push line seen))))
+    (should (equal seen '("+b")))))
+
+(ert-deftest octocat-diff-test-walk-anchors ()
+  "A removed line is anchored on the old side, the others on the new one.
+Each side counts from its `@@' header; a header or a note has none."
+  (let (seen)
+    (octocat-diff--walk "@@ -5,3 +7,3 @@\n a\n-b\n+c\n d\n@@ -20 +22 @@\n+e"
+                        '(nil nil nil)
+                        (lambda (_line _placed anchor) (push anchor seen)))
+    (should (equal (nreverse seen)
+                   '(nil ("RIGHT" 7 2 1) ("LEFT" 6 3 1) ("RIGHT" 8 4 1) ("RIGHT" 9 5 1)
+                         nil ("RIGHT" 22 7 2))))))
+
+(defun octocat-diff-tests--comment (json)
+  "Return the comment of JSON, with its body and date."
+  (let ((c (json-parse-string json)))
+    (puthash "body" (or (gethash "body" c) "x") c)
+    (puthash "created_at" "" c)
+    c))
+
+(ert-deftest octocat-diff-test-segments ()
+  "Threads come between runs of diff lines, after the line they are on.
+A comment on a removed line is on the old side, one on the whole file
+before the diff; each line carries its anchor."
+  (let* ((cs (mapcar #'octocat-diff-tests--comment
+                     '("{\"id\":1,\"line\":2,\"side\":\"LEFT\"}"
+                       "{\"id\":2,\"line\":2,\"side\":\"RIGHT\"}"
+                       "{\"id\":3,\"subject_type\":\"file\"}")))
+         (segs (octocat-diff--segments "@@ -1,2 +1,2 @@\n a\n-b\n+c"
+                                       "notes" (octocat-diff--index cs))))
+    (should (equal (mapcar (lambda (s) (if (stringp s)
+                                           (substring-no-properties s)
+                                         (gethash "id" (car s))))
+                           segs)
+                   '(3 "@@ -1,2 +1,2 @@\n a\n-b" 1 "+c" 2)))
+    (should (equal (get-text-property 0 'octocat-diff-line (nth 3 segs))
+                   '("notes" "RIGHT" 2 4 1)))
+    (should-not (get-text-property 0 'octocat-diff-line (nth 1 segs)))))
+
+(ert-deftest octocat-diff-test-range ()
+  "A range runs from its first line to its last, in one hunk of one file."
+  (should (equal (octocat-diff--range '(("a" "RIGHT" 4 5 1)))
+                 '(:path "a" :side "RIGHT" :line 4)))
+  (should (equal (octocat-diff--range '(("a" "LEFT" 3 4 1) ("a" "RIGHT" 4 5 1)))
+                 '(:path "a" :side "RIGHT" :line 4 :start-side "LEFT" :start-line 3)))
+  (should (equal (octocat-diff--range '(("a"))) '(:path "a" :file t)))
+  (should-error (octocat-diff--range nil) :type 'user-error)
+  (should-error (octocat-diff--range '(("a" "RIGHT" 4 5 1) ("a" "RIGHT" 9 8 2)))
+                :type 'user-error)
+  (should-error (octocat-diff--range '(("a" "RIGHT" 4 5 1) ("b" "RIGHT" 5 6 1)))
+                :type 'user-error))
+
+(ert-deftest octocat-diff-test-range-label ()
+  "A range reads as its file and lines, an old-side line marked so."
+  (should (equal (octocat-diff-range-label '(:path "a.el" :side "RIGHT" :line 4))
+                 "a.el:L4"))
+  (should (equal (octocat-diff-range-label
+                  '(:path "a.el" :side "RIGHT" :line 9 :start-side "LEFT" :start-line 3))
+                 "a.el:old L3–L9"))
+  (should (equal (octocat-diff-range-label '(:path "a.el" :file t)) "a.el")))
+
 (defun octocat-diff-tests--render (vnode)
   "Return the text VNODE renders to."
   (with-temp-buffer
@@ -182,9 +265,10 @@ A line added whole, and a change of spaces alone, are not."
     (should (equal (octocat-diff--span p '("RIGHT" . 9) '("RIGHT" . 2)) '(4 . 4)))
     (should-not (octocat-diff--span p '("RIGHT" . 9) '("LEFT" . 9)))))
 
-(ert-deftest octocat-diff-test-text-span ()
+(ert-deftest octocat-diff-test-segments-span ()
   "The lines of a span are highlighted, over the diff's faces; the first is the target."
-  (let* ((seg   (octocat-diff--text octocat-diff-tests--patch "a.el" '(3 . 4)))
+  (let* ((seg   (car (octocat-diff--segments octocat-diff-tests--patch "a.el"
+                                             (octocat-diff--index nil) '(3 . 4))))
          (lit   (lambda (i) (and (memq 'octocat-line-highlight
                                        (ensure-list (get-text-property i 'face seg)))
                                  t)))
@@ -218,6 +302,66 @@ Without lines, or with none in the patch, the heading is."
     (should (string-search "M b.el" (funcall target '(diff "h"))))
     (should (string-search "M b.el" (funcall target '(diff "h" ("RIGHT" . 9) ("RIGHT" . 9)))))
     (should-not (funcall target nil))))
+
+(ert-deftest octocat-diff-test-thread-resolved ()
+  "A resolved thread folds to one line, saying who resolved it."
+  (let ((root (octocat-diff-tests--comment
+               (concat "{\"id\":1,\"path\":\"a.el\",\"line\":4,\"resolved\":true,"
+                       "\"resolved_by\":\"b\",\"user\":{\"login\":\"a\"}}"))))
+    (should (equal (octocat-diff-tests--render
+                    (vui-component 'octocat-diff--thread
+                      :thread (list root) :raw nil :width 80))
+                   "  ▸ @a  a.el:L4  Resolved by @b"))))
+
+(ert-deftest octocat-diff-test-thread-pending ()
+  "A draft says Pending in its heading; each line names its comment.
+A thread that can be resolved ends in a button doing it, a row apart."
+  (let* ((root (octocat-diff-tests--comment
+                (concat "{\"id\":1,\"line\":4,\"pending\":true,\"can_resolve\":true,"
+                        "\"user\":{\"login\":\"me\"},\"body\":\"hm\"}")))
+         (text (with-temp-buffer
+                 (vui-render (vui-component 'octocat-diff--thread
+                               :thread (list root) :raw nil :width 40))
+                 (goto-char (point-min))
+                 (search-forward "hm")
+                 (should (eq (octocat-diff-comment-at-point) root))
+                 (buffer-substring-no-properties (point-min) (point-max)))))
+    (should (string-prefix-p "  ┌─ @me  Pending ─" text))
+    (should (string-search "  │ hm\n  │\n  │ [Resolve conversation]\n  └─" text))))
+
+(ert-deftest octocat-diff-test-file-comments ()
+  "A file's comments are boxed after the line they are on."
+  (let ((out (octocat-diff-tests--render
+              (octocat-diff--file
+               "o/r" (octocat--table "filename" "b.el" "patch" octocat-diff-tests--patch)
+               80 nil nil
+               (list (octocat-diff-tests--comment
+                      (concat "{\"id\":1,\"line\":2,\"side\":\"RIGHT\",\"body\":\"why?\","
+                              "\"user\":{\"login\":\"a\"}}")))))))
+    (should (string-search "+c\n  ┌─ @a" out))
+    (should (string-search "  │ why?" out))))
+
+(ert-deftest octocat-diff-test-url-fragment ()
+  "The diff line of point, or the region's, makes the link's fragment."
+  (let ((h (secure-hash 'sha256 "b.el")))
+    (with-temp-buffer
+      (vui-render (octocat-diff--file
+                   "o/r" (octocat--table "filename" "b.el" "patch" octocat-diff-tests--patch)
+                   80))
+      (cl-flet ((at (s) (goto-char (point-min)) (search-forward s) (goto-char (match-beginning 0))))
+        (at "+c")
+        (should (equal (octocat--diff-url-fragment) (concat "#diff-" h "R2")))
+        (at " d")
+        (should (equal (octocat--diff-url-fragment) (concat "#diff-" h "R3")))
+        (at "b.el")
+        (should (equal (octocat--diff-url-fragment) (concat "#diff-" h)))
+        (let ((transient-mark-mode t))
+          (at "-b")
+          (push-mark (point) t t)
+          (at "+c")
+          (end-of-line)
+          (should (equal (octocat--diff-url-fragment) (concat "#diff-" h "L2-R2")))
+          (deactivate-mark))))))
 
 (ert-deftest octocat-diff-test-file-too-large ()
   "RET on a file too large to diff diffs it in a buffer, given the commits."
@@ -313,19 +457,17 @@ fetch of REF; the buffer is killed after."
     (should-not (octocat-commit--date commit "committer"))))
 
 (ert-deftest octocat-diff-test-tree-open-file ()
-  "RET on a changed file of a Tree opens it in the file viewer, with its change."
+  "RET on a changed file of a Tree opens it in the file viewer, with its origin."
   (let* ((files   (json-parse-string
                    "[{\"filename\":\"src/a.el\",\"status\":\"modified\",\"patch\":\"@@\"}]"))
          (changes (octocat-diff--tree-changes "owner/repo" "abc123" files
-                                              '(:revs ("p" . "abc123") :label "Changes")))
+                                              '(commit "owner/repo" "abc123")))
          opened)
     (cl-letf (((symbol-function 'octocat-tree--open-file-by-path)
                (lambda (&rest args) (setq opened args))))
       (funcall (plist-get (gethash "src/a.el" changes) :open)))
-    (should (equal (seq-take opened 4) '("owner/repo" "abc123" "src/a.el" nil)))
-    (should (eq (plist-get (nth 4 opened) :file) (aref files 0)))
-    (should (equal (plist-get (nth 4 opened) :revs) '("p" . "abc123")))
-    (should (equal (plist-get (nth 4 opened) :label) "Changes"))))
+    (should (equal opened '("owner/repo" "abc123" "src/a.el" nil
+                            (commit "owner/repo" "abc123"))))))
 
 (ert-deftest octocat-diff-test-patch-path ()
   "Each file of the Patch carries its path, for a switch of views to keep."
@@ -512,8 +654,8 @@ The page stays on its Tree, the link dropped."
                          :repo "o/r" :base "main" :dots "..." :head "topic"
                          :at at :tick 0)
                        "*octocat-compare-test*")
-            (should (equal (seq-take opened 4) (list "o/r" "topic" "a.el" at)))
-            (should (equal (plist-get (nth 4 opened) :label) "Changes in main...topic"))
+            (should (equal opened (list "o/r" "topic" "a.el" at
+                                        '(compare "o/r" "main" "..." "topic"))))
             (should-not octocat-diff--at))
         (kill-buffer "*octocat-compare-test*")))))
 

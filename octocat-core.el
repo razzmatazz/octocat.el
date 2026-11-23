@@ -1445,6 +1445,57 @@ SIDE \"LEFT\" or \"RIGHT\" as `octocat-diff-line' anchors name it."
   "Return non-nil if HASH, of a #diff- fragment, names the file at PATH."
   (member hash (list (secure-hash 'sha256 path) (secure-hash 'md5 path))))
 
+(defun octocat--diff-fragment (path &optional from to)
+  "Return the fragment naming file PATH of a diff, or lines FROM to TO of it.
+FROM and TO are (SIDE . LINE), as `octocat--url-lines' reads them back;
+TO defaults to FROM."
+  (let ((end (lambda (at) (format "%s%d" (if (equal (car at) "LEFT") "L" "R") (cdr at)))))
+    (concat "diff-" (secure-hash 'sha256 path)
+            (when from
+              (concat (funcall end from)
+                      (when (and to (not (equal to from)))
+                        (concat "-" (funcall end to))))))))
+
+;; A diff's line carries the text property `octocat-diff-line', its
+;; anchor (PATH SIDE LINE POSITION HUNK), see "Patch text" in
+;; octocat-diff.el; a file's heading carries (PATH).
+
+(defun octocat--diff-line-anchor (pos)
+  "Return the anchor of the diff line at POS, or nil."
+  (save-excursion
+    (goto-char pos)
+    (let* ((bol (line-beginning-position))
+           (eol (line-end-position))
+           (at  (if (get-text-property bol 'octocat-diff-line)
+                    bol
+                  (next-single-property-change bol 'octocat-diff-line nil eol))))
+      (and (< at eol) (get-text-property at 'octocat-diff-line)))))
+
+(defun octocat--diff-anchors (beg end)
+  "Return the anchors of the diff lines from BEG to END, in order.
+A line with none, as a hunk heading or a comment, is left out."
+  (save-excursion
+    (goto-char beg)
+    (let (out)
+      (while (progn (when-let* ((a (octocat--diff-line-anchor (point)))) (push a out))
+                    (and (zerop (forward-line 1)) (< (point) end) (not (eobp)))))
+      (nreverse out))))
+
+(defun octocat--diff-url-fragment ()
+  "Return \"#diff-…\" naming the diff line at point or the region's, or \"\".
+On a file's heading it names the file; a region across files names
+its first file's lines.  See `octocat--diff-fragment'."
+  (let* ((span    (octocat--point-or-region))
+         (anchors (octocat--diff-anchors (car span) (1+ (cdr span))))
+         (path    (car (car anchors)))
+         (lines   (seq-filter (lambda (a) (and (equal (car a) path) (cdr a))) anchors))
+         (at      (lambda (a) (cons (nth 1 a) (nth 2 a)))))
+    (cond (lines (concat "#" (octocat--diff-fragment
+                              path (funcall at (car lines))
+                              (funcall at (car (last lines))))))
+          (path  (concat "#" (octocat--diff-fragment path)))
+          (t     ""))))
+
 (defun octocat--split-ref-path (segments count)
   "Split SEGMENTS of a github.com path into (REF . PATH), COUNT of them the ref.
 PATH is the rest joined by slashes, or nil when none is left."

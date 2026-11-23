@@ -1,7 +1,8 @@
 acme/rocket  [8ee9a2c ▾]:/src/cache.rs                                            Code  Blame  Diff
 
 ○ Cache parsed templates between builds (#128)                    3f9c2a1 · 6 hours ago  [3 commits]
-Changes in pull request #128
+Changes in pull request #128  [Hide comments (1)]
+Your review: 1 pending  [Submit on the PR]
 ▾ A src/cache.rs  +18 -0
 @@ -0,0 +1,18 @@
 +use std::collections::HashMap;
@@ -20,5 +21,17 @@ Changes in pull request #128
 +    pub fn get(&self, path: &PathBuf, modified: SystemTime) -> Option<&Template> {
 +        let (at, template) = self.entries.get(path)?;
 +        (*at == modified).then_some(template)
+  ┌─ @mchen  1 day ago  👍 1 ─────────────────────
+  │ Comparing modification times is enough here: a build never runs while a template is half
+  │ written.
+  │
+  ◆── @srivera  1 day ago
+  │   Agreed. rocket serve writes them atomically too, so a watch rebuild is safe.
+  │
+  ◆── @mchen  1 day ago
+  │   Good, then this is fine as it is.
+  │
+  │ [Resolve conversation]
+  └─
 +    }
 +}

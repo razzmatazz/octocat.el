@@ -1271,6 +1271,11 @@ jobs:
        (:data (:repository (:object (:history (:totalCount 9 :nodes [,(octocat-screenshots--history-node
                                                                        (nth 1 octocat-screenshots--commits))]))
                             :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "src/main.rs"))))))
+      ;; The file reviewed, from the PR's Tree.
+      ("repo-head" (,(format "dir=%s:src/build.rs" octocat-screenshots--pr-head))
+       (:data (:repository (:object (:history (:totalCount 23 :nodes [,(octocat-screenshots--history-node
+                                                                        (nth 1 octocat-screenshots--commits))]))
+                            :dir (:__typename "Blob" :oid ,(octocat-screenshots--sha "src/build.rs"))))))
       ;; The file ✉ opens, at its first conversation.
       ("repo-head" (,(format "dir=%s:src/cache.rs" octocat-screenshots--pr-head))
        (:data (:repository (:object (:history (:totalCount 3 :nodes [,(octocat-screenshots--history-node
@@ -1305,6 +1310,8 @@ jobs:
       ("file-blob" (,(format "expr=%s:src/main.rs" octocat-screenshots--pr-head))
        ,(octocat-screenshots--file-blob
          "src/main.rs" "mod build;\nmod cache;\nmod markdown;\nmod serve;\nmod template;\n"))
+      ("file-blob" (,(format "expr=%s:src/build.rs" octocat-screenshots--pr-head))
+       ,(octocat-screenshots--file-blob "src/build.rs" "pub fn build(site: &Site, out: &Path) -> Result<()> {\n}\n"))
       ("file-blob" (,(format "expr=%s:src/cache.rs" octocat-screenshots--pr-head))
        ,(octocat-screenshots--file-blob "src/cache.rs" octocat-screenshots--cache-rs))
       ("file-blob" (,(format "expr=%s:src/theme/footnotes.js" octocat-screenshots--head))
