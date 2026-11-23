@@ -340,15 +340,17 @@ and the first has `octocat-line-target'."
     (cl-flet ((flush ()
                 (when run
                   ;; The newline after a highlighted line takes its face,
-                  ;; so the band reaches the window's edge.
-                  (push (cl-loop for (line . more) on (nreverse run)
-                                 concat (if (not more) line
-                                          (concat line
-                                                  (propertize
-                                                   "\n" 'face
-                                                   (and (get-text-property
-                                                         0 'octocat-line-highlight line)
-                                                        'octocat-line-highlight)))))
+                  ;; so the band reaches the window's edge.  One `concat':
+                  ;; `cl-loop''s copies what it has joined at every line.
+                  (push (apply #'concat
+                               (cl-loop for (line . more) on (nreverse run)
+                                        collect line
+                                        when more
+                                        collect (propertize
+                                                 "\n" 'face
+                                                 (and (get-text-property
+                                                       0 'octocat-line-highlight line)
+                                                      'octocat-line-highlight))))
                         out)
                   (setq run nil))))
       ;; Diff lines are not indented, so they copy out as a valid patch.
@@ -1029,11 +1031,12 @@ patch, the heading is the place scrolled to."
         :header (lambda (open toggle)
                   (octocat-vui-fold-header "" open toggle title
                                            '("RET: show diff" . "RET: hide diff")))
-        :deps (list patch comments raw width last span)
-        :prepare (lambda ()
-                   (octocat-diff--body (octocat-diff--segments
-                                        patch filename (octocat-diff--index comments) span)
-                                       raw width (not last))))))))
+        :compute-deps (list patch comments span)
+        :compute (lambda ()
+                   (octocat-diff--segments patch filename (octocat-diff--index comments) span))
+        :deps (list raw width last)
+        :prepare (lambda (segments)
+                   (octocat-diff--body segments raw width (not last))))))))
 
 (defun octocat-diff--line-count (files)
   "Return how many lines FILES take with every patch shown."
