@@ -7,7 +7,10 @@
   then dropped: see why there.
 - Next: step 5 (diffs).  Their slowness was mostly not highlighting:
   `octocat-diff--segments` joined lines in quadratic time, 2.8 s for a
-  2,500-line added file, again on each width change.
+  2,500-line added file, and ran again on each width change.  Fixed
+  apart from this plan: one `concat`, and the fold's new `:compute`,
+  memoized without the width.  Open 2,786 → 17 ms, width change
+  2,727 → 3.9 ms.
 - `octocat-clone-test-git-fails` can die of SIGPIPE: its fake git exits
   before `octocat-clone.el` writes to it.  Seen once on Emacs 30.2.
 

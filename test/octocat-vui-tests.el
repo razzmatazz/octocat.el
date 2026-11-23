@@ -589,6 +589,48 @@ unsubscribes it."
         (cancel-timer octocat-vui--theme-timer))
       (kill-buffer buf))))
 
+(defvar octocat-vui-tests--computes 0
+  "How many times `octocat-vui-tests--fold''s COMPUTE ran.")
+
+(defvar octocat-vui-tests--set nil
+  "Sets the state of the mounted `octocat-vui-tests--fold': (KEY VALUE).")
+
+(vui-defcomponent octocat-vui-tests--fold ()
+  "An open fold of its TEXT, its COMPUTE counted, laid out to its WIDTH."
+  :state ((text "abc") (width 80))
+  :render
+  (progn
+    (setq octocat-vui-tests--set (vui-async-callback (key value) (vui-set-state key value)))
+    (vui-component 'octocat-vui-fold
+      :bulk '(0 . t)
+      :header (lambda (_open _toggle) (vui-text "Header"))
+      :compute-deps (list text)
+      :compute (lambda () (cl-incf octocat-vui-tests--computes) (upcase text))
+      :deps (list width)
+      :prepare (lambda (value)
+                 (let ((laid (format "%s/%d" value width)))
+                   (cons 1 (lambda (_n) (list (vui-text laid)))))))))
+
+(ert-deftest octocat-vui-test-fold-compute ()
+  "A fold's COMPUTE runs again when its own deps change, not its layout's."
+  (let ((octocat-vui-tests--computes 0)
+        (octocat-vui-tests--set nil)
+        (vui-render-delay nil)
+        (buf (get-buffer-create "*octocat-vui-test*")))
+    (cl-flet ((shown () (with-current-buffer buf (buffer-string))))
+      (unwind-protect
+          (progn
+            (with-current-buffer buf (octocat-page-mode))
+            (vui-mount (vui-component 'octocat-vui-tests--fold) "*octocat-vui-test*")
+            (should (string-match-p "ABC/80" (shown)))
+            (funcall octocat-vui-tests--set :width 100)
+            (should (string-match-p "ABC/100" (shown)))
+            (should (= octocat-vui-tests--computes 1))
+            (funcall octocat-vui-tests--set :text "xyz")
+            (should (string-match-p "XYZ/100" (shown)))
+            (should (= octocat-vui-tests--computes 2)))
+        (kill-buffer buf)))))
+
 (vui-defcomponent octocat-vui-tests--form ()
   "Two fields whose RET moves on, and a button."
   :render

@@ -1295,15 +1295,18 @@ The timer exists only while items are being revealed."
           (unless (< (aref v 0) all) :stop)))
       (funcall render (seq-take items visible)))))
 
-(vui-defcomponent octocat-vui-fold (header prepare deps bulk)
+(vui-defcomponent octocat-vui-fold (header prepare deps compute compute-deps bulk)
   "A header row and a folded body that unfolds and folds back animated.
 HEADER is a function of whether the body is open and of a command that
 toggles it, returning the header vnode; typically an `octocat-vui-row'
 with the toggle as its RET.  PREPARE builds the body, only once it is
 first unfolded and again when DEPS change: it returns (TOTAL . RENDER),
 the body's number of lines and a function of how many of them to show
-returning a list of vnodes.  Unfolding and folding start fast and ease
-out, as `octocat-vui-fold-rest' does.  Lines added while open, say by a refresh, unfold too.
+returning a list of vnodes.  Given COMPUTE, the costly part of that, it
+runs only when COMPUTE-DEPS change, and PREPARE gets its value: a width
+change then only lays the body out anew.  Unfolding and folding start
+fast and ease out, as `octocat-vui-fold-rest' does.  Lines added while
+open, say by a refresh, unfold too.
 BULK, from an \"Expand all\" button (see `octocat-vui-expand-all-button'),
 is nil or (GENERATION . OPEN): each new value unfolds or folds it.  A
 fold that mounts while BULK says open starts open, without animating."
@@ -1314,7 +1317,13 @@ fold that mounts while BULK says open starts open, without animating."
                (vui-set-state :open (cdr bulk))
                (vui-set-state :shown (if (cdr bulk) most-positive-fixnum 0)))))
          (active (or open (> shown 0)))
-         (body   (vui-use-memo (deps active) (and active (funcall prepare))))
+         ;; How often COMPUTE ran: the body's dep, as comparing its value,
+         ;; say a long diff, on each render would cost what is saved.
+         (runs   (vui-use-ref 0))
+         (value  (vui-use-memo (compute-deps active)
+                   (and active compute (progn (cl-incf (car runs)) (funcall compute)))))
+         (body   (vui-use-memo (deps active (car runs))
+                   (and active (if compute (funcall prepare value) (funcall prepare)))))
          (total  (or (car body) 0))
          (toggle (vui-async-callback () (vui-set-state :open (not open))))
          (set-open (vui-async-callback (v) (vui-set-state :open v))))
