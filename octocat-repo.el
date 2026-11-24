@@ -1490,9 +1490,10 @@ LINES are as for `octocat-repo--mark-lines'."
                    (and (plist-get file :data)
                         (decode-coding-string
                          (octocat-model-blob-content (plist-get file :data)) 'utf-8))))
+         ;; Plain until highlighted, which a long file is once Emacs is idle.
          (highlighted (octocat-vui-use-fontified path source))
          ;; The source shows at once, grey bars beside it until the blame lands.
-         (text  (vui-use-memo (source (plist-get snap :data) edge lines)
+         (text  (vui-use-memo (source (plist-get snap :data) edge lines highlighted)
                   (and source
                        (octocat-repo--mark-lines
                         (octocat-repo--blame-text
@@ -1538,8 +1539,9 @@ is.  In the code view, LINES are as for `octocat-repo--mark-lines'."
          (source  (vui-use-memo (content path raw)
                     (and content (octocat-repo--highlight-p path content raw)
                          (decode-coding-string content 'utf-8))))
+         ;; Plain until highlighted, which a long file is once Emacs is idle.
          (highlighted (octocat-vui-use-fontified path source))
-         (shown   (vui-use-memo (content raw width lines)
+         (shown   (vui-use-memo (content raw width lines highlighted)
                     (when content
                       (let ((shown (octocat-repo--file-text repo ref path content raw width
                                                             highlighted)))

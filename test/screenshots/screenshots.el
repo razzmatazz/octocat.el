@@ -183,6 +183,8 @@ it is pressed."
   (let ((last nil) (still 0) (tries 0))
     (while (and (< still 15) (< (cl-incf tries) 400))
       (accept-process-output nil 0.02)
+      ;; Idle timers never run here.
+      (octocat-vui-idle-flush)
       (let ((text (with-current-buffer buffer (buffer-string))))
         (if (and (equal text last) (null (octocat-sync--loading-keys)))
             (cl-incf still)

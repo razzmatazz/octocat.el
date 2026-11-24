@@ -43,6 +43,21 @@ returns `:stop` when done: a BODY that sets state to the value it
 already has does not re-render, so a timer that waited for SECONDS to
 turn nil would run forever.
 
+## Work the first frame can do without
+
+A page's first frame should show at once.  Costly work it can be drawn
+without, such as a long diff's highlighting, goes through
+`octocat-vui-use-idle`: it returns nil, the page draws without it, and
+the work runs once Emacs has been idle a moment, re-rendering the page
+with its value.  Jobs run a few at a time, pages on screen first, and
+stop as soon as a key waits, so a key waits on one step at most: keep
+each step to tens of milliseconds.  A longer job returns a function
+that does the rest, and so on, as `octocat-fontify-in-steps` does to
+highlight a large file a slice at a time.  Do small work in the
+render instead, as a page that flashes plain for a moment looks
+broken.  Idle timers never run in batch: tests and the screenshots
+call `octocat-vui-idle-flush` to run what waits.
+
 ## Update a page in place; don't remount it
 
 To change what a page shows (the list's query, the repo page's branch),

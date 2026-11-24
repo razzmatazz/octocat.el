@@ -70,5 +70,39 @@ It has no property but its faces, see `octocat-fontify-faces-only'."
     (with-demoted-errors "Octocat: cannot highlight: %S" (font-lock-ensure))
     (octocat-fontify-faces-only (buffer-string))))
 
+(defconst octocat-fontify--slice 8000
+  "Characters `octocat-fontify-in-steps' highlights a step: 10–30 ms.")
+
+(defun octocat-fontify--slice (path text start)
+  "Return (END . DONE): TEXT's lines from START highlighted for PATH.
+They are about `octocat-fontify--slice' long, and end at END.  The
+whole TEXT is in the buffer, as a part of a file is when jit-lock
+highlights it, so the slice is highlighted as within the file."
+  (with-temp-buffer
+    (insert text)
+    (octocat-fontify-set-mode path)
+    (let* ((beg (1+ start))
+           (end (save-excursion
+                  (goto-char (min (point-max) (+ beg octocat-fontify--slice)))
+                  (forward-line 1)
+                  (point))))
+      (with-demoted-errors "Octocat: cannot highlight: %S"
+        (font-lock-set-defaults)
+        (font-lock-fontify-region beg end))
+      (cons (1- end) (octocat-fontify-faces-only (buffer-substring beg end))))))
+
+(defun octocat-fontify-in-steps (path text &optional start done)
+  "Return a function highlighting TEXT for PATH, as `octocat-fontify' does.
+Each call highlights the next slice, see `octocat-fontify--slice', and
+returns the function for the rest, or once there is none the whole
+TEXT highlighted.  No buffer stays between calls, so one never made
+leaves nothing behind.  START and DONE, the slices highlighted, are
+for the function's own use."
+  (lambda ()
+    (pcase-let ((`(,end . ,slice) (octocat-fontify--slice path text (or start 0))))
+      (if (< end (length text))
+          (octocat-fontify-in-steps path text end (cons slice done))
+        (apply #'concat (nreverse (cons slice done)))))))
+
 (provide 'octocat-fontify)
 ;;; octocat-fontify.el ends here

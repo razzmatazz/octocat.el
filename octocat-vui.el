@@ -726,12 +726,129 @@ hook."
                (list 'clone-head (expand-file-name default-directory)) tick)
               :data)))
 
+(defconst octocat-vui--fontify-now 5000
+  "Longest text, in characters, highlighted as it is drawn.
+About 10 ms of work.  A longer one is highlighted once Emacs is idle.")
+
 (defun octocat-vui-use-fontified (path text)
   "Return TEXT highlighted as by `octocat-fontify' for PATH, or nil.
-Highlighted again only when PATH or TEXT changes; a nil TEXT gives nil.
-Must be called during render, like any hook."
-  (vui-use-memo (path text)
-    (and text (octocat-fontify path text))))
+A text up to `octocat-vui--fontify-now' long is highlighted at once; a
+longer one once Emacs is idle, a slice a step, see
+`octocat-vui-use-idle' and `octocat-fontify-in-steps': nil until then,
+the page drawing TEXT plain.  Highlighted again only when PATH or TEXT
+changes; a nil TEXT gives nil.  Must be called during render, like any
+hook."
+  (let* ((now   (and text (<= (length text) octocat-vui--fontify-now)))
+         (here  (vui-use-memo (path (and now text))
+                  (and now (octocat-fontify path text))))
+         (later (octocat-vui-use-idle (and text (not now) (list path text))
+                                      (octocat-fontify-in-steps path text))))
+    (or here later)))
+
+;;;; Work when idle
+;;
+;; Work a page can be drawn without, such as a diff's highlighting,
+;; waits until Emacs is idle, so the page's first frame shows at once.
+;; It runs a step at a time, pages on screen first, and stops as soon
+;; as a key waits: a key waits on one step at most.  A long job, such as
+;; highlighting a large file, takes several steps.  Idle timers never
+;; run in batch, so tests call `octocat-vui-idle-flush'.
+
+(defconst octocat-vui--idle-delay 0.1
+  "Seconds Emacs is idle, after a page is drawn, before its idle work runs.")
+
+(defconst octocat-vui--idle-step 0.03
+  "Seconds of idle work after which redisplay gets a turn.")
+
+(defvar octocat-vui--idle-jobs nil
+  "Work waiting for Emacs to be idle: (BUFFER . STEP) conses, oldest first.
+STEP does the next step of the work, and returns non-nil once it is
+done.")
+
+(defvar octocat-vui--idle-timer nil
+  "The timer that runs `octocat-vui--idle-jobs' next, or nil.")
+
+(defun octocat-vui--idle-schedule (secs)
+  "Run the idle jobs in SECS seconds, if Emacs is idle by then.
+Nothing is done if there are none, or a timer will already run them.
+Not an idle timer: one due past the current idleness would wait for as
+long again, from the next key."
+  (when (and octocat-vui--idle-jobs (not octocat-vui--idle-timer))
+    (setq octocat-vui--idle-timer (run-with-timer secs nil #'octocat-vui--idle-run))))
+
+(defun octocat-vui--idle-next ()
+  "Remove and return the next idle job: a page's on screen, if any."
+  (setq octocat-vui--idle-jobs (seq-filter (lambda (job) (buffer-live-p (car job)))
+                                           octocat-vui--idle-jobs))
+  (let ((job (or (seq-find (lambda (job) (get-buffer-window (car job) t))
+                           octocat-vui--idle-jobs)
+                 (car octocat-vui--idle-jobs))))
+    (setq octocat-vui--idle-jobs (delq job octocat-vui--idle-jobs))
+    job))
+
+(defun octocat-vui--idle-do (job)
+  "Run a step of idle JOB in its buffer; put JOB back first if not done.
+A step that fails ends JOB."
+  (let ((done t))
+    (with-current-buffer (car job)
+      (with-demoted-errors "Octocat: idle work failed: %S"
+        (setq done (funcall (cdr job)))))
+    (unless done
+      (push job octocat-vui--idle-jobs))))
+
+(defun octocat-vui--idle-run ()
+  "Run idle jobs for `octocat-vui--idle-step', or until a key waits.
+Before Emacs has been idle `octocat-vui--idle-delay', wait until it has."
+  (setq octocat-vui--idle-timer nil)
+  (let ((idle (current-idle-time)))
+    (if (or (input-pending-p) (null idle)
+            (< (float-time idle) octocat-vui--idle-delay))
+        (when octocat-vui--idle-jobs
+          ;; In this idleness if it is shorter, else from the next key.
+          (setq octocat-vui--idle-timer
+                (run-with-idle-timer octocat-vui--idle-delay nil #'octocat-vui--idle-run)))
+      (let ((end (+ (float-time) octocat-vui--idle-step)) job)
+        (while (and (not (input-pending-p)) (< (float-time) end)
+                    (setq job (octocat-vui--idle-next)))
+          (octocat-vui--idle-do job)))
+      ;; A moment for redisplay to show what changed.
+      (octocat-vui--idle-schedule 0.01))))
+
+(defun octocat-vui-idle-flush ()
+  "Run every job waiting for Emacs to be idle, now."
+  (let (job)
+    (while (setq job (octocat-vui--idle-next))
+      (octocat-vui--idle-do job))))
+
+(defun octocat-vui-use-idle (key fn)
+  "Return FN's value once Emacs has been idle, or nil until then.
+FN runs in this page's buffer, see \"Work when idle\" above, and the
+page re-renders with its value.  FN may instead return a function,
+which does the rest of the work in the next step, in the same way: a
+long job, cut in steps, lets a key in between them.  KEY names the
+work: while it stays `equal', the value is kept; a new one drops the
+work pending and runs FN again; nil runs nothing.  Must be called
+during render, like any hook."
+  (let* ((job (vui-use-ref nil))
+         (buffer (current-buffer))
+         (state (vui-use-async (list 'octocat-vui-idle key)
+                  (lambda (resolve _reject)
+                    (when key
+                      (let* ((step fn)
+                             (this (cons buffer
+                                         (lambda ()
+                                           (let ((value (funcall step)))
+                                             (if (functionp value)
+                                                 (progn (setq step value) nil)
+                                               (funcall resolve value)
+                                               t))))))
+                        (setcar job this)
+                        (setq octocat-vui--idle-jobs (nconc octocat-vui--idle-jobs (list this)))
+                        (octocat-vui--idle-schedule octocat-vui--idle-delay)))))))
+    (vui-use-effect (key)
+      (let ((this (car job)))
+        (lambda () (setq octocat-vui--idle-jobs (delq this octocat-vui--idle-jobs)))))
+    (plist-get state :data)))
 
 (defun octocat-vui-skeleton-bar (n)
   "Return a grey bar N columns wide (at least one) standing in for content."

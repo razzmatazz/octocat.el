@@ -253,6 +253,37 @@ before the diff; each line carries its anchor."
                                        "{\"filename\":\"a.el\",\"patch\":\"@@ -1 +1 @@\\n+x\"}")
                                 80)))))
 
+(ert-deftest octocat-diff-test-highlight-when-idle ()
+  "A long patch is drawn in the diff faces, and highlighted once idle."
+  (let* ((octocat-vui--idle-jobs nil)
+         (octocat-vui--idle-timer nil)
+         (vui-render-delay nil)
+         (n 400)
+         (patch (concat (format "@@ -0,0 +1,%d @@\n" n)
+                        (apply #'concat (make-list n "+(defun foo () nil)\n"))))
+         (buf (get-buffer-create "*octocat-diff-test*")))
+    (cl-flet ((keyword-p ()
+                (with-current-buffer buf
+                  (save-excursion
+                    (goto-char (point-min))
+                    (search-forward "+(defun")
+                    (memq 'font-lock-keyword-face
+                          (ensure-list (get-text-property (- (point) 5) 'face)))))))
+      (unwind-protect
+          (progn
+            (should (> (length patch) octocat-diff--highlight-now))
+            (with-current-buffer buf (octocat-page-mode))
+            (vui-mount (vui-component 'octocat-diff--patch
+                         :filename "a.el" :patch patch :title "a.el" :width 80)
+                       "*octocat-diff-test*")
+            (should-not (keyword-p))
+            (should octocat-vui--idle-jobs)
+            (octocat-vui-idle-flush)
+            (should (keyword-p))
+            (should-not octocat-vui--idle-jobs))
+        (when octocat-vui--idle-timer (cancel-timer octocat-vui--idle-timer))
+        (kill-buffer buf)))))
+
 (defconst octocat-diff-tests--patch "@@ -1,3 +1,3 @@\n a\n-b\n+c\n d"
   "A patch whose positions are: 1 the hunk, 2 a, 3 -b, 4 +c, 5 d.")
 

@@ -302,18 +302,19 @@ both ends."
           (end   (or end start)))
       (and start (cons (min start end) (max start end))))))
 
-(defun octocat-diff--segments (patch path index &optional span)
+(defun octocat-diff--segments (patch path index &optional span lines)
   "Return the unified diff PATCH as segments, see \"Patch text\" above.
 That is a list of strings, runs of lines without final newline, and
 threads (ROOT . REPLIES), each placed right after the diff line it is
 on, see `octocat-diff--walk'; the threads on the whole file come
-first.  PATH is the file's, whose major mode highlights the code, see
-`octocat-diff--lines'.  INDEX is the comment index of the file, see
+first.  PATH is the file's, whose major mode highlights the code.
+LINES are PATCH's lines as `octocat-diff--lines' gives them, computed
+here when nil.  INDEX is the comment index of the file, see
 `octocat-diff--index'.  A line is cut at `octocat--max-line-length',
 see `octocat--clip-line'.  The lines at the positions SPAN, (START .
 END) as `octocat-diff--span' gives them, are in `octocat-line-highlight',
 and the first has `octocat-line-target'."
-  (let ((lines (octocat-diff--lines patch path))
+  (let ((lines (or lines (octocat-diff--lines patch path)))
         (out   (reverse (nth 2 index)))
         run)
     (cl-flet ((flush ()
@@ -580,6 +581,11 @@ highlighted while the comment is being written."
   "Longest patch, in characters, whose code is highlighted.
 About a thousand lines; a mode takes up to a second for twice that.")
 
+(defconst octocat-diff--highlight-now 5000
+  "Longest patch, in characters, whose code is highlighted as it is drawn.
+About 10 ms of work.  A longer one is drawn in the diff faces alone,
+and highlighted once Emacs is idle, see `octocat-vui-use-idle'.")
+
 (defun octocat-diff--split (patch)
   "Return the lines of PATCH, without the empty one after a final newline."
   (let ((lines (split-string patch "\n")))
@@ -665,23 +671,31 @@ but a space.  INDEX is the string's, START and END the word's bounds."
 (defun octocat-diff--common (a b)
   "Return the strings of A and B, vectors of strings, in a longest common run.
 That is (IN-A . IN-B), two vectors of booleans, as `diff' finds them."
-  (let* ((n (length a)) (m (length b))
-         ;; Row I, column J: the longest common run of A from I, B from J.
-         (table (vconcat (cl-loop repeat (1+ n) collect (make-vector (1+ m) 0))))
+  (let* ((ids (make-hash-table :test #'equal))
+         ;; Each word as a number, compared with `eq', not `equal'.
+         (id  (lambda (s) (or (gethash s ids) (puthash s (hash-table-count ids) ids))))
+         (a (cl-map 'vector id a))
+         (b (cl-map 'vector id b))
+         (n (length a)) (m (length b))
+         (w (1+ m))
+         ;; At I * W + J: the longest common run of A from I, B from J.
+         ;; One vector, not one a row, to allocate once.
+         (table (make-vector (* (1+ n) w) 0))
          (in-a (make-bool-vector n nil))
          (in-b (make-bool-vector m nil))
          (i 0) (j 0))
-    (cl-flet ((at (i j) (aref (aref table i) j)))
-      (cl-loop for i from (1- n) downto 0
-               do (cl-loop for j from (1- m) downto 0
-                           do (aset (aref table i) j
-                                    (if (equal (aref a i) (aref b j))
-                                        (1+ (at (1+ i) (1+ j)))
-                                      (max (at (1+ i) j) (at i (1+ j)))))))
-      (while (and (< i n) (< j m))
-        (cond ((equal (aref a i) (aref b j))
+    (cl-loop for i from (1- n) downto 0
+             do (cl-loop for j from (1- m) downto 0
+                         for at = (+ (* i w) j)
+                         do (aset table at
+                                  (if (eq (aref a i) (aref b j))
+                                      (1+ (aref table (+ at w 1)))
+                                    (max (aref table (+ at w)) (aref table (1+ at)))))))
+    (while (and (< i n) (< j m))
+      (let ((at (+ (* i w) j)))
+        (cond ((eq (aref a i) (aref b j))
                (aset in-a i t) (aset in-b j t) (cl-incf i) (cl-incf j))
-              ((>= (at (1+ i) j) (at i (1+ j))) (cl-incf i))
+              ((>= (aref table (+ at w)) (aref table (1+ at))) (cl-incf i))
               (t (cl-incf j)))))
     (cons in-a in-b)))
 
@@ -691,13 +705,15 @@ Changed words next to each other on a line are marked as one, with the
 spaces between them.  A line none of whose words is kept is added or
 removed whole, and left unmarked, as `diff-refine-nonmodified' leaves
 it.  See `octocat-diff--words' for WORDS."
-  (let ((kept-lines (cl-loop for w across words for k from 0
-                             when (aref kept k) collect (car w)))
+  (let ((strings (vconcat strings))
+        (kept-lines (make-bool-vector (length strings) nil))
         range)                          ; (INDEX START END) being marked.
+    (cl-loop for w across words for k from 0
+             when (aref kept k) do (aset kept-lines (car w) t))
     (cl-flet ((flush ()
-                (when (and range (memq (car range) kept-lines))
+                (when (and range (aref kept-lines (car range)))
                   (pcase-let ((`(,i ,beg ,end) range))
-                    (add-face-text-property beg end face nil (nth i strings)))
+                    (add-face-text-property beg end face nil (aref strings i)))
                   (setq range nil))))
       (cl-loop for w across words for k from 0
                do (cond ((aref kept k) (flush))
@@ -725,25 +741,28 @@ KINDS are the lines' kinds and BODIES their code, see
                    (wb (octocat-diff--words new)))
               (when (<= (* (length wa) (length wb)) octocat-diff--refine-limit)
                 (cl-flet ((text (strings words)
-                            (vconcat (mapcar (pcase-lambda (`(,n ,beg ,end))
-                                               (substring-no-properties (nth n strings) beg end))
-                                             words))))
+                            (let ((strings (vconcat strings)))
+                              (vconcat (mapcar (pcase-lambda (`(,n ,beg ,end))
+                                                 (substring-no-properties (aref strings n) beg end))
+                                               words)))))
                   (let ((kept (octocat-diff--common (text old wa) (text new wb))))
                     (octocat-diff--mark old wa (car kept) 'diff-refine-removed)
                     (octocat-diff--mark new wb (cdr kept) 'diff-refine-added))))
               (setq i k))
-          (setq i (max (1+ i) j)))))))
+          ;; Past the whole run: from each of its lines, the scans above
+          ;; would each cross the rest of it.
+          (setq i (max (1+ i) k)))))))
 
-(defun octocat-diff--lines (patch path)
+(defun octocat-diff--lines (patch path &optional plain)
   "Return the lines of PATCH, a file's unified diff, propertized for display.
 PATH is the file's: its major mode highlights the code, see
 `octocat-diff--bodies', under `diff-added' or `diff-removed', and the
-words changed within lines are marked, see `octocat-diff--refine'.  A
-patch larger than `octocat-diff--highlight-limit' is only in the diff
-faces."
+words changed within lines are marked, see `octocat-diff--refine'.
+With PLAIN, or for a patch larger than `octocat-diff--highlight-limit',
+the lines are only in the diff faces."
   (let* ((lines  (octocat-diff--split patch))
          (kinds  (mapcar #'octocat-diff--line-kind lines))
-         (large  (> (length patch) octocat-diff--highlight-limit))
+         (large  (or plain (> (length patch) octocat-diff--highlight-limit)))
          (bodies (mapcar (lambda (b) (and b (copy-sequence b)))
                          (if large
                              (cl-mapcar (lambda (l k)
@@ -938,17 +957,35 @@ or with neither in the patch, the heading is the place scrolled to."
                              "RET: diff it in a buffer")
           (vui-text line))))
      (t
-      (vui-component 'octocat-vui-fold
+      (vui-component 'octocat-diff--patch
         :key (intern filename)
-        :bulk '(0 . t)
-        :header (lambda (open toggle)
-                  (octocat-vui-fold-header "" open toggle title
-                                           '("RET: show diff" . "RET: hide diff")))
-        :compute-deps (list patch comments span)
-        :compute (lambda ()
-                   (octocat-diff--segments patch filename (octocat-diff--index comments) span))
-        :deps (list raw width)
-        :prepare (lambda (segments) (octocat-diff--body segments raw width)))))))
+        :filename filename :patch patch :comments comments :span span
+        :raw raw :width width :title title)))))
+
+(vui-defcomponent octocat-diff--patch (filename patch comments span raw width title)
+  "The fold of file FILENAME's PATCH, under TITLE, see `octocat-diff--file'.
+A patch longer than `octocat-diff--highlight-now' is first drawn in the
+diff faces alone, and highlighted once Emacs is idle; a comment added
+keeps that work."
+  :render
+  (let* ((now   (<= (length patch) octocat-diff--highlight-now))
+         (later (octocat-vui-use-idle
+                 (and (not now) (<= (length patch) octocat-diff--highlight-limit)
+                      (list patch filename))
+                 (lambda () (octocat-diff--lines patch filename)))))
+    (vui-component 'octocat-vui-fold
+      :bulk '(0 . t)
+      :header (lambda (open toggle)
+                (octocat-vui-fold-header "" open toggle title
+                                         '("RET: show diff" . "RET: hide diff")))
+      :compute-deps (list patch comments span later)
+      :compute (lambda ()
+                 (octocat-diff--segments patch filename (octocat-diff--index comments) span
+                                         (or later
+                                             (and (not now)
+                                                  (octocat-diff--lines patch filename t)))))
+      :deps (list raw width)
+      :prepare (lambda (segments) (octocat-diff--body segments raw width)))))
 
 (defvar-local octocat-diff--at nil
   "Where the page is to start, or nil.

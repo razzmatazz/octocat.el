@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Large files show at once in the file viewer and blame, highlighted a moment later
+* Diffs mark the words changed within lines faster, added files most of all
+* Long diffs show at once, their code highlighted a moment later, while you're idle
 * Files highlight in Emacs itself again, no longer in a second Emacs
 * Large files highlight again with go-mode and other modes that detect files by content
 * Review a PR in its files: `C-c C-a` comments on lines, replies; `C-c C-e` edits; resolve

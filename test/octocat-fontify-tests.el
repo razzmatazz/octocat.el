@@ -49,14 +49,31 @@
                                       append (cl-loop for (k _) on props by #'cddr collect k)))
                    '(face)))))
 
+(ert-deftest octocat-fontify-test-in-steps ()
+  "Highlighting a slice a step gives what highlighting at once does,
+a string spanning slices too."
+  (let ((octocat-fontify--slice 40)
+        (text (concat ";; A file.\n"
+                      (apply #'concat (make-list 10 "(defun foo () \"Doc\n\nmore.\" nil)\n"))
+                      "(defvar x 1)")))
+    (let ((step (octocat-fontify-in-steps "foo.el" text)) (steps 0))
+      (while (functionp step)
+        (setq step (funcall step) steps (1+ steps)))
+      (should (> steps 3))
+      (should (equal-including-properties step (octocat-fontify "foo.el" text))))))
+
 (vui-defcomponent octocat-fontify-tests--viewer (path text)
   "Shows TEXT, highlighted for PATH by `octocat-vui-use-fontified'."
   :render
   (vui-text (or (octocat-vui-use-fontified path text) text)))
 
 (ert-deftest octocat-fontify-test-hook ()
-  "A page shows its text highlighted in the render that shows it."
+  "A page shows a short text highlighted in the render that shows it, a
+long one plain until Emacs is idle."
   (let ((vui-render-delay nil)
+        (octocat-vui--idle-jobs nil)
+        (octocat-vui--idle-timer nil)
+        (long (apply #'concat (make-list 300 "(defun foo () nil)\n")))
         (buf (get-buffer-create "*octocat-fontify-test*")))
     (cl-flet ((faces () (with-current-buffer buf
                           (octocat-fontify-tests--faces (buffer-string))))
@@ -69,7 +86,13 @@
             (show "(defun foo () nil)\n")
             (should (faces))
             (show "plain\n")
-            (should-not (faces)))
+            (should-not (faces))
+            (should (> (length long) octocat-vui--fontify-now))
+            (show long)
+            (should-not (faces))
+            (octocat-vui-idle-flush)
+            (should (faces)))
+        (when octocat-vui--idle-timer (cancel-timer octocat-vui--idle-timer))
         (kill-buffer buf)))))
 
 (provide 'octocat-fontify-tests)
