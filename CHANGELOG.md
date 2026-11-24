@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+* Files highlight in Emacs itself again, no longer in a second Emacs
 * Large files highlight again with go-mode and other modes that detect files by content
 * Review a PR in its files: `C-c C-a` comments on lines, replies; `C-c C-e` edits; resolve
 * A file opened from a PR has a buffer of its own, which follows the PR's pushes

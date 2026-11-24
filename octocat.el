@@ -40,7 +40,6 @@
 
 ;;; Code:
 
-(require 'octocat-async)
 (require 'octocat-core)
 (require 'octocat-image)
 (require 'octocat-sync)

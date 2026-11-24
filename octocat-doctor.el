@@ -24,8 +24,6 @@
 ;; report: the sync store's size and its largest resources; which pages
 ;; on screen refresh on their own, how often and why; the `gh' calls of
 ;; the last hour, with how often they ran and the data they received;
-;; the worker Emacs of `octocat-async', its process and its jobs: how
-;; long they took, there and here, and how they failed;
 ;; and which files are loaded, and whether a compiled one is older than
 ;; its source.  It names the host and resources, never a token.
 
@@ -33,7 +31,6 @@
 
 (require 'seq)
 (require 'subr-x)
-(require 'octocat-async)
 (require 'octocat-core)
 (require 'octocat-sync)
 (require 'octocat-vui)
@@ -312,102 +309,6 @@ requests ran, see `octocat-doctor--busy'."
                 (seq-take log 20) ""))))
 
 
-;;;; Background work
-
-(defun octocat-doctor--median (numbers)
-  "Return the median of NUMBERS, or nil if there are none."
-  (when numbers
-    (let ((sorted (sort (copy-sequence numbers) #'<)))
-      (nth (/ (length sorted) 2) sorted))))
-
-(defun octocat-doctor--worker (status now)
-  "Return the report's line on the worker, at NOW.
-STATUS is the worker's, see `octocat-async-status'."
-  (let ((info (plist-get status :worker))
-        (attrs (plist-get status :attributes)))
-    (cond ((plist-get status :off)
-           (pcase-let ((`(,since . ,reason) (plist-get status :off)))
-             (concat (format "  Worker      off for %s: %s; "
-                             (octocat-doctor--duration (- now since)) reason)
-                     (buttonize "turn it back on"
-                                (lambda (_) (octocat-async-turn-on) (octocat-doctor-show)))
-                     "\n")))
-          ((not info) "  Worker      not running: starts on the next job\n")
-          ;; Not `process-attributes''s CPU time: on Apple silicon, Emacs
-          ;; reports it in Mach ticks, 40 times too small.
-          (t (format "  Worker      pid %d, up %s, %d jobs done in %d ms, RSS %s\n"
-                     (plist-get info :pid)
-                     (octocat-doctor--duration (- now (plist-get info :started)))
-                     (plist-get info :jobs)
-                     (round (or (plist-get info :busy) 0))
-                     (if-let* ((rss (alist-get 'rss attrs)))
-                         (octocat-doctor--size (* 1024 rss))
-                       "?"))))))
-
-(defun octocat-doctor--jobs-summary (entries)
-  "Return a line summing ENTRIES of `octocat-async--log', of one kind."
-  (let* ((done (seq-filter (lambda (e) (aref e 1)) entries))
-         (outcomes nil)
-         (walls (mapcar (lambda (e) (* 1000 (- (aref e 1) (aref e 0))))
-                        (seq-filter (lambda (e) (eq (aref e 4) 'ok)) done))))
-    (dolist (e done)
-      (setf (alist-get (symbol-name (aref e 4)) outcomes nil nil #'equal)
-            (1+ (alist-get (symbol-name (aref e 4)) outcomes 0 nil #'equal))))
-    (format "%d (%s)%s; this Emacs %d ms, worker %d ms"
-            (length entries)
-            (mapconcat (pcase-lambda (`(,o . ,n)) (format "%s %d" o n))
-                       (sort outcomes #'octocat-doctor--more-p) ", ")
-            (if walls
-                (format ", in the worker %d ms median, %d ms slowest"
-                        (round (octocat-doctor--median walls)) (round (apply #'max walls)))
-              "")
-            (round (apply #'+ (mapcar (lambda (e) (aref e 5)) done)))
-            (round (apply #'+ (delq nil (mapcar (lambda (e) (aref e 6)) done)))))))
-
-(defun octocat-doctor--async (status log now)
-  "Return the report's lines on background work, at NOW.
-STATUS is the worker's, see `octocat-async-status'; LOG its jobs,
-`octocat-async--log'."
-  (let ((sum (lambda (seconds label)
-               (let* ((entries (seq-filter (lambda (e) (> (aref e 0) (- now seconds))) log))
-                      (kinds (seq-uniq (mapcar (lambda (e) (aref e 2)) entries))))
-                 (if (null kinds)
-                     (format "  %-11s none\n" label)
-                   (mapconcat (lambda (kind)
-                                (format "  %-11s %s %s\n" label kind
-                                        (octocat-doctor--jobs-summary
-                                         (seq-filter (lambda (e) (eq (aref e 2) kind)) entries))))
-                              (sort kinds (lambda (a b) (string< (symbol-name a) (symbol-name b))))
-                              ""))))))
-    (concat
-     "Background work, in a worker Emacs, last hour\n"
-     (octocat-doctor--worker status now)
-     (format "  Jobs        %d running, %d queued; %d failed in a row\n"
-             (plist-get status :running) (plist-get status :queued)
-             (plist-get status :failures))
-     (funcall sum 300 "Last 5 min")
-     (funcall sum 3600 "Last hour")
-     (if-let* ((stderr (plist-get status :stderr)))
-         (unless (string-empty-p stderr)
-           (concat "  Its stderr, last lines:\n"
-                   (mapconcat (lambda (l) (concat "    " l "\n"))
-                              (last (split-string stderr "\n") 5) "")))
-       "")
-     "\nMost recent background jobs\n"
-     (mapconcat (lambda (e)
-                  (format "  %s  %-9s %8s  %8s  this Emacs %6.1f ms  worker %8s  %s%s\n"
-                          (format-time-string "%H:%M:%S" (aref e 0))
-                          (aref e 2)
-                          (if (aref e 3) (octocat-doctor--size (aref e 3)) "")
-                          (if (aref e 1) (format "%d ms" (round (* 1000 (- (aref e 1) (aref e 0)))))
-                            "…")
-                          (aref e 5)
-                          (if (aref e 6) (format "%.1f ms" (aref e 6)) "")
-                          (or (aref e 4) "running")
-                          (if (aref e 7) (concat ": " (aref e 7)) "")))
-                (seq-take log 20) ""))))
-
-
 ;;;; Report
 
 (defun octocat-doctor-report ()
@@ -420,8 +321,6 @@ STATUS is the worker's, see `octocat-async-status'; LOG its jobs,
             (octocat-doctor--refreshes now)
             "\n"
             (octocat-doctor--requests octocat--gh-log now)
-            "\n"
-            (octocat-doctor--async (octocat-async-status) octocat-async--log now)
             "\n"
             (octocat-doctor--code))))
 

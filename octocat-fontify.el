@@ -21,24 +21,12 @@
 ;;; Commentary:
 
 ;; A repository file's text highlighted as its major mode would, in a
-;; scratch buffer, for the file viewer, blame and diffs.  It requires
-;; only `octocat-async', so the worker loads it at little cost:
-;; `octocat-fontify-async' highlights a large text there, off the UI.
-;;
-;; The worker highlights as a stock Emacs with this one's `load-path',
-;; mode alists and mode autoloads: the same mode, not the user's options
-;; or keywords for it (see plans/async-render.md).
+;; scratch buffer, for the file viewer, blame and diffs.
 
 ;;; Code:
 
-(require 'octocat-async)
-
 ;; From markdown-mode, when installed.
 (defvar markdown-fontify-code-blocks-natively)
-
-(defconst octocat-fontify--here-below 20000
-  "Characters of text under which it is highlighted here, not in the worker.
-About 15 ms of highlighting, as much as the round trip to the worker.")
 
 (defun octocat-fontify-set-mode (path)
   "Set the current buffer's major mode as for repository file PATH.
@@ -81,22 +69,6 @@ It has no property but its faces, see `octocat-fontify-faces-only'."
     ;; A mode's broken font-lock rules should not lose the file's text.
     (with-demoted-errors "Octocat: cannot highlight: %S" (font-lock-ensure))
     (octocat-fontify-faces-only (buffer-string))))
-
-(defun octocat-fontify-here-p (text)
-  "Return non-nil if TEXT is small enough to highlight here, not in the worker."
-  (< (length text) octocat-fontify--here-below))
-
-(defun octocat-fontify-async (path text callback)
-  "Call CALLBACK with TEXT highlighted as by `octocat-fontify' for PATH.
-A large TEXT is highlighted in the worker, see `octocat-async-call',
-and CALLBACK runs once it is; a small one here, before this returns,
-see `octocat-fontify-here-p'.  Return the job, for
-`octocat-async-cancel', or nil."
-  (octocat-async-call 'fontify 'octocat-fontify #'octocat-fontify (list path text) callback
-                      :here (octocat-fontify-here-p text)
-                      ;; Several times what a slow mode takes.
-                      :deadline (+ 1.0 (* 2e-6 (string-bytes text)))
-                      :size (string-bytes text)))
 
 (provide 'octocat-fontify)
 ;;; octocat-fontify.el ends here

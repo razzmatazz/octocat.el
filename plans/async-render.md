@@ -2,10 +2,17 @@
 
 ## Status
 
-- Branch `async-render`.
-- Done: step 1 (9fb4ea8), step 2 (bde0e0f), step 4.  Step 3 built,
-  then dropped: see why there.
-- Next: step 5 (diffs).  Their slowness was mostly not highlighting:
+- Reverted: steps 1, 2 and 4 are gone; everything highlights on the UI
+  again.  Byte-compiled, batch `emacs -Q`: a file highlights in 8 ms
+  at 25 KB, 30 ms at 95 KB, 63 ms at 184 KB, so the worker paid only
+  past about 100 KB.  One diff opens in 20–35 ms, half of it refining
+  words, not highlighting, and every patch is under the worker's
+  20 KB; a PR of 8–20 files in 120 ms, all at mount.  Interpreted, the
+  diff takes 3–5 times that: profile byte-compiled, and in the user's
+  Emacs, before bringing the worker back.
+- Done before the revert: step 1 (9fb4ea8), step 2 (bde0e0f), step 4.
+  Step 3 built, then dropped: see why there.
+- Was next: step 5 (diffs).  Their slowness was mostly not highlighting:
   `octocat-diff--segments` joined lines in quadratic time, 2.8 s for a
   2,500-line added file, and ran again on each width change.  Fixed
   apart from this plan: one `concat`, and the fold's new `:compute`,
